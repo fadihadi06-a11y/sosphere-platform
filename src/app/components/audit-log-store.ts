@@ -1,0 +1,235 @@
+// ═══════════════════════════════════════════════════════════════
+// SOSphere — Real Audit Log Store
+// ─────────────────────────────────────────────────────────────
+// Auto-logs every dashboard action: who did what, when, from where.
+// Replaces MOCK_AUDIT with real persisted events.
+// ISO 27001 §A.12.4 — Event Logging
+// ═══════════════════════════════════════════════════════════════
+
+export type AuditCategory =
+  | "permission_change"
+  | "role_change"
+  | "zone_assignment"
+  | "user_added"
+  | "user_removed"
+  | "user_suspended"
+  | "2fa_event"
+  | "login"
+  | "logout"
+  | "emergency"
+  | "settings"
+  | "csv_import"
+  | "file_access"
+  | "data_modify"
+  | "data_delete"
+  | "report_export"
+  | "investigation";
+
+export type AuditLevel = "owner" | "main_admin" | "zone_admin" | "worker" | "system";
+export type AuditSeverity = "info" | "warning" | "critical" | "success";
+
+export interface AuditEntry {
+  id: string;
+  timestamp: Date;
+  timestampMs: number;
+  actor: {
+    id: string;
+    name: string;
+    level: AuditLevel;
+  };
+  target?: {
+    id: string;
+    name: string;
+    level?: AuditLevel;
+  };
+  category: AuditCategory;
+  action: string;
+  detail?: string;
+  zone?: string;
+  before?: string;
+  after?: string;
+  severity: AuditSeverity;
+  verified2FA?: boolean;
+  ipAddress?: string;
+  deviceInfo?: string;
+}
+
+// ── Storage ──────────────────────────────────────────────────────
+
+const AUDIT_KEY = "sosphere_audit_log";
+const AUDIT_EVENT_KEY = "sosphere_audit_event";
+const MAX_ENTRIES = 500; // Keep last 500 entries
+
+function loadAuditLog(): AuditEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AUDIT_KEY) || "[]");
+    // Restore Date objects
+    return raw.map((e: any) => ({ ...e, timestamp: new Date(e.timestamp) }));
+  } catch {
+    return [];
+  }
+}
+
+function saveAuditLog(entries: AuditEntry[]): void {
+  localStorage.setItem(AUDIT_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
+}
+
+// ── Get current admin info from localStorage ────────────────────
+
+function getCurrentActor(): { id: string; name: string; level: AuditLevel } {
+  try {
+    const adminData = JSON.parse(localStorage.getItem("sosphere_admin_profile") || "{}");
+    return {
+      id: adminData.id || "admin",
+      name: adminData.name || adminData.displayName || "Admin",
+      level: (adminData.role as AuditLevel) || "main_admin",
+    };
+  } catch {
+    return { id: "admin", name: "Admin", level: "main_admin" };
+  }
+}
+
+// ── Core: Log an audit event ─────────────────────────────────────
+
+export function logAuditEvent(
+  category: AuditCategory,
+  action: string,
+  options?: {
+    detail?: string;
+    zone?: string;
+    before?: string;
+    after?: string;
+    severity?: AuditSeverity;
+    targetId?: string;
+    targetName?: string;
+    targetLevel?: AuditLevel;
+    verified2FA?: boolean;
+    actorOverride?: { id: string; name: string; level: AuditLevel };
+  }
+): AuditEntry {
+  const actor = options?.actorOverride ?? getCurrentActor();
+  const now = new Date();
+
+  const entry: AuditEntry = {
+    id: `AUD-${now.getTime().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`,
+    timestamp: now,
+    timestampMs: now.getTime(),
+    actor,
+    target: options?.targetId ? {
+      id: options.targetId,
+      name: options.targetName || options.targetId,
+      level: options.targetLevel,
+    } : undefined,
+    category,
+    action,
+    detail: options?.detail,
+    zone: options?.zone,
+    before: options?.before,
+    after: options?.after,
+    severity: options?.severity ?? "info",
+    verified2FA: options?.verified2FA,
+    deviceInfo: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
+  };
+
+  const log = loadAuditLog();
+  log.unshift(entry); // newest first
+  saveAuditLog(log);
+
+  // Notify other tabs (for real-time update in AuditLogPage)
+  try {
+    localStorage.setItem(AUDIT_EVENT_KEY, JSON.stringify({
+      entryId: entry.id,
+      category,
+      action,
+      _ts: entry.timestampMs,
+    }));
+  } catch {}
+
+  return entry;
+}
+
+// ── Common pre-built audit helpers ──────────────────────────────
+
+/** Log emergency event (SOS, escalation, resolution) */
+export function auditEmergency(action: string, detail: string, zone?: string, severity: AuditSeverity = "critical"): void {
+  logAuditEvent("emergency", action, { detail, zone, severity,
+    actorOverride: { id: "system", name: "System (Auto)", level: "system" }
+  });
+}
+
+/** Log when admin resolves an emergency */
+export function auditEmergencyResolved(emergencyId: string, employeeName: string, zone: string): void {
+  logAuditEvent("emergency", `Emergency resolved: ${emergencyId}`, {
+    detail: `${employeeName} emergency in ${zone} resolved by admin`,
+    zone, severity: "success",
+  });
+}
+
+/** Log report export */
+export function auditReportExport(reportType: string, emergencyId?: string): void {
+  logAuditEvent("report_export", `Report exported: ${reportType}`, {
+    detail: emergencyId ? `Emergency ID: ${emergencyId}` : undefined,
+    severity: "info",
+  });
+}
+
+/** Log investigation opened */
+export function auditInvestigationOpened(investigationId: string, incidentId: string): void {
+  logAuditEvent("investigation", `Investigation opened: ${investigationId}`, {
+    detail: `Linked to incident: ${incidentId}`,
+    severity: "info",
+  });
+}
+
+/** Log investigation closed */
+export function auditInvestigationClosed(investigationId: string, resolution: string): void {
+  logAuditEvent("investigation", `Investigation closed: ${investigationId}`, {
+    detail: `Resolution: ${resolution}`,
+    severity: "success",
+  });
+}
+
+/** Log settings change */
+export function auditSettingsChange(field: string, before: string, after: string): void {
+  logAuditEvent("settings", `Settings updated: ${field}`, {
+    before, after, severity: "info",
+  });
+}
+
+/** Log user added */
+export function auditUserAdded(userName: string, userId: string, zone?: string): void {
+  logAuditEvent("user_added", `Employee added: ${userName}`, {
+    targetId: userId, targetName: userName,
+    zone, severity: "success",
+  });
+}
+
+/** Log login */
+export function auditLogin(userName: string, userId: string): void {
+  logAuditEvent("login", `Admin logged in: ${userName}`, {
+    detail: `Session started`,
+    severity: "info",
+    actorOverride: { id: userId, name: userName, level: "main_admin" },
+  });
+}
+
+// ── Query ────────────────────────────────────────────────────────
+
+/** Get all real audit entries */
+export function getRealAuditLog(): AuditEntry[] {
+  return loadAuditLog();
+}
+
+/** Subscribe to new audit events (for AuditLogPage live update) */
+export function onAuditEvent(callback: (entry: AuditEntry) => void): () => void {
+  const handler = (e: StorageEvent) => {
+    if (e.key === AUDIT_EVENT_KEY && e.newValue) {
+      try {
+        const log = loadAuditLog();
+        if (log.length > 0) callback(log[0]);
+      } catch {}
+    }
+  };
+  window.addEventListener("storage", handler);
+  return () => window.removeEventListener("storage", handler);
+}

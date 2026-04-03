@@ -1,0 +1,178 @@
+/* ═══════════════════════════════════════════════════════════════
+   SOSphere — Mobile Foundation CSS
+   Compatible: iOS Safari, Android Chrome, Capacitor
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Reset for all devices */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: #05070E;
+  font-family: 'Tajawal', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Mobile-only restrictive styles ──────────────────────────── */
+@media (max-width: 768px) {
+  html {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  body {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    overscroll-behavior: none;
+    -webkit-touch-callout: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  #root {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    position: relative;
+  }
+}
+
+/* Mobile app container */
+.app-screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollable areas */
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.scroll-area::-webkit-scrollbar { display: none; }
+
+/* Safe area helpers */
+.safe-top    { padding-top: max(16px, env(safe-area-inset-top)); }
+.safe-bottom { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.safe-x      { padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
+
+/* Touch targets — minimum 44px (Apple HIG) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Arabic text direction */
+.text-ar {
+  font-family: 'Tajawal', sans-serif;
+  direction: rtl;
+  text-align: right;
+  font-feature-settings: "kern" 1;
+}
+
+/* Typography scale for mobile */
+.text-display  { font-size: clamp(28px, 8vw, 40px); font-weight: 900; line-height: 1.1; letter-spacing: -0.03em; }
+.text-title    { font-size: clamp(20px, 5.5vw, 28px); font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; }
+.text-heading  { font-size: clamp(17px, 4.5vw, 22px); font-weight: 700; line-height: 1.3; }
+.text-body     { font-size: clamp(14px, 3.8vw, 17px); font-weight: 400; line-height: 1.6; }
+.text-caption  { font-size: clamp(11px, 3vw, 13px); font-weight: 500; line-height: 1.4; }
+.text-micro    { font-size: clamp(9px, 2.5vw, 11px); font-weight: 600; letter-spacing: 0.04em; }
+
+/* Glass morphism cards */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+}
+
+.glass-card-strong {
+  background: rgba(10, 18, 40, 0.8);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+}
+
+/* SOS specific */
+.sos-danger  { color: #FF2D55; }
+.sos-safe    { color: #00C853; }
+.sos-info    { color: #00C8E0; }
+.sos-warning { color: #FF9500; }
+
+/* Animations */
+@keyframes sos-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+
+@keyframes sos-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes sos-breathe {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Prevent selection on interactive elements */
+button, [role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+/* Input field reset */
+input, textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  border: none;
+  background: transparent;
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SOSphere</string>
+    <string name="title_activity_main">SOSphere</string>
+    <string name="package_name">com.sosphere.app</string>
+    <string name="custom_url_scheme">com.sosphere.app</string>
+</resources>

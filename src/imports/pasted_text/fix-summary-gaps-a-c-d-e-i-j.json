@@ -1,0 +1,129 @@
+Fix these 6 hidden gaps found in scenarios A-J:
+
+FIX A — Rate limiting on SOS (Insider Threat):
+In sos-emergency.tsx and guardedSOSTrigger():
+Add rate limiting:
+const SOS_RATE_LIMIT = {
+  maxPerHour: 3,
+  cooldownMinutes: 20
+};
+
+const sosHistory = loadJSONSync("sos_rate_history") || [];
+const lastHour = sosHistory.filter(
+  t => Date.now() - t < 3600000
+);
+
+if (lastHour.length >= SOS_RATE_LIMIT.maxPerHour) {
+  show warning:
+  "⚠️ Multiple SOS triggered recently
+   Are you testing the system?
+   [Yes, Testing] [No, Real Emergency]"
+  
+  If "Real Emergency" → allow with flag
+  If "Yes, Testing" → block and log
+}
+
+Admin dashboard shows: "Ahmed triggered 
+SOS 3 times in 1 hour — possible false alarms"
+
+FIX C — Medical alert forced display:
+In sos-emergency-popup.tsx,
+when emergency arrives:
+BEFORE showing action buttons,
+check employee medical profile:
+
+if (employee.bloodType || employee.allergies || 
+    employee.medications) {
+  show MANDATORY medical banner:
+  Red background, cannot be dismissed:
+  
+  "🩸 BLOOD TYPE: O-
+   ⚠️ ALLERGIES: Nuts, Penicillin  
+   💊 MEDICATIONS: Insulin
+   
+   Inform responders BEFORE dispatch.
+   [I've noted the medical info] ← required tap"
+  
+  Admin MUST tap confirmation before 
+  seeing action buttons.
+}
+
+FIX D — Shift handover protocol:
+In company-dashboard.tsx logout flow:
+When admin clicks logout AND 
+emergencies.some(e => e.status === "active"):
+
+Block logout with mandatory handover screen:
+"⚠️ Active Emergency Handover Required
+ 
+ 2 active emergencies need attention:
+ 1. Ahmed Al-Rashid — Zone C — 12 min ago
+ 2. Fatima Hassan — Zone A — 3 min ago
+ 
+ Before logging out:
+ [Add handover note] ← text field
+ [Confirm next admin is watching] ← checkbox
+ 
+ Or: [Emergency logout — accept liability]"
+
+Store handover notes in shared-store.
+New admin sees: "Handed over by Sarah at 18:00
+Notes: Ahmed is being monitored, team dispatched"
+
+FIX E — Post-incident monitoring mode:
+In company-dashboard.tsx after resolving emergency:
+If resolution reason is "Minor" or "Monitoring":
+
+Auto-activate for the employee:
+1. Check-in timer set to 30 minutes
+2. "Wellness Check" reminder at 1 hour
+3. Show employee in "Monitoring" list
+   with amber badge
+
+In sos-emergency.tsx for employee:
+After minor SOS resolution:
+Show: "Your supervisor is monitoring you
+ Press 'I'm OK' every 30 minutes
+ Or press SOS if situation worsens"
+
+FIX I — Safe escalation path (Psychological trap):
+In SOS flow, add "Escalate Past Supervisor":
+When employee triggers SOS:
+Show discreet option (small text below SOS):
+"My supervisor is the problem →
+ Report directly to company admin"
+
+This bypasses zone admin completely:
+emitSyncEvent with flag: 
+skipZoneAdmin: true
+escalateTo: "company_admin"
+
+Also add anonymous hazard report:
+In incident-photo-report.tsx:
+Add toggle: "Report anonymously"
+Hides employee name from immediate supervisor
+Still visible to company admin
+
+FIX J — Proactive risk scoring:
+In company-dashboard.tsx or 
+dashboard-workforce-page.tsx:
+Add "Risk Factors" column per employee:
+
+Calculate risk score from:
+- New employee (< 30 days): +30 points
+- No buddy assigned: +20 points  
+- Check-in timer > 2 hours: +20 points
+- Battery < 20%: +25 points
+- Working alone: +15 points
+- Extreme weather: +10 points
+- Night shift: +10 points
+
+If score > 60: Show amber warning
+If score > 80: Show red alert + suggest action
+
+Display as:
+"⚠️ Hassan — Risk Score: 85/100
+ Factors: New employee + No buddy + Long check-in
+ Suggested: Set 30-min check-in, assign buddy"
+
+Confirm all 6 fixes with file and line numbers.
