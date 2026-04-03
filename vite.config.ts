@@ -10,6 +10,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: ["@capacitor/app", "@twilio/voice-sdk"],
+      output: {
+        globals: {
+          "@capacitor/app": "CapacitorApp",
+          "@twilio/voice-sdk": "TwilioVoice",
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173,
