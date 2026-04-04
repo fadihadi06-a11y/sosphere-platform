@@ -15,6 +15,37 @@ import {
   Smartphone, CheckCircle, Clock, Zap, Heart,
   Volume2, MapPin, ChevronRight,
 } from "lucide-react";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+
+// ── Persist sensor events to Supabase ────────────────────────
+export async function saveSensorEvent(type: "fall" | "shake", acceleration: number) {
+  // Always save locally
+  const events = JSON.parse(localStorage.getItem("sosphere_sensor_events") || "[]");
+  const event = {
+    id: `SE-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    type,
+    acceleration,
+    timestamp: new Date().toISOString(),
+    resolved: false,
+  };
+  events.unshift(event);
+  localStorage.setItem("sosphere_sensor_events", JSON.stringify(events.slice(0, 200)));
+
+  // Save to Supabase
+  if (SUPABASE_CONFIG.isConfigured) {
+    try {
+      await supabase.from("sensor_events").insert({
+        id: event.id,
+        event_type: type,
+        acceleration,
+        detected_at: event.timestamp,
+        resolved: false,
+      });
+    } catch (e) {
+      console.warn("[Sensor] Supabase save failed:", e);
+    }
+  }
+}
 
 // ── Fall Detection State ───────────────────────────────────────
 type FallState = "monitoring" | "fall_detected" | "countdown" | "sos_triggered" | "cancelled";
@@ -67,6 +98,7 @@ export function useFallDetection({
 
     setState("fall_detected");
     onFallDetected?.(event);
+    saveSensorEvent("fall", event.acceleration);
 
     // After 1.5s show, move to countdown
     setTimeout(() => {

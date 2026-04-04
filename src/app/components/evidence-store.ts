@@ -1,3 +1,5 @@
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+
 // =================================================================
 // SOSphere -- Evidence Intelligence Pipeline (Central Vault)
 // =================================================================
@@ -96,23 +98,58 @@ export interface EvidenceEntry {
 }
 
 // =================================================================
-// Storage
+// Storage — Dual Mode: Supabase (primary) + localStorage (fallback)
 // =================================================================
-// PRODUCTION MIGRATION:
-//   Replace loadVault/saveVault with Supabase queries:
-//
-//   loadVault() → supabase.from("evidence").select("*, evidence_photos(*), evidence_audio(*), evidence_actions(*)").order("submitted_at", { ascending: false })
-//   saveVault() → supabase.from("evidence").upsert(entry)
-//   notifyChange() → supabase.channel("evidence").send({ type: "broadcast", event: "change", payload: { evidenceId, action } })
-//
-//   Photos/Audio: Move dataUrl → Supabase Storage bucket "evidence"
-//     upload: supabase.storage.from("evidence").upload(path, blob)
-//     read:   supabase.storage.from("evidence").getPublicUrl(path)
+// Tries Supabase first. If offline or unconfigured, falls back to
+// localStorage. Photos/audio upload to Supabase Storage bucket.
 // =================================================================
 
 const EVIDENCE_KEY = "sosphere_evidence_vault";
 const EVIDENCE_EVENT_KEY = "sosphere_evidence_event";
 
+// ── Helper: Check if Supabase is available ──
+function isSupabaseReady(): boolean {
+  return SUPABASE_CONFIG.isConfigured;
+}
+
+// ── Helper: Upload a base64 dataUrl to Supabase Storage ──
+async function uploadToStorage(path: string, dataUrl: string): Promise<string> {
+  try {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const { error } = await supabase.storage
+      .from("evidence")
+      .upload(path, blob, { upsert: true, contentType: blob.type });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage
+      .from("evidence").getPublicUrl(path);
+    return urlData.publicUrl;
+  } catch (e) {
+    console.warn("[Evidence] Storage upload failed, keeping dataUrl:", e);
+    return dataUrl; // Keep original base64 as fallback
+  }
+}
+
+// ── Load from Supabase first, then localStorage fallback ──
+async function loadVaultAsync(): Promise<EvidenceEntry[]> {
+  if (isSupabaseReady()) {
+    try {
+      const { data, error } = await supabase
+        .from("evidence")
+        .select("*")
+        .order("submitted_at", { ascending: false })
+        .limit(100);
+      if (!error && data && data.length > 0) {
+        return data as EvidenceEntry[];
+      }
+    } catch (e) {
+      console.warn("[Evidence] Supabase load failed, using localStorage:", e);
+    }
+  }
+  return loadVault();
+}
+
+// ── Synchronous localStorage (for backwards compatibility) ──
 function loadVault(): EvidenceEntry[] {
   try {
     return JSON.parse(localStorage.getItem(EVIDENCE_KEY) || "[]");
@@ -121,17 +158,74 @@ function loadVault(): EvidenceEntry[] {
   }
 }
 
-function saveVault(entries: EvidenceEntry[]) {
+// ── Save to both Supabase AND localStorage ──
+async function saveVaultAsync(entries: EvidenceEntry[]): Promise<void> {
+  // Always save to localStorage as fallback/cache
   localStorage.setItem(EVIDENCE_KEY, JSON.stringify(entries));
+
+  if (isSupabaseReady()) {
+    try {
+      // Upsert each entry to Supabase
+      const { error } = await supabase
+        .from("evidence")
+        .upsert(
+          entries.map(e => ({
+            id: e.id,
+            emergency_id: e.emergencyId,
+            incident_report_id: e.incidentReportId || null,
+            submitted_by: e.submittedBy,
+            submitted_at: new Date(e.submittedAt).toISOString(),
+            zone: e.zone,
+            severity: e.severity,
+            incident_type: e.incidentType,
+            worker_comment: e.workerComment,
+            photos: e.photos,
+            audio_memo: e.audioMemo || null,
+            status: e.status,
+            reviewed_by: e.reviewedBy || null,
+            reviewed_at: e.reviewedAt ? new Date(e.reviewedAt).toISOString() : null,
+            actions: e.actions,
+            comments: e.comments,
+            linked_investigation_id: e.linkedInvestigationId || null,
+            linked_risk_entry_id: e.linkedRiskEntryId || null,
+            linked_audit_entry_id: e.linkedAuditEntryId || null,
+            included_in_pdf: e.includedInPDF || false,
+            tier: e.tier,
+            retention_days: e.retentionDays,
+          })),
+          { onConflict: "id" }
+        );
+      if (error) console.warn("[Evidence] Supabase save failed:", error.message);
+    } catch (e) {
+      console.warn("[Evidence] Supabase save failed:", e);
+    }
+  }
 }
 
-// Notify other tabs about evidence changes
+function saveVault(entries: EvidenceEntry[]) {
+  // Synchronous localStorage save (immediate)
+  localStorage.setItem(EVIDENCE_KEY, JSON.stringify(entries));
+  // Async Supabase save (background, non-blocking)
+  saveVaultAsync(entries).catch(() => {});
+}
+
+// Notify other tabs/devices about evidence changes
 function notifyChange(evidenceId: string, action: string) {
+  // localStorage event for same-browser tabs
   const payload = JSON.stringify({ evidenceId, action, _ts: Date.now() });
   localStorage.setItem(EVIDENCE_EVENT_KEY, payload);
   window.dispatchEvent(
     new StorageEvent("storage", { key: EVIDENCE_EVENT_KEY, newValue: payload })
   );
+
+  // Supabase Realtime broadcast for cross-device sync
+  if (isSupabaseReady()) {
+    supabase.channel("evidence-changes").send({
+      type: "broadcast",
+      event: "evidence_update",
+      payload: { evidenceId, action },
+    }).catch(() => {});
+  }
 }
 
 // =================================================================
@@ -141,9 +235,10 @@ function notifyChange(evidenceId: string, action: string) {
 /** Store new evidence from field worker report */
 export function storeEvidence(entry: Omit<EvidenceEntry, "id" | "actions" | "comments" | "status">): EvidenceEntry {
   const vault = loadVault();
+  const evidenceId = `EVD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const newEntry: EvidenceEntry = {
     ...entry,
-    id: `EVD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: evidenceId,
     status: "pending",
     actions: [{
       id: `ACT-${Date.now()}`,
@@ -160,6 +255,40 @@ export function storeEvidence(entry: Omit<EvidenceEntry, "id" | "actions" | "com
   // Keep max 100 entries
   saveVault(vault.slice(0, 100));
   notifyChange(newEntry.id, "new_evidence");
+
+  // Background: upload photos & audio to Supabase Storage (non-blocking)
+  if (isSupabaseReady()) {
+    (async () => {
+      try {
+        // Upload each photo
+        for (let i = 0; i < newEntry.photos.length; i++) {
+          const photo = newEntry.photos[i];
+          if (photo.dataUrl && photo.dataUrl.startsWith("data:")) {
+            const ext = photo.dataUrl.includes("png") ? "png" : "jpg";
+            const path = `${evidenceId}/photo-${i}.${ext}`;
+            const publicUrl = await uploadToStorage(path, photo.dataUrl);
+            photo.dataUrl = publicUrl; // Replace base64 with server URL
+          }
+        }
+        // Upload audio memo
+        if (newEntry.audioMemo?.dataUrl?.startsWith("data:")) {
+          const audioPath = `${evidenceId}/audio-memo.webm`;
+          const audioUrl = await uploadToStorage(audioPath, newEntry.audioMemo.dataUrl);
+          newEntry.audioMemo.dataUrl = audioUrl;
+        }
+        // Re-save with server URLs
+        const updatedVault = loadVault();
+        const idx = updatedVault.findIndex(e => e.id === evidenceId);
+        if (idx !== -1) {
+          updatedVault[idx] = newEntry;
+          saveVault(updatedVault);
+        }
+      } catch (e) {
+        console.warn("[Evidence] Background upload failed, data safe in localStorage:", e);
+      }
+    })();
+  }
+
   return newEntry;
 }
 
@@ -305,8 +434,9 @@ export function markExportedInPDF(evidenceId: string, actor: string): void {
   saveVault(vault);
 }
 
-/** Listen for evidence vault changes */
+/** Listen for evidence vault changes (localStorage + Supabase Realtime) */
 export function onEvidenceChange(callback: (evidenceId: string, action: string) => void) {
+  // localStorage listener (same browser)
   const handler = (e: StorageEvent) => {
     if (e.key === EVIDENCE_EVENT_KEY && e.newValue) {
       try {
@@ -316,7 +446,26 @@ export function onEvidenceChange(callback: (evidenceId: string, action: string) 
     }
   };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+
+  // Supabase Realtime listener (cross-device)
+  let unsubRealtime: (() => void) | null = null;
+  if (isSupabaseReady()) {
+    try {
+      const channel = supabase
+        .channel("evidence-changes")
+        .on("broadcast", { event: "evidence_update" }, (payload: any) => {
+          const { evidenceId, action } = payload.payload || {};
+          if (evidenceId) callback(evidenceId, action);
+        })
+        .subscribe();
+      unsubRealtime = () => supabase.removeChannel(channel);
+    } catch {}
+  }
+
+  return () => {
+    window.removeEventListener("storage", handler);
+    unsubRealtime?.();
+  };
 }
 
 // =================================================================

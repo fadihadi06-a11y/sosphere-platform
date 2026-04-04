@@ -16,8 +16,85 @@ import {
 import { TOKENS } from "./design-system";
 // EMPLOYEES & ZONES removed — store reads via useDashboardStore when needed
 import { saveZoneGPS, type ZoneGPSData } from "./shared-store";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
+
+// ── Supabase Geofence Persistence ────────────────────────────
+const GEOFENCE_LOCAL_KEY = "sosphere_geofences";
+
+async function loadGeofencesFromDB(): Promise<GeoZone[] | null> {
+  if (!SUPABASE_CONFIG.isConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from("geofences")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error || !data || data.length === 0) return null;
+    return data.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      center: row.center,
+      radius: row.radius,
+      points: row.points,
+      risk: row.risk,
+      status: row.status,
+      color: row.color,
+      locked: row.locked,
+      visible: row.visible,
+      alerts: row.alerts,
+      employeeCount: row.employee_count || 0,
+    }));
+  } catch { return null; }
+}
+
+async function saveGeofenceToDB(zone: GeoZone): Promise<void> {
+  // Always cache locally
+  const local = loadGeofencesLocal();
+  const idx = local.findIndex(z => z.id === zone.id);
+  if (idx >= 0) local[idx] = zone; else local.push(zone);
+  localStorage.setItem(GEOFENCE_LOCAL_KEY, JSON.stringify(local));
+
+  if (!SUPABASE_CONFIG.isConfigured) return;
+  try {
+    await supabase.from("geofences").upsert({
+      id: zone.id,
+      name: zone.name,
+      type: zone.type,
+      center: zone.center,
+      radius: zone.radius || null,
+      points: zone.points || null,
+      risk: zone.risk,
+      status: zone.status,
+      color: zone.color,
+      locked: zone.locked,
+      visible: zone.visible,
+      alerts: zone.alerts,
+      employee_count: zone.employeeCount,
+    }, { onConflict: "id" });
+  } catch (e) {
+    console.warn("[Geofence] Supabase save failed:", e);
+  }
+}
+
+async function deleteGeofenceFromDB(id: string): Promise<void> {
+  const local = loadGeofencesLocal().filter(z => z.id !== id);
+  localStorage.setItem(GEOFENCE_LOCAL_KEY, JSON.stringify(local));
+
+  if (!SUPABASE_CONFIG.isConfigured) return;
+  try {
+    await supabase.from("geofences").delete().eq("id", id);
+  } catch (e) {
+    console.warn("[Geofence] Supabase delete failed:", e);
+  }
+}
+
+function loadGeofencesLocal(): GeoZone[] {
+  try {
+    return JSON.parse(localStorage.getItem(GEOFENCE_LOCAL_KEY) || "[]");
+  } catch { return []; }
+}
 
 // ── Types ─────────────────────────────────────────────────────
 type DrawMode = "select" | "circle" | "polygon" | "pan";
@@ -124,7 +201,34 @@ const EMPLOYEE_DOTS = [
 // ═══════════════════════════════════════════════════════════════
 export function GeofencingPage({ t, webMode = false }: { t: (k: string) => string; webMode?: boolean }) {
   const [zones, setZones] = useState<GeoZone[]>(INITIAL_ZONES);
+  const [zonesLoaded, setZonesLoaded] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>("GZ-1");
+
+  // Load zones from Supabase on mount (fallback: localStorage → INITIAL_ZONES)
+  useEffect(() => {
+    if (zonesLoaded) return;
+    (async () => {
+      // Try Supabase first
+      const dbZones = await loadGeofencesFromDB();
+      if (dbZones && dbZones.length > 0) {
+        setZones(dbZones);
+        setSelectedZoneId(dbZones[0]?.id || null);
+        setZonesLoaded(true);
+        return;
+      }
+      // Try localStorage
+      const localZones = loadGeofencesLocal();
+      if (localZones.length > 0) {
+        setZones(localZones);
+        setSelectedZoneId(localZones[0]?.id || null);
+        setZonesLoaded(true);
+        return;
+      }
+      // Use defaults and save them
+      setZonesLoaded(true);
+      INITIAL_ZONES.forEach(z => saveGeofenceToDB(z));
+    })();
+  }, [zonesLoaded]);
   const [drawMode, setDrawMode] = useState<DrawMode>("select");
   const [showEmployees, setShowEmployees] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
@@ -329,6 +433,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
       };
       setZones(prev => [...prev, newZone]);
       setSelectedZoneId(newZone.id);
+      saveGeofenceToDB(newZone);
       setDrawMode("select");
       return;
     }
@@ -371,18 +476,25 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
     };
     setZones(prev => [...prev, newZone]);
     setSelectedZoneId(newZone.id);
+    saveGeofenceToDB(newZone);
     setDrawingPoints([]);
     setIsDrawing(false);
     setDrawMode("select");
   }, [drawingPoints, zones.length, zoom]);
 
-  // Zone CRUD
+  // Zone CRUD — with Supabase persistence
   const updateZone = useCallback((id: string, updates: Partial<GeoZone>) => {
-    setZones(prev => prev.map(z => z.id === id ? { ...z, ...updates } : z));
+    setZones(prev => {
+      const updated = prev.map(z => z.id === id ? { ...z, ...updates } : z);
+      const zone = updated.find(z => z.id === id);
+      if (zone) saveGeofenceToDB(zone);
+      return updated;
+    });
   }, []);
 
   const deleteZone = useCallback((id: string) => {
     setZones(prev => prev.filter(z => z.id !== id));
+    deleteGeofenceFromDB(id);
     if (selectedZoneId === id) setSelectedZoneId(null);
   }, [selectedZoneId]);
 
@@ -399,6 +511,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
     };
     setZones(prev => [...prev, newZone]);
     setSelectedZoneId(newZone.id);
+    saveGeofenceToDB(newZone);
   }, [zones]);
 
   const px = webMode ? "px-8 py-6" : "px-4 py-4";
@@ -1000,6 +1113,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
               };
               setZones(prev => [...prev, newZone]);
               setSelectedZoneId(newZone.id);
+              saveGeofenceToDB(newZone);
               // Save GPS data
               const gpsData: ZoneGPSData = {
                 id: newZone.id, name: data.name,

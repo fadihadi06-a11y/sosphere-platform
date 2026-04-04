@@ -59,14 +59,18 @@ export async function storeJSON<T>(
   table = "app_state",
 ): Promise<void> {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // await supabaseConfig.client
-    //   .from(table)
-    //   .upsert({
-    //     key,
-    //     value: JSON.stringify(value),
-    //     updated_at: new Date().toISOString(),
-    //   }, { onConflict: "key" });
+    try {
+      await supabaseConfig.client
+        .from(table)
+        .upsert({
+          key,
+          value: JSON.stringify(value),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "key" });
+    } catch (e) {
+      console.warn(`[Storage] Supabase write failed for "${key}", falling back to localStorage:`, e);
+      localStorage.setItem(key, JSON.stringify(value));
+    }
     return;
   }
 
@@ -90,15 +94,20 @@ export async function loadJSON<T>(
   table = "app_state",
 ): Promise<T> {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // const { data, error } = await supabaseConfig.client
-    //   .from(table)
-    //   .select("value")
-    //   .eq("key", key)
-    //   .single();
-    // if (error || !data) return defaultValue;
-    // return JSON.parse(data.value) as T;
-    return defaultValue;
+    try {
+      const { data, error } = await supabaseConfig.client
+        .from(table)
+        .select("value")
+        .eq("key", key)
+        .single();
+      if (error || !data) return defaultValue;
+      return JSON.parse(data.value) as T;
+    } catch (e) {
+      console.warn(`[Storage] Supabase read failed for "${key}", falling back to localStorage:`, e);
+      const raw = localStorage.getItem(key);
+      if (raw === null) return defaultValue;
+      return JSON.parse(raw) as T;
+    }
   }
 
   // localStorage mode
@@ -116,11 +125,14 @@ export async function loadJSON<T>(
  */
 export async function removeJSON(key: string, table = "app_state"): Promise<void> {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // await supabaseConfig.client
-    //   .from(table)
-    //   .delete()
-    //   .eq("key", key);
+    try {
+      await supabaseConfig.client
+        .from(table)
+        .delete()
+        .eq("key", key);
+    } catch (e) {
+      console.warn(`[Storage] Supabase delete failed for "${key}":`, e);
+    }
     return;
   }
 
@@ -183,34 +195,38 @@ export async function uploadFile(
   const now = Date.now();
 
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // const blob = typeof data === "string"
-    //   ? await (await fetch(data)).blob()  // Convert data URL to Blob
-    //   : data;
-    //
-    // const { data: uploadData, error } = await supabaseConfig.client
-    //   .storage
-    //   .from(supabaseConfig.bucketName)
-    //   .upload(path, blob, {
-    //     contentType: metadata?.mimeType || "application/octet-stream",
-    //     upsert: true,
-    //   });
-    //
-    // if (error) throw new Error(`File upload failed: ${error.message}`);
-    //
-    // const { data: urlData } = supabaseConfig.client
-    //   .storage
-    //   .from(supabaseConfig.bucketName)
-    //   .getPublicUrl(path);
-    //
-    // return {
-    //   id,
-    //   name: metadata?.name || path.split("/").pop() || "file",
-    //   mimeType: metadata?.mimeType || "application/octet-stream",
-    //   size: blob.size,
-    //   url: urlData.publicUrl,
-    //   uploadedAt: now,
-    // };
+    try {
+      const blob = typeof data === "string"
+        ? await (await fetch(data)).blob()
+        : data;
+
+      const { error } = await supabaseConfig.client
+        .storage
+        .from(supabaseConfig.bucketName)
+        .upload(path, blob, {
+          contentType: metadata?.mimeType || "application/octet-stream",
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      const { data: urlData } = supabaseConfig.client
+        .storage
+        .from(supabaseConfig.bucketName)
+        .getPublicUrl(path);
+
+      return {
+        id,
+        name: metadata?.name || path.split("/").pop() || "file",
+        mimeType: metadata?.mimeType || "application/octet-stream",
+        size: blob.size,
+        url: urlData.publicUrl,
+        uploadedAt: now,
+      };
+    } catch (e) {
+      console.warn(`[Storage] Supabase file upload failed, falling back to localStorage:`, e);
+      // Fall through to localStorage mode below
+    }
   }
 
   // localStorage mode — store as data URL
@@ -238,14 +254,17 @@ export async function uploadFile(
  */
 export async function getFile(id: string): Promise<StoredFile | null> {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // const { data, error } = await supabaseConfig.client
-    //   .from("files")
-    //   .select("*")
-    //   .eq("id", id)
-    //   .single();
-    // if (error) return null;
-    // return data as StoredFile;
+    try {
+      const { data, error } = await supabaseConfig.client
+        .from("files")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) return null;
+      return data as StoredFile;
+    } catch {
+      // Fall through to localStorage
+    }
   }
 
   return loadJSONSync<StoredFile | null>(`sosphere_file_${id}`, null);
@@ -265,15 +284,18 @@ export type BroadcastCallback = (data: any) => void;
  */
 export function broadcast(channel: string, data: any): void {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // supabaseConfig.client
-    //   .channel(channel)
-    //   .send({
-    //     type: "broadcast",
-    //     event: "message",
-    //     payload: data,
-    //   });
-    return;
+    try {
+      supabaseConfig.client
+        .channel(channel)
+        .send({
+          type: "broadcast",
+          event: "message",
+          payload: data,
+        });
+    } catch (e) {
+      console.warn(`[Storage] Supabase broadcast failed on "${channel}":`, e);
+    }
+    // Also fire localStorage event as local fallback
   }
 
   // localStorage mode
@@ -290,16 +312,19 @@ export function broadcast(channel: string, data: any): void {
  */
 export function onBroadcast(channel: string, callback: BroadcastCallback): () => void {
   if (activeBackend === "supabase" && supabaseConfig) {
-    // PRODUCTION:
-    // const ch = supabaseConfig.client
-    //   .channel(channel)
-    //   .on("broadcast", { event: "message" }, (payload: any) => {
-    //     callback(payload.payload);
-    //   })
-    //   .subscribe();
-    //
-    // return () => { supabaseConfig.client.removeChannel(ch); };
-    return () => {};
+    try {
+      const ch = supabaseConfig.client
+        .channel(channel)
+        .on("broadcast", { event: "message" }, (payload: any) => {
+          callback(payload.payload);
+        })
+        .subscribe();
+
+      return () => { supabaseConfig.client.removeChannel(ch); };
+    } catch (e) {
+      console.warn(`[Storage] Supabase subscribe failed on "${channel}":`, e);
+      // Fall through to localStorage listener
+    }
   }
 
   // localStorage mode

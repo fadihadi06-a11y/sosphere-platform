@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { setStorageBackend, configureSupabaseStorage } from "./storage-adapter";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -37,6 +38,16 @@ export const SUPABASE_CONFIG = {
   anonKey: SUPABASE_ANON_KEY || "",
   isConfigured: _isConfigured,
 };
+
+// ── Auto-configure Storage Adapter when Supabase is connected ──
+if (_isConfigured) {
+  setStorageBackend("supabase");
+  configureSupabaseStorage({
+    client: supabase,
+    bucketName: "evidence",
+  });
+  console.log("[Supabase] Storage adapter configured — using Supabase backend");
+}
 
 export async function testConnection() {
   const { error } = await supabase.from("companies").select("id").limit(1);

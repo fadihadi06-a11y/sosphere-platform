@@ -13,6 +13,7 @@ import {
   Smartphone, Shield, X, AlertTriangle, CheckCircle,
   Activity, Vibrate,
 } from "lucide-react";
+import { saveSensorEvent } from "./fall-detection";
 
 // ── Shake Detection Hook ──────────────────────────────────────
 interface ShakeConfig {
@@ -76,6 +77,7 @@ export function useShakeDetection({
           shakesRef.current = [];
           setShakeProgress(0);
           setIsActive(true);
+          saveSensorEvent("shake", totalAcceleration);
           onShakeSOS();
         }
       }
