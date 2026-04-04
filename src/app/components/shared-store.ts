@@ -6,7 +6,7 @@
 // Components don't need to change — only this file changed.
 // ═══════════════════════════════════════════════════════════════
 
-import { supabase } from "./api/supabase-client";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ── Supabase Realtime Channels ──────────────────────────────
 // One channel per company — isolated from other companies
@@ -1762,11 +1762,49 @@ export function sendChatMessage(msg: Omit<EmergencyChatMessage, "id" | "timestam
     id: `MSG-${Date.now().toString(36).toUpperCase()}`,
     timestamp: Date.now(),
   };
+
+  // 1) Always save to localStorage (instant local update)
   const all = getChatMessages(msg.emergencyId);
   all.push(full);
   const payload = JSON.stringify(all);
   localStorage.setItem(`${CHAT_KEY}_${msg.emergencyId}`, payload);
   window.dispatchEvent(new StorageEvent("storage", { key: `${CHAT_KEY}_${msg.emergencyId}`, newValue: payload }));
+
+  // 2) Background: save to Supabase DB + broadcast via Realtime
+  if (SUPABASE_CONFIG.isConfigured) {
+    (async () => {
+      try {
+        // Insert into chat_messages table
+        await supabase.from("chat_messages").insert({
+          id: full.id,
+          emergency_id: full.emergencyId,
+          sender: full.sender,
+          sender_name: full.senderName,
+          message: full.message,
+          is_preset: full.isPreset,
+          msg_type: full.type,
+          sent_at: new Date(full.timestamp).toISOString(),
+        });
+
+        // Broadcast to other devices via Realtime channel
+        const channel = supabase.channel(`chat-${msg.emergencyId}`);
+        channel.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            channel.send({
+              type: "broadcast",
+              event: "new_message",
+              payload: full,
+            });
+            // Unsubscribe after sending (fire-and-forget)
+            setTimeout(() => supabase.removeChannel(channel), 2000);
+          }
+        });
+      } catch (e) {
+        console.warn("[Chat] Supabase send failed, localStorage only:", e);
+      }
+    })();
+  }
+
   return full;
 }
 
@@ -1774,14 +1812,67 @@ export function getChatMessages(emergencyId: string): EmergencyChatMessage[] {
   try { return JSON.parse(localStorage.getItem(`${CHAT_KEY}_${emergencyId}`) || "[]"); } catch { return []; }
 }
 
+/** Load chat history from Supabase (called once on mount) */
+export async function getChatMessagesAsync(emergencyId: string): Promise<EmergencyChatMessage[]> {
+  if (!SUPABASE_CONFIG.isConfigured) return getChatMessages(emergencyId);
+  try {
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("emergency_id", emergencyId)
+      .order("sent_at", { ascending: true });
+    if (error || !data) throw error;
+    const msgs: EmergencyChatMessage[] = data.map((row: any) => ({
+      id: row.id,
+      emergencyId: row.emergency_id,
+      sender: row.sender,
+      senderName: row.sender_name,
+      message: row.message,
+      timestamp: new Date(row.sent_at).getTime(),
+      isPreset: row.is_preset,
+      type: row.msg_type || "text",
+    }));
+    // Sync to localStorage cache
+    localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(msgs));
+    return msgs;
+  } catch (e) {
+    console.warn("[Chat] Supabase load failed, using localStorage:", e);
+    return getChatMessages(emergencyId);
+  }
+}
+
 export function onChatMessage(emergencyId: string, callback: (messages: EmergencyChatMessage[]) => void) {
+  // 1) localStorage listener (same-device, immediate)
   const handler = (e: StorageEvent) => {
     if (e.key === `${CHAT_KEY}_${emergencyId}` && e.newValue) {
       try { callback(JSON.parse(e.newValue)); } catch {}
     }
   };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+
+  // 2) Supabase Realtime listener (cross-device)
+  let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+  if (SUPABASE_CONFIG.isConfigured) {
+    realtimeChannel = supabase.channel(`chat-${emergencyId}`);
+    realtimeChannel
+      .on("broadcast", { event: "new_message" }, (payload) => {
+        const msg = payload.payload as EmergencyChatMessage;
+        // Merge into localStorage to stay in sync
+        const current = getChatMessages(emergencyId);
+        if (!current.find((m) => m.id === msg.id)) {
+          current.push(msg);
+          localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(current));
+          callback(current);
+        }
+      })
+      .subscribe();
+  }
+
+  // Return cleanup function
+  return () => {
+    window.removeEventListener("storage", handler);
+    if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════

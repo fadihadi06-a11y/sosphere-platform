@@ -13,7 +13,7 @@ import {
   MapPin, Heart, Shield, AlertTriangle, Clock,
   CheckCircle, Mic, Volume2,
 } from "lucide-react";
-import { sendChatMessage, getChatMessages, onChatMessage, type EmergencyChatMessage } from "./shared-store";
+import { sendChatMessage, getChatMessages, getChatMessagesAsync, onChatMessage, type EmergencyChatMessage } from "./shared-store";
 
 // ── Preset Messages ───────────────────────────────────────────
 const EMPLOYEE_PRESETS = [
@@ -60,14 +60,15 @@ export function MobileEmergencyChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMsgFlash, setNewMsgFlash] = useState(false);
 
-  // Load initial messages
+  // Load initial messages (Supabase first, then localStorage fallback)
   useEffect(() => {
     if (emergencyId) {
-      setMessages(getChatMessages(emergencyId));
+      setMessages(getChatMessages(emergencyId)); // instant local
+      getChatMessagesAsync(emergencyId).then(setMessages); // async Supabase
     }
   }, [emergencyId]);
 
-  // Listen for new messages
+  // Listen for new messages (localStorage + Supabase Realtime)
   useEffect(() => {
     if (!emergencyId) return;
     const unsub = onChatMessage(emergencyId, (msgs) => {
@@ -330,7 +331,8 @@ export function DashboardEmergencyChat({
 
   useEffect(() => {
     if (emergencyId) {
-      setMessages(getChatMessages(emergencyId));
+      setMessages(getChatMessages(emergencyId)); // instant local
+      getChatMessagesAsync(emergencyId).then(setMessages); // async Supabase
     }
   }, [emergencyId]);
 

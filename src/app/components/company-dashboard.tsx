@@ -2027,7 +2027,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         onSelect={(result) => {
           if (result.type === "employee") {
             const emp = employees.find(e => e.id === result.id);
-            if (emp) setSelectedEmployee(emp);
+            if (emp) {
+              setSelectedEmployee(emp);
+              navigateTo("employees"); // Navigate to employees page with selection
+            }
           } else if (result.type === "zone") {
             navigateTo("location");
           } else if (result.type === "incident") {
