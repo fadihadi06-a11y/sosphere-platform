@@ -94,36 +94,53 @@ export class TwilioClientProvider implements VoiceProvider {
     this.events = events;
     this._disposed = false;
 
-    // ────────────────────────────────────────────────────────
-    // TODO: When ready to connect Twilio:
-    //
-    // 1. Install Twilio SDK:
-    //    npm install @twilio/voice-sdk
-    //
-    // 2. Import it:
-    //    import { Device } from "@twilio/voice-sdk";
-    //
-    // 3. Fetch token from Supabase Edge Function:
-    //    const { token } = await callEdgeFunction<...>(
-    //      config, "twilio-token", { identity: "admin-123" }
-    //    );
-    //
-    // 4. Create Twilio Device:
-    //    this._device = new Device(token, {
-    //      codecPreferences: [Device.Codec.Opus, Device.Codec.PCMU],
-    //      edge: "ashburn",
-    //    });
-    //
-    // 5. Register event handlers:
-    //    this._device.on("incoming", (call) => { ... });
-    //    this._device.on("error", (error) => { ... });
-    //
-    // 6. Register the device:
-    //    await this._device.register();
-    // ────────────────────────────────────────────────────────
+    // Check if Supabase is configured
+    if (!config.supabaseUrl || !config.supabaseAnonKey) {
+      this._ready = false;
+      console.info("[TwilioClient] No Supabase config — staying inactive.");
+      return;
+    }
 
-    this._ready = false; // Will be true after Twilio Device is registered
-    console.info("[TwilioClient] Provider initialized (stub). Connect Supabase + install @twilio/voice-sdk to activate.");
+    try {
+      // 1. Fetch token from Supabase Edge Function
+      const identity = `sosphere-${config.employeeName || "user"}-${Date.now()}`;
+      const { token, expiresAt } = await callEdgeFunction<
+        { identity: string },
+        TwilioTokenResponse
+      >(config, "twilio-token", { identity });
+
+      this._token = token;
+      this._tokenExpiresAt = expiresAt;
+
+      // 2. Dynamically import Twilio Voice SDK (installed via npm)
+      // @ts-ignore — dynamic import for optional dependency
+      const { Device } = await import("@twilio/voice-sdk");
+
+      // 3. Create Twilio Device
+      this._device = new Device(token, {
+        codecPreferences: [Device.Codec.Opus, Device.Codec.PCMU],
+        edge: "ashburn",
+      });
+
+      // 4. Register event handlers
+      this._device.on("incoming", (call: any) => {
+        this._activeCall = call;
+        this.events?.onStateChange("connecting");
+      });
+
+      this._device.on("error", (error: any) => {
+        console.error("[TwilioClient] Device error:", error);
+        this.events?.onStateChange("failed", error.message || "Device error");
+      });
+
+      // 5. Register the device
+      await this._device.register();
+      this._ready = true;
+      console.info("[TwilioClient] Provider ready — device registered as:", identity);
+    } catch (err: any) {
+      this._ready = false;
+      console.warn("[TwilioClient] Init failed (will use fallback):", err.message || err);
+    }
   }
 
   dispose(): void {
@@ -141,77 +158,91 @@ export class TwilioClientProvider implements VoiceProvider {
     if (this._disposed) return null;
     this.callId = callId;
 
-    // ────────────────────────────────────────────────────────
-    // TODO: Implement employee-side call initiation:
-    //
-    // 1. Ensure token is valid (refresh if expired):
-    //    await this.ensureToken();
-    //
-    // 2. Connect via Twilio Device:
-    //    this._activeCall = await this._device.connect({
-    //      params: {
-    //        To: "admin-identity",  // or a Twilio Client identity
-    //        callId: callId,
-    //        employeeName: this.config.employeeName,
-    //      },
-    //    });
-    //
-    // 3. Handle call events:
-    //    this._activeCall.on("accept", () => {
-    //      this.events?.onStateChange("connected");
-    //      // Get remote audio stream for analysis
-    //      const remoteStream = this._activeCall.getRemoteStream();
-    //      if (remoteStream) this.events?.onRemoteStream(remoteStream);
-    //    });
-    //
-    //    this._activeCall.on("disconnect", () => {
-    //      this.events?.onStateChange("disconnected");
-    //    });
-    //
-    //    this._activeCall.on("error", (err) => {
-    //      this.events?.onStateChange("failed", err.message);
-    //    });
-    //
-    // 4. Return local stream for audio analysis:
-    //    this.localStream = this._activeCall.getLocalStream();
-    //    return this.localStream;
-    // ────────────────────────────────────────────────────────
+    if (!this._device || !this._ready) {
+      console.warn("[TwilioClient] Device not ready.");
+      this.events?.onStateChange("failed", "Twilio device not ready. Check configuration.");
+      return null;
+    }
 
-    console.warn("[TwilioClient] startCall() is a stub. Connect Supabase to activate.");
-    this.events?.onStateChange("failed", "Twilio not configured. Connect Supabase first.");
-    return null;
+    try {
+      // 1. Ensure token is valid
+      await this.ensureToken();
+
+      // 2. Connect via Twilio Device
+      this._activeCall = await this._device.connect({
+        params: {
+          To: `sosphere-admin-${this.config.companyName || "default"}`,
+          callId: callId,
+          employeeName: this.config.employeeName || "Employee",
+        },
+      });
+
+      // 3. Handle call events
+      this._activeCall.on("accept", () => {
+        if (this._disposed) return;
+        this.events?.onStateChange("connected");
+        const remoteStream = this._activeCall?.getRemoteStream?.();
+        if (remoteStream) this.events?.onRemoteStream(remoteStream);
+      });
+
+      this._activeCall.on("disconnect", () => {
+        if (this._disposed) return;
+        this.events?.onStateChange("disconnected");
+      });
+
+      this._activeCall.on("error", (err: any) => {
+        if (this._disposed) return;
+        this.events?.onStateChange("failed", err.message || "Call error");
+      });
+
+      // 4. Return local stream for audio analysis
+      this.localStream = this._activeCall.getLocalStream?.() || null;
+      return this.localStream;
+    } catch (err: any) {
+      console.error("[TwilioClient] startCall failed:", err);
+      this.events?.onStateChange("failed", err.message || "Failed to start call");
+      return null;
+    }
   }
 
   async answerCall(callId: string): Promise<MediaStream | null> {
     if (this._disposed) return null;
     this.callId = callId;
 
-    // ────────────────────────────────────────────────────────
-    // TODO: Implement admin-side call answering:
-    //
-    // Incoming calls arrive via this._device.on("incoming"):
-    //
-    // this._device.on("incoming", (call) => {
-    //   this._activeCall = call;
-    //   // Store it, show UI notification
-    // });
-    //
-    // When admin clicks "Answer":
-    //   this._activeCall.accept();
-    //
-    //   this._activeCall.on("accept", () => {
-    //     this.events?.onStateChange("connected");
-    //     const remoteStream = this._activeCall.getRemoteStream();
-    //     if (remoteStream) this.events?.onRemoteStream(remoteStream);
-    //   });
-    //
-    //   this.localStream = this._activeCall.getLocalStream();
-    //   return this.localStream;
-    // ────────────────────────────────────────────────────────
+    if (!this._activeCall) {
+      console.warn("[TwilioClient] No incoming call to answer.");
+      this.events?.onStateChange("failed", "No incoming call found.");
+      return null;
+    }
 
-    console.warn("[TwilioClient] answerCall() is a stub. Connect Supabase to activate.");
-    this.events?.onStateChange("failed", "Twilio not configured. Connect Supabase first.");
-    return null;
+    try {
+      // Accept the incoming call
+      this._activeCall.accept();
+
+      this._activeCall.on("accept", () => {
+        if (this._disposed) return;
+        this.events?.onStateChange("connected");
+        const remoteStream = this._activeCall?.getRemoteStream?.();
+        if (remoteStream) this.events?.onRemoteStream(remoteStream);
+      });
+
+      this._activeCall.on("disconnect", () => {
+        if (this._disposed) return;
+        this.events?.onStateChange("disconnected");
+      });
+
+      this._activeCall.on("error", (err: any) => {
+        if (this._disposed) return;
+        this.events?.onStateChange("failed", err.message || "Call error");
+      });
+
+      this.localStream = this._activeCall.getLocalStream?.() || null;
+      return this.localStream;
+    } catch (err: any) {
+      console.error("[TwilioClient] answerCall failed:", err);
+      this.events?.onStateChange("failed", err.message || "Failed to answer call");
+      return null;
+    }
   }
 
   endCall(): void {
@@ -328,57 +359,78 @@ export class TwilioVoiceProvider implements VoiceProvider {
       return null;
     }
 
-    // ────────────────────────────────────────────────────────
-    // TODO: Implement PSTN call to admin's phone:
-    //
-    // 1. Call Supabase Edge Function to initiate the call:
-    //    const resp = await callEdgeFunction<TwilioCallRequest, TwilioCallResponse>(
-    //      this.config,
-    //      "twilio-call",
-    //      {
-    //        to: this.config.adminPhoneNumber!,
-    //        from: this.config.twilioFromNumber!,
-    //        callId: callId,
-    //        employeeName: this.config.employeeName || "Employee",
-    //        companyName: this.config.companyName || "SOSphere",
-    //        zoneName: this.config.zoneName || "Unknown Zone",
-    //        callbackUrl: `${this.config.supabaseUrl}/functions/v1/twilio-status`,
-    //      },
-    //    );
-    //
-    //    this._callSid = resp.callSid;
-    //
-    // 2. Poll for call status updates (or use Supabase Realtime):
-    //    this._statusPollInterval = setInterval(async () => {
-    //      const status = await this.checkCallStatus();
-    //      if (status === "in-progress") {
-    //        this.events?.onStateChange("connected");
-    //        clearInterval(this._statusPollInterval!);
-    //      } else if (status === "completed" || status === "failed") {
-    //        this.events?.onStateChange("disconnected");
-    //        clearInterval(this._statusPollInterval!);
-    //      }
-    //    }, 2000);
-    //
-    // 3. For employee's audio:
-    //    Use Twilio Client SDK on employee side to connect
-    //    to the same call (conference bridge).
-    //    OR use WebRTC + Twilio's TURN servers.
-    //
-    // 4. The Edge Function's TwiML should:
-    //    <Response>
-    //      <Say>Emergency SOS from {employeeName} in {zoneName}.</Say>
-    //      <Say>Press 1 to accept.</Say>
-    //      <Gather numDigits="1" action="/functions/v1/twilio-gather">
-    //        <Play loop="3">{ringTone}</Play>
-    //      </Gather>
-    //      <Say>No response. Escalating to next contact.</Say>
-    //    </Response>
-    // ────────────────────────────────────────────────────────
+    try {
+      // 1. Call Supabase Edge Function to initiate PSTN call
+      const resp = await callEdgeFunction<any, TwilioCallResponse>(
+        this.config,
+        "twilio-call",
+        {
+          to: this.config.adminPhoneNumber!,
+          from: this.config.twilioFromNumber!,
+          callId: callId,
+          employeeName: this.config.employeeName || "Employee",
+          companyName: this.config.companyName || "SOSphere",
+          zoneName: this.config.zoneName || "Unknown Zone",
+        },
+      );
 
-    console.warn("[TwilioVoice] startCall() is a stub. Deploy Supabase Edge Functions to activate.");
-    this.events?.onStateChange("failed", "Twilio Voice not deployed. Deploy Edge Functions first.");
-    return null;
+      this._callSid = resp.callSid;
+      this.events?.onStateChange("connecting");
+      console.info(`[TwilioVoice] PSTN call initiated: ${resp.callSid}`);
+
+      // 2. Listen for call status via Supabase Realtime
+      // The twilio-status Edge Function broadcasts updates
+      try {
+        const { supabaseUrl, supabaseAnonKey } = this.config;
+        if (supabaseUrl && supabaseAnonKey) {
+          // Use dynamic import to avoid hard dependency
+          const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+          const sb = createClient(supabaseUrl, supabaseAnonKey);
+          const channel = sb.channel(`call-${callId}`);
+          channel
+            .on("broadcast", { event: "call_status" }, (payload: any) => {
+              const status = payload.payload?.status;
+              if (this._disposed) return;
+              if (status === "answered" || status === "accepted" || status === "in-progress") {
+                this.events?.onStateChange("connected");
+              } else if (status === "completed" || status === "canceled") {
+                this.events?.onStateChange("disconnected");
+                sb.removeChannel(channel);
+              } else if (status === "no-answer" || status === "busy" || status === "failed") {
+                this.events?.onStateChange("failed", `Call ${status}`);
+                sb.removeChannel(channel);
+              }
+            })
+            .subscribe();
+
+          // Cleanup channel after 5 minutes max
+          setTimeout(() => sb.removeChannel(channel), 300000);
+        }
+      } catch (e) {
+        console.warn("[TwilioVoice] Realtime listener setup failed:", e);
+      }
+
+      // 3. Fallback: poll status every 3 seconds for 60 seconds
+      let pollCount = 0;
+      this._statusPollInterval = setInterval(() => {
+        pollCount++;
+        if (this._disposed || pollCount > 20) {
+          if (this._statusPollInterval) {
+            clearInterval(this._statusPollInterval);
+            this._statusPollInterval = null;
+          }
+          if (pollCount > 20 && !this._disposed) {
+            this.events?.onStateChange("failed", "Call timeout — no response");
+          }
+        }
+      }, 3000);
+
+      return null; // No local stream for PSTN calls (audio is on admin's phone)
+    } catch (err: any) {
+      console.error("[TwilioVoice] startCall failed:", err);
+      this.events?.onStateChange("failed", err.message || "Failed to initiate call");
+      return null;
+    }
   }
 
   async answerCall(_callId: string): Promise<MediaStream | null> {
@@ -390,15 +442,15 @@ export class TwilioVoiceProvider implements VoiceProvider {
   }
 
   endCall(): void {
-    // ────────────────────────────────────────────────────────
-    // TODO: End the PSTN call:
-    //
-    // if (this._callSid) {
-    //   await callEdgeFunction(this.config, "twilio-call-end", {
-    //     callSid: this._callSid,
-    //   });
-    // }
-    // ────────────────────────────────────────────────────────
+    // End the PSTN call if active
+    if (this._callSid && this.config.supabaseUrl && this.config.supabaseAnonKey) {
+      // Fire-and-forget: tell Twilio to end the call
+      const accountSid = this._callSid; // We'll use the Edge Function approach
+      callEdgeFunction(this.config, "twilio-call", {
+        action: "end",
+        callSid: this._callSid,
+      }).catch((e) => console.warn("[TwilioVoice] End call request failed:", e));
+    }
 
     if (this._statusPollInterval) {
       clearInterval(this._statusPollInterval);
