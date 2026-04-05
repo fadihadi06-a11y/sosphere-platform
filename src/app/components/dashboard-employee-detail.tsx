@@ -123,7 +123,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
     : employee.status === "checked-in" ? "Checked In"
     : "Off Shift";
 
-  const initials = employee.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+  const initials = (employee.name || "??").split(" ").map(n => n?.[0] || "").join("").slice(0, 2) || "??";
   const scoreColor = employee.safetyScore >= 90 ? "#00C853" : employee.safetyScore >= 75 ? "#FF9500" : "#FF2D55";
 
   const tabs = [

@@ -7,6 +7,7 @@ import { useLang } from "./useLang";
 interface IndividualRegisterProps {
   onComplete: (data: { name: string; phone: string; contacts: { name: string; phone: string }[] }) => void;
   onBack: () => void;
+  initialPhone?: string;
 }
 
 interface EmergencyContact {
@@ -25,8 +26,10 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
   const [submitting, setSubmitting] = useState(false);
   const nextId = useRef(2);
 
+  const { isAr } = useLang();
+
   const addContact = () => {
-    if (contacts.length >= 1) return;
+    if (contacts.length >= 5) return;
     setContacts([...contacts, { id: nextId.current++, name: "", phone: "" }]);
   };
 

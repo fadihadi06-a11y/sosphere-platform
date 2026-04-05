@@ -278,8 +278,15 @@ export function DashboardWebPage() {
   const [pinError, setPinError] = useState("");
   const PIN_KEY = "sosphere_dashboard_pin";
   const getStoredPin = () => localStorage.getItem(PIN_KEY);
-  const storePin = (pin: string) => localStorage.setItem(PIN_KEY, btoa(pin));
-  const checkPin = (pin: string) => btoa(pin) === getStoredPin();
+  // SHA-256 hash instead of base64 — base64 is reversible and not secure
+  const hashPin = async (pin: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pin + "sosphere_pin_salt_2026");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  };
+  const storePin = async (pin: string) => localStorage.setItem(PIN_KEY, await hashPin(pin));
+  const checkPin = async (pin: string) => (await hashPin(pin)) === getStoredPin();
   const [step, setStep] = useState<LoginStep>("loading");
   const [loginName, setLoginName] = useState("Admin");
   const [loginCompany, setLoginCompany] = useState("Your Company");
@@ -480,7 +487,9 @@ export function DashboardWebPage() {
               initRealtimeChannels(invitation.company_id);
               useDashboardStore.getState().initDashboard();
               const companyName = (invitation.companies as any)?.name || "Your Company";
-              await supabase.from("invitations").update({ status: "accepted" }).eq("id", invitation.id);
+              // Non-blocking: accept invitation in background (don't block login on this)
+              supabase.from("invitations").update({ status: "accepted" }).eq("id", invitation.id)
+                .then(({ error: updateErr }) => { if (updateErr) console.warn("[Auth] Failed to accept invitation:", updateErr.message); });
               pendingLoginRef.current = { name, company: companyName };
               setLoginName(name);
               if (getStoredPin()) {
@@ -669,7 +678,7 @@ export function DashboardWebPage() {
           <div className="grid grid-cols-3 gap-3" style={{ width: "100%" }}>
             {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k, i) => (
               <button key={i} disabled={!k}
-                onClick={() => {
+                onClick={async () => {
                   if (!k) return;
                   const current = pinStage === "enter" ? pinInput : pinConfirm;
                   const setter = pinStage === "enter" ? setPinInput : setPinConfirm;
@@ -683,7 +692,7 @@ export function DashboardWebPage() {
                       setTimeout(() => { setPinStage("confirm"); }, 300);
                     } else {
                       if (next === pinInput) {
-                        storePin(pinInput);
+                        await storePin(pinInput);
                         const pending = pendingLoginRef.current;
                         if (pending) {
                           doLogin(pending.name, pending.company);
@@ -741,7 +750,7 @@ export function DashboardWebPage() {
           <div className="grid grid-cols-3 gap-3" style={{ width: "100%" }}>
             {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k, i) => (
               <button key={i} disabled={!k}
-                onClick={() => {
+                onClick={async () => {
                   if (!k) return;
                   setPinError("");
                   if (k === "⌫") { setPinInput(p => p.slice(0, -1)); return; }
@@ -749,7 +758,8 @@ export function DashboardWebPage() {
                   const next = pinInput + k;
                   setPinInput(next);
                   if (next.length === 6) {
-                    if (checkPin(next)) {
+                    const valid = await checkPin(next);
+                    if (valid) {
                       const pending = pendingLoginRef.current;
                       if (pending) doLogin(pending.name, pending.company);
                     } else {
