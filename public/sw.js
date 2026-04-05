@@ -39,7 +39,14 @@ self.addEventListener('fetch', (event) => {
 
 // ── Push Notifications (Web Push + FCM) ───────────────────
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {};
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch (e) {
+    // Malformed push payload — use text fallback
+    const text = event.data?.text?.() || 'Emergency notification';
+    data = { title: 'SOSphere Alert', body: text };
+  }
 
   // Determine severity for vibration pattern
   const severity = data.severity || data.data?.severity || 'medium';

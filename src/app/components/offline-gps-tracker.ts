@@ -293,8 +293,9 @@ function syncPointToSupabase(point: any): void {
     altitude: point.altitude,
     speed: point.speed,
     heading: point.heading,
-    battery_level: point.batteryLevel,
-    source: point.source || "gps",
+    battery: point.batteryLevel != null ? Math.round(point.batteryLevel * 100) : null,
+    is_emergency: point.isEmergency || false,
+    session_id: point.sessionId || null,
     recorded_at: new Date(point.timestamp).toISOString(),
   });
 

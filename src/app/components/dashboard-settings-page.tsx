@@ -97,14 +97,17 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       if (SUPABASE_CONFIG.isConfigured) {
         const { supabase } = await import("./api/supabase-client");
         supabase.from("company_settings").upsert({
+          id: companyName || "default",
           company_id: companyName || "default",
-          company_name: companyName,
-          language: lang || "en",
-          checkin_interval: checkinInterval,
-          session_timeout: useDashboardStore.getState().sessionTimeout,
-          toggles,
+          settings: {
+            company_name: companyName,
+            language: lang || "en",
+            checkin_interval: checkinInterval,
+            session_timeout: useDashboardStore.getState().sessionTimeout,
+            toggles,
+          },
           updated_at: new Date().toISOString(),
-        }, { onConflict: "company_id" }).then(() => {
+        }, { onConflict: "id" }).then(() => {
           console.log("[Settings] Synced to Supabase");
         }).catch((e: any) => console.warn("[Settings] Supabase sync failed:", e));
       }
