@@ -17,36 +17,15 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Radar, MapPin, AlertTriangle, Clock, Users, Phone,
-  Radio, Shield, Navigation, Target, Crosshair,
-  ChevronRight, ChevronDown, Circle, Siren, Activity,
-  Eye, Send, Volume2, Search, RefreshCw, Download,
-  UserCheck, HeartPulse, Wifi, WifiOff, Zap,
-  TriangleAlert, Map as MapIcon, Route, Layers,
-  Play, Pause, SkipForward, X, Check, AlertCircle,
-  Compass, Gauge, Signal, Timer, ArrowUpRight,
-  ShieldAlert, CircleDot, Footprints, Car, Anchor,
-  HardHat, ChevronUp, MessageSquare, Bell,
-} from "lucide-react";
+import { Radar, AlertTriangle, Clock, Users, Phone, Shield, Target, ChevronDown, Siren, RefreshCw, Download, Zap, Map as MapIcon, Route, Play, Pause, Check, Compass, Gauge, Timer, Footprints, Car, HardHat, MessageSquare, Bell } from "lucide-react";
 // react-leaflet removed — using Leaflet directly to avoid Context issues in Figma Make
 import L from "leaflet";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
 import { emitAdminSignal } from "./shared-store";
-import {
-  type SARMission, type WorkerType, type TerrainType, type SARPhase,
-  type SearchCone, type EscalationStep, type NearbyWorker, type HazardZone,
-  type GPSBreadcrumb, type MissionLogEntry,
-  createSARMission, getConePolygon, getZonePolygon,
-  formatDistance, formatElapsed, getPhaseLabel, getPhaseColor,
-  saveSARMission, getActiveSARMissions, getAllSARMissions,
-  recommendSearchPattern, calculateSearchCone, analyzeTrail,
-} from "./sar-engine";
-import {
-  Card as DSCard, TOKENS, TYPOGRAPHY, PageHeader,
-} from "./design-system";
+import { type SARMission, type WorkerType, type TerrainType, type SARPhase, type EscalationStep, type NearbyWorker, type HazardZone, type MissionLogEntry, createSARMission, getConePolygon, getZonePolygon, formatDistance, formatElapsed, getPhaseLabel, getPhaseColor, saveSARMission, getActiveSARMissions, getAllSARMissions, recommendSearchPattern, calculateSearchCone } from "./sar-engine";
+import { Card as DSCard, TYPOGRAPHY, PageHeader } from "./design-system";
 
 // ── Scenario Presets for Demo ──────────────────────────────────
 

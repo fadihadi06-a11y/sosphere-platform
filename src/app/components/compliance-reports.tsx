@@ -243,14 +243,7 @@ async function generateQRDataURL(text: string): Promise<string> {
   }
 }
 
-import {
-  FileText, Download, Calendar, Clock, CheckCircle, CheckCircle2,
-  ChevronRight, Shield, BarChart3, Users, AlertTriangle,
-  Eye, Zap, Plus, Settings, RefreshCw, Filter,
-  TrendingUp, Award, MapPin, Printer, X, Circle,
-  Heart, Navigation, Activity, Route, Clipboard,
-  Flame, Lock, Star, Mail,
-} from "lucide-react";
+import { FileText, Download, Calendar, Clock, CheckCircle, CheckCircle2, Shield, BarChart3, Users, AlertTriangle, Eye, RefreshCw, TrendingUp, Award, MapPin, X, Heart, Navigation, Activity, Route, Clipboard, Lock, Star, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 

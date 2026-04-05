@@ -1,29 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Users, MapPin, AlertTriangle,
-  ChevronRight, CheckCircle2, Radio,
-  FileText, Building2, User, LogOut, Map as MapIcon,
-  UserCheck, Zap, Settings,
-  LayoutDashboard, TrendingUp,
-  X, ArrowUpRight, Siren,
-  Navigation, Download, Layers, Target,
-  Cpu, Signal, FileWarning, CalendarDays,
-  Megaphone, Route, Trophy, ScrollText,
-  UserCog, Wallet, Radar, ListChecks, BookOpen,
-  CloudLightning, Award, Mail,
-  Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
-  CreditCard, Lock, Crown, RefreshCw,
-} from "lucide-react";
+import { Shield, Users, MapPin, AlertTriangle, ChevronRight, CheckCircle2, Radio, FileText, Building2, User, LogOut, Map as MapIcon, UserCheck, Zap, Settings, LayoutDashboard, TrendingUp, X, ArrowUpRight, Siren, Navigation, Download, Layers, Target, Cpu, Signal, FileWarning, CalendarDays, Megaphone, Route, Trophy, ScrollText, UserCog, Wallet, Radar, ListChecks, BookOpen, CloudLightning, Award, Mail, Brain, Sparkles, Camera, PhoneMissed, Phone, Clock, Lock, Crown, RefreshCw } from "lucide-react";
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
-import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
+import { DashPage, Employee, EmergencyItem } from "./dashboard-types";
 // Mock data now read from Zustand store — no direct EMPLOYEES/EMERGENCIES/ZONES imports needed
 import { CommandCenterPage } from "./command-center";
 import { IncidentReportsTab } from "./hub-incident-reports";
 import { RiskMapLivePage } from "./risk-map-live";
-import { type PriorityOverrideLog } from "./priority-engine";
-import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
+import { hasPermission, ROLE_CONFIG, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
 // (LiveAlertOverlay — replaced by SOSEmergencyPopup)
 import { HazardAlertBanner } from "./hazard-banner";
@@ -32,10 +17,6 @@ import { ManualPriorityModal } from "./manual-priority-modal";
 import { SettingsPage } from "./dashboard-settings-page";
 import { PricingPage } from "./dashboard-pricing-page";
 import { BillingPage } from "./dashboard-billing-page";
-import {
-  OverviewPage, EmergenciesPage,
-  IncidentHistoryPage, CreateEmergencyDrawer,
-} from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
 import { AnalyticsPage } from "./dashboard-analytics-page";
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
@@ -84,7 +65,7 @@ import { hapticLight, playUISound } from "./haptic-feedback";
 // ── NEW: Round 1 Features ───────────────────────────────────────
 import { DashboardEmergencyChat } from "./emergency-chat";
 // ── Unified Emergency Engine (replaces 3 separate imports) ──
-import { UnifiedEmergencyEngine, GuideMeButton, type AICoAdminContext, type IREContext } from "./unified-emergency-engine";
+import { UnifiedEmergencyEngine, type AICoAdminContext } from "./unified-emergency-engine";
 import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
 // Legacy imports kept for type compatibility in dashboard-store
 // import { EmergencyResponseWizard, GuideMeButton } from "./guided-response";
@@ -94,7 +75,7 @@ import { requestNotificationPermission } from "./ire-push-notification";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
 import { PdfEmailModal } from "./pdf-email-modal";
 // FIX D: Shift Handover Modal
-import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
+import { ShiftHandoverModal } from "./shift-handover-modal";
 
 // ── NEW: Round 2 Features ──────────────────────────────────��────
 import { BuddySystemPage } from "./buddy-system";
@@ -131,17 +112,8 @@ import { MissionControlPage } from "./mission-control";
 
 // ── NEW: Incident Photo Report — Admin Broadcast Panel ──────────
 import { AdminBroadcastPanel, type IncidentReportData } from "./incident-photo-report";
-import {
-  storeEvidence, updateEvidenceStatus, addEvidenceAction, getAllEvidence,
-  getEvidencePipelineStatus, seedMockEvidence,
-} from "./evidence-store";
-import {
-  getClusterGuideHint,
-  CLUSTER_LEVEL_CONFIG, type ZoneCluster,
-} from "./zone-cluster-engine";
-
 // ── NEW: Error Boundaries for page-level crash protection ───────
-import { PageErrorBoundary, WidgetErrorBoundary } from "./error-boundary";
+import { PageErrorBoundary } from "./error-boundary";
 
 // ── FIX 1+3: Plan Gates + Trial Expired Overlay ────────────────
 import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, checkZoneLimit, checkEmployeeLimit, checkFeatureGate } from "./plan-gate";

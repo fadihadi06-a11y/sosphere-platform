@@ -10,11 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Bell, BellRing, BellOff, Check, X, Shield,
-  AlertTriangle, Clock, Volume2, VolumeX, Smartphone,
-  ChevronRight, Settings, Zap, MessageSquare,
-} from "lucide-react";
+import { Bell, BellRing, X, Shield, AlertTriangle, Clock, ChevronRight, Zap } from "lucide-react";
 
 // ── Notification Types ─────────────────────────────────────────
 export type NotifType = "sos" | "checkin_expired" | "fall_detected" | "environment" | "geofence" | "broadcast" | "escalation";

@@ -9,12 +9,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
-import {
-  Award, CheckCircle2, Download, Shield, Star,
-  Trophy, GraduationCap, X, Lock, Sparkles,
-  BookOpen, Route, Heart, Megaphone, ShieldAlert,
-  CloudLightning, Crown, Zap, Target,
-} from "lucide-react";
+import { Award, Download, Shield, GraduationCap, X, Lock, Sparkles, Route, Heart, Megaphone, ShieldAlert, CloudLightning, Crown } from "lucide-react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { hapticSuccess, playUISound } from "./haptic-feedback";

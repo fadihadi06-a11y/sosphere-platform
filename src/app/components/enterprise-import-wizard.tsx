@@ -6,15 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Upload, FileText, Download, CheckCircle2, AlertTriangle,
-  XCircle, ArrowRight, ArrowLeft, Users, Sparkles, X,
-  Check, AlertCircle, FileWarning, Table, ChevronDown,
-  RefreshCw, Building2, MapPin, Phone, Mail, Shield,
-  Layers, Clock, Zap, Star, ChevronRight, Eye,
-  Database, Wifi, Lock, Key, Globe, UserPlus,
-  FileCheck, TrendingUp, Send, Bell, Settings,
-} from "lucide-react";
+import { Upload, FileText, Download, CheckCircle2, AlertTriangle, XCircle, ArrowRight, ArrowLeft, Users, X, Check, Table, ChevronDown, Building2, MapPin, Phone, Mail, Shield, Clock, Zap, Star, ChevronRight, Eye, Database, Lock, Key, Globe, UserPlus, FileCheck, Send, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight } from "./haptic-feedback";
 import Papa from "papaparse";

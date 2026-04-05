@@ -8,15 +8,7 @@
 
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Clipboard, CheckCircle, CheckCircle2, Circle,
-  AlertTriangle, Shield, ChevronRight, ChevronDown,
-  Plus, X, Eye, Clock, Users, BarChart3, Zap,
-  HardHat, Flame, Activity, MapPin, Settings, Star,
-  Send, Download, Search, Filter, UserCheck, XCircle,
-  ClipboardCheck, ClipboardList, ShieldCheck, FileText,
-  CircleCheck, CircleDot, Bell, RefreshCw,
-} from "lucide-react";
+import { CheckCircle2, Circle, AlertTriangle, Shield, ChevronRight, Eye, Clock, BarChart3, HardHat, Activity, MapPin, Settings, Send, Search, XCircle, ClipboardCheck, ClipboardList, FileText, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";

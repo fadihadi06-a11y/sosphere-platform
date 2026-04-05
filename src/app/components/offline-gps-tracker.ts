@@ -15,7 +15,7 @@
 // missing, their last GPS trail tells rescuers WHERE to look.
 // ═══════════════════════════════════════════════════════════════
 
-import { recordGPSPoint, recordGPSBatch, getGPSTrailCount, type GPSPoint } from "./offline-database";
+import { recordGPSPoint, getGPSTrailCount } from "./offline-database";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ── Configuration ──────────────────────────────────────────────

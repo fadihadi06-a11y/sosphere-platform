@@ -6,24 +6,9 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Phone, MapPin, X, Shield, ChevronRight, Clock,
-  Wifi, WifiOff, Battery, CheckCircle2, Siren,
-  Eye, ChevronLeft, ChevronDown, PhoneCall,
-  PhoneMissed, Copy, MessageCircle,
-  Smartphone, Monitor, Check,
-  FileText,
-  Radar,
-  PhoneOff, Mic, MicOff,
-  Compass,
-} from "lucide-react";
+import { Phone, MapPin, X, ChevronRight, Clock, Wifi, WifiOff, Battery, CheckCircle2, Siren, Eye, ChevronLeft, ChevronDown, PhoneCall, PhoneMissed, Copy, MessageCircle, Smartphone, Monitor, Check, FileText, Radar, PhoneOff, Mic, MicOff, Compass } from "lucide-react";
 import { safeTelCall } from "./utils/safe-tel";
 import { MedicalAlertBanner } from "./medical-alert-banner";
-import {
-  emitAdminSignal, emitCallSignal, clearCallSignal,
-  emitSyncEvent, addMissedCall,
-} from "./shared-store";
-
 // ── Types ─────────────────────────────────────────────────────
 export interface SOSEmployee {
   id: string;

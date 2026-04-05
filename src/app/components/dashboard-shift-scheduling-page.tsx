@@ -5,17 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Calendar, Clock, Users, Plus, X, Copy, Trash2,
-  ChevronLeft, ChevronRight, Sun, Moon, Sunset,
-  AlertTriangle, Check, RotateCcw, Filter,
-  GripVertical, UserCheck, ArrowRight, Edit3,
-  Repeat, Download, Search,
-} from "lucide-react";
-import {
-  Card as DSCard, SectionHeader, Badge, Button as DSButton,
-  Divider, TOKENS,
-} from "./design-system";
+import { Calendar, Clock, Users, Plus, X, Copy, ChevronLeft, ChevronRight, Sun, Moon, Sunset, AlertTriangle, Check, RotateCcw, Repeat, Download, Search } from "lucide-react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";

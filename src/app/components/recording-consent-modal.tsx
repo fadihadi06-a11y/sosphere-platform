@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Mic, Shield, AlertTriangle, CheckCircle,
-  X, ChevronRight, Globe, Lock, FileText,
-} from "lucide-react";
+import { Mic, Shield, AlertTriangle, CheckCircle, X, Globe, Lock, FileText } from "lucide-react";
 
 interface RecordingConsentModalProps {
   visible: boolean;

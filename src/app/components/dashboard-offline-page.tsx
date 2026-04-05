@@ -13,25 +13,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Wifi, WifiOff, Shield, Database, MapPin, Clock,
-  RefreshCw, Check, AlertTriangle, Satellite, Zap,
-  Users, Signal, HardDrive, Activity, BarChart3,
-  Download, Upload, TrendingUp,
-  ChevronRight, Radio, BatteryLow, BatteryFull,
-  Globe, Server, CheckCircle2, XCircle,
-  Navigation, MessageSquare, Send,
-} from "lucide-react";
-import {
-  TOKENS, TYPOGRAPHY, PageHeader, KPICard,
-} from "./design-system";
+import { Wifi, WifiOff, Shield, Database, MapPin, Clock, RefreshCw, AlertTriangle, Satellite, Zap, Users, Signal, HardDrive, Download, Upload, Radio, BatteryLow, BatteryFull, Globe, Server, CheckCircle2, XCircle, Navigation, MessageSquare, Send } from "lucide-react";
+import { PageHeader } from "./design-system";
 import { getStorageStats, type OfflineStorageStats } from "./offline-database";
-import {
-  getSWStatus, registerServiceWorker, getCacheStats,
-  type SWStatus,
-} from "./service-worker-register";
+import { getSWStatus, registerServiceWorker, type SWStatus } from "./service-worker-register";
 import { getTrackerState, type GPSTrackerState } from "./offline-gps-tracker";
-import { getSyncProgress, getQuickSyncStats, startSync, type SyncProgress, type QuickSyncStats } from "./offline-sync-engine";
+import { getQuickSyncStats, startSync, type QuickSyncStats } from "./offline-sync-engine";
 import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Mock Fleet Data ────────────────────────────────────────────

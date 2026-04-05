@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  MapPin, Phone,
-  MessageSquare, ChevronRight, X, Check,
-  Send, UserPlus,
-  Copy, Share2, Radio,
-} from "lucide-react";
+import { MapPin, Phone, MessageSquare, ChevronRight, X, Check, Send, UserPlus, Copy, Share2, Radio } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

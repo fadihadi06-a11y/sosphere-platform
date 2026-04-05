@@ -8,18 +8,10 @@
 
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  BookOpen, ChevronRight, ChevronDown, Shield, AlertTriangle,
-  Heart, Flame, Lock, MapPin, Phone, Users, Ambulance,
-  Megaphone, Clock, CheckCircle, Plus, X, Zap,
-  Activity, Eye, Pencil, Copy, Trash2, Play, Star,
-  Navigation, MessageCircle, Radio, CheckCircle2,
-  ShieldCheck, FileText, Sparkles, CircleCheck,
-  Siren, ClipboardList, Timer,
-} from "lucide-react";
+import { BookOpen, ChevronRight, Shield, AlertTriangle, Heart, Flame, Lock, MapPin, Phone, Users, Ambulance, Megaphone, Clock, CheckCircle, Plus, X, Zap, Activity, Eye, Pencil, Copy, Play, Navigation, MessageCircle, Radio, CheckCircle2, Sparkles, Siren, ClipboardList, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight, hapticHeavy } from "./haptic-feedback";
-import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
+import { TYPOGRAPHY, TOKENS, KPICard, Badge, StatPill } from "./design-system";
 
 // ── Types ─────────────────────────────────────────────────────
 interface PlaybookStep {

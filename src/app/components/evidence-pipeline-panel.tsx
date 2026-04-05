@@ -7,20 +7,9 @@
 // =================================================================
 
 import { useState, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import {
-  Camera, Send, Eye, Megaphone, Search, Shield, FileText,
-  Download, Play, Pause, Square, Mic, Clock, MapPin, User,
-  MessageSquare, ChevronRight, CheckCircle2, AlertTriangle,
-  ArrowRight, Layers, Volume2, Plus, X, Lock, Zap,
-} from "lucide-react";
-import {
-  type EvidenceEntry, type EvidenceComment, type EvidenceAction,
-  EVIDENCE_PIPELINE_STAGES, getEvidenceStage,
-  addEvidenceComment, addEvidenceAction,
-  linkToInvestigation, linkToRiskRegister,
-  updateEvidenceStatus,
-} from "./evidence-store";
+import { motion } from "motion/react";
+import { Camera, Send, Eye, Megaphone, Search, Shield, FileText, Download, Play, Pause, Mic, MapPin, User, ChevronRight, CheckCircle2, ArrowRight, Layers, Volume2, X, Zap } from "lucide-react";
+import { type EvidenceEntry, type EvidenceComment, type EvidenceAction, EVIDENCE_PIPELINE_STAGES, getEvidenceStage, addEvidenceComment, addEvidenceAction, linkToInvestigation, linkToRiskRegister } from "./evidence-store";
 
 // ── Pipeline Stage Icons ──────────────────────────────────────
 const STAGE_ICONS: Record<string, any> = {

@@ -1,10 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Bell,
-  Users, MapPin, Timer, HeartPulse,
-  ChevronRight, Smartphone, Mic, Footprints,
-} from "lucide-react";
+import { Shield, Bell, Users, Timer, HeartPulse, ChevronRight, Smartphone, Mic, Footprints } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RecordingConsentModal } from "./recording-consent-modal";
 

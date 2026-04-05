@@ -6,19 +6,9 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Crown, Shield, ShieldCheck, Users, UserCheck, UserPlus, UserX,
-  ChevronRight, Lock, Unlock, Check, X, Search, Filter,
-  MapPin, Mail, Phone, Clock, Settings, MoreVertical,
-  AlertTriangle, CheckCircle2, Edit2, Trash2, Plus,
-  Eye, EyeOff, ArrowRight, Siren, Key, Building2,
-  Info, RefreshCw, ChevronDown, ChevronUp, Layers,
-  BarChart3, Zap, Globe, Bell, FileText, Hash,
-  Fingerprint, ClipboardList,
-} from "lucide-react";
+import { Crown, ShieldCheck, Users, UserCheck, UserPlus, UserX, Lock, Check, X, Search, MapPin, Settings, AlertTriangle, CheckCircle2, Edit2, Plus, ArrowRight, Siren, Key, Info, RefreshCw, ChevronDown, ChevronUp, BarChart3, Globe, Hash, Fingerprint, ClipboardList } from "lucide-react";
 import { type Role, ROLE_CONFIG } from "./mobile-auth";
 import { PINVerifyModal } from "./pin-verify-modal";
-import { saveUserPermissions, getPendingInvitations, sendInvitation } from "./api/permissions-service";
 // ── Types ─────────────────────────────────────────────────────
 type Level = "owner" | "main_admin" | "zone_admin" | "worker";
 type MemberStatus = "active" | "inactive" | "suspended";

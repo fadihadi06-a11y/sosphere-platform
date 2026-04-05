@@ -1,20 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Building2, Users, Lock, BarChart3, Bell, Timer, Globe, MapPin,
-  Shield, Zap, Send, X, Check, ChevronRight, ChevronLeft, Plus,
-  RefreshCw, Download, ShieldAlert, CheckCircle2, FileText,
-  LayoutDashboard, Phone, Layers, Clock, TriangleAlert, Settings,
-  Radio, Gauge, Navigation, Crosshair, Map,
-} from "lucide-react";
+import { Building2, Users, Lock, BarChart3, Bell, Timer, Globe, MapPin, Shield, Zap, Send, X, Check, ChevronRight, ChevronLeft, Plus, RefreshCw, Download, ShieldAlert, CheckCircle2, FileText, LayoutDashboard, Phone, Layers, Clock, TriangleAlert, Settings, Radio, Gauge, Navigation, Crosshair, Map } from "lucide-react";
 import { type Lang, LANG_META } from "./dashboard-i18n";
 import { ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { employeeUsagePercent, type CompanyState } from "./mobile-company";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
-import {
-  Card as DSCard, SectionHeader, Badge, AlertItem, Divider,
-} from "./design-system";
+import { Card as DSCard, SectionHeader, Badge, AlertItem, Divider } from "./design-system";
 import { setHybridMode as setHybridModeStore, getHybridMode, assignEmployeeZone, ZONE_NAMES } from "./shared-store";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";

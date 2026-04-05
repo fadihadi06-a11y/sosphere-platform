@@ -12,28 +12,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Wifi, WifiOff, RefreshCw, Check, X,
-  AlertTriangle, MapPin, Clock, Database,
-  Shield, Zap, ChevronDown, ChevronUp,
-  Radio, Satellite, BatteryLow, BatteryMedium,
-  BatteryFull, HardDrive, Send,
-  MessageSquare, Navigation, Power,
-} from "lucide-react";
-
 import { getStorageStats, type OfflineStorageStats } from "./offline-database";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
-import {
-  subscribeToTracker, getTrackerState, startGPSTracking,
-  stopGPSTracking, activateEmergencyTracking,
-  type GPSTrackerState, ZONE_PRESETS,
-} from "./offline-gps-tracker";
-import {
-  startSync, abortSync, enableAutoSync,
-  subscribeToSyncProgress, getSyncProgress, isSyncRunning,
-  getQuickSyncStats, type SyncProgress, type QuickSyncStats,
-} from "./offline-sync-engine";
-
+import { subscribeToTracker, getTrackerState, startGPSTracking, stopGPSTracking, type GPSTrackerState, ZONE_PRESETS } from "./offline-gps-tracker";
 // ── Backward-compat exports (used by old code) ────────────────
 // Keep these so existing imports don't break
 

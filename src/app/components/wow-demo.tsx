@@ -9,17 +9,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
-import {
-  Shield, Play, Pause, RotateCcw, ChevronRight,
-  AlertTriangle, CheckCircle, Phone, MapPin, Clock,
-  Wifi, Battery, Signal, User, Bell, Zap,
-  MessageCircle, Navigation, ShieldCheck,
-  Mic, Heart, Siren, Brain, Radio,
-  ArrowRight, Sparkles, Type,
-  Map, Route, Users, Gauge,
-  LocateFixed, Megaphone, ShieldAlert, ClipboardCheck,
-  BarChart3, Lock, Sun, Headphones,
-} from "lucide-react";
+import { Shield, Play, Pause, RotateCcw, AlertTriangle, CheckCircle, Phone, MapPin, Clock, Wifi, Battery, Signal, User, Bell, MessageCircle, Navigation, ShieldCheck, Heart, Siren, Brain, Radio, ArrowRight, Sparkles, Type, Map, Route, Users, LocateFixed, Megaphone, ShieldAlert, ClipboardCheck, BarChart3, Lock, Headphones } from "lucide-react";
 import { emitSyncEvent, type SyncEvent } from "./shared-store";
 
 // ── Helper: wrap events with DEMO_ prefix so dashboard ignores them ──

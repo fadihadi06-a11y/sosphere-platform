@@ -1,29 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  AlertTriangle, MapPin, Users, Clock, CheckCircle2, XCircle,
-  Navigation, Shield, Plus, Trash2, Edit3, X, Save,
-  ChevronRight, Eye, Megaphone, Info, ExternalLink,
-  History, Zap, ArrowRight,
-} from "lucide-react";
-import {
-  getZoneGPS,
-  getEvacuationPoints,
-  saveEvacuationPoints,
-  getActiveEvacuation,
-  triggerEvacuation,
-  completeEvacuation,
-  cancelEvacuation,
-  getEvacuationStatuses,
-  getEvacuationHistory,
-  onEvacuationChange,
-  sendBroadcast,
-  type ZoneGPSData,
-  type EvacuationPoint,
-  type ActiveEvacuation,
-  type EmployeeEvacuationStatus,
-  type EvacuationHistoryEntry,
-} from "./shared-store";
+import { AlertTriangle, MapPin, Users, Clock, CheckCircle2, XCircle, Navigation, Shield, Plus, Trash2, Edit3, X, Save, ChevronRight, Eye, Megaphone, Info, ExternalLink, History, Zap, ArrowRight } from "lucide-react";
+import { getZoneGPS, getEvacuationPoints, saveEvacuationPoints, getActiveEvacuation, triggerEvacuation, completeEvacuation, cancelEvacuation, getEvacuationStatuses, getEvacuationHistory, onEvacuationChange, sendBroadcast, type ZoneGPSData, type EvacuationPoint, type ActiveEvacuation, type EmployeeEvacuationStatus, type EvacuationHistoryEntry } from "./shared-store";
 
 interface DashboardEvacuationPageProps {
   t: (k: string) => string;

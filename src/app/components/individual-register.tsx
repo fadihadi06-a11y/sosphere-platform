@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, User, Phone, ShieldPlus, Plus, X, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, User, Phone, ShieldPlus, Plus, X, Check } from "lucide-react";
 import { storeJSONSync } from "./api/storage-adapter";
 import { useLang } from "./useLang";
 

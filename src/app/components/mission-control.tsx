@@ -6,21 +6,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Plus, MapPin, Navigation, Clock, AlertTriangle, CheckCircle2,
-  ChevronRight, Users, Phone, Eye, Shield, Play, Flag, Route,
-  Circle, Timer, X, Zap, BarChart3, Home, User, Wifi, WifiOff,
-  Battery, BatteryLow, BatteryWarning, Signal, SignalZero,
-  Calendar, Send, Bell, Target, ChevronDown, ChevronUp,
-  Locate, ArrowRight, Wrench, XCircle, RefreshCw, Download,
-  AlertCircle, Radio, Smartphone, Search, Filter,
-} from "lucide-react";
+import { Plus, MapPin, Navigation, AlertTriangle, CheckCircle2, Route, Circle, X, Home, User, Wifi, WifiOff, Battery, BatteryLow, Calendar, Send, Target, Locate, ArrowRight, XCircle, Radio, Search } from "lucide-react";
 import { toast } from "sonner";
-import {
-  type Mission, type MissionStatus, type MissionAlert,
-  getAllMissions, seedDemoMissions, createMission, cancelMission,
-  onMissionEvent, getMissionProgress, MISSION_STATUS_CONFIG,
-} from "./mission-store";
+import { type Mission, type MissionStatus, getAllMissions, seedDemoMissions, createMission, cancelMission, onMissionEvent, getMissionProgress, MISSION_STATUS_CONFIG } from "./mission-store";
 
 // ── Status Color Map ──────────────────────────────────────────
 const SC = MISSION_STATUS_CONFIG;

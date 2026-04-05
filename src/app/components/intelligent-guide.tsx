@@ -14,19 +14,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Phone, MapPin, Users, Siren, Clock, X,
-  CheckCircle2, AlertTriangle, Zap, ChevronRight,
-  Activity, Battery, Wifi, WifiOff,
-  Send, MessageCircle, Navigation,
-  Ambulance, Megaphone,
-  ArrowUpRight, FileText, TrendingUp, Target,
-  Camera, Award, Star, ChevronLeft,
-  Sparkles, Brain, Crosshair,
-  Lock, Heart, Bot, Download,
-  Crown, Medal, Flame, TrendingDown,
-  QrCode,
-} from "lucide-react";
+import { Shield, Phone, MapPin, Users, Siren, Clock, X, CheckCircle2, AlertTriangle, Zap, ChevronRight, Activity, Battery, Wifi, WifiOff, Send, MessageCircle, Navigation, Ambulance, Megaphone, ArrowUpRight, FileText, TrendingUp, Target, Camera, Award, Star, ChevronLeft, Sparkles, Brain, Crosshair, Lock, Heart, Bot, Download, Crown, Medal, Flame, TrendingDown, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, playUISound } from "./haptic-feedback";
 import jsPDF from "jspdf";

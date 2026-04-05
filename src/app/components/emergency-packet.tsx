@@ -1,12 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  ChevronLeft, Package, MapPin, Heart, Phone, Smartphone,
-  Mic, Shield, Share2, Eye, Lock, ChevronRight, Check,
-  Wifi, Battery, Signal, Clock, AlertTriangle, Droplets,
-  Pill, Activity, QrCode, Copy, MessageSquare, Mail,
-  Globe, X, Zap, Download, Users, Radio,
-} from "lucide-react";
+import { ChevronLeft, Package, MapPin, Heart, Smartphone, Mic, Shield, Share2, Eye, Lock, ChevronRight, Check, Clock, QrCode, Copy, MessageSquare, Mail, Globe, X, Zap, Users, Radio } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

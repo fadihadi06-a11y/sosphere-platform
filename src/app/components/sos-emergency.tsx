@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Phone, PhoneMissed, MapPin, Mic, MicOff,
-  Shield, X, Clock, MessageSquare,
-  AlertTriangle, CheckCircle, RefreshCw, FileText,
-  ChevronRight, Heart, PhoneCall, Video,
-  PhoneOff, Building2, Camera, Send, ImageIcon,
-} from "lucide-react";
+import { Phone, PhoneMissed, MapPin, Mic, MicOff, Shield, X, Clock, MessageSquare, AlertTriangle, CheckCircle, RefreshCw, FileText, ChevronRight, Heart, PhoneCall, PhoneOff, Building2, Camera, Send } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
 import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor } from "./shared-store";

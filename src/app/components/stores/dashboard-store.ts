@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "../dashboard-types";
 import type { Role, AuthState } from "../mobile-auth";
 import { createAuthState, hasPermission } from "../mobile-auth";
-import { createCompanyState, hasFeature, canCreateEmergency as canCreateEmgBilling, type CompanyState, type PlanTier } from "../mobile-company";
+import { createCompanyState, type CompanyState, type PlanTier } from "../mobile-company";
 import { isTrial as isTrialFn, isTrialExpired, trialDaysRemaining } from "../mobile-company";
 import type { PriorityOverrideLog } from "../priority-engine";
 import { markAsOwned, pinAsActive, clearManualPriority } from "../priority-engine";

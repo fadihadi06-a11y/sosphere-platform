@@ -7,11 +7,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Lock, Eye, EyeOff, Shield, ShieldCheck, X,
-  FileText, Key, CheckCircle2, AlertTriangle,
-  Save, RotateCcw, Info,
-} from "lucide-react";
+import { Lock, Eye, EyeOff, Shield, ShieldCheck, X, FileText, Key, CheckCircle2, AlertTriangle, Save, RotateCcw, Info } from "lucide-react";
 
 import { storeJSONSync, loadJSONSync, removeJSONSync } from "./api/storage-adapter";
 

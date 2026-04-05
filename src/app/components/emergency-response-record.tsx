@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, MapPin, Phone, PhoneMissed, CheckCircle,
-  MessageSquare, Mic, AlertTriangle, Clock, FileText,
-  Download, Lock, ChevronLeft, Radio, RefreshCw,
-  PhoneCall, X, Calendar, Zap, Camera, ImageIcon,
-} from "lucide-react";
+import { Shield, MapPin, Phone, PhoneMissed, CheckCircle, MessageSquare, Mic, AlertTriangle, Clock, FileText, Download, Lock, ChevronLeft, Radio, RefreshCw, PhoneCall, X, Calendar, Zap, Camera } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { IncidentRecord, ERREvent } from "./sos-emergency";
 import { getGPSTrail } from "./smart-timeline-tracker";

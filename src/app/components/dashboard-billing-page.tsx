@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
-import {
-  Shield, Zap, Crown, Rocket, CheckCircle2, FileText, Download,
-  TrendingUp, Cpu, Layers, UserCheck, Plus, ToggleLeft, ToggleRight,
-  AlertTriangle, Clock,
-} from "lucide-react";
 import { Card as DSCard, Badge, Divider } from "./design-system";
-import { employeeUsagePercent, createCompanyState, trialDaysRemaining, isTrial as isTrialFn, isTrialExpired, type PlanTier } from "./mobile-company";
+import { employeeUsagePercent, createCompanyState, trialDaysRemaining, isTrialExpired, type PlanTier } from "./mobile-company";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, calculateMonthlyBill } from "../constants/pricing";

@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Zap, Plus, Megaphone, Target, Search, AlertTriangle, X } from "lucide-react";
+import { Zap, Megaphone, Target, Search, AlertTriangle, X } from "lucide-react";
 
 interface QuickActionsProps {
   onCreateEmergency: () => void;

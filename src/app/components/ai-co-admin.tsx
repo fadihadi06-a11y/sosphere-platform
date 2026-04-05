@@ -8,23 +8,11 @@
 // "When human panics — AI stays calm"
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Phone, MapPin, Users, Siren, X, CheckCircle2,
-  AlertTriangle, ChevronRight, Activity, Battery, Wifi,
-  Ambulance, Megaphone, FileText, Download, Clock,
-  Camera, Send, Navigation, ArrowLeft, ArrowRight,
-  Mic, PlayCircle, PauseCircle, ChevronDown,
-  Bot, Sparkles, Brain, Target, Zap, Crown,
-  PhoneCall, Image as ImageIcon, Radio, Video,
-  Droplet, Pill, Award, TrendingUp, Share2,
-  FileCheck, Scale, Building2, DollarSign,
-  WifiOff, BatteryLow, Flame, Moon,
-} from "lucide-react";
+import { Phone, Users, X, CheckCircle2, AlertTriangle, ChevronRight, Activity, Battery, Wifi, Ambulance, Megaphone, Download, Clock, Camera, Send, Navigation, Mic, Bot, Brain, Target, Crown, Radio, Droplet, Pill, Award, Share2, Scale, DollarSign, WifiOff, BatteryLow, Flame, Moon } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
-import QRCode from "qrcode";
 // FIX C: Medical Alert Banner
 import { MedicalAlertBanner } from "./medical-alert-banner";
 

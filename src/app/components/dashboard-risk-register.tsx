@@ -7,13 +7,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, AlertTriangle, MapPin, CheckCircle2, Clock,
-  ChevronRight, ChevronDown, Eye, Download, Filter,
-  Users, Target, Layers, Activity, TriangleAlert,
-  FileText, Award, Calendar, Bell, TrendingUp,
-  Search, GraduationCap, ClipboardCheck, RefreshCw,
-} from "lucide-react";
+import { Shield, AlertTriangle, MapPin, CheckCircle2, Clock, ChevronRight, Download, Layers, TriangleAlert, Award, Bell, GraduationCap, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";

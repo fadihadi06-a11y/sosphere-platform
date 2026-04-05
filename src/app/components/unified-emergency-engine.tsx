@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from "motion/react";
 // Import all three engines
 import { AICoAdmin, type AICoAdminContext } from "./ai-co-admin";
 import { IntelligentGuide, type IREContext } from "./intelligent-guide";
-import { EmergencyResponseWizard, GuideMeButton } from "./guided-response";
+import { EmergencyResponseWizard } from "./guided-response";
 
 // ── Types ────────────────────────────────────────────────────────
 

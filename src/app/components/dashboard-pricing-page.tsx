@@ -1,19 +1,8 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Zap, Rocket, Crown, Check, X,
-  CreditCard, Lock, AlertTriangle, Clock, Calendar,
-  Users, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, Star, Building2, Infinity as InfinityIcon,
-  AlertCircle, CheckCircle2, XCircle, TimerOff,
-  RefreshCw, Download, LifeBuoy, PhoneCall,
-  BadgeCheck, Banknote, CalendarDays, FileText,
-  ArrowRight, Info, TrendingUp,
-  BarChart3, MapPin, Bell, Radio, Globe,
-  ShieldAlert, CirclePlay, ShieldCheck,
-} from "lucide-react";
+import { Shield, Zap, Rocket, Crown, Check, X, CreditCard, Lock, AlertTriangle, Clock, Users, ChevronDown, ChevronUp, Sparkles, AlertCircle, CheckCircle2, XCircle, TimerOff, RefreshCw, LifeBuoy, PhoneCall, BadgeCheck, CalendarDays, Info, TrendingUp, Bell, Globe, CirclePlay, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { hapticSuccess, hapticLight } from "./haptic-feedback";
+import { hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, annualSavings } from "../constants/pricing";
 
 // ═══════════════════════════════════════════════════════════

@@ -1,17 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Satellite, MapPin, AlertTriangle, CheckCircle2, WifiOff,
-  RefreshCw, Clock, DollarSign, Shield, Navigation, Target,
-  TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, Eye,
-} from "lucide-react";
-import {
-  runComplianceCheck, getLatestCompliance, getComplianceHistory,
-  onComplianceUpdate, GPS_CHECK_INTERVAL_DEMO,
-  autoBroadcastOutOfZone,
-  type ComplianceCheckResult, type EmployeeGPSSnapshot,
-} from "./shared-store";
-
+import { Satellite, AlertTriangle, CheckCircle2, WifiOff, RefreshCw, Clock, DollarSign, Shield, Navigation, Target, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, Eye } from "lucide-react";
 // ═══════════════════════════════════════════════════════════════
 // GPS Zone Compliance Monitor
 // Auto-checks every 15 min (demo: 15s) if employees are in zones

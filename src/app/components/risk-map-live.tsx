@@ -6,15 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  MapPin, AlertTriangle, Users, Shield,
-  Navigation, Eye, Clock, Zap, Satellite, Wifi,
-  Thermometer, Wind, LocateFixed, Layers,
-  Route, ChevronDown, ChevronUp,
-  Gauge, Timer, Flag, CheckCircle2,
-  Play, Pause, RotateCcw, Download,
-  Droplets, Sun, CloudRain, FileText,
-} from "lucide-react";
+import { MapPin, AlertTriangle, Users, Shield, Navigation, Eye, Clock, Zap, Satellite, Wifi, Thermometer, Wind, LocateFixed, Layers, Route, ChevronDown, ChevronUp, Gauge, Timer, Flag, CheckCircle2, Play, Pause, RotateCcw, Download, Droplets, Sun, CloudRain, FileText } from "lucide-react";
 import L from "leaflet";
 
 // Inject Leaflet CSS from CDN (avoids bundler issues with leaflet's image assets)
@@ -36,14 +28,7 @@ L.Icon.Default.mergeOptions({
 
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import {
-  getLiveWorkerPositions,
-  getActiveTrips,
-  getEmployeeTrip,
-  getZoneGPS,
-  onSyncEvent,
-  type EmployeeTrip,
-} from "./shared-store";
+import { getLiveWorkerPositions, getActiveTrips, getEmployeeTrip, getZoneGPS, onSyncEvent, type EmployeeTrip } from "./shared-store";
 
 interface RiskMapLiveProps {
   t: (key: string) => string;

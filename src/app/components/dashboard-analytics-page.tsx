@@ -5,18 +5,9 @@
 import React, { useState, useId } from "react";
 import { motion } from "motion/react";
 import { useDashboardStore } from "./stores/dashboard-store";
-import {
-  BarChart3, TrendingUp, TrendingDown, Download, Filter,
-  Calendar, Users, AlertTriangle, Shield, Clock, Activity,
-  ChevronDown, FileText, Zap, Target, Megaphone, Siren, Satellite,
-} from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  PieChart, Pie, Cell, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from "recharts";
-import { getBroadcasts, type BroadcastMessage, ZONE_NAMES } from "./shared-store";
+import { BarChart3, TrendingUp, TrendingDown, Download, AlertTriangle, Shield, Clock, Zap, Target, Megaphone, Siren } from "lucide-react";
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { getBroadcasts, ZONE_NAMES } from "./shared-store";
 import { getRealAuditLog } from "./audit-log-store";
 import { getTimelineEntries, getRealResponseTimeSec } from "./smart-timeline-tracker";
 import { toast } from "sonner";

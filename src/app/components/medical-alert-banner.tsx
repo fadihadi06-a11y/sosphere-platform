@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, Heart } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface MedicalAlertBannerProps {
   employee: {

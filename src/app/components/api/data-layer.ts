@@ -1,5 +1,5 @@
 import type { Employee, EmergencyItem, ZoneData } from "../dashboard-types";
-import { EMPLOYEES, EMERGENCIES, ZONES } from "../dashboard-types";
+import { EMPLOYEES } from "../dashboard-types";
 import { supabase } from "./supabase-client";
 
 // =================================================================

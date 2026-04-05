@@ -4,25 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, Bell, Users, MapPin, AlertTriangle, Clock,
-  ChevronRight, CheckCircle2, XCircle, Radio,
-  Phone, User, Plus,
-  Activity, AlertCircle,
-  ChevronDown, Siren,
-  HeartPulse, Navigation, Send,
-  Check, ChevronLeft,
-  ShieldCheck, Hash,
-  MessageSquare,
-  Megaphone, Zap, X,
-  UserCheck, Search, ArrowUpRight,
-  LayoutDashboard, BarChart3, CalendarDays, Download, FileText as FileTextIcon,
-  Camera, Layers, ArrowRight,
-} from "lucide-react";
-import {
-  Card as DSCard, SectionHeader, Badge,
-  Button as DSButton, AlertItem, Divider, TOKENS, SEVERITY,
-} from "./design-system";
+import { Shield, Bell, Users, MapPin, AlertTriangle, Clock, ChevronRight, CheckCircle2, XCircle, Radio, Phone, User, Plus, Activity, AlertCircle, ChevronDown, Siren, HeartPulse, Navigation, Send, ChevronLeft, ShieldCheck, Hash, MessageSquare, Megaphone, Zap, X, UserCheck, Search, ArrowUpRight, LayoutDashboard, BarChart3, CalendarDays, Download, Camera, Layers, ArrowRight } from "lucide-react";
 import { sortByPriority, getEmergencyStats } from "./priority-engine";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 import { useDashboardStore } from "./stores/dashboard-store";
@@ -30,15 +12,10 @@ import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEv
 import { CallTrigger } from "./call-panel";
 import { toast } from "sonner";
 // FIX J: Risk Scoring Engine
-import { calculateRiskScore, getRiskColor, getRiskLabel, type EmployeeRiskScore } from "./risk-scoring-engine";
+import { calculateRiskScore, getRiskColor, getRiskLabel } from "./risk-scoring-engine";
 import { getEvidencePipelineStatus } from "./evidence-store";
 import { hapticLight } from "./haptic-feedback";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
-import {
-  detectClusters, type ZoneCluster,
-  CLUSTER_LEVEL_CONFIG,
-  activateClusterSAR,
-} from "./zone-cluster-engine";
 import { Lock, ClipboardList, Skull, Radar } from "lucide-react";
 
 // ── FIX 3: Emergency Watchdog (Auto-escalation after 5min unattended) ──

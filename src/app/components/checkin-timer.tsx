@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  ChevronLeft, Clock, MapPin, AlertTriangle,
-  X, Heart, Plus, Timer, Shield, ArrowRight,
-} from "lucide-react";
+import { ChevronLeft, Clock, MapPin, AlertTriangle, X, Heart, Plus, Timer, Shield, ArrowRight } from "lucide-react";
 import { emitSyncEvent } from "./shared-store";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 

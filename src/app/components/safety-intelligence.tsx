@@ -13,25 +13,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Brain, Shield, AlertTriangle, Users, MapPin, Clock,
-  Thermometer, Wind, Eye, Activity, TrendingUp, TrendingDown,
-  ChevronRight, Bell, Zap, Heart, Radio, Timer,
-  Sun, CloudRain, Flame, Snowflake, ArrowUp, ArrowDown,
-  CheckCircle2, XCircle, AlertCircle, Target,
-  Waves, Gauge, BarChart3, Lightbulb, RefreshCw,
-  UserCheck, Navigation, Phone, MessageSquare,
-  ShieldAlert, ShieldCheck, BrainCircuit, Siren,
-  Send, PhoneCall, MapPinned, Megaphone, Wifi,
-  CircleAlert, CircleCheck, CircleDot, Radar,
-  Sparkles, Info, ArrowRight,
-} from "lucide-react";
+import { Shield, AlertTriangle, Users, Clock, Thermometer, Wind, Eye, Activity, TrendingUp, TrendingDown, ChevronRight, Zap, Heart, Timer, Sun, Flame, ArrowUp, ArrowDown, CheckCircle2, XCircle, AlertCircle, Target, Waves, Gauge, Lightbulb, RefreshCw, ShieldCheck, BrainCircuit, Siren, Send, PhoneCall, MapPinned, Wifi, CircleAlert, CircleCheck, CircleDot, Radar, Sparkles, Info, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
+import { hapticSuccess, hapticMedium } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { type Employee } from "./dashboard-types";
 import { onSyncEvent } from "./shared-store";
-import { calculateRiskScore, type EmployeeRiskScore, type EmployeeForRiskScoring } from "./risk-scoring-engine";
+import { calculateRiskScore, type EmployeeForRiskScoring } from "./risk-scoring-engine";
 
 interface SafetyIntelligenceProps {
   t: (key: string) => string;

@@ -4,11 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Shield, MapPin, Navigation, User, Phone,
-  CheckCircle2, ArrowRight, Sparkles, AlertTriangle,
-  Radio, Clock, Bell, Heart, Zap, Building2,
-} from "lucide-react";
+import { Shield, MapPin, Navigation, User, Phone, CheckCircle2, ArrowRight, Sparkles, AlertTriangle, Radio, Clock, Bell, Zap, Building2 } from "lucide-react";
 
 interface EmployeeWelcomeProps {
   employeeName: string;

@@ -1,11 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  ChevronLeft, Shield, Clock, MapPin, Phone, PhoneMissed,
-  CheckCircle, AlertTriangle, FileText, Download, Lock,
-  Filter, Search, Calendar, ChevronRight, ChevronDown,
-  Mic, Zap, Timer, X, Eye, Trash2, Share2,
-} from "lucide-react";
+import { ChevronLeft, Shield, Clock, MapPin, Phone, PhoneMissed, CheckCircle, AlertTriangle, FileText, Download, Lock, Search, ChevronRight, ChevronDown, Mic, Zap, Timer, X, Trash2, Share2 } from "lucide-react";
 import { generateDemoIndividualReport } from "./individual-pdf-report";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

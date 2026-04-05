@@ -14,10 +14,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Lightbulb, X, ChevronRight, Sparkles,
-  ArrowRight, HelpCircle, Info,
-} from "lucide-react";
+import { Lightbulb, X, Sparkles, ArrowRight, Info } from "lucide-react";
 
 // ── Hint Definition ───────────────────────────────────────────
 interface AdminHint {
