@@ -8,7 +8,7 @@ import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, ca
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 
-import { AlertTriangle, CheckCircle2, Clock, Download, FileText, Shield, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Crown, Download, FileText, Rocket, Shield, ToggleLeft, ToggleRight, Zap } from "lucide-react";
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
 // [SUPABASE_READY] — All mock data marked, handlers ready for async migration
