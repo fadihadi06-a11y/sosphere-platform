@@ -516,7 +516,7 @@ export function SARProtocolPage() {
         }
       );
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── FIX 4: Auto-load pre-fill data from SOS Emergency Popup bridge ──
   useEffect(() => {
@@ -550,7 +550,7 @@ export function SARProtocolPage() {
         duration: 5000,
       });
     } catch {}
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Timer — updates search cone in real-time
   useEffect(() => {

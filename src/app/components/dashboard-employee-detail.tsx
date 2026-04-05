@@ -59,7 +59,6 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
   if (!employee) return null;
 
   // ── Real activity from audit log, filtered by employee name ───────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const realActivity = useMemo(() => {
     if (!employee) return MOCK_ACTIVITY;
     try {
@@ -82,11 +81,9 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
         };
       });
     } catch { return MOCK_ACTIVITY; }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee?.id]);
 
   // ── Real incidents from audit log ───────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const realIncidents = useMemo(() => {
     if (!employee) return MOCK_INCIDENTS;
     try {
@@ -109,7 +106,6 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
         };
       });
     } catch { return MOCK_INCIDENTS; }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee?.id]);
 
   const statusColor = employee.status === "sos" ? "#FF2D55"

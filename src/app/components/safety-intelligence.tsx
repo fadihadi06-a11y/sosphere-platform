@@ -403,7 +403,6 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
 
   const workerRisks = useMemo(() => {
     return roster.map((emp, idx) => employeeToWorkerRisk(emp, idx, roster));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, recalcCounter]);
 
   // FIX 3: Online Now = employees with on-shift or checked-in status (same as dashboard)

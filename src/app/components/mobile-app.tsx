@@ -371,7 +371,7 @@ export function MobileApp() {
     }
     setIsRestoring(false);
     console.log("[SUPABASE_READY] profile_restored: " + JSON.stringify({ hasProfile: !!savedProfile, hasPhone }));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {

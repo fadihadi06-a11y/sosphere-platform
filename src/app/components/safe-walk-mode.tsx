@@ -99,7 +99,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro = false, onUpgrade, e
       userZone,
       contactsCount: emergencyContacts?.length ?? 0,
     }));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Active walk state
   const [walkTimer, setWalkTimer] = useState(0); // seconds elapsed

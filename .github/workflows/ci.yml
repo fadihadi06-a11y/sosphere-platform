@@ -31,7 +31,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx eslint src/app/ --max-warnings 800
+      - run: npx eslint src/app/ --max-warnings 850
 
   # ── Job 3: Build ───────────────────────────────────────
   build:

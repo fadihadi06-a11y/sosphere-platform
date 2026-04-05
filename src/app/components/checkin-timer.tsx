@@ -273,7 +273,6 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
         setTimeout(() => onSOSTrigger(), 500);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function clearTimerStorage() {
@@ -473,7 +472,6 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSOSTrigger, onTimerStateChange]);
 
   // Derived

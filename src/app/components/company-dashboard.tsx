@@ -561,7 +561,6 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         initRealtimeChannels(fallbackId);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ══════════════════════════════════════════════════════════════
@@ -658,7 +657,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     }, 3600000); // 1 hour
 
     return () => clearInterval(intervalId);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // FIX 4: Prototype disclaimer state
   const [protoDisclaimerVisible, setProtoDisclaimerVisible] = useState(true);

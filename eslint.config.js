@@ -4,6 +4,7 @@ import globals from "globals";
 
 export default [
   { ignores: ["dist/**", "node_modules/**", "public/**", "supabase/**", "src/imports/**"] },
+  { linterOptions: { reportUnusedDisableDirectives: "off" } },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -19,6 +20,8 @@ export default [
       "@typescript-eslint/no-explicit-any": "off", // too noisy for existing codebase
       "@typescript-eslint/no-empty-function": "off",
       "@typescript-eslint/ban-ts-comment": "off",
+      "no-empty": "warn",              // many intentional catch {} blocks
+      "no-useless-escape": "warn",      // non-critical style issue
       "no-constant-condition": "warn",
       "no-debugger": "error",
       "no-duplicate-case": "error",

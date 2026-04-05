@@ -510,7 +510,6 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
         voiceCallEngine.endCall();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
   const handleEndCall = () => {
@@ -1115,7 +1114,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     setContacts(loaded);
     contactsRef.current = loaded;
     console.log("[SUPABASE_READY] contacts_loaded: " + loaded.length + " contacts");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const addEvent = useCallback((ev: Omit<ERREvent, "id" | "ts">) => {
     const full: ERREvent = { ...ev, id: `EVT-${Date.now().toString(36)}-${(crypto?.randomUUID ? crypto.randomUUID().slice(0,8) : Date.now().toString(36).slice(-4))}`, ts: new Date() };
@@ -1578,7 +1577,6 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       if (tickRef.current)    clearInterval(tickRef.current);
       if (dmsTickRef.current) clearInterval(dmsTickRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derived

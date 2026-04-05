@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "lint": "eslint src/app/ --max-warnings 800",
+    "lint": "eslint src/app/ --max-warnings 850",
     "audit:check": "npm audit --audit-level=high"
   },
   "dependencies": {

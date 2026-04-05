@@ -187,7 +187,6 @@ export function BillingPage({ companyState, webMode = false }: {
       console.log("[SUPABASE_READY] addon_toggled: " + JSON.stringify({ addonId, active: next[addonId], newTotal }));
       return next;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billingCycle, storeEmployees.length]);
 
   // ── Invoices state (mutable — new invoices added on plan switch) ──
