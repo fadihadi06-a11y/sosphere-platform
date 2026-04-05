@@ -16,6 +16,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { recordGPSPoint, recordGPSBatch, getGPSTrailCount, type GPSPoint } from "./offline-database";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ── Configuration ──────────────────────────────────────────────
 
@@ -249,12 +250,77 @@ async function processPosition(position: GeolocationPosition): Promise<void> {
       deadReckoningActive: false,
       lastError: null,
     });
+
+    // Background sync to Supabase (non-blocking)
+    syncPointToSupabase({
+      employeeId: config.employeeId,
+      lat, lng, accuracy,
+      altitude, speed, heading,
+      timestamp,
+      batteryLevel: trackerState.batteryLevel,
+      source: "gps",
+    });
   } catch (err) {
     const errMsg = `Storage error: ${err}`;
     updateState({
       lastError: errMsg,
       errors: [...trackerState.errors.slice(-9), errMsg],
     });
+  }
+}
+
+// ── Supabase Sync (background, non-blocking) ─────────────────
+let _syncBuffer: any[] = [];
+let _syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncPointToSupabase(point: any): void {
+  if (!SUPABASE_CONFIG.isConfigured) return;
+
+  _syncBuffer.push({
+    employee_id: point.employeeId,
+    lat: point.lat,
+    lng: point.lng,
+    accuracy: point.accuracy,
+    altitude: point.altitude,
+    speed: point.speed,
+    heading: point.heading,
+    battery_level: point.batteryLevel,
+    source: point.source || "gps",
+    recorded_at: new Date(point.timestamp).toISOString(),
+  });
+
+  // Batch sync every 30 seconds (reduce API calls)
+  if (!_syncTimer) {
+    _syncTimer = setTimeout(async () => {
+      const batch = [..._syncBuffer];
+      _syncBuffer = [];
+      _syncTimer = null;
+
+      if (batch.length === 0) return;
+
+      try {
+        const { error } = await supabase.from("gps_trail").insert(batch);
+        if (error) throw error;
+        console.log(`[GPS] Synced ${batch.length} points to Supabase`);
+      } catch (e) {
+        console.warn("[GPS] Supabase sync failed, points saved locally:", e);
+        // Points are already in IndexedDB — they'll sync later
+      }
+    }, 30000);
+  }
+}
+
+/** Force sync all buffered points immediately (call on app close) */
+export async function flushGPSSync(): Promise<void> {
+  if (!SUPABASE_CONFIG.isConfigured || _syncBuffer.length === 0) return;
+  const batch = [..._syncBuffer];
+  _syncBuffer = [];
+  if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+  try {
+    await supabase.from("gps_trail").insert(batch);
+    console.log(`[GPS] Flushed ${batch.length} points to Supabase`);
+  } catch (e) {
+    console.warn("[GPS] Flush failed:", e);
   }
 }
 

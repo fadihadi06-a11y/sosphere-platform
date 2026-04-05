@@ -6,6 +6,8 @@
 // Persistent via localStorage.
 // ═══════════════════════════════════════════════════════════════
 
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+
 const STORAGE_KEY = "sosphere_rrp_analytics";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -71,6 +73,27 @@ export function recordRRPSession(session: Omit<RRPSession, "id" | "timestamp">):
   // Keep max 200 sessions
   if (sessions.length > 200) sessions.splice(0, sessions.length - 200);
   saveSessions(sessions);
+
+  // Background: save to Supabase
+  if (SUPABASE_CONFIG.isConfigured) {
+    supabase.from("rrp_sessions").insert({
+      id: record.id,
+      emergency_id: record.emergencyId,
+      employee_name: record.employeeName,
+      zone: record.zone,
+      sos_type: record.sosType,
+      severity: record.severity,
+      threat_level: record.threatLevel,
+      total_time_sec: record.totalTimeSec,
+      actions_total: record.actionsTotal,
+      actions_completed: record.actionsCompleted,
+      per_action_times: record.perActionTimes,
+      auto_escalated: record.autoEscalated,
+      opened_ire: record.openedIRE,
+      created_at: record.timestamp,
+    }).then(() => {}).catch((e: any) => console.warn("[RRP] Supabase save failed:", e));
+  }
+
   return record;
 }
 

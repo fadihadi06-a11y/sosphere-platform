@@ -5,19 +5,39 @@ import {
   X, Heart, Plus, Timer, Shield, ArrowRight,
 } from "lucide-react";
 import { emitSyncEvent } from "./shared-store";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ─── Timer scaling ────────────────────────────────────────────────────────────
 // DEMO_FACTOR is always 1 in production. Real durations come from user input.
-// TODO: Migrate to supabase.from('checkin_sessions') for persistence.
 const DEMO_FACTOR = 1;
 const WARNING_MINUTES = 5;
 const EXTEND_MINUTES = 30;
 
 // FIX AUDIT-3.2: localStorage key for persisting deadline across backgrounding/refresh
-// [SUPABASE_READY] checkin_timer: migrate to supabase.from('checkin_sessions').upsert({ employee_id, deadline, total_sec, warn_cycle })
 const CHECKIN_DEADLINE_KEY = "sosphere_checkin_deadline";
 const CHECKIN_TOTAL_KEY = "sosphere_checkin_total";
 const CHECKIN_WARN_CYCLE_KEY = "sosphere_checkin_warn_cycle";
+
+// ── Supabase background sync for check-in events ────────────────────────────
+function syncCheckinEvent(event: {
+  type: "start" | "cancel" | "safe" | "extend" | "triggered" | "warning";
+  employeeId: string;
+  employeeName: string;
+  zone: string;
+  durationMin?: number;
+  remainingSec?: number;
+}) {
+  if (!SUPABASE_CONFIG.isConfigured) return;
+  supabase.from("checkin_events").insert({
+    employee_id: event.employeeId,
+    employee_name: event.employeeName,
+    zone: event.zone,
+    event_type: event.type,
+    duration_min: event.durationMin || null,
+    remaining_sec: event.remainingSec || null,
+    created_at: new Date().toISOString(),
+  }).then(() => {}).catch((e: any) => console.warn("[CheckIn] Supabase sync failed:", e));
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Phase = "setup" | "active" | "warning" | "triggered";
@@ -370,9 +390,9 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     startCheckLoop();
 
     if (onTimerStateChange) onTimerStateChange(true);
-    // Emit check-in event to dashboard
-    // [SUPABASE_READY] checkin_start: insert into checkin_events { employee_id, type: 'start', duration, zone }
+    // Emit check-in event to dashboard + sync to Supabase
     emitSyncEvent({ type: "CHECKIN", employeeId: "EMP-APP", employeeName: userName, zone: userZone, timestamp: Date.now(), data: { duration: totalMinutes } });
+    syncCheckinEvent({ type: "start", employeeId: "EMP-APP", employeeName: userName, zone: userZone, durationMin: totalMinutes });
   }, [totalMinutes, minutesToDemoSeconds, warningThresholdSec, onSOSTrigger, onTimerStateChange, userName, userZone]);
 
   const cancelTimer = useCallback(() => {
@@ -388,7 +408,8 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     setRemaining(0);
     warningShownRef.current = false;
     if (onTimerStateChange) onTimerStateChange(false);
-  }, [onTimerStateChange]);
+    syncCheckinEvent({ type: "cancel", employeeId: "EMP-APP", employeeName: userName, zone: userZone });
+  }, [onTimerStateChange, userName, userZone]);
 
   const handleImSafe = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -402,7 +423,8 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     setRemaining(0);
     warningShownRef.current = false;
     if (onTimerStateChange) onTimerStateChange(false);
-  }, [onTimerStateChange]);
+    syncCheckinEvent({ type: "safe", employeeId: "EMP-APP", employeeName: userName, zone: userZone });
+  }, [onTimerStateChange, userName, userZone]);
 
   const handleExtend = useCallback(() => {
     if (warningTickRef.current) clearInterval(warningTickRef.current);
@@ -418,7 +440,8 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     phaseRef.current = "active";
     setPhase("active");
     localStorage.setItem(CHECKIN_DEADLINE_KEY, String(newDeadline));
-  }, [extendSec]);
+    syncCheckinEvent({ type: "extend", employeeId: "EMP-APP", employeeName: userName, zone: userZone, remainingSec: extendSec });
+  }, [extendSec, userName, userZone]);
 
   useEffect(() => {
     return () => {

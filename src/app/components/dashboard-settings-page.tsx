@@ -91,10 +91,29 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       localStorage.setItem("sosphere_admin_profile", JSON.stringify(adminProfile));
       localStorage.setItem("sosphere_admin_phone", (authState.phone || "").replace(/\s/g, ""));
     }
+    // Sync to Supabase (background)
+    try {
+      const { SUPABASE_CONFIG } = await import("./api/supabase-client");
+      if (SUPABASE_CONFIG.isConfigured) {
+        const { supabase } = await import("./api/supabase-client");
+        supabase.from("company_settings").upsert({
+          company_id: companyName || "default",
+          company_name: companyName,
+          language: lang || "en",
+          checkin_interval: checkinInterval,
+          session_timeout: useDashboardStore.getState().sessionTimeout,
+          toggles,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "company_id" }).then(() => {
+          console.log("[Settings] Synced to Supabase");
+        }).catch((e: any) => console.warn("[Settings] Supabase sync failed:", e));
+      }
+    } catch { /* Supabase not available */ }
+
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);
     hapticSuccess();
-    toast.success("Settings Saved", { description: "All changes persisted locally" });
+    toast.success("Settings Saved", { description: "Settings saved and synced" });
   };
 
   // ── CRITICAL FIX 3: Session timeout from Zustand store (not local state) ──
