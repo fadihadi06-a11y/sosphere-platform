@@ -50,7 +50,7 @@ import { loadJSONSync } from "./api/storage-adapter";
 // FIX AUDIT-7.1 + 7.3: Consent screens
 import { TermsConsentScreen, GpsConsentScreen, hasCompletedConsent, hasCompletedGpsConsent } from "./consent-screens";
 // Android back button support via Capacitor
-var CapacitorApp: any = null; // var avoids TDZ — let causes minifier crash at module scope
+let CapacitorApp: any = null;
 try { import("@capacitor/app").then((m: any) => { CapacitorApp = m.App; }); } catch {}
 
 /** Safe wrapper for loadJSONSync � returns fallback on any error */
@@ -378,7 +378,7 @@ export function MobileApp() {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
     if (loggedInScreens.includes(screen)) {
       // Start GPS tracking with high-risk preset
-      const _realGpsId = `EMP-${loginName.replace(/\s+/g, "")}` || "EMP-UNKNOWN";
+      const _realGpsId = loginName.replace(/\s+/g, "") ? `EMP-${loginName.replace(/\s+/g, "")}` : "EMP-UNKNOWN";
       startGPSTracking({ employeeId: _realGpsId, ...ZONE_PRESETS.high });
       // Enable auto-sync on reconnect
       enableAutoSync();

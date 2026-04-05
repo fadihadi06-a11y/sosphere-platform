@@ -1452,7 +1452,8 @@ export function IntelligentGuide({
                       const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
                       const pw = doc.internal.pageSize.getWidth();
                       const ph = doc.internal.pageSize.getHeight();
-                      const safe = (s: string) => s.replace(/[^\x00-\x7F]/g, "");
+                      // eslint-disable-next-line no-control-regex
+                      const safe = (s: string) => s.replace(/[^\u0000-\u007F]/g, "");
                       const now = new Date();
 
                       // Generate QR Code

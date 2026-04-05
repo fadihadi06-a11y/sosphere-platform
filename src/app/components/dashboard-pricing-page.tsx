@@ -4,7 +4,7 @@ import {
   Shield, Zap, Rocket, Crown, Check, X,
   CreditCard, Lock, AlertTriangle, Clock, Calendar,
   Users, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, Star, Building2, Infinity,
+  Sparkles, Star, Building2, Infinity as InfinityIcon,
   AlertCircle, CheckCircle2, XCircle, TimerOff,
   RefreshCw, Download, LifeBuoy, PhoneCall,
   BadgeCheck, Banknote, CalendarDays, FileText,

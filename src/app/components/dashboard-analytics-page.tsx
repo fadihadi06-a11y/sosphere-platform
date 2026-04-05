@@ -319,7 +319,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 await import("jspdf-autotable");
                 const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
                 const pw = doc.internal.pageSize.getWidth();
-                const safe = (s: string) => s.replace(/[^\x00-\x7F]/g, "");
+                // eslint-disable-next-line no-control-regex
+                const safe = (s: string) => s.replace(/[^\u0000-\u007F]/g, "");
                 // Background
                 doc.setFillColor(5, 7, 14);
                 doc.rect(0, 0, pw, doc.internal.pageSize.getHeight(), "F");

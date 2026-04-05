@@ -573,7 +573,8 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       .replace(/≥/g, ">=")
       .replace(/≤/g, "<=")
       .replace(/°/g, " deg")
-      .replace(/[^\x00-\x7F]/g, "");
+      // eslint-disable-next-line no-control-regex
+      .replace(/[^\u0000-\u007F]/g, "");
 
     // ── Colors ──
     const C = {

@@ -743,7 +743,6 @@ export function generateMockTrail(
 
     // Add occasional stops
     if (Math.random() < 0.05 && progress < 0.8) {
-      speed = 0;
       for (let s = 0; s < 3; s++) {
         trail.push({
           lat: lat + (Math.random() - 0.5) * 0.00001,

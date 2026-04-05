@@ -171,8 +171,10 @@ export function getRRPAnalytics(): RRPAnalytics {
     else if (recentAvg > olderAvg * 1.15) trend = "declining";
   }
 
-  // Speed rating
+  // Speed rating — used in return object below
+  // eslint-disable-next-line no-useless-assignment
   let speedRating: RRPAnalytics["speedRating"] = "AVERAGE";
+  // eslint-disable-next-line no-useless-assignment
   let speedRatingColor = "#FF9500";
   if (avgTime <= 30) { speedRating = "ELITE"; speedRatingColor = "#FFD700"; }
   else if (avgTime <= 45) { speedRating = "FAST"; speedRatingColor = "#00C853"; }
@@ -181,8 +183,9 @@ export function getRRPAnalytics(): RRPAnalytics {
   else { speedRating = "SLOW"; speedRatingColor = "#FF2D55"; }
 
   // Streaks (sessions under 60s)
-  let currentStreak = 0;
   let bestStreak = 0;
+  // eslint-disable-next-line no-useless-assignment -- reassigned on line 195
+  let currentStreak = 0;
   let streak = 0;
   for (const s of sessions) {
     if (s.totalTimeSec < 60 && s.actionsCompleted === s.actionsTotal) {

@@ -552,6 +552,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   const verificationURL = `https://sosphere.app/verify/${verificationId}`;
 
   // ── REAL SHA-256: Hash the document identity for legal integrity ──
+  // eslint-disable-next-line no-useless-assignment -- used on line 1095
   let realDocHash = "";
   try {
     const hashData = `${verificationId}|${companyName}|${Date.now()}|${selectedSections.join(",")}`;

@@ -93,7 +93,11 @@ function CreateScheduleModal({ onClose, onSave }: { onClose: () => void; onSave:
   const toggleType = (id: string) => {
     setSelectedTypes(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -101,7 +105,7 @@ function CreateScheduleModal({ onClose, onSave }: { onClose: () => void; onSave:
   const toggleRecipient = (email: string) => {
     setSelectedRecipients(prev => {
       const next = new Set(prev);
-      next.has(email) ? next.delete(email) : next.add(email);
+      if (next.has(email)) { next.delete(email); } else { next.add(email); }
       return next;
     });
   };
