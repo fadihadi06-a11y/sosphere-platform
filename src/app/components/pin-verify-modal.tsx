@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, Fingerprint, X, Shield, Crown, Key, Lock } from "lucide-react";
 type OperationType =
   | "change_permissions"
   | "change_role"

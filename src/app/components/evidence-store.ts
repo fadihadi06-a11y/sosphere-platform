@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
+import { Shield } from "lucide-react";
 // =================================================================
 // SOSphere -- Evidence Intelligence Pipeline (Central Vault)
 // =================================================================

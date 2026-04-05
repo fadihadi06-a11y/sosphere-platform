@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
+import { ArrowRight, AtSign, Building2, CheckCircle2, ChevronDown, Eye, Lock, Mail, RefreshCw, Search, Shield, XCircle } from "lucide-react";
 import { CompanyDashboard } from "./company-dashboard";
 import { CompanyRegister } from "./company-register";
 import { setDashboardSession, clearDashboardSession } from "./utils/dashboard-auth-guard";

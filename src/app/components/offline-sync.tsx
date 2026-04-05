@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { AlertTriangle, BatteryFull, BatteryLow, BatteryMedium, Check, ChevronDown, ChevronUp, Database, HardDrive, MapPin, Power, Radio, RefreshCw, Satellite, Send, Shield, Wifi, WifiOff, X } from "lucide-react";
 import { getStorageStats, type OfflineStorageStats } from "./offline-database";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import { subscribeToTracker, getTrackerState, startGPSTracking, stopGPSTracking, type GPSTrackerState, ZONE_PRESETS } from "./offline-gps-tracker";
