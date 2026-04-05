@@ -20,7 +20,16 @@
 //  • Sync history and error log
 // ═══════════════════════════════════════════════════════════════
 
-import { getUnsyncedSOS, markSOSSynced, incrementSOSRetry, getUnsyncedCheckins, markCheckinSynced, getUnsyncedGPS, markGPSBatchSynced, getUnsyncedIncidents, markIncidentSynced, getUnsyncedMessages, markMessageSynced, getStorageStats, type GPSPoint } from "./offline-database";
+import {
+  getUnsyncedSOS, markSOSSynced, incrementSOSRetry,
+  getUnsyncedCheckins, markCheckinSynced,
+  getUnsyncedGPS, markGPSBatchSynced,
+  getUnsyncedIncidents, markIncidentSynced,
+  getUnsyncedMessages, markMessageSynced,
+  getStorageStats,
+  type SOSRecord, type CheckinRecord, type GPSPoint,
+  type IncidentRecord, type OfflineMessage, type OfflineStorageStats,
+} from "./offline-database";
 
 // ── Types ──────────────────────────────────────────────────────
 

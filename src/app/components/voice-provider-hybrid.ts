@@ -9,7 +9,12 @@
 // In demo mode (no Twilio): falls back to LocalWebRTC.
 // ═══════════════════════════════════════════════════════════════
 
-import type { VoiceProvider, ProviderConfig, ProviderEvents, ProviderType } from "./voice-call-types";
+import type {
+  VoiceProvider,
+  ProviderConfig,
+  ProviderEvents,
+  ProviderType,
+} from "./voice-call-types";
 import { LocalWebRTCProvider } from "./voice-provider-local";
 import { TwilioClientProvider, TwilioVoiceProvider } from "./voice-provider-twilio";
 

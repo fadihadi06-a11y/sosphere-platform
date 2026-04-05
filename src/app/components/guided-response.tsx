@@ -9,9 +9,22 @@
 // "The dashboard that never leaves you alone"
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, ChevronRight, ChevronLeft, CheckCircle, CheckCircle2, AlertTriangle, Phone, MapPin, Users, Siren, Heart, MessageCircle, Navigation, Clock, Mic, Building2, Map as MapIcon, CreditCard, Zap, ArrowRight, X, Sparkles, ShieldCheck, UserPlus, Volume2, Eye, Compass, Activity, Ambulance, Flame, Lock, LifeBuoy, Megaphone, FileText, Camera, ArrowUpRight, Bell, AlertCircle, Search, Clipboard, Flag, Award, ExternalLink, Route, Car, PhoneOff, MapPinOff } from "lucide-react";
+import {
+  Shield, ChevronRight, ChevronLeft, CheckCircle, CheckCircle2,
+  AlertTriangle, Phone, MapPin, Users, Siren, Heart,
+  MessageCircle, Navigation, Clock, Mic, Radio,
+  Building2, Plus, Map as MapIcon, CreditCard, Layers,
+  Zap, ArrowRight, X, Sparkles, Target, ShieldCheck,
+  UserPlus, Settings, Volume2, Eye, Send, Compass,
+  Activity, TriangleAlert, Ambulance, Flame, Lock,
+  HelpCircle, Star, LifeBuoy, Megaphone, FileText,
+  Camera, Upload, ArrowUpRight, Bell, TrendingUp,
+  AlertCircle, Search, Clipboard, Flag, Award,
+  Share2, ExternalLink, Scale, Route, Car,
+  PhoneOff, MapPinOff,
+} from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
 // Types

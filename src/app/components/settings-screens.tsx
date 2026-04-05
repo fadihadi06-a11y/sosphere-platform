@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ChevronLeft, Check, Smartphone, HelpCircle, Mail, MessageCircle, FileText, Shield, Eye, MapPin, Fingerprint, Trash2, Download, Watch, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft, Check, Globe, Lock, Smartphone,
+  HelpCircle, Mail, MessageCircle, FileText, Shield,
+  Eye, EyeOff, MapPin, Fingerprint, Trash2, Download,
+  Bluetooth, Watch, ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight, hapticWarning, hapticSuccess } from "./haptic-feedback";
 

@@ -6,10 +6,23 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Navigation, MapPin, Clock, CheckCircle2, Shield, Play, Home, X, Target, WifiOff, Battery, Locate, Radio, ChevronUp, Circle, Wrench } from "lucide-react";
+import {
+  Navigation, MapPin, Clock, CheckCircle2, AlertTriangle,
+  Shield, Play, Flag, Home, X, Zap, Timer,
+  ArrowRight, Target, Wifi, WifiOff, Battery,
+  BatteryLow, Locate, Radio, ChevronUp, ChevronDown,
+  Phone, Send, Circle, XCircle, Wrench,
+} from "lucide-react";
 import { toast } from "sonner";
-import { hapticSuccess, hapticMedium } from "./haptic-feedback";
-import { type Mission, type MissionStatus, getActiveMission, getMission, onMissionEvent, acceptMission, startMissionDeparture, arriveAtSite, startWorking, leaveSite, arriveHome, addGPSPoint, addHeartbeat, getMissionProgress, MISSION_STATUS_CONFIG, seedDemoMissions } from "./mission-store";
+import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
+import {
+  type Mission, type MissionStatus,
+  getActiveMission, getMission, onMissionEvent,
+  acceptMission, startMissionDeparture, arriveAtSite,
+  startWorking, leaveSite, arriveHome,
+  addGPSPoint, addHeartbeat, getMissionProgress,
+  MISSION_STATUS_CONFIG, getAllMissions, seedDemoMissions,
+} from "./mission-store";
 
 // ── Helpers ───────────────────────────────────────────────────
 function fmtDur(ms: number): string {

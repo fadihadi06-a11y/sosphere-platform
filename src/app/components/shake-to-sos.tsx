@@ -9,7 +9,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Smartphone, X, Activity, Vibrate } from "lucide-react";
+import {
+  Smartphone, Shield, X, AlertTriangle, CheckCircle,
+  Activity, Vibrate,
+} from "lucide-react";
 import { saveSensorEvent } from "./fall-detection";
 
 // ── Shake Detection Hook ──────────────────────────────────────

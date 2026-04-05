@@ -7,8 +7,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
-import { MessageCircle, Send, ChevronDown, ChevronUp, X } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  MessageCircle, Send, ChevronDown, ChevronUp, X,
+  MapPin, Heart, Shield, AlertTriangle, Clock,
+  CheckCircle, Mic, Volume2,
+} from "lucide-react";
 import { sendChatMessage, getChatMessages, getChatMessagesAsync, onChatMessage, type EmergencyChatMessage } from "./shared-store";
 
 // ── Preset Messages ───────────────────────────────────────────

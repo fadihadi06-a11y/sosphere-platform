@@ -1,14 +1,29 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, Users, MapPin, AlertTriangle, ChevronRight, CheckCircle2, Radio, FileText, Building2, User, LogOut, Map as MapIcon, UserCheck, Zap, Settings, LayoutDashboard, TrendingUp, X, ArrowUpRight, Siren, Navigation, Download, Layers, Target, Cpu, Signal, FileWarning, CalendarDays, Megaphone, Route, Trophy, ScrollText, UserCog, Wallet, Radar, ListChecks, BookOpen, CloudLightning, Award, Mail, Brain, Sparkles, Camera, PhoneMissed, Phone, Clock, Lock, Crown, RefreshCw } from "lucide-react";
+import {
+  Shield, Users, MapPin, AlertTriangle,
+  ChevronRight, CheckCircle2, Radio,
+  FileText, Building2, User, LogOut, Map as MapIcon,
+  UserCheck, Zap, Settings,
+  LayoutDashboard, TrendingUp,
+  X, ArrowUpRight, Siren,
+  Navigation, Download, Layers, Target,
+  Cpu, Signal, FileWarning, CalendarDays,
+  Megaphone, Route, Trophy, ScrollText,
+  UserCog, Wallet, Radar, ListChecks, BookOpen,
+  CloudLightning, Award, Mail,
+  Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
+  CreditCard, Lock, Crown, RefreshCw,
+} from "lucide-react";
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
-import { DashPage, Employee, EmergencyItem } from "./dashboard-types";
+import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 // Mock data now read from Zustand store — no direct EMPLOYEES/EMERGENCIES/ZONES imports needed
 import { CommandCenterPage } from "./command-center";
 import { IncidentReportsTab } from "./hub-incident-reports";
 import { RiskMapLivePage } from "./risk-map-live";
-import { hasPermission, ROLE_CONFIG, type AuthState } from "./mobile-auth";
+import { type PriorityOverrideLog } from "./priority-engine";
+import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
 // (LiveAlertOverlay — replaced by SOSEmergencyPopup)
 import { HazardAlertBanner } from "./hazard-banner";
@@ -17,6 +32,10 @@ import { ManualPriorityModal } from "./manual-priority-modal";
 import { SettingsPage } from "./dashboard-settings-page";
 import { PricingPage } from "./dashboard-pricing-page";
 import { BillingPage } from "./dashboard-billing-page";
+import {
+  OverviewPage, EmergenciesPage,
+  IncidentHistoryPage, CreateEmergencyDrawer,
+} from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
 import { AnalyticsPage } from "./dashboard-analytics-page";
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";

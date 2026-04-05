@@ -1,10 +1,15 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowRight, AtSign, Building2, CheckCircle2, ChevronDown, Eye, Lock, Mail, RefreshCw, Search, Shield, XCircle, AlertTriangle, Globe, Users, Wifi } from "lucide-react";
 import { CompanyDashboard } from "./company-dashboard";
 import { CompanyRegister } from "./company-register";
-import { setDashboardSession, clearDashboardSession } from "./utils/dashboard-auth-guard";
+import { setDashboardSession, clearDashboardSession, getDashboardSession, isSessionExpired } from "./utils/dashboard-auth-guard";
+import {
+  Shield, Lock, ArrowRight, CheckCircle2,
+  Building2, Users, AlertTriangle, Wifi,
+  Globe, Eye, Mail, AtSign, RefreshCw,
+  XCircle, AlertCircle, ChevronDown,
+} from "lucide-react";
 import { supabase } from "./api/supabase-client";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";

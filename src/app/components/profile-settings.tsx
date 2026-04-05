@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ChevronRight, Crown, Shield, Heart, Bell, Globe, Moon, Lock, LogOut, HelpCircle, FileText, Users, Building2, Smartphone, MapPin, Star, Zap, Clock, Package, Phone } from "lucide-react";
+import {
+  ChevronRight, Crown, Shield, Heart, Bell,
+  Globe, Moon, Lock, LogOut, HelpCircle, FileText,
+  Users, Building2, Smartphone, MapPin, User,
+  Star, Zap, AlertTriangle, Clock, Package, Phone,
+} from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

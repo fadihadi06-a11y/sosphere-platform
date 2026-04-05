@@ -6,13 +6,28 @@
 // drills, progress tracking, and linked demo walkthroughs.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
-import { Shield, Play, Pause, ChevronRight, AlertTriangle, CheckCircle2, Phone, MapPin, Clock, Wifi, WifiOff, User, Zap, MessageCircle, Navigation, Siren, Brain, Radio, Sparkles, Map, Route, Users, LocateFixed, Megaphone, ShieldAlert, ClipboardCheck, Lock, Sun, Moon, Award, Trophy, Target, Star, Eye, Crosshair, Heart, Ambulance, CloudLightning, Smartphone, Download, Crown, Medal, TrendingUp, Activity, BookOpen, GraduationCap, Timer, ArrowLeft } from "lucide-react";
+import {
+  Shield, Play, Pause, ChevronRight, ChevronLeft,
+  AlertTriangle, CheckCircle2, Phone, MapPin, Clock,
+  Wifi, WifiOff, Battery, User, Bell, Zap,
+  MessageCircle, Navigation, ShieldCheck,
+  Siren, Brain, Radio, Sparkles,
+  Map, Route, Users, Flame,
+  LocateFixed, Megaphone, ShieldAlert, ClipboardCheck,
+  Lock, Sun, Moon, Award, Trophy, Target,
+  ArrowRight, X, Star, Eye, RefreshCw,
+  Crosshair, Heart, Ambulance, CloudLightning,
+  Smartphone, Volume2, Download, BarChart3,
+  Crown, Medal, TrendingUp, Activity,
+  BookOpen, GraduationCap, Timer, Bookmark,
+  RotateCcw, ArrowLeft,
+} from "lucide-react";
 import { hapticSuccess, playUISound } from "./haptic-feedback";
-import { getAdminRating, type AdminRating } from "./ire-performance-store";
+import { getAdminRating, getIREHistory, type AdminRating } from "./ire-performance-store";
 import { MultiplayerDrill } from "./multiplayer-drill";
 import { CertificationPanel } from "./certification-system";
 

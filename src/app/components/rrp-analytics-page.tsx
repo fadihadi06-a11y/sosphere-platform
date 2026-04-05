@@ -8,8 +8,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
-import { Zap, Clock, Target, TrendingUp, TrendingDown, Activity, Brain, Shield, Flame, CheckCircle2, AlertTriangle, ChartBar, Timer, Users, Minus, Star, Crown, Download, FileText } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import {
+  Zap, Clock, Target, TrendingUp, TrendingDown,
+  Trophy, Activity, Brain, Shield, Flame,
+  ChevronRight, CheckCircle2, AlertTriangle,
+  ChartBar, Timer, Users, ArrowUpRight,
+  Minus, Star, Crown, Sparkles, Download, FileText,
+} from "lucide-react";
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
+  Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+} from "recharts";
 import { getRRPAnalytics, seedMockRRPData, type RRPAnalytics } from "./rrp-analytics-store";
 import { MOCK_ADMINS as LEADERBOARD_ADMINS } from "./training-center";
 import jsPDF from "jspdf";

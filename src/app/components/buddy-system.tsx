@@ -8,10 +8,17 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Users, Link, Unlink, MapPin, AlertTriangle, ChevronRight, X, Navigation, Clock, Bell, Zap, UserPlus, Search, PhoneCall, CheckCircle2, ShieldCheck } from "lucide-react";
+import {
+  Users, Link, Unlink, MapPin, Phone, Shield,
+  CheckCircle, AlertTriangle, ChevronRight, X,
+  Heart, Navigation, Clock, Bell, Eye, Zap,
+  UserPlus, Search, PhoneCall, Send, UserCheck,
+  CheckCircle2, ShieldCheck, Radio,
+  Sparkles, CircleCheck, Activity,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
-import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge } from "./design-system";
+import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
 
 // ── Types ─────────────────────────────────────────────────────

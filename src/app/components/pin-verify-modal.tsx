@@ -3,11 +3,14 @@
 // Required for Owner & Main Admin before sensitive permission changes
 // Animated numpad · 6-digit PIN · Shake on error · Auto-submit
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import {
+  Fingerprint, X, Shield, Crown, Key, Lock,
+  AlertTriangle, CheckCircle2, Eye, EyeOff,
+} from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, Fingerprint, X, Shield, Crown, Key, Lock } from "lucide-react";
 type OperationType =
   | "change_permissions"
   | "change_role"

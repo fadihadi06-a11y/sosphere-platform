@@ -7,7 +7,13 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Copy, Check, Mail, MessageSquare, Users, CheckCircle2, Link2, Shield, Zap, ExternalLink, UserCheck, X, Eye, ChevronDown, Clipboard, Share2, Building2, Send, ArrowRight, Lock } from "lucide-react";
+import {
+  Copy, Check, Mail, MessageSquare, Users,
+  CheckCircle2, Link2, Shield, Zap,
+  ExternalLink, UserCheck, X, Eye,
+  ChevronDown, Clipboard, Share2,
+  Building2, Send, ArrowRight, Lock,
+} from "lucide-react";
 
 interface Employee {
   id: string;

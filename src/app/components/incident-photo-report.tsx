@@ -6,8 +6,14 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Camera, Send, CheckCircle2, AlertTriangle, X, ImagePlus, FileText, Users, Shield, ChevronRight, Megaphone, Lock, Sparkles, Trash2, Eye, Radio, Clock, MapPin, Star, Mic, Play, Square, Pause } from "lucide-react";
-import { AUDIO_LIMITS } from "./evidence-store";
+import {
+  Camera, Send, CheckCircle2, AlertTriangle, X,
+  ImagePlus, FileText, Users, Shield, ChevronRight,
+  Megaphone, Lock, Sparkles, Trash2, Eye, Radio,
+  Clock, MapPin, Star, Mic, MicOff, Play, Square, Pause,
+  Volume2, ArrowRight, Search, Download, Layers,
+} from "lucide-react";
+import { AUDIO_LIMITS, type EvidenceAudioMemo } from "./evidence-store";
 
 // ── Types ─────────────────────────────────────────────────────
 export type AccountTier = "free" | "paid" | "enterprise";

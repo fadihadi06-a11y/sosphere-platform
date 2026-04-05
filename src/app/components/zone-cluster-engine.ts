@@ -4,7 +4,11 @@
 // Prevents chaos when multiple workers trigger SOS simultaneously
 // ════════════════════════════════════════════════════════════════
 
-import { createSARMission, saveSARMission, type SARMission, type WorkerType, type TerrainType, type MissionLogEntry } from "./sar-engine";
+import {
+  createSARMission, saveSARMission,
+  type SARMission, type WorkerType, type TerrainType,
+  type MissionLogEntry,
+} from "./sar-engine";
 import { emitAdminSignal } from "./shared-store";
 
 // ── Types ────────────────────────────────────────────────────────

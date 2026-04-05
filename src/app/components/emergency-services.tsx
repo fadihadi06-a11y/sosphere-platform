@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Phone, Shield, Hospital, Flame, AlertTriangle, Globe, ChevronDown, Search, Star, ChevronRight, X, Heart, Anchor, Bug, Car, Baby } from "lucide-react";
+import {
+  Phone, Shield, Hospital, Flame, AlertTriangle,
+  Globe, ChevronDown, Search, Star, Clock,
+  ChevronRight, X, MapPin, Zap, Heart,
+  Anchor, Mountain, Bug, Car, Baby,
+} from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface EmergencyNumber {

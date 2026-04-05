@@ -4,14 +4,22 @@
 // Filters: Action Type · Actor Level · Date Range · Zone
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo, useEffect } from "react";
-import { getRealAuditLog, onAuditEvent } from "./audit-log-store";
+import { getRealAuditLog, onAuditEvent, type AuditEntry as RealAuditEntry } from "./audit-log-store";
 import { fetchAuditLog } from "./api/data-layer";
 import { motion, AnimatePresence } from "motion/react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
-import { Shield, Key, MapPin, Crown, ShieldCheck, UserCheck, Clock, Download, Filter, Search, X, ChevronDown, ChevronUp, ArrowRight, AlertTriangle, Eye, Lock, UserPlus, UserX, Siren, Settings, FileText, Mail, Activity, Hash, Edit2, Trash2, LogIn, LogOut, Fingerprint, Zap } from "lucide-react";
+import {
+  Shield, Key, Users, MapPin, Crown, ShieldCheck,
+  UserCheck, Clock, Download, Filter, Search, X,
+  ChevronDown, ChevronUp, ArrowRight, AlertTriangle,
+  CheckCircle2, Eye, Lock, Unlock, UserPlus, UserX,
+  RefreshCw, Siren, Settings, Bell, FileText, Mail,
+  BarChart3, Activity, Hash, Layers, Calendar,
+  Edit2, Trash2, LogIn, LogOut, Fingerprint, Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────

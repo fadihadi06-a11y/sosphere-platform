@@ -4,7 +4,15 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Building2, Users, MapPin, Shield, ArrowRight, ArrowLeft, Globe, ChevronDown, Check, Sparkles, Layers, AlertTriangle, Upload, Download, FileText, Crown, ShieldCheck, Zap, Phone, Mail, User, Navigation, Plus, X, CheckCircle2, Copy, Send, Clock, Lock, Factory, Heart, Truck, Cpu, Briefcase } from "lucide-react";
+import {
+  Building2, Users, MapPin, Shield, ArrowRight, ArrowLeft,
+  Globe, ChevronDown, Check, Sparkles, Layers,
+  AlertTriangle, Upload, Download, FileText,
+  Crown, ShieldCheck, Zap, Phone, Mail, User,
+  Navigation, Plus, X, CheckCircle2, Copy,
+  QrCode, Send, Clock, Star, Lock, CreditCard,
+  Factory, Heart, Truck, Cpu, Briefcase,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import { UNIFIED_PLANS } from "../constants/pricing";

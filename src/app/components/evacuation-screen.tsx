@@ -6,8 +6,19 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { AlertTriangle, MapPin, Navigation, CheckCircle2, Clock, Shield, ArrowLeft, ExternalLink, ChevronRight, Info, Footprints, Eye, Radio } from "lucide-react";
-import { getActiveEvacuation, getEvacuationPointsByZone, updateEmployeeEvacuationStatus, onEvacuationChange, type ActiveEvacuation, type EvacuationPoint } from "./shared-store";
+import {
+  AlertTriangle, MapPin, Navigation, CheckCircle2, Clock,
+  Shield, ArrowLeft, ExternalLink, ChevronRight, Info,
+  Footprints, Eye, Radio,
+} from "lucide-react";
+import {
+  getActiveEvacuation,
+  getEvacuationPointsByZone,
+  updateEmployeeEvacuationStatus,
+  onEvacuationChange,
+  type ActiveEvacuation,
+  type EvacuationPoint,
+} from "./shared-store";
 
 // Haversine distance
 function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {

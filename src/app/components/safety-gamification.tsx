@@ -7,7 +7,12 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Trophy, Star, Award, Zap, TrendingUp, Shield, CheckCircle, Eye, Users, BarChart3, Flame, Crown, AlertTriangle } from "lucide-react";
+import {
+  Trophy, Star, Award, Zap, TrendingUp, Shield,
+  CheckCircle, Clock, Eye, Users, BarChart3,
+  ChevronRight, Flame, Target, Crown, Medal,
+  Heart, AlertTriangle,
+} from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────
 interface SafetyWorker {

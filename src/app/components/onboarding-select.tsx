@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Shield, Building2, ShieldCheck, Sparkles, ArrowRight, Users, Timer, ClipboardCheck, Radio, KeyRound, Smartphone } from "lucide-react";
+import {
+  Shield, Building2, ShieldCheck, Sparkles, ArrowRight,
+  Users, Timer, ClipboardCheck, Radio, Link2, KeyRound,
+  Smartphone, CheckCircle2,
+} from "lucide-react";
 import { useLang } from "./useLang";
 
 interface OnboardingSelectProps {

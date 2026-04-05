@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, Heart, Droplets, Pill, AlertTriangle, Phone, Edit3, Check, Shield, QrCode, Share2, Plus, X, Stethoscope, Weight, Ruler, Activity } from "lucide-react";
+import {
+  ChevronLeft, Heart, Droplets, Pill, AlertTriangle,
+  Phone, Edit3, Check, Shield, QrCode, Share2,
+  Plus, X, Stethoscope, Weight, Ruler, Activity,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 // FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";

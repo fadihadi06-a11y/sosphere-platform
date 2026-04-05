@@ -6,7 +6,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Mail, Send, X, Plus, Lock, Shield, CheckCircle2, FileText, Users, Paperclip, AlertTriangle, Loader2, Globe, ChevronDown } from "lucide-react";
+import {
+  Mail, Send, X, Plus, Lock, Shield,
+  CheckCircle2, FileText, Users, Paperclip,
+  AlertTriangle, Loader2, Globe, ChevronDown,
+} from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────
 interface EmailRecipient {

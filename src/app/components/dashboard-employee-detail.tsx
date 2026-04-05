@@ -4,7 +4,12 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, MapPin, Clock, Phone, Shield, Activity, AlertTriangle, CheckCircle2, Send, Radio, Wifi, Smartphone, FileText, Calendar, TrendingUp } from "lucide-react";
+import {
+  X, User, MapPin, Clock, Phone, Shield, Activity,
+  AlertTriangle, CheckCircle2, Heart, Send, Radio,
+  ChevronRight, Wifi, WifiOff, Smartphone,
+  FileText, Calendar, Target, TrendingUp,
+} from "lucide-react";
 import type { Employee } from "./dashboard-types";
 import { toast } from "sonner";
 import { hapticLight } from "./haptic-feedback";

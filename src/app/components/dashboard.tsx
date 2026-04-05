@@ -7,6 +7,7 @@ import { emitSyncEvent, getHybridMode, onHybridModeChange, recordAttendance, aut
 import { MissionNotificationBanner } from "./mission-tracker-mobile";
 import { toast } from "sonner";
 import { MonitoringModeBanner } from "./monitoring-mode-banner";
+import { Activity } from "lucide-react";
 
 type Tab = "home" | "alerts" | "map" | "profile";
 

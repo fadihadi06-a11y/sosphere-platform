@@ -10,7 +10,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { AlertTriangle, Phone, Activity, Smartphone, CheckCircle, Zap, Heart, Volume2, MapPin } from "lucide-react";
+import {
+  AlertTriangle, X, Phone, Shield, Activity,
+  Smartphone, CheckCircle, Clock, Zap, Heart,
+  Volume2, MapPin, ChevronRight,
+} from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ── Persist sensor events to Supabase ────────────────────────

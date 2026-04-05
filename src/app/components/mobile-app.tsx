@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { WelcomeOnboarding } from "./welcome-onboarding";
 import { LoginPhone } from "./login-phone";
@@ -23,6 +24,12 @@ import { EmergencyContacts } from "./emergency-contacts";
 import { NotificationsCenter } from "./notifications-center";
 import { LoginWelcome } from "./login-welcome";
 import { EvacuationScreen, EvacuationAlertOverlay } from "./evacuation-screen";
+import {
+  LanguageScreen,
+  PrivacyScreen,
+  ConnectedDevicesScreen,
+  HelpScreen,
+} from "./settings-screens";
 import type { IncidentRecord } from "./sos-emergency";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { BroadcastIsland } from "./broadcast-island";

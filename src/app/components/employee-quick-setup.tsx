@@ -5,7 +5,12 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, User, Phone, Camera, Heart, AlertTriangle, ArrowRight, ArrowLeft, CheckCircle2, Lock, Droplets, Fingerprint, MapPin, Building2, Briefcase, UserCheck, Eye, EyeOff, ChevronDown, Sparkles, Bell } from "lucide-react";
+import {
+  Shield, User, Phone, Camera, Heart, AlertTriangle,
+  ArrowRight, ArrowLeft, CheckCircle2, Lock, Droplets,
+  Fingerprint, MapPin, Building2, Briefcase, UserCheck,
+  Eye, EyeOff, ChevronDown, Sparkles, Bell,
+} from "lucide-react";
 
 interface EmployeeQuickSetupProps {
   // Pre-populated from CSV (admin already entered this)

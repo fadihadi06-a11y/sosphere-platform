@@ -6,7 +6,12 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Bell, X, Siren, AlertTriangle, MapPin, UserCheck, Radio, Settings, Trash2, Volume2, VolumeX, Shield, Eye, LogIn } from "lucide-react";
+import {
+  Bell, X, Siren, AlertTriangle, MapPin,
+  UserCheck, Radio, Settings,
+  Trash2, Volume2, VolumeX, Shield, Eye,
+  LogIn,
+} from "lucide-react";
 import { onSyncEvent, type SyncEvent } from "./shared-store";
 import { useDashboardStore } from "./stores/dashboard-store";
 

@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, Clock, MapPin } from "lucide-react";
+import { AlertTriangle, Clock, MapPin, X } from "lucide-react";
 
 export interface EmergencyForHandover {
   id: string;

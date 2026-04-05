@@ -7,9 +7,23 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, Plus, Phone, Trash2, Edit3, Star, User, Heart, Users, Shield, X, Check, AlertTriangle, Link, Smartphone, SmartphoneNfc, Copy, Radio, Eye, EyeOff, MapPin, Battery, Zap, Crown, ChevronDown, CheckCircle2, XCircle, Globe, Lock, Timer, Locate, Navigation } from "lucide-react";
+import {
+  ChevronLeft, Plus, Phone, Trash2, Edit3, Star,
+  User, Heart, Users, Shield, X, Check, AlertTriangle,
+  Link, Smartphone, SmartphoneNfc, Send, Copy, Share2,
+  Radio, Eye, EyeOff, MapPin, Clock, Battery,
+  Wifi, WifiOff, Zap, Crown, ChevronRight, ChevronDown,
+  CheckCircle2, XCircle, MessageSquare, Globe, Lock,
+  UserPlus, Signal, Timer, Locate, Navigation,
+} from "lucide-react";
 import { toast } from "sonner";
-import { type SafetyContact, type ContactType, type ContactPlan, CONTACT_TYPE_CONFIG, PLAN_LIMITS, EMERGENCY_RIPPLE_WAVES, getSafetyContacts, saveSafetyContacts, seedDemoContacts, generateSafetyLink, determineContactType } from "./contact-tier-system";
+import {
+  type SafetyContact, type ContactType, type ContactPlan,
+  CONTACT_TYPE_CONFIG, PLAN_LIMITS, EMERGENCY_RIPPLE_WAVES,
+  getSafetyContacts, saveSafetyContacts, seedDemoContacts,
+  generateSafetyLink, determineContactType,
+  type RippleWave,
+} from "./contact-tier-system";
 
 // ── Helpers ───────────────────────────────────────────────────
 

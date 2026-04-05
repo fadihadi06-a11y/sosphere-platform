@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere i18n — Multi-Language System (12 Languages)
 // ═══════════════════════════════════════════════════════════════
-import { useCallback, useState } from "react";
+import { useCallback, createContext, useContext, useState, type ReactNode } from "react";
 
 export type Lang = "en" | "ar" | "fr" | "es" | "de" | "zh" | "hi" | "pt" | "ru" | "ja" | "ko" | "tr";
 

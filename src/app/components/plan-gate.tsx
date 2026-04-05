@@ -7,7 +7,11 @@
 
 import React from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Lock, Crown, ArrowUpRight, Shield, Zap, Download, Clock, Users, AlertTriangle, CheckCircle, Star, MapPin } from "lucide-react";
+import {
+  Lock, Crown, ArrowUpRight, Shield, Zap,
+  Download, Clock, Users, AlertTriangle,
+  CheckCircle, Star, MapPin, UserPlus,
+} from "lucide-react";
 import type { PlanFeature, CompanyState, PlanTier } from "./mobile-company";
 import { hasFeature, isTrialExpired, PLAN_CONFIGS } from "./mobile-company";
 import { UNIFIED_PLANS } from "../constants/pricing";

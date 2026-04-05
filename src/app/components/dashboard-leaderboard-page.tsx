@@ -15,10 +15,16 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Trophy, Crown, Star, Medal, Shield, Zap, TrendingUp, TrendingDown, Activity, Target, Clock, Flame, ExternalLink, GraduationCap } from "lucide-react";
+import {
+  Trophy, Award, Crown, Star, Medal, Shield, Zap,
+  TrendingUp, TrendingDown, Activity, Target, Users,
+  Clock, CheckCircle2, Flame, ChevronRight,
+  Download, ExternalLink, GraduationCap, BarChart3,
+  ArrowUpRight, ArrowDownRight,
+} from "lucide-react";
 import { getAdminRating, getIREHistory, type AdminRating, type IRERecord } from "./ire-performance-store";
 import { AdminLeaderboardContent } from "./training-center";
-import { TYPOGRAPHY, SectionHeader, Card as DSCard, Badge } from "./design-system";
+import { TYPOGRAPHY, PageHeader, KPICard, SectionHeader, Card as DSCard, Badge } from "./design-system";
 
 export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
   t: (k: string) => string;

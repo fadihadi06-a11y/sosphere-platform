@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
+import {
+  Shield, Zap, Crown, Rocket, CheckCircle2, FileText, Download,
+  TrendingUp, Cpu, Layers, UserCheck, Plus, ToggleLeft, ToggleRight,
+  AlertTriangle, Clock,
+} from "lucide-react";
 import { Card as DSCard, Badge, Divider } from "./design-system";
-import { employeeUsagePercent, createCompanyState, trialDaysRemaining, isTrialExpired, type PlanTier } from "./mobile-company";
+import { employeeUsagePercent, createCompanyState, trialDaysRemaining, isTrial as isTrialFn, isTrialExpired, type PlanTier } from "./mobile-company";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, calculateMonthlyBill } from "../constants/pricing";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 
-import { AlertTriangle, CheckCircle2, Clock, Cpu, Crown, Download, FileText, Layers, Rocket, Shield, ToggleLeft, ToggleRight, TrendingUp, UserCheck, Zap } from "lucide-react";
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
 // [SUPABASE_READY] — All mock data marked, handlers ready for async migration

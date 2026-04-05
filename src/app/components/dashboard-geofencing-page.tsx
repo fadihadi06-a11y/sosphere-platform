@@ -5,7 +5,15 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { MapPin, Plus, X, Trash2, Eye, EyeOff, Circle, Pentagon, AlertTriangle, Check, Save, Users, Shield, Layers, Move, ZoomIn, ZoomOut, Crosshair, Lock, Unlock, Copy, Search, Navigation, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  MapPin, Plus, X, Trash2, Edit3, Eye, EyeOff,
+  Circle, Pentagon, AlertTriangle, Check, Save,
+  ChevronRight, Users, Shield, Bell, Layers,
+  Move, ZoomIn, ZoomOut, Crosshair, Lock, Unlock,
+  Settings, Copy, RotateCcw, Search, Navigation,
+  ChevronDown, ChevronUp,
+} from "lucide-react";
+import { TOKENS } from "./design-system";
 // EMPLOYEES & ZONES removed — store reads via useDashboardStore when needed
 import { saveZoneGPS, type ZoneGPSData } from "./shared-store";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";

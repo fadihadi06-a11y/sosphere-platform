@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { ChevronLeft, Bell, AlertTriangle, Shield, Users, MapPin, Timer, Heart, CheckCheck, Trash2, Megaphone } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  ChevronLeft, Bell, AlertTriangle, Shield, Users,
+  MapPin, Timer, Heart, Check, CheckCheck, Trash2,
+  Filter, X, Megaphone,
+} from "lucide-react";
+import {
+  getBroadcastsForEmployee, markBroadcastRead, onBroadcastReceived,
+  type BroadcastMessage,
+} from "./shared-store";
+
 interface Notification {
   id: string;
   type: "sos" | "checkin" | "family" | "location" | "system" | "medical" | "broadcast";

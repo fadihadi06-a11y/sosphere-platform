@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLang } from "./useLang";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Link2, Hash, ArrowRight, Building2, HelpCircle, CheckCircle2, MapPin, Users, Shield, User, AlertTriangle } from "lucide-react";
 
 export interface CompanyMatchData {

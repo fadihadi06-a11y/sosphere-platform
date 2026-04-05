@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { MapPin, Navigation, Hospital, Shield, Flame, Phone, ChevronRight, X, Clock, Route, Locate, Layers, Users, ChevronUp, Star } from "lucide-react";
+import {
+  MapPin, Navigation, Hospital, Shield, Building2,
+  Flame, Phone, ChevronRight, X, Clock, Route,
+  Locate, Layers, Users, Filter, ChevronUp,
+  AlertTriangle, Star, Compass, Zap,
+} from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

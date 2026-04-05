@@ -6,9 +6,15 @@
 // and head-to-head comparison.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
-import { Shield, Play, CheckCircle2, X, Users, Siren, Brain, Zap, Trophy, Target, Activity, Bot, User } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Shield, Play, Pause, CheckCircle2, X, Clock,
+  Users, Siren, Brain, Sparkles, Zap, Trophy,
+  Star, Crown, Target, Activity, Timer,
+  ArrowLeft, ChevronRight, Bot, User,
+  Flame, TrendingUp, Award,
+} from "lucide-react";
 import { hapticSuccess, playUISound } from "./haptic-feedback";
 
 // ═══════════════════════════════════════════════════════════════

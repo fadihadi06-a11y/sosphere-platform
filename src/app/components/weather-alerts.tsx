@@ -7,7 +7,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { CloudRain, Sun, Wind, Thermometer, Eye, AlertTriangle, CloudLightning, Snowflake, Droplets, ChevronRight, Shield, Bell, MapPin, Clock, X, CloudSun, Zap, Navigation } from "lucide-react";
+import {
+  CloudRain, Sun, Wind, Thermometer, Eye, AlertTriangle,
+  CloudLightning, Snowflake, Droplets, ChevronRight,
+  Shield, Bell, MapPin, Clock, CheckCircle, X,
+  ArrowUpRight, CloudSun, Zap, Navigation,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 

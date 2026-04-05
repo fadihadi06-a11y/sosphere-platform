@@ -7,9 +7,9 @@
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
-import { getTimelineEntries, getRealResponseTimeSec, getRealDurationMin, getRealResponders, getTimelineForReport, getCommsLog, getGPSTrail, verifyChainIntegrity } from "./smart-timeline-tracker";
-import { getEvidenceForEmergency } from "./evidence-store";
-
+import {
+  getTimelineEntries, getRealResponseTimeSec, getRealDurationMin,
+  getRealResponders, getTimelineForReport, getCommsLog, getGPSTrail,
 // ── Types ───────────────────────────────────────────────────────
 
 export interface EmergencyReportData {

@@ -5,10 +5,25 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Camera, FileText, Megaphone, ChevronRight, CheckCircle2, Clock, MapPin, AlertTriangle, X, Shield, Eye, Image, PhoneCall, Phone, Copy, MessageCircle, Monitor, Smartphone, Check, Mic, Layers } from "lucide-react";
+import {
+  Camera, FileText, Megaphone, ChevronRight,
+  CheckCircle2, Clock, MapPin, AlertTriangle,
+  Users, X, Send, Shield, Eye, Image,
+  Radio, Star, Lock, TrendingUp, Filter,
+  PhoneCall, Phone, Copy, MessageCircle,
+  Monitor, Smartphone, Check, Mic, Layers,
+} from "lucide-react";
 import { safeTelCall } from "./utils/safe-tel";
-import { getAllEvidence, type EvidenceEntry } from "./evidence-store";
-import { EvidencePipelineVisual, EvidenceDetailPanel } from "./evidence-pipeline-panel";
+import { CallTrigger } from "./call-panel";
+import {
+  getAllEvidence, type EvidenceEntry,
+  getEvidencePipelineStatus,
+} from "./evidence-store";
+import {
+  EvidencePipelineVisual, ChainOfCustody,
+  EvidenceQuickActions, EvidenceComments,
+  EvidenceDetailPanel, AudioMemoPlayer,
+} from "./evidence-pipeline-panel";
 import { toast } from "sonner";
 import { fetchIncidentReports } from "./api/data-layer";
 

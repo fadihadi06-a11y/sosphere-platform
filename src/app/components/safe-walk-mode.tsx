@@ -6,7 +6,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, Footprints, Shield, Clock, AlertTriangle, CheckCircle2, User, Navigation, Eye, Timer, Volume2, VolumeX, MessageSquare, Crown, Pause, Play, ChevronDown, Signal, Route, Home } from "lucide-react";
+import {
+  ChevronLeft, Footprints, Shield, MapPin, Clock,
+  Phone, AlertTriangle, CheckCircle2, X, User,
+  Heart, Users, Navigation, Radio, Eye, Timer,
+  Moon, Volume2, VolumeX, Zap, Send, MessageSquare,
+  Lock, Crown, Pause, Play, XCircle, Locate,
+  ArrowRight, ChevronDown, Signal, Route, Home,
+} from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { emitSyncEvent } from "./shared-store";
 

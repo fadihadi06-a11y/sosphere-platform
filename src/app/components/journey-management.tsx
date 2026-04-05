@@ -8,7 +8,12 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { MapPin, Navigation, AlertTriangle, CheckCircle, ChevronRight, Phone, Eye, Shield, Route, Circle, Radar } from "lucide-react";
+import {
+  MapPin, Navigation, Clock, AlertTriangle, CheckCircle,
+  ChevronRight, Users, Phone, Eye, Shield,
+  Play, Pause, Flag, Route, Circle, Timer,
+  ArrowRight, X, Zap, BarChart3, TrendingUp, Radar,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 import { emitAdminSignal, emitSyncEvent } from "./shared-store";

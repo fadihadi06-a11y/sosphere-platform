@@ -5,7 +5,7 @@
 // ===================================================================
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Clock, UserCheck, Timer, AlertTriangle, MapPin, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Clock, UserCheck, Timer, AlertTriangle, MapPin, CheckCircle2 } from "lucide-react";
 import { AttendancePage } from "./dashboard-pages";
 import { ShiftSchedulingPage } from "./dashboard-shift-scheduling-page";
 import { useDashboardStore } from "./stores/dashboard-store";

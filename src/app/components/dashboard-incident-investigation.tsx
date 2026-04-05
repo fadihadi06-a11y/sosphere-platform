@@ -6,17 +6,30 @@
 // =================================================================
 
 import { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { Search, FileText, AlertTriangle, CheckCircle2, Clock, Filter, Download, Eye, X, Zap, TriangleAlert, Paperclip, Flag, CircleDot, Camera } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Search, FileText, AlertTriangle, CheckCircle2, Clock,
+  ChevronRight, ChevronDown, Plus, Filter, Download,
+  Users, MapPin, Target, Shield, Eye, X, Check,
+  ArrowRight, Layers, Zap, TriangleAlert, Activity,
+  Calendar, MessageSquare, Paperclip, Flag, CircleDot,
+  Camera, Mic,
+} from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { TYPOGRAPHY } from "./design-system";
 import { sortByPriority } from "./priority-engine";
 import { MOCK_RISKS } from "./dashboard-risk-register";
-import { getAllEvidence, linkToInvestigation } from "./evidence-store";
-import { EvidencePipelineVisual, AudioMemoPlayer, ChainOfCustody, EvidenceComments } from "./evidence-pipeline-panel";
-import { getTimelineEntries } from "./smart-timeline-tracker";
+import {
+  getAllEvidence, addEvidenceAction, linkToInvestigation,
+  type EvidenceEntry,
+} from "./evidence-store";
+import {
+  EvidencePipelineVisual, AudioMemoPlayer,
+  ChainOfCustody, EvidenceComments, EvidenceQuickActions,
+} from "./evidence-pipeline-panel";
+import { getTimelineEntries, getTimelineForReport, type TimelineEntry } from "./smart-timeline-tracker";
 
 // ── Types ─────────────────────────────────────────────────────
 

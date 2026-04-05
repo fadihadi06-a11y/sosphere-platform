@@ -5,7 +5,11 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Phone, MessageCircle, Copy, Check, X, Monitor, Smartphone, ChevronRight, Shield, Info, PhoneCall } from "lucide-react";
+import {
+  Phone, MessageCircle, Copy, Check, X,
+  Monitor, Smartphone, ChevronRight,
+  Shield, Info, PhoneCall,
+} from "lucide-react";
 import { startAdminCall } from "./shared-store";
 import { safeTelCall } from "./utils/safe-tel";
 

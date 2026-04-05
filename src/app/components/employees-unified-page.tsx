@@ -4,7 +4,16 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Users, Search, MapPin, Phone, Shield, Clock, AlertTriangle, CheckCircle2, UserCheck, Activity, Upload, ChevronRight, X, Siren, Eye, LayoutGrid, List, Info, FileText, Send, UserPlus, Mail } from "lucide-react";
+import {
+  Users, Search, MapPin, Phone, Shield, Clock,
+  AlertTriangle, CheckCircle2, UserCheck, Activity,
+  Upload, ChevronRight, MoreVertical, X,
+  Siren, WifiOff, Battery, TrendingUp, TrendingDown,
+  Filter, Eye, MessageCircle, Copy, Check,
+  LayoutGrid, List, Star, Navigation, Zap,
+  Radio, Info, Bell, FileText, Send, UserPlus,
+  KeyRound, Mail, MessageSquare,
+} from "lucide-react";
 import { EnterpriseImportWizard } from "./enterprise-import-wizard";
 import { CallTrigger } from "./call-panel";
 import { EmployeeInviteManager } from "./employee-invite-manager";

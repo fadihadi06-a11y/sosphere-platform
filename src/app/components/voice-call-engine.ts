@@ -18,7 +18,14 @@
 //   - With Supabase config → uses TwilioClient + TwilioVoice
 // ═════════════════════════════════════════════════════════════
 
-import type { VoiceCallState, VoiceCallInfo, VoiceProvider, ProviderConfig, ProviderType, ProviderEvents } from "./voice-call-types";
+import type {
+  VoiceCallState,
+  VoiceCallInfo,
+  VoiceProvider,
+  ProviderConfig,
+  ProviderType,
+  ProviderEvents,
+} from "./voice-call-types";
 import { LocalWebRTCProvider } from "./voice-provider-local";
 import { TwilioClientProvider, TwilioVoiceProvider } from "./voice-provider-twilio";
 import { HybridProvider } from "./voice-provider-hybrid";

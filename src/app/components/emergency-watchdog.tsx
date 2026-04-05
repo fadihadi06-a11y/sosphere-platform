@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Phone, Siren } from "lucide-react";
+import { AlertTriangle, Phone, Siren, X } from "lucide-react";
 
 export interface Emergency {
   id: string;

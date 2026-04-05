@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, Check, X, Crown, Shield, Users, Mic, Timer, FileText, Clock, MapPin, Heart, Star, Building2, ChevronRight, Sparkles } from "lucide-react";
+import {
+  ChevronLeft, Check, X, Crown, Shield, Zap,
+  Users, Mic, Timer, FileText, Clock, MapPin,
+  Heart, Star, Building2, ChevronRight, Sparkles,
+} from "lucide-react";
 import { INDIVIDUAL_PLANS } from "../constants/pricing";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
