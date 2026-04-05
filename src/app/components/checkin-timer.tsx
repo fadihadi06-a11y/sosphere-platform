@@ -450,6 +450,32 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     };
   }, []);
 
+  // FIX: Check deadline on tab resume (iOS throttles setInterval when backgrounded)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && deadlineRef.current > 0) {
+        const now = Date.now();
+        if (deadlineRef.current <= now) {
+          // Deadline passed while backgrounded — trigger SOS
+          if (tickRef.current) clearInterval(tickRef.current);
+          clearTimerStorage();
+          phaseRef.current = "triggered";
+          setPhase("triggered");
+          if (onTimerStateChange) onTimerStateChange(false);
+          setTimeout(() => onSOSTrigger(), 500);
+        } else {
+          // Update remaining time after resume
+          const remainSec = Math.ceil((deadlineRef.current - now) / 1000);
+          remainingRef.current = remainSec;
+          setRemaining(remainSec);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSOSTrigger, onTimerStateChange]);
+
   // Derived
   const progress = totalSeconds > 0 ? 1 - remaining / totalSeconds : 0;
   const isWarningZone = remaining > 0 && remaining <= warningThresholdSec;

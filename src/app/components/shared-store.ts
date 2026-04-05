@@ -344,6 +344,9 @@ export function emitAdminSignal(
 }
 
 // ── Listen for Admin signals ─────────────────────────────────
+let _adminSignalCallback: ((parsed: any) => void) | null = null;
+let _adminRealtimeRegistered = false;
+
 export function onAdminSignal(callback: (type: string, employeeId: string, extra?: Record<string, any>) => void) {
   const processSignal = (parsed: any) => {
     try {
@@ -351,11 +354,13 @@ export function onAdminSignal(callback: (type: string, employeeId: string, extra
       callback(type, employeeId, Object.keys(rest).length > 0 ? rest : undefined);
     } catch (_) {}
   };
+  _adminSignalCallback = processSignal;
 
-  // PRIMARY: Supabase Realtime
-  if (_adminChannel) {
+  // PRIMARY: Supabase Realtime (register ONCE, delegate to callback ref)
+  if (_adminChannel && !_adminRealtimeRegistered) {
+    _adminRealtimeRegistered = true;
     _adminChannel.on("broadcast", { event: "signal" }, ({ payload }: any) => {
-      if (payload) processSignal(payload);
+      if (payload && _adminSignalCallback) _adminSignalCallback(payload);
     });
   }
 
@@ -366,10 +371,16 @@ export function onAdminSignal(callback: (type: string, employeeId: string, extra
     }
   };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+  return () => {
+    window.removeEventListener("storage", handler);
+    _adminSignalCallback = null;
+  };
 }
 
 // ── Listen for sync events ────────────────────────────────────
+let _syncEventCallback: ((evt: SyncEvent) => void) | null = null;
+let _syncRealtimeRegistered = false;
+
 export function onSyncEvent(callback: (event: SyncEvent) => void) {
   let lastProcessedTs = Date.now();
   const processedIds = new Set<number>(); // prevent duplicates from both channels
@@ -384,16 +395,14 @@ export function onSyncEvent(callback: (event: SyncEvent) => void) {
     if (typeof evt.type === "string" && evt.type.startsWith("DEMO_")) return;
     callback(evt);
   };
+  _syncEventCallback = processEvent;
 
-  // PRIMARY: Supabase Realtime listener
-  let realtimeUnsub: (() => void) | null = null;
-  if (_syncChannel) {
+  // PRIMARY: Supabase Realtime listener (register ONCE, delegate to callback ref)
+  if (_syncChannel && !_syncRealtimeRegistered) {
+    _syncRealtimeRegistered = true;
     _syncChannel.on("broadcast", { event: "sync" }, ({ payload }: any) => {
-      if (payload) processEvent(payload as SyncEvent);
+      if (payload && _syncEventCallback) _syncEventCallback(payload as SyncEvent);
     });
-    realtimeUnsub = () => {
-      // Channel stays alive — just stop processing
-    };
   }
 
   // SECONDARY: localStorage fallback (same-device / offline)

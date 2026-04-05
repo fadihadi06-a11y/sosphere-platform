@@ -80,7 +80,7 @@ export async function initFCM(userId?: string): Promise<string | null> {
 
       // Handle foreground messages
       onMessage(messaging, (payload) => {
-        console.log("[FCM] Foreground message:", payload);
+        console.log("[FCM] Foreground message received");
 
         // Dispatch custom event for the app to handle
         window.dispatchEvent(

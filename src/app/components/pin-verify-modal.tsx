@@ -45,8 +45,9 @@ const ACTOR_CONFIG = {
   main_admin: { label: "Main Admin", color: "#FF9500", icon: Key   },
 };
 
-// PIN verification — checks Supabase hash, falls back to demo mode
+// PIN verification — checks Supabase hash, falls back to demo mode in DEV only
 const DEMO_PIN = "123456";
+const IS_DEV = import.meta.env.DEV === true;
 const MAX_ATTEMPTS = 3;
 
 /** Hash PIN using SHA-256 for secure comparison */
@@ -56,11 +57,11 @@ async function hashPIN(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Verify PIN against Supabase, fallback to demo */
+/** Verify PIN against Supabase, fallback to demo ONLY in development */
 async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) {
-    // Demo mode: accept the demo PIN
-    return enteredPin === DEMO_PIN;
+    // No Supabase — only accept demo PIN in dev mode
+    return IS_DEV && enteredPin === DEMO_PIN;
   }
   try {
     const pinHash = await hashPIN(enteredPin);
@@ -70,14 +71,16 @@ async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
       .eq("user_id", userId)
       .single();
     if (error || !data) {
-      // No PIN set yet — accept demo PIN as fallback
-      console.warn("[PIN] No PIN found in DB, using demo fallback");
-      return enteredPin === DEMO_PIN;
+      // No PIN set yet — accept demo PIN ONLY in dev mode
+      if (IS_DEV) return enteredPin === DEMO_PIN;
+      console.warn("[PIN] No PIN found in DB and not in dev mode");
+      return false;
     }
     return data.pin_hash === pinHash;
   } catch (e) {
-    console.warn("[PIN] Verification failed, using demo fallback:", e);
-    return enteredPin === DEMO_PIN;
+    console.warn("[PIN] Verification failed:", e);
+    if (IS_DEV) return enteredPin === DEMO_PIN;
+    return false;
   }
 }
 

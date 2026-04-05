@@ -281,9 +281,15 @@ async function processPosition(position: GeolocationPosition): Promise<void> {
 // ── Supabase Sync (background, non-blocking) ─────────────────
 let _syncBuffer: any[] = [];
 let _syncTimer: ReturnType<typeof setTimeout> | null = null;
+const MAX_SYNC_BUFFER = 500; // Prevent unbounded memory growth
 
 function syncPointToSupabase(point: any): void {
   if (!SUPABASE_CONFIG.isConfigured) return;
+
+  // Cap buffer size — drop oldest if full
+  if (_syncBuffer.length >= MAX_SYNC_BUFFER) {
+    _syncBuffer.shift();
+  }
 
   _syncBuffer.push({
     employee_id: point.employeeId,
@@ -380,6 +386,14 @@ function startDeadReckoning(): void {
 
     // Estimate new position based on speed + heading
     const elapsedSec = (Date.now() - lastRecordedPosition.timestamp) / 1000;
+
+    // Bounds: stop dead reckoning after 30 min (accuracy too degraded)
+    if (elapsedSec > 1800) {
+      console.warn("[GPSTracker] Dead reckoning exceeded 30min, stopping");
+      stopDeadReckoning();
+      return;
+    }
+
     const distanceMoved = lastSpeed * elapsedSec; // meters
 
     // Convert distance + heading to lat/lng delta
@@ -427,9 +441,13 @@ function stopDeadReckoning(): void {
 // Public API — Start / Stop / Configure
 // ═══════════════════════════════════════════════════════════════
 
+let _startingLock = false; // Prevent concurrent startGPSTracking calls
+
 export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolean {
-  if (trackerState.isTracking) return true;
+  if (trackerState.isTracking || _startingLock) return true;
+  _startingLock = true;
   if (!("geolocation" in navigator)) {
+    _startingLock = false;
     updateState({ gpsAvailable: false, lastError: "Geolocation API not available" });
     return false;
   }
@@ -464,6 +482,15 @@ export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolea
     lastError: null,
   });
 
+  // Flush GPS buffer on app close/background
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", () => flushGPSSync());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushGPSSync();
+    });
+  }
+
+  _startingLock = false;
   console.log("[GPSTracker] Started tracking, interval:", config.intervalMs, "ms");
   return true;
 }
