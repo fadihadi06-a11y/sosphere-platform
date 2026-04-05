@@ -50,7 +50,7 @@ let currentMode: DataMode = "supabase";
 export function setDataMode(mode: DataMode) { currentMode = mode; }
 export function getDataMode(): DataMode { return currentMode; }
 
-// Helper: get current company ID — reads from JWT claims (fast, no DB round-trip)
+// Helper: get current company ID ï¿½ reads from JWT claims (fast, no DB round-trip)
 async function getCompanyId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
@@ -59,7 +59,7 @@ async function getCompanyId(): Promise<string | null> {
     const payload = JSON.parse(atob(session.access_token.split(".")[1]));
     if (payload.company_id) return payload.company_id as string;
   } catch {
-    // JWT decode failed — fall back to DB
+    // JWT decode failed ï¿½ fall back to DB
   }
   // Fallback: DB lookup (first login before hook fires, or hook not configured)
   const { data } = await supabase
@@ -77,7 +77,7 @@ async function getCompanyId(): Promise<string | null> {
 }
 
 // =================================================================
-// Employees — from invitations table
+// Employees ï¿½ from invitations table
 // =================================================================
 export async function fetchEmployees(): Promise<Employee[]> {
   if (currentMode === "supabase") {
@@ -130,7 +130,7 @@ export async function updateEmployee(id: string, updates: Partial<Employee>): Pr
     if (Object.keys(empUpdates).length > 0) {
       await supabase.from("employees").update(empUpdates).eq("id", id);
     }
-    // Update profiles table (name) — need user_id from employees row first
+    // Update profiles table (name) ï¿½ need user_id from employees row first
     if (updates.name) {
       const { data: empRow } = await supabase
         .from("employees")
@@ -153,7 +153,7 @@ export async function updateEmployee(id: string, updates: Partial<Employee>): Pr
 }
 
 // =================================================================
-// Emergencies — from sos_queue table (fallback to mock)
+// Emergencies ï¿½ from sos_queue table (fallback to mock)
 // =================================================================
 export async function fetchEmergencies(): Promise<EmergencyItem[]> {
   if (currentMode === "supabase") {
@@ -209,7 +209,7 @@ export async function fetchEmergencies(): Promise<EmergencyItem[]> {
 }
 
 // =================================================================
-// Zones — from zones table
+// Zones ï¿½ from zones table
 // =================================================================
 export async function fetchZones(): Promise<ZoneData[]> {
   if (currentMode === "supabase") {
@@ -267,7 +267,7 @@ export async function fetchAuditLog(limit = 50): Promise<AuditLogEntry[]> {
       const companyId = await getCompanyId();
       if (!companyId) return [];
       const { data, error } = await supabase
-        .from("audit_logs")
+        .from("audit_log")
         .select("*")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })

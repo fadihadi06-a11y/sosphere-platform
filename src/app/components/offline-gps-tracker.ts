@@ -95,6 +95,8 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 let lastRecordedPosition: { lat: number; lng: number; timestamp: number } | null = null;
 let lastSpeed: number | null = null;
 let lastHeading: number | null = null;
+let _batteryObj: any = null;
+let _batteryHandler: (() => void) | null = null;
 let stateListeners: StateListener[] = [];
 let deadReckoningIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -169,7 +171,13 @@ export function getBatteryLevel(): number | null {
 async function checkBattery(): Promise<void> {
   try {
     if ("getBattery" in navigator) {
+      // Clean up previous listener to prevent memory leak
+      if (_batteryObj && _batteryHandler) {
+        _batteryObj.removeEventListener("levelchange", _batteryHandler);
+      }
+
       const battery = await (navigator as any).getBattery();
+      _batteryObj = battery;
       const level = battery.level;
       const isLow = level < config.batterySaveThreshold;
       updateState({
@@ -178,8 +186,8 @@ async function checkBattery(): Promise<void> {
         currentInterval: isLow ? config.batterySaveIntervalMs : config.intervalMs,
       });
 
-      // Listen for battery changes
-      battery.addEventListener("levelchange", () => {
+      // Listen for battery changes (single handler, stored for cleanup)
+      _batteryHandler = () => {
         const newLevel = battery.level;
         const newIsLow = newLevel < config.batterySaveThreshold;
         updateState({
@@ -193,7 +201,8 @@ async function checkBattery(): Promise<void> {
           clearInterval(intervalId);
           intervalId = setInterval(recordCurrentPosition, newIsLow ? config.batterySaveIntervalMs : config.intervalMs);
         }
-      });
+      };
+      battery.addEventListener("levelchange", _batteryHandler);
     }
   } catch {
     // Battery API not available — continue normally
@@ -468,6 +477,12 @@ export function stopGPSTracking(): void {
     intervalId = null;
   }
   stopDeadReckoning();
+
+  // Clean up battery listener to prevent memory leak
+  if (_batteryObj && _batteryHandler) {
+    _batteryObj.removeEventListener("levelchange", _batteryHandler);
+    _batteryHandler = null;
+  }
 
   updateState({
     isTracking: false,

@@ -312,6 +312,9 @@ export class TwilioVoiceProvider implements VoiceProvider {
   private callId = "";
   private localStream: MediaStream | null = null;
   private _statusPollInterval: ReturnType<typeof setInterval> | null = null;
+  private _realtimeChannel: any = null;
+  private _realtimeSb: any = null;
+  private _channelTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // ── Interface Implementation ────────────────────────────────
 
@@ -343,6 +346,11 @@ export class TwilioVoiceProvider implements VoiceProvider {
     if (this._statusPollInterval) {
       clearInterval(this._statusPollInterval);
       this._statusPollInterval = null;
+    }
+    if (this._channelTimeout) { clearTimeout(this._channelTimeout); this._channelTimeout = null; }
+    if (this._realtimeChannel && this._realtimeSb) {
+      this._realtimeSb.removeChannel(this._realtimeChannel);
+      this._realtimeChannel = null;
     }
     this._callSid = null;
     this.events = null;
@@ -386,25 +394,33 @@ export class TwilioVoiceProvider implements VoiceProvider {
           // Use dynamic import to avoid hard dependency
           const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
           const sb = createClient(supabaseUrl, supabaseAnonKey);
+          this._realtimeSb = sb;
           const channel = sb.channel(`call-${callId}`);
+          this._realtimeChannel = channel;
+
+          const cleanupChannel = () => {
+            if (this._channelTimeout) { clearTimeout(this._channelTimeout); this._channelTimeout = null; }
+            if (this._realtimeChannel) { sb.removeChannel(this._realtimeChannel); this._realtimeChannel = null; }
+          };
+
           channel
             .on("broadcast", { event: "call_status" }, (payload: any) => {
               const status = payload.payload?.status;
-              if (this._disposed) return;
+              if (this._disposed) { cleanupChannel(); return; }
               if (status === "answered" || status === "accepted" || status === "in-progress") {
                 this.events?.onStateChange("connected");
               } else if (status === "completed" || status === "canceled") {
                 this.events?.onStateChange("disconnected");
-                sb.removeChannel(channel);
+                cleanupChannel();
               } else if (status === "no-answer" || status === "busy" || status === "failed") {
                 this.events?.onStateChange("failed", `Call ${status}`);
-                sb.removeChannel(channel);
+                cleanupChannel();
               }
             })
             .subscribe();
 
-          // Cleanup channel after 5 minutes max
-          setTimeout(() => sb.removeChannel(channel), 300000);
+          // Cleanup channel after 5 minutes max (single cleanup point)
+          this._channelTimeout = setTimeout(() => cleanupChannel(), 300000);
         }
       } catch (e) {
         console.warn("[TwilioVoice] Realtime listener setup failed:", e);
@@ -445,7 +461,6 @@ export class TwilioVoiceProvider implements VoiceProvider {
     // End the PSTN call if active
     if (this._callSid && this.config.supabaseUrl && this.config.supabaseAnonKey) {
       // Fire-and-forget: tell Twilio to end the call
-      const accountSid = this._callSid; // We'll use the Edge Function approach
       callEdgeFunction(this.config, "twilio-call", {
         action: "end",
         callSid: this._callSid,

@@ -135,7 +135,7 @@ export function canAccessPage(
   if (!session) return { allowed: false, reason: "Not authenticated" };
 
   const pageConfig = PAGE_ACCESS[page];
-  if (!pageConfig) return { allowed: true }; // Unknown page = allow (safe default)
+  if (!pageConfig) return { allowed: false, reason: "Unknown page" }; // Deny by default for security
 
   const userRole = session.role || "company_admin";
   const userTier = ROLE_CONFIG[userRole]?.tier || 8;
