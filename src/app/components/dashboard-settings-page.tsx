@@ -72,7 +72,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
 
   /** Persist all settings to localStorage */
   // SUPABASE_MIGRATION_POINT: saveAllSettings → supabase.from('company_settings').upsert({ company_id, toggles, checkinInterval, sessionTimeout, language })
-  const saveAllSettings = () => {
+  const saveAllSettings = async () => {
     storeJSONSync("company_settings", {
       companyName,
       language: lang || "en",
