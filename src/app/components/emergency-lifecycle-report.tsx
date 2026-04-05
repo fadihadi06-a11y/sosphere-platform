@@ -10,6 +10,10 @@ import { toast } from "sonner";
 import {
   getTimelineEntries, getRealResponseTimeSec, getRealDurationMin,
   getRealResponders, getTimelineForReport, getCommsLog, getGPSTrail,
+  verifyChainIntegrity, type TimelineEntry
+} from "./smart-timeline-tracker";
+import { getEvidenceForEmergency } from "./evidence-store";
+
 // ── Types ───────────────────────────────────────────────────────
 
 export interface EmergencyReportData {

@@ -36,7 +36,14 @@ L.Icon.Default.mergeOptions({
 
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import { getLiveWorkerPositions, getActiveTrips, getEmployeeTrip, getZoneGPS, onSyncEvent, type EmployeeTrip } from "./shared-store";
+import {
+  getLiveWorkerPositions,
+  getActiveTrips,
+  getEmployeeTrip,
+  getZoneGPS,
+  onSyncEvent,
+  type EmployeeTrip,
+} from "./shared-store";
 
 interface RiskMapLiveProps {
   t: (key: string) => string;

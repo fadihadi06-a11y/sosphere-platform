@@ -84,7 +84,7 @@ import { hapticLight, playUISound } from "./haptic-feedback";
 // ── NEW: Round 1 Features ───────────────────────────────────────
 import { DashboardEmergencyChat } from "./emergency-chat";
 // ── Unified Emergency Engine (replaces 3 separate imports) ──
-import { UnifiedEmergencyEngine, type AICoAdminContext } from "./unified-emergency-engine";
+import { UnifiedEmergencyEngine, GuideMeButton, type AICoAdminContext, type IREContext } from "./unified-emergency-engine";
 import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
 // Legacy imports kept for type compatibility in dashboard-store
 // import { EmergencyResponseWizard, GuideMeButton } from "./guided-response";
@@ -94,7 +94,7 @@ import { requestNotificationPermission } from "./ire-push-notification";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
 import { PdfEmailModal } from "./pdf-email-modal";
 // FIX D: Shift Handover Modal
-import { ShiftHandoverModal } from "./shift-handover-modal";
+import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
 
 // ── NEW: Round 2 Features ──────────────────────────────────��────
 import { BuddySystemPage } from "./buddy-system";
@@ -131,8 +131,17 @@ import { MissionControlPage } from "./mission-control";
 
 // ── NEW: Incident Photo Report — Admin Broadcast Panel ──────────
 import { AdminBroadcastPanel, type IncidentReportData } from "./incident-photo-report";
+import {
+  storeEvidence, updateEvidenceStatus, addEvidenceAction, getAllEvidence,
+  getEvidencePipelineStatus, seedMockEvidence,
+} from "./evidence-store";
+import {
+  getClusterGuideHint,
+  CLUSTER_LEVEL_CONFIG, type ZoneCluster,
+} from "./zone-cluster-engine";
+
 // ── NEW: Error Boundaries for page-level crash protection ───────
-import { PageErrorBoundary } from "./error-boundary";
+import { PageErrorBoundary, WidgetErrorBoundary } from "./error-boundary";
 
 // ── FIX 1+3: Plan Gates + Trial Expired Overlay ────────────────
 import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, checkZoneLimit, checkEmployeeLimit, checkFeatureGate } from "./plan-gate";
