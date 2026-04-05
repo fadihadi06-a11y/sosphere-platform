@@ -9,6 +9,7 @@ import {
   Fingerprint, X, Shield, Crown, Key, Lock,
   AlertTriangle, CheckCircle2, Eye, EyeOff,
 } from "lucide-react";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 type OperationType =
   | "change_permissions"
@@ -44,9 +45,41 @@ const ACTOR_CONFIG = {
   main_admin: { label: "Main Admin", color: "#FF9500", icon: Key   },
 };
 
-// Mock PIN — in production this would be a real auth flow
-const CORRECT_PIN = "123456";
+// PIN verification — checks Supabase hash, falls back to demo mode
+const DEMO_PIN = "123456";
 const MAX_ATTEMPTS = 3;
+
+/** Hash PIN using SHA-256 for secure comparison */
+async function hashPIN(pin: string): Promise<string> {
+  const data = new TextEncoder().encode(`sosphere_pin_${pin}`);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Verify PIN against Supabase, fallback to demo */
+async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
+  if (!SUPABASE_CONFIG.isConfigured) {
+    // Demo mode: accept the demo PIN
+    return enteredPin === DEMO_PIN;
+  }
+  try {
+    const pinHash = await hashPIN(enteredPin);
+    const { data, error } = await supabase
+      .from("user_pins")
+      .select("pin_hash")
+      .eq("user_id", userId)
+      .single();
+    if (error || !data) {
+      // No PIN set yet — accept demo PIN as fallback
+      console.warn("[PIN] No PIN found in DB, using demo fallback");
+      return enteredPin === DEMO_PIN;
+    }
+    return data.pin_hash === pinHash;
+  } catch (e) {
+    console.warn("[PIN] Verification failed, using demo fallback:", e);
+    return enteredPin === DEMO_PIN;
+  }
+}
 
 export function PINVerifyModal({
   isOpen,
@@ -114,30 +147,66 @@ export function PINVerifyModal({
     setError("");
   }
 
-  function handleVerify(enteredPin: string) {
-    // Mock: accept any 6-digit PIN for prototype
-    // In production: verify against backend TOTP/PIN hash
-    const isCorrect = enteredPin === CORRECT_PIN || enteredPin.length === 6;
+  const [verifying, setVerifying] = useState(false);
 
-    if (isCorrect) {
-      setVerified(true);
-      setTimeout(() => {
-        onVerified();
-      }, 900);
-    } else {
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      setShake(true);
-      setPin([]);
-      setTimeout(() => setShake(false), 500);
+  async function handleVerify(enteredPin: string) {
+    if (verifying) return;
+    setVerifying(true);
 
-      if (newAttempts >= MAX_ATTEMPTS) {
-        setLocked(true);
-        setLockTime(30);
-        setError(`Account locked for 30 seconds after ${MAX_ATTEMPTS} failed attempts`);
+    try {
+      // Determine user ID from actor context (or use a default for demo)
+      const userId = `${actorLevel}-${actorName}`;
+      const isCorrect = await verifyPIN(userId, enteredPin);
+
+      if (isCorrect) {
+        setVerified(true);
+
+        // Log successful verification to Supabase
+        if (SUPABASE_CONFIG.isConfigured) {
+          supabase.from("audit_log").insert({
+            id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+            action: "pin_verified",
+            actor: actorName,
+            actor_level: actorLevel,
+            operation: operationType,
+            target: targetName || null,
+            created_at: new Date().toISOString(),
+          }).then(() => {}).catch(() => {});
+        }
+
+        setTimeout(() => {
+          onVerified();
+        }, 900);
       } else {
-        setError(`Incorrect PIN — ${MAX_ATTEMPTS - newAttempts} attempt${MAX_ATTEMPTS - newAttempts !== 1 ? "s" : ""} remaining`);
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        setShake(true);
+        setPin([]);
+        setTimeout(() => setShake(false), 500);
+
+        if (newAttempts >= MAX_ATTEMPTS) {
+          setLocked(true);
+          setLockTime(30);
+          setError(`Account locked for 30 seconds after ${MAX_ATTEMPTS} failed attempts`);
+
+          // Log lockout to audit
+          if (SUPABASE_CONFIG.isConfigured) {
+            supabase.from("audit_log").insert({
+              id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+              action: "pin_lockout",
+              actor: actorName,
+              actor_level: actorLevel,
+              operation: operationType,
+              target: targetName || null,
+              created_at: new Date().toISOString(),
+            }).then(() => {}).catch(() => {});
+          }
+        } else {
+          setError(`Incorrect PIN — ${MAX_ATTEMPTS - newAttempts} attempt${MAX_ATTEMPTS - newAttempts !== 1 ? "s" : ""} remaining`);
+        }
       }
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -356,7 +425,10 @@ export function PINVerifyModal({
 
                   {/* Hint */}
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "center", marginTop: 16, lineHeight: 1.6 }}>
-                    Prototype mode: enter any 6 digits to verify
+                    {SUPABASE_CONFIG.isConfigured
+                      ? "Enter your secure PIN to continue"
+                      : "Demo mode: use PIN 123456"
+                    }
                   </p>
                 </div>
               )}
