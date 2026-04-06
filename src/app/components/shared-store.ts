@@ -462,6 +462,7 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
+  };
 
   return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());  
 }
