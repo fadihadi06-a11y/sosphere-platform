@@ -469,7 +469,7 @@ export function UnifiedEmployeesPage({
     sos:      employees.filter(e => e.status === "sos").length,
     late:     employees.filter(e => e.status === "late-checkin").length,
     offShift: employees.filter(e => e.status === "off-shift").length,
-    avgScore: Math.round(employees.reduce((s, e) => s + e.safetyScore, 0) / employees.length),
+    avgScore: employees.length > 0 ? Math.round(employees.reduce((s, e) => s + e.safetyScore, 0) / employees.length) : 0,
   }), [employees]);
 
   // ── Filter counts ────────────────────────────────────────────

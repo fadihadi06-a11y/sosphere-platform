@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
+import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface BuddyPair {
