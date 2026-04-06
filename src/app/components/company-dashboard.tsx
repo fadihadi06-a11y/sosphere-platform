@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -19,9 +19,10 @@ import {
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 // Mock data now read from Zustand store — no direct EMPLOYEES/EMERGENCIES/ZONES imports needed
-import { CommandCenterPage } from "./command-center";
-import { IncidentReportsTab } from "./hub-incident-reports";
-import { RiskMapLivePage } from "./risk-map-live";
+// ── PERF: Lazy-loaded heavy page components (loaded on-demand per tab) ──
+const CommandCenterPage = lazy(() => import("./command-center").then(m => ({ default: m.CommandCenterPage })));
+const IncidentReportsTab = lazy(() => import("./hub-incident-reports").then(m => ({ default: m.IncidentReportsTab })));
+const RiskMapLivePage = lazy(() => import("./risk-map-live").then(m => ({ default: m.RiskMapLivePage })));
 import { type PriorityOverrideLog } from "./priority-engine";
 import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
@@ -29,15 +30,15 @@ import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, 
 import { HazardAlertBanner } from "./hazard-banner";
 import { TenantBanner } from "./tenant-banner";
 import { ManualPriorityModal } from "./manual-priority-modal";
-import { SettingsPage } from "./dashboard-settings-page";
-import { PricingPage } from "./dashboard-pricing-page";
-import { BillingPage } from "./dashboard-billing-page";
+const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({ default: m.SettingsPage })));
+const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
+const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
 } from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
-import { AnalyticsPage } from "./dashboard-analytics-page";
+const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => ({ default: m.AnalyticsPage })));
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
@@ -54,17 +55,17 @@ import { UnifiedEmployeesPage } from "./employees-unified-page";
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
-import { LocationZonesPage } from "./dashboard-location-page";
-import { WorkforcePage } from "./dashboard-workforce-page";
-import { CommsHubPage } from "./dashboard-comms-hub";
+const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
+const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
+const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
 import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
 import { AdminCallSystem } from "./admin-incoming-call";
 
 // ── NEW: Roles & Permissions Page ──────────────────────────────
-import { RolesPermissionsPage } from "./dashboard-roles-page";
+const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => ({ default: m.RolesPermissionsPage })));
 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
-import { AuditLogPage } from "./dashboard-audit-log-page";
+const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
 
 // ── NEW: CSV Field Guide ────────────────────────────────────────
 import { CSVFieldGuide } from "./csv-field-guide";
@@ -73,7 +74,7 @@ import { CSVFieldGuide } from "./csv-field-guide";
 import { NotificationsPanel, NotificationsBellButton } from "./dashboard-notifications-panel";
 
 // ── NEW: Safety Intelligence Engine ─────────────────────────────
-import { SafetyIntelligencePage } from "./safety-intelligence";
+const SafetyIntelligencePage = lazy(() => import("./safety-intelligence").then(m => ({ default: m.SafetyIntelligencePage })));
 import { Toaster, toast } from "sonner";
 import { safeTelCall } from "./utils/safe-tel";
 import { hapticLight, playUISound } from "./haptic-feedback";
@@ -97,37 +98,37 @@ import { PdfEmailModal } from "./pdf-email-modal";
 import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
 
 // ── NEW: Round 2 Features ──────────────────────────────────��────
-import { BuddySystemPage } from "./buddy-system";
-import { PreShiftChecklistPage } from "./pre-shift-checklist";
-import { EmergencyPlaybookPage } from "./emergency-playbook";
+const BuddySystemPage = lazy(() => import("./buddy-system").then(m => ({ default: m.BuddySystemPage })));
+const PreShiftChecklistPage = lazy(() => import("./pre-shift-checklist").then(m => ({ default: m.PreShiftChecklistPage })));
+const EmergencyPlaybookPage = lazy(() => import("./emergency-playbook").then(m => ({ default: m.EmergencyPlaybookPage })));
 
 // ── NEW: Round 3 Features ───────────────────────────────────────
-import { WeatherAlertsPage } from "./weather-alerts";
-import { JourneyManagementPage } from "./journey-management";
-import { SafetyGamificationPage } from "./safety-gamification";
-import { ComplianceReportsPage } from "./compliance-reports";
+const WeatherAlertsPage = lazy(() => import("./weather-alerts").then(m => ({ default: m.WeatherAlertsPage })));
+const JourneyManagementPage = lazy(() => import("./journey-management").then(m => ({ default: m.JourneyManagementPage })));
+const SafetyGamificationPage = lazy(() => import("./safety-gamification").then(m => ({ default: m.SafetyGamificationPage })));
+const ComplianceReportsPage = lazy(() => import("./compliance-reports").then(m => ({ default: m.ComplianceReportsPage })));
 
 // ── NEW: Smart Admin Hints ──────────────────────────────────────
 import { AdminHintBar } from "./admin-hints";
 import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout";
-import { LeaderboardPage } from "./dashboard-leaderboard-page";
+const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => ({ default: m.LeaderboardPage })));
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
 import { BatchEmailScheduler } from "./batch-email-scheduler";
-import { RRPAnalyticsPage } from "./rrp-analytics-page";
+const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => ({ default: m.RRPAnalyticsPage })));
 import { OfflineIndicator } from "./offline-sync";
 import { OfflineMonitoringPage } from "./dashboard-offline-page";
 import { getTrackerState, startGPSTracking } from "./offline-gps-tracker";
 
 // ── NEW: SAR Protocol Engine ────────────────────────────────────
-import { SARProtocolPage } from "./dashboard-sar-page";
+const SARProtocolPage = lazy(() => import("./dashboard-sar-page").then(m => ({ default: m.SARProtocolPage })));
 
 // ── NEW: ISO 45001 Compliance Pages ─────────────────��───────────
-import { IncidentInvestigationPage } from "./dashboard-incident-investigation";
-import { RiskRegisterPage } from "./dashboard-risk-register";
+const IncidentInvestigationPage = lazy(() => import("./dashboard-incident-investigation").then(m => ({ default: m.IncidentInvestigationPage })));
+const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m => ({ default: m.RiskRegisterPage })));
 
 // ── NEW: Mission Control ────────────────────────────────────────
-import { MissionControlPage } from "./mission-control";
+const MissionControlPage = lazy(() => import("./mission-control").then(m => ({ default: m.MissionControlPage })));
 
 // ── NEW: Incident Photo Report — Admin Broadcast Panel ──────────
 import { AdminBroadcastPanel, type IncidentReportData } from "./incident-photo-report";
@@ -148,6 +149,15 @@ import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, ch
 
 // ── NEW: Integration Readiness Checker (console: sosCheck()) ────
 import "./api/integration-checklist";
+
+// ── PERF: Suspense fallback for lazy-loaded pages ──
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center w-full min-h-[200px]">
+      <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 // FIX 7: Collision-resistant emergency ID generator
 // Uses full timestamp (base36) + 4-char random suffix → ~2.1B unique values/second
@@ -1614,6 +1624,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.25 }}
               >
+              <Suspense fallback={<PageLoading />}>
                 {currentPage === "overview" && (
                   <PageErrorBoundary label="Overview">
                   <OverviewPage
@@ -1818,6 +1829,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}
                 {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
                 {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
+              </Suspense>
               </motion.div>
             </AnimatePresence>
           </div>
