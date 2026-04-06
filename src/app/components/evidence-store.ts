@@ -185,8 +185,8 @@ async function saveVaultAsync(entries: EvidenceEntry[]): Promise<void> {
             status: e.status,
             reviewed_by: e.reviewedBy || null,
             reviewed_at: e.reviewedAt ? new Date(e.reviewedAt).toISOString() : null,
-            actions: e.actions,
-            comments: e.comments,
+            // actions & comments stored in separate evidence_actions table
+             
             linked_investigation_id: e.linkedInvestigationId || null,
             linked_risk_entry_id: e.linkedRiskEntryId || null,
             linked_audit_entry_id: e.linkedAuditEntryId || null,

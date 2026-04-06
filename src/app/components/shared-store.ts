@@ -419,7 +419,7 @@ export function onSyncEvent(callback: (event: SyncEvent) => void) {
 
   return () => {
     window.removeEventListener("storage", handler);
-    if (realtimeUnsub) realtimeUnsub();
+    _syncEventCallback = null;
   };
 }
 
@@ -462,8 +462,8 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
-  };
-  return map[type];
+
+  return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());  
 }
 
 function getIconKey(type: SyncEvent["type"]): string {
@@ -491,7 +491,7 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
   };
-  return map[type];
+    return map[type] || "Activity";
 }
 
 // ── Connected employees state ─────────────────────────────────
