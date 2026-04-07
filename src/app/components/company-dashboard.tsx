@@ -51,15 +51,19 @@ import { GlobalQuickActions } from "./global-quick-actions";
 import { GlobalSearch, useGlobalSearch } from "./global-search";
 
 // Import Unified Employees Page
-import { UnifiedEmployeesPage } from "./employees-unified-page";
+// ── PERF: UnifiedEmployeesPage lazy-loaded (1042 lines, only shown on people directory tab) ──
+const UnifiedEmployeesPage = lazy(() => import("./employees-unified-page").then(m => ({ default: m.UnifiedEmployeesPage })));
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
 const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
 const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
 const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
-import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
-import { AdminCallSystem } from "./admin-incoming-call";
+// ── PERF: SOSEmergencyPopup lazy-loaded (2700 lines, only rendered during active SOS) ──
+const SOSEmergencyPopup = lazy(() => import("./sos-emergency-popup").then(m => ({ default: m.SOSEmergencyPopup })));
+import { type SOSEmployee } from "./sos-emergency-popup";
+// ── PERF: AdminCallSystem lazy-loaded (1554 lines, only rendered when no active SOS popup) ──
+const AdminCallSystem = lazy(() => import("./admin-incoming-call").then(m => ({ default: m.AdminCallSystem })));
 
 // ── NEW: Roles & Permissions Page ──────────────────────────────
 const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => ({ default: m.RolesPermissionsPage })));
@@ -68,7 +72,8 @@ const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m 
 const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
 
 // ── NEW: CSV Field Guide ────────────────────────────────────────
-import { CSVFieldGuide } from "./csv-field-guide";
+// ── PERF: CSVFieldGuide lazy-loaded (704 lines, only shown on csvGuide page) ──
+const CSVFieldGuide = lazy(() => import("./csv-field-guide").then(m => ({ default: m.CSVFieldGuide })));
 
 // ── NEW: Notifications Panel ───────��────────────────────────────
 import { NotificationsPanel, NotificationsBellButton } from "./dashboard-notifications-panel";
@@ -83,7 +88,8 @@ import { hapticLight, playUISound } from "./haptic-feedback";
 // (useNotifications/NotificationPermissionCard — moved to settings)
 
 // ── NEW: Round 1 Features ───────────────────────────────────────
-import { DashboardEmergencyChat } from "./emergency-chat";
+// ── PERF: DashboardEmergencyChat lazy-loaded (576 lines, only shown during active emergency chat) ──
+const DashboardEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ default: m.DashboardEmergencyChat })));
 // ── Unified Emergency Engine (replaces 3 separate imports) ──
 import { UnifiedEmergencyEngine, GuideMeButton, type AICoAdminContext, type IREContext } from "./unified-emergency-engine";
 import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
@@ -93,7 +99,8 @@ import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
 // import { AICoAdmin, type AICoAdminContext } from "./ai-co-admin";
 import { requestNotificationPermission } from "./ire-push-notification";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
-import { PdfEmailModal } from "./pdf-email-modal";
+// ── PERF: PdfEmailModal lazy-loaded (678 lines, only shown when emailing lifecycle report) ──
+const PdfEmailModal = lazy(() => import("./pdf-email-modal").then(m => ({ default: m.PdfEmailModal })));
 // FIX D: Shift Handover Modal
 import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
 
@@ -114,7 +121,8 @@ import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout"
 const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => ({ default: m.LeaderboardPage })));
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
-import { BatchEmailScheduler } from "./batch-email-scheduler";
+// ── PERF: BatchEmailScheduler lazy-loaded (588 lines, only shown on scheduler tab) ──
+const BatchEmailScheduler = lazy(() => import("./batch-email-scheduler").then(m => ({ default: m.BatchEmailScheduler })));
 const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => ({ default: m.RRPAnalyticsPage })));
 import { OfflineIndicator } from "./offline-sync";
 import { OfflineMonitoringPage } from "./dashboard-offline-page";
@@ -131,7 +139,9 @@ const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m =
 const MissionControlPage = lazy(() => import("./mission-control").then(m => ({ default: m.MissionControlPage })));
 
 // ── NEW: Incident Photo Report — Admin Broadcast Panel ──────────
-import { AdminBroadcastPanel, type IncidentReportData } from "./incident-photo-report";
+// ── PERF: AdminBroadcastPanel lazy-loaded (1199 lines, only shown when viewing incident report) ──
+const AdminBroadcastPanel = lazy(() => import("./incident-photo-report").then(m => ({ default: m.AdminBroadcastPanel })));
+import { type IncidentReportData } from "./incident-photo-report";
 import {
   storeEvidence, updateEvidenceStatus, addEvidenceAction, getAllEvidence,
   getEvidencePipelineStatus, seedMockEvidence,
@@ -1383,19 +1393,28 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     [emergencies, dismissedSosIds, employees]
   );
 
-  // FIX 1: Compute locked tabs per hub based on plan
+  // FIX 1: Compute locked tabs per hub based on plan (memoized to avoid re-creating Sets every render)
   // Emergency override: when active emergencies exist, unlock history + command
   const hasActiveEmergency = emergencies.length > 0;
-  const emergencyHubLockedTabs = new Set<string>();
-  if (!hasActiveEmergency && !hasFeature(companyState, "incident_history")) emergencyHubLockedTabs.add("history");
-  if (!hasActiveEmergency && !hasFeature(companyState, "command_center")) emergencyHubLockedTabs.add("command");
+  const emergencyHubLockedTabs = useMemo(() => {
+    const s = new Set<string>();
+    if (!hasActiveEmergency && !hasFeature(companyState, "incident_history")) s.add("history");
+    if (!hasActiveEmergency && !hasFeature(companyState, "command_center")) s.add("command");
+    return s;
+  }, [hasActiveEmergency, companyState]);
 
-  const governanceLockedTabs = new Set<string>();
-  if (!hasFeature(companyState, "audit_logs")) governanceLockedTabs.add("audit");
+  const governanceLockedTabs = useMemo(() => {
+    const s = new Set<string>();
+    if (!hasFeature(companyState, "audit_logs")) s.add("audit");
+    return s;
+  }, [companyState]);
 
-  const reportsLockedTabs = new Set<string>();
-  if (!hasFeature(companyState, "advanced_analytics")) reportsLockedTabs.add("analytics");
-  if (!hasFeature(companyState, "custom_reports")) reportsLockedTabs.add("reports");
+  const reportsLockedTabs = useMemo(() => {
+    const s = new Set<string>();
+    if (!hasFeature(companyState, "advanced_analytics")) s.add("analytics");
+    if (!hasFeature(companyState, "custom_reports")) s.add("reports");
+    return s;
+  }, [companyState]);
 
   return (
     <div dir={dir} className={`relative ${webMode ? "flex flex-row" : "flex flex-col"} h-full`} style={{ background: "#0A0E17" }}>
