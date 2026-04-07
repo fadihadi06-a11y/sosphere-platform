@@ -462,6 +462,19 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
+    // Buddy System
+    BUDDY_ALERT: "Buddy Alert Triggered",
+    BUDDY_LOCATE_REQUEST: "Buddy Locate Requested",
+    // Post-Incident Monitoring
+    MONITORING_ACTIVATED: "Monitoring Mode Activated",
+    MONITORING_CHECKIN: "Monitoring Check-in Submitted",
+    MONITORING_MISSED: "Monitoring Check-in Missed",
+    MONITORING_CLEARED: "Monitoring Cleared",
+    // Individual Safety
+    PERSONAL_SOS: "Personal SOS Activated",
+    // Safe Walk
+    SAFE_WALK_STARTED: "Safe Walk Started",
+    SAFE_WALK_ENDED: "Safe Walk Ended",
   };
 
   return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());  
@@ -491,6 +504,19 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "Radar",
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
+    // Buddy System
+    BUDDY_ALERT: "Users",
+    BUDDY_LOCATE_REQUEST: "Locate",
+    // Post-Incident Monitoring
+    MONITORING_ACTIVATED: "Eye",
+    MONITORING_CHECKIN: "ClipboardCheck",
+    MONITORING_MISSED: "AlertCircle",
+    MONITORING_CLEARED: "ShieldCheck",
+    // Individual Safety
+    PERSONAL_SOS: "AlertTriangle",
+    // Safe Walk
+    SAFE_WALK_STARTED: "Footprints",
+    SAFE_WALK_ENDED: "CheckCircle",
   };
     return map[type] || "Activity";
 }
