@@ -17,6 +17,7 @@ interface ProfileSettingsProps {
   onLogout: () => void;
   companyName?: string;
   userName?: string;
+  t?: (key: string) => string;
 }
 
 interface SettingsSection {
@@ -42,7 +43,8 @@ interface SettingsItem {
 
 const AVATAR_URL = "https://images.unsplash.com/photo-1769636929231-3cd7f853d038?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtYW4lMjBwb3J0cmFpdCUyMGhlYWRzaG90JTIwZGFyayUyMGJhY2tncm91bmR8ZW58MXx8fHwxNzcyNzkyMjkwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral";
 
-export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, userName }: ProfileSettingsProps) {
+export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, userName, t: tProp }: ProfileSettingsProps) {
+  const t = tProp || ((k: string) => k);
   const [notifications, setNotifications] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
@@ -57,38 +59,38 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
 
   const sections: SettingsSection[] = [
     {
-      title: "Safety",
+      title: t("mp.safety"),
       items: [
-        { id: "medical", icon: Heart, label: "Medical ID", sub: "Blood type, allergies, medications", color: "#FF2D55", chevron: true, action: () => onNavigate("medical-id") },
-        { id: "incidents", icon: Clock, label: "Incident History", sub: isPro ? "Unlimited archive" : "Last 7 days", color: "#FF9500", chevron: true, action: () => onNavigate("incident-history") },
-        { id: "packet", icon: Package, label: "Emergency Packet", sub: "Data sent during SOS", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-packet") },
-        { id: "services", icon: Phone, label: "Emergency Services", sub: "Emergency numbers by country", color: "#FF2D55", chevron: true, action: () => onNavigate("emergency-services") },
-        { id: "emergency", icon: Users, label: "Emergency Contacts", sub: isPro ? "4 contacts" : "1 contact (Free limit)", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-contacts"), badge: !isPro ? "PRO" : undefined, badgeColor: "#00C8E0" },
-        { id: "location", icon: MapPin, label: "Live Location Sharing", color: "#00C853", toggle: true, toggleValue: locationSharing },
+        { id: "medical", icon: Heart, label: t("mp.medicalId"), sub: t("mp.medicalIdSub"), color: "#FF2D55", chevron: true, action: () => onNavigate("medical-id") },
+        { id: "incidents", icon: Clock, label: t("mp.incidentHistory"), sub: isPro ? t("mp.unlimitedArchive") : t("mp.last7days"), color: "#FF9500", chevron: true, action: () => onNavigate("incident-history") },
+        { id: "packet", icon: Package, label: t("mp.emergencyPacket"), sub: t("mp.emergencyPacketSub"), color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-packet") },
+        { id: "services", icon: Phone, label: t("mp.emergencyServices"), sub: t("mp.emergencyServicesSub"), color: "#FF2D55", chevron: true, action: () => onNavigate("emergency-services") },
+        { id: "emergency", icon: Users, label: t("mp.emergencyContacts"), sub: isPro ? "4 contacts" : "1 contact (Free limit)", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-contacts"), badge: !isPro ? "PRO" : undefined, badgeColor: "#00C8E0" },
+        { id: "location", icon: MapPin, label: t("mp.liveLocationSharing"), color: "#00C853", toggle: true, toggleValue: locationSharing },
       ],
     },
     {
-      title: "Preferences",
+      title: t("mp.preferences"),
       items: [
-        { id: "notifications", icon: Bell, label: "Notifications", sub: "Alerts, check-in reminders", color: "#FF9500", toggle: true, toggleValue: notifications },
+        { id: "notifications", icon: Bell, label: t("mp.notifications"), sub: t("mp.notificationsSub"), color: "#FF9500", toggle: true, toggleValue: notifications },
         { id: "language", icon: Globe, label: "Language", sub: "English", color: "#007AFF", chevron: true, action: () => onNavigate("language") },
-        { id: "appearance", icon: Moon, label: "Dark Mode", color: "#AF52DE", toggle: true, toggleValue: darkMode },
+        { id: "appearance", icon: Moon, label: t("mp.darkMode"), color: "#AF52DE", toggle: true, toggleValue: darkMode },
       ],
     },
     {
-      title: "Account",
+      title: t("mp.account"),
       items: [
-        { id: "subscription", icon: Crown, label: "Subscription", sub: planConfig.label, color: "#FFD700", chevron: true, action: () => onNavigate("subscription") },
-        { id: "devices", icon: Smartphone, label: "Connected Devices", sub: "1 device", color: "#00C8E0", chevron: true, action: () => onNavigate("connected-devices") },
-        { id: "privacy", icon: Lock, label: "Privacy & Security", color: "rgba(255,255,255,0.4)", chevron: true, action: () => onNavigate("privacy") },
+        { id: "subscription", icon: Crown, label: t("mp.subscription"), sub: planConfig.label, color: "#FFD700", chevron: true, action: () => onNavigate("subscription") },
+        { id: "devices", icon: Smartphone, label: t("mp.connectedDevices"), sub: "1 device", color: "#00C8E0", chevron: true, action: () => onNavigate("connected-devices") },
+        { id: "privacy", icon: Lock, label: t("mp.privacySecurity"), color: "rgba(255,255,255,0.4)", chevron: true, action: () => onNavigate("privacy") },
       ],
     },
     {
-      title: "Support",
+      title: t("mp.support"),
       items: [
-        { id: "help", icon: HelpCircle, label: "Help & Support", color: "rgba(255,255,255,0.3)", chevron: true, action: () => onNavigate("help") },
-        { id: "terms", icon: FileText, label: "Terms & Privacy Policy", color: "rgba(255,255,255,0.3)", chevron: true },
-        { id: "logout", icon: LogOut, label: "Log Out", color: "#FF2D55", danger: true, action: onLogout },
+        { id: "help", icon: HelpCircle, label: t("mp.helpSupport"), color: "rgba(255,255,255,0.3)", chevron: true, action: () => onNavigate("help") },
+        { id: "terms", icon: FileText, label: t("mp.termsPrivacy"), color: "rgba(255,255,255,0.3)", chevron: true },
+        { id: "logout", icon: LogOut, label: t("mp.logOut"), color: "#FF2D55", danger: true, action: onLogout },
       ],
     },
   ];
@@ -214,10 +216,10 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                 </div>
                 <div className="flex-1">
                   <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>
-                    Unlock Full Protection
+                    {t("mp.unlockFull")}
                   </p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 2 }}>
-                    Unlimited contacts, 5min recording, PDF export & more
+                    {t("mp.unlockSub")}
                   </p>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "rgba(0,200,224,0.4)" }} />
@@ -235,9 +237,9 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
         >
           <div className="grid grid-cols-3 gap-2">
             {[
-              { value: "47", label: "Days Safe", color: "#00C853" },
-              { value: "12", label: "Check-ins", color: "#FF9500" },
-              { value: "0", label: "SOS Alerts", color: "#FF2D55" },
+              { value: "47", label: t("mp.daysSafe"), color: "#00C853" },
+              { value: "12", label: t("mp.checkIns"), color: "#FF9500" },
+              { value: "0", label: t("mp.sosAlerts"), color: "#FF2D55" },
             ].map((stat, i) => (
               <div
                 key={stat.label}

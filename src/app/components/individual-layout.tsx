@@ -92,6 +92,7 @@ export function IndividualLayout({
           companyName={companyName}
           onNavigate={handleProfileNavigate}
           onLogout={() => onLogout?.()}
+          t={t}
         />
       )}
 
