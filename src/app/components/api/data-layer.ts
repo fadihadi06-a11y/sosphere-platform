@@ -1,6 +1,6 @@
 import type { Employee, EmergencyItem, ZoneData } from "../dashboard-types";
 import { EMPLOYEES, EMERGENCIES, ZONES } from "../dashboard-types";
-import { supabase } from "./supabase-client";
+import { supabase, checkRateLimit } from "./supabase-client";
 
 // =================================================================
 // KPI Data
@@ -128,20 +128,23 @@ export async function updateEmployee(id: string, updates: Partial<Employee>): Pr
     if (updates.status) empUpdates.status = updates.status === "on-shift" ? "on_duty" : "off_duty";
     if (updates.role)   empUpdates.role   = updates.role;
     if (Object.keys(empUpdates).length > 0) {
-      await supabase.from("employees").update(empUpdates).eq("id", id);
+      const { error } = await supabase.from("employees").update(empUpdates).eq("id", id);
+      if (error) throw new DataLayerError("employee", "update", error.message);
     }
-    // Update profiles table (name) � need user_id from employees row first
+    // Update profiles table (name) — need user_id from employees row first
     if (updates.name) {
-      const { data: empRow } = await supabase
+      const { data: empRow, error: lookupErr } = await supabase
         .from("employees")
         .select("user_id")
         .eq("id", id)
         .single();
+      if (lookupErr) throw new DataLayerError("employee", "lookup", lookupErr.message);
       if (empRow?.user_id) {
-        await supabase
+        const { error: profileErr } = await supabase
           .from("profiles")
           .update({ full_name: updates.name })
           .eq("id", empRow.user_id);
+        if (profileErr) throw new DataLayerError("profile", "update", profileErr.message);
       }
     }
     return { ...updates, id } as Employee;
@@ -338,32 +341,42 @@ export async function fetchIncidentReports(limit = 50): Promise<IncidentReport[]
 // Emergency Operations
 // =================================================================
 export async function resolveEmergency(emergencyId: string, resolvedBy?: string): Promise<boolean> {
+  if (!checkRateLimit("emergency_resolve", 5, 60_000)) {
+    throw new DataLayerError("emergency", "resolve", "Rate limited — max 5 resolves per minute");
+  }
   if (currentMode === "supabase") {
-    try {
-      const { error } = await supabase
-        .from("sos_queue")
-        .update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_by: resolvedBy })
-        .eq("id", emergencyId);
-      return !error;
-    } catch { return false; }
+    const { error } = await supabase
+      .from("sos_queue")
+      .update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_by: resolvedBy })
+      .eq("id", emergencyId);
+    if (error) {
+      console.error("[data-layer] resolveEmergency failed:", error.message);
+      throw new DataLayerError("emergency", "resolve", error.message);
+    }
+    return true;
   }
   return true;
 }
 
 export async function dispatchTeam(emergencyId: string, responders: string[], note?: string): Promise<boolean> {
+  if (!checkRateLimit("emergency_dispatch", 10, 60_000)) {
+    throw new DataLayerError("emergency", "dispatch", "Rate limited — max 10 dispatches per minute");
+  }
   if (currentMode === "supabase") {
-    try {
-      const { error } = await supabase
-        .from("sos_queue")
-        .update({
-          status: "investigating",
-          assigned_to: responders,
-          dispatch_note: note,
-          dispatched_at: new Date().toISOString(),
-        })
-        .eq("id", emergencyId);
-      return !error;
-    } catch { return false; }
+    const { error } = await supabase
+      .from("sos_queue")
+      .update({
+        status: "investigating",
+        assigned_to: responders,
+        dispatch_note: note,
+        dispatched_at: new Date().toISOString(),
+      })
+      .eq("id", emergencyId);
+    if (error) {
+      console.error("[data-layer] dispatchTeam failed:", error.message);
+      throw new DataLayerError("emergency", "dispatch", error.message);
+    }
+    return true;
   }
   return true;
 }

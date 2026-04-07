@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_CONFIG } from "./supabase-client";
+import { supabase, SUPABASE_CONFIG, checkRateLimit } from "./supabase-client";
 
 // ══════════════════════════════════════════════
 // Permissions Service — ربط الصلاحيات بـ Supabase
@@ -70,7 +70,7 @@ export async function saveUserPermissions(
   }
 }
 
-/** إرسال دعوة */
+/** إرسال دعوة — rate limited: max 10 invitations per minute */
 export async function sendInvitation(
   companyId: string,
   email: string,
@@ -79,6 +79,10 @@ export async function sendInvitation(
   invitedBy: string
 ) {
   if (!SUPABASE_CONFIG.isConfigured) return null;
+  if (!checkRateLimit("invite_send", 10, 60_000)) {
+    console.warn("[Permissions] Invitation rate-limited — max 10/min");
+    throw new Error("Too many invitations sent. Please wait a moment before sending more.");
+  }
   try {
     const { data, error } = await supabase
       .from("invitations")
