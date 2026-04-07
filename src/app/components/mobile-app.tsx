@@ -42,6 +42,7 @@ import { enableAutoSync } from "./offline-sync-engine";
 import { useFallDetection, FallDetectionOverlay } from "./fall-detection";
 import { useNotifications } from "./push-notifications";
 import { useShakeDetection } from "./shake-to-sos";
+import { useT, type Lang } from "./dashboard-i18n";
 import { MobileEmergencyChat } from "./emergency-chat";
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
@@ -219,6 +220,17 @@ export function MobileApp() {
 
   // -- Company match data from CompanyJoin verification ---------
   const [companyMatchData, setCompanyMatchData] = useState<CompanyMatchData | null>(null);
+
+  // -- Language state for i18n --------------------------------
+  const [lang, setLang] = useState<Lang>(() => {
+    try { const stored = localStorage.getItem("sosphere_app_lang"); if (stored) return stored as Lang; } catch {}
+    return "en";
+  });
+  const t = useT(lang);
+  const handleLangChange = useCallback((code: string) => {
+    setLang(code as Lang);
+    try { localStorage.setItem("sosphere_app_lang", code); } catch {}
+  }, []);
 
   // Track source screen for back navigation (employee vs individual)
   const [sourceScreen, setSourceScreen] = useState<"individual-home" | "employee-dashboard">("individual-home");
@@ -1170,7 +1182,7 @@ export function MobileApp() {
             )}
 
             {screen === "language" && (
-              <LanguageScreen onBack={() => navigate(sourceScreen, -1)} />
+              <LanguageScreen onBack={() => navigate(sourceScreen, -1)} lang={lang} onChangeLang={handleLangChange} />
             )}
 
             {screen === "privacy" && (
