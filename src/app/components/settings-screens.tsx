@@ -16,15 +16,17 @@ const LANGUAGES = [
   { code: "fr", name: "French", native: "Français", flag: "🇫🇷" },
   { code: "es", name: "Spanish", native: "Español", flag: "🇪🇸" },
   { code: "de", name: "German", native: "Deutsch", flag: "🇩🇪" },
-  { code: "tr", name: "Turkish", native: "Türkçe", flag: "🇹🇷" },
-  { code: "ur", name: "Urdu", native: "اردو", flag: "🇵🇰" },
-  { code: "hi", name: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
   { code: "zh", name: "Chinese", native: "中文", flag: "🇨🇳" },
+  { code: "hi", name: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
+  { code: "pt", name: "Portuguese", native: "Português", flag: "🇧🇷" },
+  { code: "ru", name: "Russian", native: "Русский", flag: "🇷🇺" },
   { code: "ja", name: "Japanese", native: "日本語", flag: "🇯🇵" },
+  { code: "ko", name: "Korean", native: "한국어", flag: "🇰🇷" },
+  { code: "tr", name: "Turkish", native: "Türkçe", flag: "🇹🇷" },
 ];
 
-export function LanguageScreen({ onBack }: { onBack: () => void }) {
-  const [selected, setSelected] = useState("en");
+export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => void; lang?: string; onChangeLang?: (code: string) => void }) {
+  const [selected, setSelected] = useState(lang || "en");
 
   return (
     <div className="relative flex flex-col h-full">
@@ -37,7 +39,7 @@ export function LanguageScreen({ onBack }: { onBack: () => void }) {
               {LANGUAGES.map((lang, i) => (
                 <button
                   key={lang.code}
-                  onClick={() => setSelected(lang.code)}
+                  onClick={() => { setSelected(lang.code); onChangeLang?.(lang.code); }}
                   className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
                   style={{ borderBottom: i < LANGUAGES.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}
                 >
