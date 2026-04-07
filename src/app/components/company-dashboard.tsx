@@ -241,86 +241,90 @@ interface CompanyDashboardProps {
 
 function getNavLiveThreat(t: (k: string) => string) {
   return [
-    { id: "emergencyHub" as DashPage,  icon: Siren,   label: "Emergency Hub" },
+    { id: "emergencyHub" as DashPage,  icon: Siren,   label: t("nav.emergencyHub") },
     { id: "riskMap" as DashPage,       icon: MapIcon,  label: t("nav.risk")   },
   ];
 }
 
 function getNavIntelligence(t: (k: string) => string) {
   return [
-    { id: "safetyIntel" as DashPage,  icon: Radar,           label: "Safety Intelligence" },
+    { id: "safetyIntel" as DashPage,  icon: Radar,           label: t("nav.safetyIntel") },
     { id: "overview" as DashPage,     icon: LayoutDashboard,  label: t("nav.overview")     },
   ];
 }
 
-function getNavOperations(_t: (k: string) => string) {
+function getNavOperations(t: (k: string) => string) {
   return [
-    { id: "operations" as DashPage,  icon: Route,  label: "Operations Hub"  },
-    { id: "people" as DashPage,      icon: Users,  label: "People & Teams"  },
+    { id: "operations" as DashPage,  icon: Route,  label: t("nav.operationsHub")  },
+    { id: "people" as DashPage,      icon: Users,  label: t("nav.people")  },
   ];
 }
 
-function getNavCompliance() {
+function getNavCompliance(t: (k: string) => string) {
   return [
-    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: "Incident & Risk"     },
-    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: "Reports & Analytics" },
+    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: t("nav.incidentRisk")     },
+    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: t("nav.reportsAnalytics") },
   ];
 }
 
-function getNavSystem() {
+function getNavSystem(t: (k: string) => string) {
   return [
-    { id: "governance" as DashPage,  icon: ScrollText, label: "Governance" },
+    { id: "governance" as DashPage,  icon: ScrollText, label: t("nav.governance") },
   ];
 }
 
 // ── Hub Tab Configurations ──────────────────────────────────────
-const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: any; color?: string }>> = {
-  emergencyHub: [
-    { id: "active", label: "Live Alerts", icon: Siren, color: "#FF2D55" },
-    { id: "reports", label: "Reports", icon: FileText, color: "#FF9500" },
-    { id: "history", label: "History", icon: FileWarning, color: "#00C8E0" },
-    { id: "command", label: "Command", icon: Radio, color: "#9B59B6" },
-    { id: "sar", label: "SAR", icon: Target, color: "#FF9500" },
-    { id: "playbook", label: "Playbook", icon: BookOpen, color: "#7B5EFF" },
-  ],
-  operations: [
-    { id: "missions", label: "Missions", icon: Navigation, color: "#00C8E0" },
-    { id: "journey", label: "Journeys", icon: Route, color: "#4A90D9" },
-    { id: "workforce", label: "Workforce", icon: CalendarDays, color: "#FF9500" },
-    { id: "comms", label: "Comms Hub", icon: Megaphone, color: "#E67E22" },
-    { id: "offline", label: "Connectivity", icon: Signal, color: "#00C853" },
-  ],
-  people: [
-    { id: "directory", label: "Directory", icon: Users, color: "#00C8E0" },
-    { id: "buddy", label: "Buddy System", icon: UserCheck, color: "#00C853" },
-    { id: "checklist", label: "Pre-Shift", icon: ListChecks, color: "#FF9500" },
-    { id: "score", label: "Safety Score", icon: Award, color: "#FFD700" },
-  ],
-  incidentRisk: [
-    { id: "investigation", label: "Investigation", icon: FileWarning, color: "#FF9500" },
-    { id: "register", label: "Risk Register", icon: Shield, color: "#BF5AF2" },
-  ],
-  reportsAnalytics: [
-    { id: "reports", label: "Reports", icon: FileText, color: "#00C853" },
-    { id: "analytics", label: "Analytics", icon: TrendingUp, color: "#4A90D9" },
-    { id: "leaderboard", label: "Leaderboard", icon: Trophy, color: "#FFD700" },
-    { id: "scheduler", label: "Scheduler", icon: Mail, color: "#00C8E0" },
-  ],
-  governance: [
-    { id: "audit", label: "Audit Trail", icon: ScrollText, color: "#8090A5" },
-    { id: "roles", label: "Roles & Access", icon: UserCog, color: "#9B59B6" },
-  ],
-};
+function getHubTabs(t: (k: string) => string): Record<string, Array<{ id: string; label: string; icon: any; color?: string }>> {
+  return {
+    emergencyHub: [
+      { id: "active", label: t("tab.liveAlerts"), icon: Siren, color: "#FF2D55" },
+      { id: "reports", label: t("tab.reports"), icon: FileText, color: "#FF9500" },
+      { id: "history", label: t("tab.history"), icon: FileWarning, color: "#00C8E0" },
+      { id: "command", label: t("tab.command"), icon: Radio, color: "#9B59B6" },
+      { id: "sar", label: t("tab.sar"), icon: Target, color: "#FF9500" },
+      { id: "playbook", label: t("tab.playbook"), icon: BookOpen, color: "#7B5EFF" },
+    ],
+    operations: [
+      { id: "missions", label: t("tab.missions"), icon: Navigation, color: "#00C8E0" },
+      { id: "journey", label: t("tab.journeys"), icon: Route, color: "#4A90D9" },
+      { id: "workforce", label: t("tab.workforce"), icon: CalendarDays, color: "#FF9500" },
+      { id: "comms", label: t("tab.commsHub"), icon: Megaphone, color: "#E67E22" },
+      { id: "offline", label: t("tab.connectivity"), icon: Signal, color: "#00C853" },
+    ],
+    people: [
+      { id: "directory", label: t("tab.directory"), icon: Users, color: "#00C8E0" },
+      { id: "buddy", label: t("tab.buddySystem"), icon: UserCheck, color: "#00C853" },
+      { id: "checklist", label: t("tab.preShift"), icon: ListChecks, color: "#FF9500" },
+      { id: "score", label: t("tab.safetyScore"), icon: Award, color: "#FFD700" },
+    ],
+    incidentRisk: [
+      { id: "investigation", label: t("tab.investigation"), icon: FileWarning, color: "#FF9500" },
+      { id: "register", label: t("tab.riskRegister"), icon: Shield, color: "#BF5AF2" },
+    ],
+    reportsAnalytics: [
+      { id: "reports", label: t("tab.reports"), icon: FileText, color: "#00C853" },
+      { id: "analytics", label: t("tab.analytics"), icon: TrendingUp, color: "#4A90D9" },
+      { id: "leaderboard", label: t("tab.leaderboard"), icon: Trophy, color: "#FFD700" },
+      { id: "scheduler", label: t("tab.scheduler"), icon: Mail, color: "#00C8E0" },
+    ],
+    governance: [
+      { id: "audit", label: t("tab.auditTrail"), icon: ScrollText, color: "#8090A5" },
+      { id: "roles", label: t("tab.rolesAccess"), icon: UserCog, color: "#9B59B6" },
+    ],
+  };
+}
 
 // ── HubTabBar Component — Glassmorphism tab navigation ─────────
-function HubTabBar({ hubId, activeTab, onTabChange, badges, lockedTabs }: {
+function HubTabBar({ hubId, activeTab, onTabChange, badges, lockedTabs, t }: {
   hubId: string;
   activeTab: string;
   onTabChange: (tab: string) => void;
   badges?: Record<string, number>;
   lockedTabs?: Set<string>;
+  t: (k: string) => string;
 }) {
-  const tabs = HUB_TABS[hubId];
+  const hubTabs = getHubTabs(t);
+  const tabs = hubTabs[hubId];
   if (!tabs) return null;
   return (
     <div className="px-5 pt-3 pb-1">
@@ -749,7 +753,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
   const t = useT(lang);
   const dir = LANG_META[lang].dir;
   const isAr = lang === "ar";
-  const getHubTab = (hub: string) => hubTabs[hub] || HUB_TABS[hub]?.[0]?.id || "";
+  const hubTabsMap = getHubTabs(t);
+  const getHubTab = (hub: string) => hubTabs[hub] || hubTabsMap[hub]?.[0]?.id || "";
 
   // ── Initialize sidebar from webMode ───────────────────────────
   const initializedWebMode = useRef(false);
@@ -1660,7 +1665,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                   />
                   </PageErrorBoundary>
                 )}
-                {currentPage === "riskMap" && <PlanGate feature="risk_map" companyState={companyState} onUpgrade={() => navigateTo("billing")}><div><EnterprisePageHeader page="riskMap" /><RiskMapLivePage t={t} /></div></PlanGate>}
+                {currentPage === "riskMap" && <PlanGate feature="risk_map" companyState={companyState} onUpgrade={() => navigateTo("billing")}><div><EnterprisePageHeader page="riskMap" t={t} /><RiskMapLivePage t={t} /></div></PlanGate>}
                 {/* Billing header removed — accessed via Settings sub-tab; breadcrumb provides context */}
                 {currentPage === "billing" && <div><BillingPage companyState={companyState} webMode={webMode} /><PricingPage webMode={webMode} currentStatus={toAccountStatus(companyState.company.billingStatus, trialDaysRemaining(companyState))} trialDays={trialDaysRemaining(companyState)} /></div>}
                 {currentPage === "settings" && <div><SettingsPage companyName={companyName} t={t} lang={lang} onLangChange={setLang} activeRole={activeRole} onRoleChange={setActiveRole} authState={authState} companyState={companyState} onNavigate={navigateTo} webMode={webMode} /></div>}
@@ -1669,8 +1674,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "emergencyHub" && (
                   <PageErrorBoundary label="Emergency Hub">
                   <div>
-                    <EnterprisePageHeader page="emergencyHub" activeEmergencyCount={activeEmergencyCount} />
-                    <HubTabBar hubId="emergencyHub" activeTab={getHubTab("emergencyHub")} onTabChange={(tab) => setHubTab("emergencyHub", tab)} lockedTabs={emergencyHubLockedTabs} />
+                    <EnterprisePageHeader page="emergencyHub" activeEmergencyCount={activeEmergencyCount} t={t} />
+                    <HubTabBar hubId="emergencyHub" activeTab={getHubTab("emergencyHub")} onTabChange={(tab) => setHubTab("emergencyHub", tab)} lockedTabs={emergencyHubLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("emergencyHub")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("emergencyHub") === "active" && <EmergenciesPage emergencies={emergencies} onResolve={safeHandleResolve} onCreate={handleOpenCreateEmergency} t={t} webMode={webMode} onLaunchSAR={() => { setHubTab("emergencyHub", "sar"); }} />}
@@ -1689,7 +1694,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "operations" && (
                   <PageErrorBoundary label="Operations Hub">
                   <div>
-                    <EnterprisePageHeader page="operations" />
+                    <EnterprisePageHeader page="operations" t={t} />
                     {/* ── Active Safe Walks Panel ── */}
                     {activeSafeWalks.length > 0 && (
                       <div
@@ -1757,7 +1762,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                         </button>
                       </motion.div>
                     )}
-                    <HubTabBar hubId="operations" activeTab={getHubTab("operations")} onTabChange={(tab) => setHubTab("operations", tab)} />
+                    <HubTabBar hubId="operations" activeTab={getHubTab("operations")} onTabChange={(tab) => setHubTab("operations", tab)} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("operations")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("operations") === "missions" && <MissionControlPage />}
@@ -1778,7 +1783,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "people" && (
                   <PageErrorBoundary label="People & Teams">
                   <div>
-                    <HubTabBar hubId="people" activeTab={getHubTab("people")} onTabChange={(tab) => setHubTab("people", tab)} />
+                    <HubTabBar hubId="people" activeTab={getHubTab("people")} onTabChange={(tab) => setHubTab("people", tab)} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("people")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("people") === "directory" && <UnifiedEmployeesPage employees={employees} t={t} webMode={webMode} onEmployeeSelect={setSelectedEmployee} onNavigate={(page) => navigateTo(page)} />}
@@ -1795,8 +1800,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "incidentRisk" && (
                   <PageErrorBoundary label="Incident & Risk">
                   <div>
-                    <EnterprisePageHeader page="incidentRisk" />
-                    <HubTabBar hubId="incidentRisk" activeTab={getHubTab("incidentRisk")} onTabChange={(tab) => setHubTab("incidentRisk", tab)} />
+                    <EnterprisePageHeader page="incidentRisk" t={t} />
+                    <HubTabBar hubId="incidentRisk" activeTab={getHubTab("incidentRisk")} onTabChange={(tab) => setHubTab("incidentRisk", tab)} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("incidentRisk")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("incidentRisk") === "investigation" && <IncidentInvestigationPage key={incidentSourceFilter || "default"} t={t} webMode={webMode} initialSourceFilter={incidentSourceFilter} pendingInvestigations={pendingInvestigations} onRiskUpdate={handleRiskUpdateFromInvestigation} />}
@@ -1811,8 +1816,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "reportsAnalytics" && (
                   <PageErrorBoundary label="Reports & Analytics">
                   <div>
-                    <EnterprisePageHeader page="reportsAnalytics" />
-                    <HubTabBar hubId="reportsAnalytics" activeTab={getHubTab("reportsAnalytics")} onTabChange={(tab) => setHubTab("reportsAnalytics", tab)} lockedTabs={reportsLockedTabs} />
+                    <EnterprisePageHeader page="reportsAnalytics" t={t} />
+                    <HubTabBar hubId="reportsAnalytics" activeTab={getHubTab("reportsAnalytics")} onTabChange={(tab) => setHubTab("reportsAnalytics", tab)} lockedTabs={reportsLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("reportsAnalytics")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("reportsAnalytics") === "reports" && <PlanGate feature="custom_reports" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><ComplianceReportsPage t={t} webMode={webMode} /></PlanGate>}
@@ -1829,8 +1834,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "governance" && (
                   <PageErrorBoundary label="Governance">
                   <div>
-                    <EnterprisePageHeader page="governance" />
-                    <HubTabBar hubId="governance" activeTab={getHubTab("governance")} onTabChange={(tab) => setHubTab("governance", tab)} lockedTabs={governanceLockedTabs} />
+                    <EnterprisePageHeader page="governance" t={t} />
+                    <HubTabBar hubId="governance" activeTab={getHubTab("governance")} onTabChange={(tab) => setHubTab("governance", tab)} lockedTabs={governanceLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
                       <motion.div key={getHubTab("governance")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("governance") === "audit" && <PlanGate feature="audit_logs" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AuditLogPage t={t} webMode={webMode} /></PlanGate>}
@@ -1842,12 +1847,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 )}
 
                 {/* ══ Truly Standalone pages (not inside any hub) ══ */}
-                {currentPage === "location" && <div><EnterprisePageHeader page="location" /><LocationZonesPage t={t} webMode={webMode} /></div>}
+                {currentPage === "location" && <div><EnterprisePageHeader page="location" t={t} /><LocationZonesPage t={t} webMode={webMode} /></div>}
                 {currentPage === "csvGuide" && <CSVFieldGuide standalone onClose={() => navigateTo("people")} />}
                 {/* FIX 1: Removed EnterprisePageHeader — Site Risk Intelligence card inside page is the title */}
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}
-                {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
-                {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
+                {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" t={t} /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
+                {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" t={t} /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
               </Suspense>
               </motion.div>
             </AnimatePresence>
@@ -3035,31 +3040,34 @@ const PAGE_HEADER_CONFIG: Partial<Record<DashPage, {
   riskRegister: { icon: Shield, color: "#BF5AF2", description: "Zone-based risk assessment matrix, training records & certification tracking — ISO 45001 §6.1", badge: { label: "ISO 45001", color: "#BF5AF2" } },
 };
 
-// Enterprise Page Header — titles map (hoisted outside render)
-const PAGE_TITLES: Partial<Record<DashPage, string>> = {
-  emergencyHub: "Emergency Hub", safetyIntel: "Safety Intelligence",
-  riskMap: "Risk Map Live", analytics: "Analytics & Insights",
-  employees: "Employees", location: "Location & Zones",
-  workforce: "Workforce", comms: "Comms & Safety",
-  roles: "Roles & Access", auditLog: "Audit Trail",
-  billing: "Plans & Billing", settings: "Settings",
-  buddySystem: "Buddy System", checklist: "Pre-Shift Checklist",
-  playbook: "Response Playbook", weatherAlerts: "Weather Alerts",
-  journeyMgmt: "Journey Management", safetyScore: "Safety Score",
-  complianceReports: "Compliance Reports", leaderboard: "Admin Leaderboard",
-  emailScheduler: "Email Scheduler", rrpAnalytics: "Response Analytics",
-  offlineMonitor: "Offline & Sync",
-  operations: "Operations Hub", people: "People & Teams",
-  incidentRisk: "Incident & Risk", reportsAnalytics: "Reports & Analytics",
-  governance: "Governance",
-};
+// Enterprise Page Header — titles function for i18n
+function getPageTitles(t: (k: string) => string): Partial<Record<DashPage, string>> {
+  return {
+    emergencyHub: t("pg.emergencyHub"), safetyIntel: t("pg.safetyIntel"),
+    riskMap: t("pg.riskMapLive"), analytics: t("pg.analyticsInsights"),
+    employees: t("pg.employees"), location: t("pg.locationZones"),
+    workforce: t("pg.workforce"), comms: t("pg.commsSafety"),
+    roles: t("pg.rolesAccess"), auditLog: t("pg.auditTrail"),
+    billing: t("pg.plansBilling"), settings: t("pg.settings"),
+    buddySystem: t("pg.buddySystem"), checklist: t("pg.preShiftChecklist"),
+    playbook: t("pg.responsePlaybook"), weatherAlerts: t("pg.weatherAlerts"),
+    journeyMgmt: t("pg.journeyMgmt"), safetyScore: t("pg.safetyScore"),
+    complianceReports: t("pg.complianceReports"), leaderboard: t("pg.adminLeaderboard"),
+    emailScheduler: t("pg.emailScheduler"), rrpAnalytics: t("pg.responseAnalytics"),
+    offlineMonitor: t("pg.offlineSync"),
+    operations: t("pg.operationsHub"), people: t("pg.peopleTeams"),
+    incidentRisk: t("pg.incidentRisk"), reportsAnalytics: t("pg.reportsAnalytics"),
+    governance: t("pg.governance"),
+  };
+}
 
 // Enterprise Page Header Renderer — with motion entrance & ambient glow
-function EnterprisePageHeader({ page, activeEmergencyCount }: { page: DashPage; activeEmergencyCount?: number }) {
+function EnterprisePageHeader({ page, activeEmergencyCount, t }: { page: DashPage; activeEmergencyCount?: number; t: (k: string) => string }) {
   const config = PAGE_HEADER_CONFIG[page];
   if (!config) return null;
   const Icon = config.icon;
 
+  const pageTitles = getPageTitles(t);
   const dynamicBadge = config.badge;
 
   return (
@@ -3101,7 +3109,7 @@ function EnterprisePageHeader({ page, activeEmergencyCount }: { page: DashPage; 
       <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.02em" }}>
-            {PAGE_TITLES[page] || page}
+            {pageTitles[page] || page}
           </span>
           {dynamicBadge && (
             <motion.span
@@ -3255,8 +3263,8 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
   });
   const NAV_INTELLIGENCE = getNavIntelligence(t);
   const NAV_OPERATIONS = getNavOperations(t);
-  const NAV_COMPLIANCE = getNavCompliance();
-  const NAV_SYSTEM = getNavSystem().filter(item => {
+  const NAV_COMPLIANCE = getNavCompliance(t);
+  const NAV_SYSTEM = getNavSystem(t).filter(item => {
     if (!authState) return true;
     if (item.id === "governance") return hasPermission(authState, "settings:view");
     return true;
