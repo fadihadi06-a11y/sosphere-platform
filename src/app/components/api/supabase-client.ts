@@ -101,3 +101,49 @@ export function getCompanyIdFromSession(session: any): string | null {
   // Fallback: user_metadata
   return session?.user?.user_metadata?.company_id || null;
 }
+
+// =================================================================
+// Rate Limiter — prevents abuse on critical actions
+// =================================================================
+const _rateBuckets = new Map<string, number[]>();
+
+/**
+ * Client-side rate limiter for critical actions.
+ * @param key   Unique action key (e.g. "invite_send", "emergency_resolve")
+ * @param max   Maximum calls allowed within the window
+ * @param windowMs  Time window in milliseconds (default: 60 000 = 1 min)
+ * @returns true if action is allowed, false if rate-limited
+ */
+export function checkRateLimit(key: string, max: number, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const bucket = _rateBuckets.get(key) ?? [];
+  // Prune expired entries
+  const valid = bucket.filter(t => t > now - windowMs);
+  if (valid.length >= max) {
+    _rateBuckets.set(key, valid);
+    return false; // rate-limited
+  }
+  valid.push(now);
+  _rateBuckets.set(key, valid);
+  return true; // allowed
+}
+
+/**
+ * Form submission debounce — prevents double-clicks and rapid re-submissions.
+ * Returns a wrapped async function that ignores calls within cooldownMs of last call.
+ */
+export function debounceSubmit<T extends (...args: any[]) => Promise<any>>(
+  fn: T,
+  cooldownMs = 2000
+): (...args: Parameters<T>) => Promise<ReturnType<T> | undefined> {
+  let lastCall = 0;
+  return async (...args: Parameters<T>) => {
+    const now = Date.now();
+    if (now - lastCall < cooldownMs) {
+      console.warn("[RateLimit] Submission blocked — too fast (cooldown " + cooldownMs + "ms)");
+      return undefined;
+    }
+    lastCall = now;
+    return fn(...args) as ReturnType<T>;
+  };
+}
