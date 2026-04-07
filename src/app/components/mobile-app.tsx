@@ -1038,6 +1038,7 @@ export function MobileApp() {
                   setUserPlan("free");
                   navigate("login", -1);
                 }}
+                t={t}
               />
             )}
 
