@@ -68,44 +68,44 @@ export const STATUS_CONFIG = {
 };
 
 // ── Dynamic System Health (uses real employee status data) ────
-function getSystemHealth(employeeStatuses: EmployeeStatusData[]) {
+function getSystemHealth(employeeStatuses: EmployeeStatusData[], t: (key: string) => string) {
   const totalEmployees = employeeStatuses.length;
   const trackingEnabled = employeeStatuses.filter(s => s.gpsEnabled || s.autoGpsEnabled).length;
   const gpsUptimePercent = totalEmployees > 0 ? ((trackingEnabled / totalEmployees) * 100).toFixed(1) : "100.0";
-  
+
   // Check battery levels
   const lowBattery = employeeStatuses.filter(s => (s.batteryLevel || 100) < 20).length;
-  const avgBattery = totalEmployees > 0 
+  const avgBattery = totalEmployees > 0
     ? (employeeStatuses.reduce((sum, s) => sum + (s.batteryLevel || 100), 0) / totalEmployees).toFixed(1)
     : "100.0";
-  
+
   // Check signal strength
   const poorSignal = employeeStatuses.filter(s => s.signalStrength === "poor" || s.signalStrength === "none").length;
-  
+
   return [
-    { 
-      name: "GPS Tracking", 
-      status: (trackingEnabled / totalEmployees) > 0.95 ? "operational" as const : "degraded" as const, 
+    {
+      name: t("dc.gpsTracking"),
+      status: (trackingEnabled / totalEmployees) > 0.95 ? "operational" as const : "degraded" as const,
       uptime: `${gpsUptimePercent}%`,
       detail: `${trackingEnabled}/${totalEmployees} active`
     },
-    { 
-      name: "Alert Engine", 
-      status: "operational" as const, 
+    {
+      name: t("dc.alertEngine"),
+      status: "operational" as const,
       uptime: "100%",
-      detail: "All systems nominal"
+      detail: t("dc.allNominal")
     },
-    { 
-      name: "Battery Health", 
-      status: lowBattery > 3 ? "degraded" as const : "operational" as const, 
+    {
+      name: t("dc.batteryHealth"),
+      status: lowBattery > 3 ? "degraded" as const : "operational" as const,
       uptime: `${avgBattery}%`,
-      detail: lowBattery > 0 ? `${lowBattery} devices low` : "All healthy"
+      detail: lowBattery > 0 ? `${lowBattery} devices low` : t("dc.allHealthy")
     },
-    { 
-      name: "Signal Strength", 
-      status: poorSignal > 5 ? "degraded" as const : "operational" as const, 
+    {
+      name: t("dc.signalStrength"),
+      status: poorSignal > 5 ? "degraded" as const : "operational" as const,
       uptime: poorSignal === 0 ? "100%" : `${((totalEmployees - poorSignal) / totalEmployees * 100).toFixed(1)}%`,
-      detail: poorSignal > 0 ? `${poorSignal} weak signals` : "All strong"
+      detail: poorSignal > 0 ? `${poorSignal} weak signals` : t("dc.allStrong")
     },
   ];
 }
@@ -194,7 +194,7 @@ type KpiFilter = "active" | "onDuty" | "slaBreach" | "health" | null;
 // ═══════════════════════════════════════════════════════════════
 // Evidence Intelligence Banner — Overview Page
 // ═══════════════════════════════════════════════════════════════
-function EvidenceIntelBanner({ onNavigate }: { onNavigate: (page: DashPage) => void }) {
+function EvidenceIntelBanner({ onNavigate, t }: { onNavigate: (page: DashPage) => void; t: (key: string) => string }) {
   const pipeline = getEvidencePipelineStatus();
   if (pipeline.totalEvidence === 0) return null;
 
@@ -221,7 +221,7 @@ function EvidenceIntelBanner({ onNavigate }: { onNavigate: (page: DashPage) => v
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span style={{ fontSize: 13, fontWeight: 800, color: "#7B5EFF", letterSpacing: "-0.02em" }}>
-                Evidence Intelligence
+                {t("dc.evidenceIntel")}
               </span>
               {hasPending && (
                 <motion.span
@@ -298,13 +298,13 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
   // Get dynamic data
   const employeeStatuses = getAllEmployeeStatuses();
   const liveActivity = getLiveActivity();
-  const systemHealth = getSystemHealth(employeeStatuses);
+  const systemHealth = getSystemHealth(employeeStatuses, t);
 
   const KPI_CARDS = [
-    { label: "Active Emergencies", value: activeCount.toString(), sub: activeCount > 0 ? "Requires attention" : "All clear", color: activeCount > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: activeCount > 0, page: "emergencyHub" as DashPage },
-    { label: "Employees On Duty",  value: onShift.toString(),     sub: `${lateCheckins} late check-in`,                    color: "#00C8E0",  icon: Users,         pulse: false,          page: "employees"  as DashPage },
-    { label: "Safety Score",       value: `${safetyScore}%`,      sub: "+3.2% from last week",                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
-    { label: "SLA Compliance",     value: slaBreachCount > 0 ? `${slaBreachCount}` : "100%", sub: slaBreachCount > 0 ? `${slaBreachCount} SLA breach${slaBreachCount > 1 ? "es" : ""}` : `${SLA_THRESHOLD / 60}m response threshold`, color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false, page: "emergencyHub" as DashPage },
+    { label: t("dc.activeEmergencies"), value: activeCount.toString(), sub: activeCount > 0 ? "Requires attention" : t("dc.allClear"), color: activeCount > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: activeCount > 0, page: "emergencyHub" as DashPage },
+    { label: t("dc.employeesOnDuty"),  value: onShift.toString(),     sub: `${lateCheckins} ${t("dc.lateCheckIn")}`,                    color: "#00C8E0",  icon: Users,         pulse: false,          page: "employees"  as DashPage },
+    { label: t("dc.safetyScore"),       value: `${safetyScore}%`,      sub: "+3.2% from last week",                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
+    { label: t("dc.slaCompliance"),     value: slaBreachCount > 0 ? `${slaBreachCount}` : "100%", sub: slaBreachCount > 0 ? `${slaBreachCount} SLA breach${slaBreachCount > 1 ? "es" : ""}` : `${SLA_THRESHOLD / 60}m response threshold`, color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false, page: "emergencyHub" as DashPage },
   ];
 
   return (
@@ -359,7 +359,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
       </div>
 
       {/* EVIDENCE INTELLIGENCE BANNER */}
-      <EvidenceIntelBanner onNavigate={onNavigate} />
+      <EvidenceIntelBanner onNavigate={onNavigate} t={t} />
 
       {/* MAIN CONTENT: 2-column */}
       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 380px" }}>
@@ -375,8 +375,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   <Siren className="size-4" style={{ color: "#FF2D55", strokeWidth: 1.8 }} />
                 </div>
                 <div>
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>Active Emergencies</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "-0.005em" }}>Priority engine · Auto-sorted</p>
+                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("dc.activeEmergencies")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "-0.005em" }}>{t("dc.priorityEngine")}</p>
                 </div>
                 {activeCount > 0 && (
                   <motion.span animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 2, repeat: Infinity }}
@@ -396,8 +396,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                 <div className="size-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)" }}>
                   <ShieldCheck className="size-7" style={{ color: "#00C853" }} />
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>All Clear</p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>No active emergencies at this time</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>{t("dc.allClear")}</p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>{t("dc.noActiveEmergencies")}</p>
               </div>
             ) : (
               <div>
@@ -584,8 +584,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   <Users className="size-4" style={{ color: "#00C8E0", strokeWidth: 1.8 }} />
                 </div>
                 <div>
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>Field Workers</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>Connected from mobile app</p>
+                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("dc.fieldWorkers")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{t("dc.connectedFromApp")}</p>
                 </div>
               </div>
               <button onClick={() => onNavigate("people")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl"
@@ -594,7 +594,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
               </button>
             </div>
             <div className="grid px-5 py-3" style={{ gridTemplateColumns: "1fr 130px 110px 80px", borderBottom: "1px solid rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.008)" }}>
-              {["Employee", "Location", "Last Check-in", "Status"].map(h => (
+              {[t("dc.employee"), t("dc.location"), t("dc.lastCheckIn"), t("dc.status")].map(h => (
                 <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{h}</span>
               ))}
             </div>
@@ -631,7 +631,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl p-5"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Safety Score</p>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("dc.safetyScore")}</p>
               <span style={{ fontSize: 11, color: "#00C853", fontWeight: 700, background: "rgba(0,200,83,0.08)", padding: "4px 10px", borderRadius: 10, border: "1px solid rgba(0,200,83,0.12)", letterSpacing: "-0.005em" }}>+3.2% ↑</span>
             </div>
             <div className="flex items-center gap-5">
@@ -651,9 +651,9 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
               </div>
               <div className="space-y-3 flex-1 min-w-0">
                 {[
-                  { label: "Check-in Rate",  value: "94%", color: "#00C853" },
-                  { label: "SOS Response",    value: "98%", color: "#00C8E0" },
-                  { label: "Zone Compliance", value: "87%", color: "#FF9500" },
+                  { label: t("dc.checkInRate"),  value: "94%", color: "#00C853" },
+                  { label: t("dc.sosResponse"),    value: "98%", color: "#00C8E0" },
+                  { label: t("dc.zoneCompliance"), value: "87%", color: "#FF9500" },
                 ].map(m => (
                   <div key={m.label}>
                     <div className="flex justify-between mb-1.5 gap-2">
@@ -675,7 +675,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl p-5"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>System Health</p>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("dc.systemHealth")}</p>
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
                 <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#00C853", boxShadow: "0 0 6px rgba(0,200,83,0.5)" }} />
                 <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853", letterSpacing: "-0.005em" }}>99.8% uptime</span>
@@ -703,8 +703,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl p-5"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Zone Overview</p>
-              <button onClick={() => onNavigate("location")} className="flex items-center gap-1 px-3 py-1.5 rounded-xl" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>View all <ChevronRight className="size-3" /></button>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("dc.zoneOverview")}</p>
+              <button onClick={() => onNavigate("location")} className="flex items-center gap-1 px-3 py-1.5 rounded-xl" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>{t("dc.viewAll")} <ChevronRight className="size-3" /></button>
             </div>
             <div className="space-y-2">
               {zones.map((z, i) => {
