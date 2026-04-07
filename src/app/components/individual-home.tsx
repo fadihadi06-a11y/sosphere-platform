@@ -31,14 +31,18 @@ const familyMembers = [
   },
 ];
 
-const quickActions = [
-  { id: "family", icon: Users, label: "Family Circle", color: "#00C8E0", bg: "rgba(0,200,224,0.06)" },
-  { id: "safewalk", icon: Footprints, label: "Safe Walk", color: "#00C853", bg: "rgba(0,200,83,0.06)" },
-  { id: "checkin", icon: Timer, label: "Check-in Timer", color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
-  { id: "medical", icon: HeartPulse, label: "Medical ID", color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
-];
+function getQuickActions(t: (k: string) => string) {
+  return [
+    { id: "family", icon: Users, label: t("app.familyCircle"), color: "#00C8E0", bg: "rgba(0,200,224,0.06)" },
+    { id: "safewalk", icon: Footprints, label: t("app.safeWalk"), color: "#00C853", bg: "rgba(0,200,83,0.06)" },
+    { id: "checkin", icon: Timer, label: t("app.checkIn"), color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
+    { id: "medical", icon: HeartPulse, label: t("app.medicalId"), color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
+  ];
+}
 
-export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void }) {
+export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
+  const t = tProp || ((k: string) => k);
+  const quickActions = getQuickActions(t);
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activated, setActivated] = useState(false);
@@ -135,7 +139,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
           transition={{ duration: 0.5 }}
           className="px-6 mb-6"
         >
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>Good Morning</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>{(() => { const h = new Date().getHours(); return h < 12 ? t("app.goodMorning") : h < 17 ? t("app.goodAfternoon") : t("app.goodEvening"); })()}</p>
           <h1 className="text-white mt-0.5" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.5px" }}>
             Stay Safe, <span style={{ color: "#00C8E0" }}>{userName.split(" ")[0]}</span>
           </h1>
@@ -335,10 +339,10 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
         >
           <div className="flex items-center justify-between mb-3">
             <p className="text-white" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
-              Family Circle
+              {t("app.familyCircle")}
             </p>
             <button className="flex items-center gap-0.5" onClick={onFamilyCircle} style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>
-              View All <ChevronRight className="size-3.5" />
+              {t("app.viewAll")} <ChevronRight className="size-3.5" />
             </button>
           </div>
           <div

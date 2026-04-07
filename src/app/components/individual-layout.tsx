@@ -6,12 +6,14 @@ import { ProfileSettings } from "./profile-settings";
 import { FamilyCircle } from "./family-circle";
 import { MapScreen } from "./map-screen";
 
-const tabs = [
-  { id: "home", icon: Home, label: "Home" },
-  { id: "family", icon: Users, label: "Family" },
-  { id: "map", icon: Map, label: "Map" },
-  { id: "profile", icon: User, label: "Profile" },
-];
+function getTabs(t: (k: string) => string) {
+  return [
+    { id: "home", icon: Home, label: t("app.home") },
+    { id: "family", icon: Users, label: t("app.family") },
+    { id: "map", icon: Map, label: t("app.map") },
+    { id: "profile", icon: User, label: t("app.profile") },
+  ];
+}
 
 interface IndividualLayoutProps {
   onSOSTrigger: () => void;
@@ -21,6 +23,7 @@ interface IndividualLayoutProps {
   userName: string;
   userPlan: "free" | "pro" | "employee";
   companyName?: string;
+  t?: (key: string) => string;
   onNavigateToMedicalID?: () => void;
   onNavigateToSubscription?: () => void;
   onNavigateToIncidentHistory?: () => void;
@@ -44,7 +47,10 @@ export function IndividualLayout({
   onNavigateToLanguage, onNavigateToPrivacy, onNavigateToDevices, onNavigateToHelp,
   onNavigateToSafeWalk,
   onLogout,
+  t: tProp,
 }: IndividualLayoutProps) {
+  const t = tProp || ((k: string) => k);
+  const tabs = getTabs(t);
   const [activeTab, setActiveTab] = useState("home");
 
   const handleProfileNavigate = (screen: string) => {
@@ -74,6 +80,7 @@ export function IndividualLayout({
           onLiveLocation={() => setActiveTab("map")}
           onNotifications={onNavigateToNotifications}
           onSafeWalk={onNavigateToSafeWalk}
+          t={t}
         />
       )}
       {activeTab === "family" && <FamilyCircle />}
