@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
+import { PageTransition, motionConfig, useReducedMotion } from "./view-transitions";
 import {
   Shield, Users, MapPin, AlertTriangle,
   ChevronRight, CheckCircle2, Radio,
@@ -42,6 +43,8 @@ const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => 
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
+import { RescueModeOverlay, default as RescueModeOverlayComponent } from "./rescue-mode-overlay";
+import { initRescueModeController, cleanupRescueMode } from "./rescue-mode-controller";
 // (ShiftSchedulingPage, GeofencingPage, GPSCompliancePage, BroadcastPage — now merged into hubs/location tabs)
 
 // (DashboardEvacuationPage, EmployeeStatusPage — now merged into hubs via PAGE_TO_HUB redirects)
@@ -681,6 +684,15 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     }, 3600000); // 1 hour
 
     return () => clearInterval(intervalId);
+  }, []);
+
+  // ── Initialize Rescue Mode Controller on mount ──────────────────
+  useEffect(() => {
+    const unsub = initRescueModeController();
+    return () => {
+      unsub?.();
+      cleanupRescueMode();
+    };
   }, []);
 
   // FIX 4: Prototype disclaimer state
@@ -1436,6 +1448,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           },
         }}
       />
+
+      {/* ── Emergency Warp: Rescue Mode Overlay ── */}
+      <RescueModeOverlayComponent />
+
       {/* ── CRITICAL FIX 3: Session timeout warning banner ── */}
       <SessionTimeoutWarning
         secondsLeft={sessionTimeoutState.warningSecondsLeft}
@@ -1643,10 +1659,13 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentPage}
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
+                exit={{ opacity: 0 }}
+                transition={{
+                  duration: motionConfig.normal,
+                  ease: motionConfig.easeInOutCubic,
+                }}
               >
               <Suspense fallback={<PageLoading />}>
                 {currentPage === "overview" && (
@@ -1677,7 +1696,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                     <EnterprisePageHeader page="emergencyHub" activeEmergencyCount={activeEmergencyCount} t={t} />
                     <HubTabBar hubId="emergencyHub" activeTab={getHubTab("emergencyHub")} onTabChange={(tab) => setHubTab("emergencyHub", tab)} lockedTabs={emergencyHubLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("emergencyHub")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("emergencyHub")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("emergencyHub") === "active" && <EmergenciesPage emergencies={emergencies} onResolve={safeHandleResolve} onCreate={handleOpenCreateEmergency} t={t} webMode={webMode} onLaunchSAR={() => { setHubTab("emergencyHub", "sar"); }} />}
                         {getHubTab("emergencyHub") === "reports" && <IncidentReportsTab webMode={webMode} onEscalateToInvestigation={handleEscalateToInvestigation} />}
                         {getHubTab("emergencyHub") === "history" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ Emergency override — full access active</span></div><IncidentHistoryPage t={t} webMode={webMode} /></div> : <PlanGate feature="incident_history" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><IncidentHistoryPage t={t} webMode={webMode} /></PlanGate>)}
@@ -1764,7 +1792,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                     )}
                     <HubTabBar hubId="operations" activeTab={getHubTab("operations")} onTabChange={(tab) => setHubTab("operations", tab)} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("operations")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("operations")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("operations") === "missions" && <MissionControlPage />}
                         {getHubTab("operations") === "journey" && <JourneyManagementPage t={t} webMode={webMode} onGuideMe={(journeyId, empName) => {
                           setDirectIreContext({ emergencyId: journeyId, employeeName: empName, zone: "Route Zone", sosType: "journey_sos", severity: "high", elapsed: 45, batteryLevel: 62, signalStrength: "fair", isJourney: true, journeyRoute: "HQ to Site Alpha", lastGPS: { lat: 25.2048, lng: 55.2708 } });
@@ -1785,7 +1822,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                   <div>
                     <HubTabBar hubId="people" activeTab={getHubTab("people")} onTabChange={(tab) => setHubTab("people", tab)} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("people")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("people")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("people") === "directory" && <UnifiedEmployeesPage employees={employees} t={t} webMode={webMode} onEmployeeSelect={setSelectedEmployee} onNavigate={(page) => navigateTo(page)} />}
                         {getHubTab("people") === "buddy" && <BuddySystemPage t={t} webMode={webMode} />}
                         {getHubTab("people") === "checklist" && <PreShiftChecklistPage t={t} webMode={webMode} onNavigateToFlagged={() => { setIncidentSourceFilter("Pre-Shift Checklist"); setCurrentPage("incidentRisk" as any); setHubTab("incidentRisk" as any, "investigation"); }} />}
@@ -1803,7 +1849,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                     <EnterprisePageHeader page="incidentRisk" t={t} />
                     <HubTabBar hubId="incidentRisk" activeTab={getHubTab("incidentRisk")} onTabChange={(tab) => setHubTab("incidentRisk", tab)} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("incidentRisk")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("incidentRisk")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("incidentRisk") === "investigation" && <IncidentInvestigationPage key={incidentSourceFilter || "default"} t={t} webMode={webMode} initialSourceFilter={incidentSourceFilter} pendingInvestigations={pendingInvestigations} onRiskUpdate={handleRiskUpdateFromInvestigation} />}
                         {getHubTab("incidentRisk") === "register" && <RiskRegisterPage t={t} webMode={webMode} pendingRiskUpdates={pendingRiskUpdates} />}
                       </motion.div>
@@ -1819,7 +1874,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                     <EnterprisePageHeader page="reportsAnalytics" t={t} />
                     <HubTabBar hubId="reportsAnalytics" activeTab={getHubTab("reportsAnalytics")} onTabChange={(tab) => setHubTab("reportsAnalytics", tab)} lockedTabs={reportsLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("reportsAnalytics")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("reportsAnalytics")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("reportsAnalytics") === "reports" && <PlanGate feature="custom_reports" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><ComplianceReportsPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("reportsAnalytics") === "analytics" && <PlanGate feature="advanced_analytics" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AnalyticsPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("reportsAnalytics") === "leaderboard" && <LeaderboardPage t={t} webMode={webMode} onNavigateToTraining={() => window.open("/training", "_blank")} />}
@@ -1837,7 +1901,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                     <EnterprisePageHeader page="governance" t={t} />
                     <HubTabBar hubId="governance" activeTab={getHubTab("governance")} onTabChange={(tab) => setHubTab("governance", tab)} lockedTabs={governanceLockedTabs} t={t} />
                     <AnimatePresence mode="wait">
-                      <motion.div key={getHubTab("governance")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={getHubTab("governance")}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: motionConfig.normal,
+                          ease: motionConfig.easeInOutCubic,
+                        }}
+                      >
                         {getHubTab("governance") === "audit" && <PlanGate feature="audit_logs" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AuditLogPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("governance") === "roles" && <RolesPermissionsPage t={t} webMode={webMode} onNavigate={(page) => navigateTo(page)} />}
                       </motion.div>

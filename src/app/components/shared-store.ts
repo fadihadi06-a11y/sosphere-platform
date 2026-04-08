@@ -98,6 +98,7 @@ export interface SyncEvent {
     | "ESCALATION_UPDATE"    // Smart escalation level changed
     // Round 1 features
     | "SHAKE_SOS"            // Shake-to-SOS triggered
+    | "VOICE_SOS"            // Voice-activated SOS triggered
     | "EMERGENCY_CHAT"       // Emergency chat message
     | "AUDIO_EVIDENCE"       // Audio recording evidence uploaded
     // SOS Live Intelligence
