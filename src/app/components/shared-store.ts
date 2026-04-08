@@ -14,6 +14,7 @@ let _companyId: string | null = null;
 let _syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let _adminChannel: ReturnType<typeof supabase.channel> | null = null;
 let _evacChannel: ReturnType<typeof supabase.channel> | null = null;
+let _dbChannel: ReturnType<typeof supabase.channel> | null = null;
 
 /** Call this once after login with the company ID */
 export function initRealtimeChannels(companyId: string) {
@@ -29,6 +30,7 @@ export function initRealtimeChannels(companyId: string) {
   if (_syncChannel) supabase.removeChannel(_syncChannel);
   if (_adminChannel) supabase.removeChannel(_adminChannel);
   if (_evacChannel) supabase.removeChannel(_evacChannel);
+  if (_dbChannel) supabase.removeChannel(_dbChannel);
 
   _syncChannel = supabase.channel(`sync:${companyId}`);
   _adminChannel = supabase.channel(`admin:${companyId}`);
@@ -43,6 +45,37 @@ export function initRealtimeChannels(companyId: string) {
   _evacChannel.subscribe((status) => {
     if (status === "CHANNEL_ERROR") console.warn("[Realtime] evac channel error — retrying on next event");
   });
+
+  // HARDENING: Subscribe to database changes for guaranteed SOS visibility
+  // This catches SOS inserts that arrive via sync engine (not broadcast)
+  _dbChannel = supabase.channel(`db:${companyId}`);
+  _dbChannel
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "sos_queue",
+        filter: `company_id=eq.${companyId}`,
+      },
+      (payload: any) => {
+        // Convert DB row to SyncEvent and process through existing pipeline
+        if (_syncEventCallback && payload.new) {
+          const row = payload.new;
+          _syncEventCallback({
+            type: "SOS_TRIGGERED",
+            employeeId: row.employee_id || row.user_id || "unknown",
+            employeeName: row.employee_name || row.name || "Unknown",
+            zone: row.zone || "",
+            timestamp: new Date(row.created_at || Date.now()).getTime(),
+            data: { source: "db_subscription", ...row },
+          } as SyncEvent);
+        }
+      },
+    )
+    .subscribe((status) => {
+      if (status === "CHANNEL_ERROR") console.warn("[Realtime] DB channel error — retrying on next event");
+    });
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
 }
@@ -278,22 +311,32 @@ function checkAndPruneStorage(): void {
   } catch { /* localStorage unavailable */ }
 }
 
-// ── Emit event (from Mobile App) ──────────────────────────────
-export function emitSyncEvent(event: SyncEvent) {
+// HARDENING: SOS Acknowledgment Handshake
+interface SosAckResult {
+  delivered: boolean;
+  ackTimestamp?: number;
+}
+
+const SOS_ACK_TIMEOUT = 10000; // 10 second timeout
+const SOS_ACK_RETRIES = 3;
+let _pendingSosAcks: Map<string, { resolve: (val: SosAckResult) => void; timeout: NodeJS.Timeout }> = new Map();
+
+/**
+ * HARDENING: Emit sync event with optional acknowledgment for SOS events.
+ *
+ * For SOS_TRIGGERED events:
+ *  - Waits for ACK broadcast from dashboard (10s timeout)
+ *  - Retries up to 3 times with exponential backoff (2s, 4s, 8s)
+ *  - Returns Promise<{delivered: boolean; ackTimestamp?: number}>
+ *
+ * For non-SOS events: fire-and-forget (void, backward compatible)
+ */
+export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | void> {
   const newEvent = { ...event, _ts: Date.now() };
+  const isSosEvent = event.type === "SOS_TRIGGERED";
+  const emergencyId = `${event.employeeId}-${newEvent._ts}`;
 
-  // PRIMARY: Supabase Realtime (cross-device)
-  if (_syncChannel) {
-    _syncChannel.send({
-      type: "broadcast",
-      event: "sync",
-      payload: newEvent,
-    }).catch(() => {
-      // Realtime failed — fallback to localStorage below
-    });
-  }
-
-  // SECONDARY: localStorage (same-device fallback + offline)
+  // Always store in localStorage (offline fallback)
   checkAndPruneStorage();
   let queue: any[];
   try {
@@ -318,11 +361,121 @@ export function emitSyncEvent(event: SyncEvent) {
   });
   safeSetItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 50)));
   window.dispatchEvent(new StorageEvent("storage", { key: STORE_KEY, newValue: payload }));
+
+  // For SOS events: implement handshake with retries
+  if (isSosEvent) {
+    return new Promise((resolve) => {
+      let attemptCount = 0;
+
+      const sendWithBackoff = async () => {
+        attemptCount++;
+
+        // Send via Supabase Realtime (PRIMARY)
+        if (_syncChannel) {
+          _syncChannel.send({
+            type: "broadcast",
+            event: "sync",
+            payload: { ...newEvent, _emergencyId: emergencyId },
+          }).catch(() => {
+            // Realtime failed, will retry
+          });
+        }
+
+        // Set up ACK listener
+        const ackPromise = new Promise<SosAckResult>((ackResolve) => {
+          const timeout = setTimeout(() => {
+            _pendingSosAcks.delete(emergencyId);
+            if (attemptCount < SOS_ACK_RETRIES) {
+              // Retry with exponential backoff: 2s, 4s, 8s
+              const delayMs = 2000 * Math.pow(2, attemptCount - 1);
+              setTimeout(sendWithBackoff, delayMs);
+            } else {
+              // All retries exhausted, resolve as not delivered
+              ackResolve({ delivered: false });
+            }
+          }, SOS_ACK_TIMEOUT);
+
+          _pendingSosAcks.set(emergencyId, { resolve: ackResolve, timeout });
+        });
+
+        const result = await ackPromise;
+        resolve(result);
+      };
+
+      sendWithBackoff();
+    });
+  }
+  // Non-SOS: fire-and-forget
+  else {
+    if (_syncChannel) {
+      _syncChannel.send({
+        type: "broadcast",
+        event: "sync",
+        payload: newEvent,
+      }).catch(() => {
+        // Realtime failed — fallback to localStorage above
+      });
+    }
+  }
+}
+
+// HARDENING: SOS Acknowledgment from Dashboard
+/**
+ * Called by the dashboard when it receives an SOS alert.
+ * Broadcasts ACK back to the mobile app via sync channel.
+ */
+export function emitSosAcknowledgment(emergencyId: string) {
+  if (_syncChannel) {
+    _syncChannel.send({
+      type: "broadcast",
+      event: "sos_ack",
+      payload: {
+        _emergencyId: emergencyId,
+        ackTimestamp: Date.now(),
+      },
+    }).catch(() => {
+      console.warn("[Realtime] Failed to send SOS ACK");
+    });
+  }
+}
+
+/**
+ * Mobile app registers a listener for SOS acknowledgments from the dashboard.
+ * Returns unsubscribe function.
+ */
+let _sosAckCallback: ((emergencyId: string, ackTimestamp: number) => void) | null = null;
+let _sosAckRealtimeRegistered = false;
+
+export function onSosAck(callback: (emergencyId: string, ackTimestamp: number) => void) {
+  _sosAckCallback = callback;
+
+  // PRIMARY: Supabase Realtime (register ONCE)
+  if (_syncChannel && !_sosAckRealtimeRegistered) {
+    _sosAckRealtimeRegistered = true;
+    _syncChannel.on("broadcast", { event: "sos_ack" }, ({ payload }: any) => {
+      if (payload && _sosAckCallback) {
+        const { _emergencyId, ackTimestamp } = payload;
+        _sosAckCallback(_emergencyId, ackTimestamp);
+
+        // Resolve any pending ACK promises
+        if (_pendingSosAcks.has(_emergencyId)) {
+          const { resolve, timeout } = _pendingSosAcks.get(_emergencyId)!;
+          clearTimeout(timeout);
+          _pendingSosAcks.delete(_emergencyId);
+          resolve({ delivered: true, ackTimestamp });
+        }
+      }
+    });
+  }
+
+  return () => {
+    _sosAckCallback = null;
+  };
 }
 
 // ── Admin → Employee signal ──────────────────────────────────
 export function emitAdminSignal(
-  type: "ADMIN_UNREACHABLE" | "ADMIN_ACKNOWLEDGED" | "SAR_ACTIVATED" | "SAR_WORKER_FOUND" | "BUDDY_ALERT",
+  type: "ADMIN_UNREACHABLE" | "ADMIN_ACKNOWLEDGED" | "SAR_ACTIVATED" | "SAR_WORKER_FOUND" | "BUDDY_ALERT" | "EVACUATE_ZONE" | "DISPATCH_RESPONDER" | "CANCEL_EMERGENCY" | "REQUEST_LOCATION" | "SAFETY_CHECK",
   employeeId: string,
   extra?: Record<string, any>,
 ) {
@@ -374,6 +527,74 @@ export function onAdminSignal(callback: (type: string, employeeId: string, extra
   return () => {
     window.removeEventListener("storage", handler);
     _adminSignalCallback = null;
+  };
+}
+
+// ── Dashboard → Mobile Command Interface ─────────────────────
+export interface DashboardCommand {
+  command: "EVACUATE" | "ACKNOWLEDGE" | "DISPATCH" | "CANCEL" | "LOCATE" | "SAFETY_CHECK";
+  targetEmployeeId?: string;  // specific employee, or omit for zone-wide
+  targetZone?: string;        // zone-wide command
+  emergencyId?: string;
+  data?: Record<string, any>;
+  issuedBy: string;           // admin name
+  issuedAt: number;
+}
+
+/** Dashboard → Mobile: Send structured command via realtime channel */
+export function emitDashboardCommand(cmd: DashboardCommand): void {
+  const payload = { ...cmd, _ts: Date.now() };
+
+  // PRIMARY: Supabase Realtime
+  if (_adminChannel) {
+    _adminChannel.send({
+      type: "broadcast",
+      event: "command",
+      payload,
+    }).catch((err) => {
+      console.error("[Command] Broadcast failed:", err);
+    });
+  }
+
+  // SECONDARY: localStorage fallback
+  const key = "sosphere_dashboard_cmd";
+  try {
+    localStorage.setItem(key, JSON.stringify(payload));
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue: JSON.stringify(payload) }));
+  } catch { /* quota exceeded — realtime is primary anyway */ }
+}
+
+// ── Listen for Dashboard Commands ────────────────────────────
+let _dashboardCmdCallback: ((cmd: DashboardCommand) => void) | null = null;
+let _cmdRealtimeRegistered = false;
+
+/** Mobile App: Listen for dashboard commands */
+export function onDashboardCommand(callback: (cmd: DashboardCommand) => void): () => void {
+  _dashboardCmdCallback = callback;
+
+  // PRIMARY: Supabase Realtime
+  if (_adminChannel && !_cmdRealtimeRegistered) {
+    _cmdRealtimeRegistered = true;
+    _adminChannel.on("broadcast", { event: "command" }, ({ payload }: any) => {
+      if (payload && _dashboardCmdCallback) _dashboardCmdCallback(payload as DashboardCommand);
+    });
+  }
+
+  // SECONDARY: localStorage fallback
+  const key = "sosphere_dashboard_cmd";
+  const handler = (e: StorageEvent) => {
+    if (e.key === key && e.newValue) {
+      try {
+        const cmd = JSON.parse(e.newValue) as DashboardCommand;
+        if (_dashboardCmdCallback) _dashboardCmdCallback(cmd);
+      } catch { /* ignore parse errors */ }
+    }
+  };
+  window.addEventListener("storage", handler);
+
+  return () => {
+    window.removeEventListener("storage", handler);
+    _dashboardCmdCallback = null;
   };
 }
 

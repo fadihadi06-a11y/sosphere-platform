@@ -45,9 +45,7 @@ const ACTOR_CONFIG = {
   main_admin: { label: "Main Admin", color: "#FF9500", icon: Key   },
 };
 
-// PIN verification — checks Supabase hash, falls back to demo mode in DEV only
-const DEMO_PIN = "123456";
-const IS_DEV = import.meta.env.DEV === true;
+// PIN verification — checks Supabase hash, no demo fallback
 const MAX_ATTEMPTS = 3;
 
 /** Hash PIN using SHA-256 for secure comparison */
@@ -57,11 +55,11 @@ async function hashPIN(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Verify PIN against Supabase, fallback to demo ONLY in development */
+/** Verify PIN against Supabase, no fallback */
 async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) {
-    // No Supabase — only accept demo PIN in dev mode
-    return IS_DEV && enteredPin === DEMO_PIN;
+    // No Supabase configured — always reject
+    return false;
   }
   try {
     const pinHash = await hashPIN(enteredPin);
@@ -71,15 +69,13 @@ async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
       .eq("user_id", userId)
       .single();
     if (error || !data) {
-      // No PIN set yet — accept demo PIN ONLY in dev mode
-      if (IS_DEV) return enteredPin === DEMO_PIN;
-      console.warn("[PIN] No PIN found in DB and not in dev mode");
+      // No PIN found in database — reject
+      console.warn("[PIN] No PIN found in DB");
       return false;
     }
     return data.pin_hash === pinHash;
   } catch (e) {
     console.warn("[PIN] Verification failed:", e);
-    if (IS_DEV) return enteredPin === DEMO_PIN;
     return false;
   }
 }
@@ -428,10 +424,7 @@ export function PINVerifyModal({
 
                   {/* Hint */}
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "center", marginTop: 16, lineHeight: 1.6 }}>
-                    {SUPABASE_CONFIG.isConfigured
-                      ? "Enter your secure PIN to continue"
-                      : "Demo mode: use PIN 123456"
-                    }
+                    Enter your secure PIN to continue
                   </p>
                 </div>
               )}

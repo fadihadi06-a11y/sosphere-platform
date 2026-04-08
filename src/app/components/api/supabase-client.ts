@@ -39,6 +39,22 @@ export const SUPABASE_CONFIG = {
   isConfigured: _isConfigured,
 };
 
+/**
+ * MISSION-CRITICAL: Validates that Supabase is properly configured.
+ * Call this at app startup. Returns a warning object if degraded.
+ */
+export function validateSupabaseConfig(): { ready: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!_isConfigured) {
+    warnings.push("Supabase backend is NOT configured. SOS signals will only be stored locally.");
+    warnings.push("Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env to enable server sync.");
+  }
+  if (SUPABASE_URL && !SUPABASE_URL.startsWith("https://")) {
+    warnings.push("Supabase URL must use HTTPS for encrypted transit.");
+  }
+  return { ready: _isConfigured, warnings };
+}
+
 // ── Auto-configure Storage Adapter when Supabase is connected ──
 if (_isConfigured) {
   setStorageBackend("supabase");
@@ -146,4 +162,30 @@ export function debounceSubmit<T extends (...args: any[]) => Promise<any>>(
     lastCall = now;
     return fn(...args) as ReturnType<T>;
   };
+}
+
+/**
+ * Server-enforced rate limiter via Supabase RPC.
+ * Falls back to client-side check if Edge Function unavailable.
+ */
+export async function checkServerRateLimit(
+  action: string,
+  userId: string,
+  maxPerMinute: number
+): Promise<boolean> {
+  if (!_isConfigured) return checkRateLimit(action, maxPerMinute);
+  try {
+    const { data, error } = await supabase.rpc("check_rate_limit", {
+      p_action: action,
+      p_user_id: userId,
+      p_max_per_minute: maxPerMinute,
+    });
+    if (error) {
+      console.warn("[RateLimit] Server check failed, using client fallback:", error.message);
+      return checkRateLimit(action, maxPerMinute);
+    }
+    return data === true;
+  } catch {
+    return checkRateLimit(action, maxPerMinute);
+  }
 }

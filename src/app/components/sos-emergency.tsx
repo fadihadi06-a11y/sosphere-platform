@@ -17,6 +17,7 @@ import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
+import { reportError } from "./error-boundary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase =
@@ -903,16 +904,27 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   };
 
   // ══════════════════════════════════════════════════════════════
-  // CRITICAL BATTERY MODE: When battery < 5% during active SOS,
-  // show full-screen "CALL 911/997 NOW" with direct dial button.
+  // BATTERY WARNING TIERS:
+  // • 35% (0.35): Amber warning "Battery low — stay near power source"
+  // • 20% (0.20): Red critical "Battery critical — SOS may not complete"
   // ══════════════════════════════════════════════════════════════
   const [criticalBattery, setCriticalBattery] = useState(false);
+  const [lowBattery, setLowBattery] = useState(false);
   useEffect(() => {
     const checkBattery = async () => {
       try {
         const level = await getBatteryLevel();
-        if (level !== null && level < 5) {
-          setCriticalBattery(true);
+        if (level !== null) {
+          if (level < 0.20) {
+            setCriticalBattery(true);
+            setLowBattery(false);
+          } else if (level < 0.35) {
+            setLowBattery(true);
+            setCriticalBattery(false);
+          } else {
+            setCriticalBattery(false);
+            setLowBattery(false);
+          }
         }
       } catch { /* battery API not available */ }
     };
@@ -1334,7 +1346,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       // ── FIX FATAL-2: Battery last gasp — send final known position ──
       // Throttled: only emit BATTERY_CRITICAL if 5min passed since last emit
       const currentBattery = getBatteryLevel();
-      if (currentBattery !== null && currentBattery <= 0.10) {
+      if (currentBattery !== null && currentBattery <= 0.20) {
         const now = Date.now();
         if (now - lastBatteryCriticalEmit >= BATTERY_CRITICAL_COOLDOWN_MS) {
           lastBatteryCriticalEmit = now;
@@ -1416,7 +1428,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               (navigator as any).getBattery().then((b: any) => {
                 const lvl = Math.round(b.level * 100);
                 saveEmployeeSync({ employeeId: userId, battery: lvl, signal: signalType, updatedAt: Date.now() });
-              }).catch(() => {});
+              }).catch((err) => {
+                reportError(err, { type: "battery_api_failed", component: "SOSEmergency" }, "warning");
+              });
             }
             // ── FIX 1: Buddy Alert — notify buddy partner via sync event ──
             if (mode === "employee") {
@@ -1462,7 +1476,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             if (phone) {
               // Open native phone dialer via tel: URI
               try { window.open(`tel:${phone.replace(/\s/g, "")}`, "_system"); }
-              catch { /* fallback: link click */ try { window.location.href = `tel:${phone.replace(/\s/g, "")}`; } catch {} }
+              catch (err) {
+                /* fallback: link click */
+                try { window.location.href = `tel:${phone.replace(/\s/g, "")}`; }
+                catch (fallbackErr) {
+                  reportError(fallbackErr, { type: "dialer_fallback_failed", phone: phone.slice(-4), component: "SOSEmergency" }, "warning");
+                }
+              }
               addEvent({ type: "call_out", title: `Dialing ${contactsRef.current[idx].name}`, detail: `Native call: ${phone}`, color: "#00C8E0" });
               trackEventSync(errIdRef.current, "contact_called",
                 `Calling emergency contact: ${contactsRef.current[idx].name} (${phone})`,
@@ -1724,6 +1744,33 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   function handleEndSOS() {
     setShowCancel(false); setShowDMS(false);
     doEnd("SOS ended by user");
+  }
+
+  // ═══ LOW BATTERY WARNING ═══
+  // Show amber warning when battery is between 20-35% during active SOS
+  if (lowBattery && !criticalBattery && phase !== "ended") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0A00" }}>
+        <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
+          style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(255,149,0,0.15)",
+            border: "3px solid #FF9500", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+          <AlertTriangle size={40} color="#FF9500" />
+        </motion.div>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: "#FF9500", textAlign: "center", marginBottom: 8 }}>
+          {isAr ? "البطارية منخفضة" : "Battery Low"}
+        </h1>
+        <p style={{ fontSize: 15, color: "rgba(255,255,255,0.7)", textAlign: "center", marginBottom: 24, lineHeight: 1.8 }}>
+          {isAr ? "البطارية بين 20-35% — ابق بالقرب من مصدر كهربائي" : "Battery 20-35% — stay near power source"}
+        </p>
+        <button onClick={() => setLowBattery(false)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+            width: "100%", maxWidth: 280, height: 56, borderRadius: 16,
+            background: "linear-gradient(135deg, #FF9500, #FF7700)", boxShadow: "0 8px 32px rgba(255,149,0,0.3)",
+            color: "#fff", fontSize: 16, fontWeight: 700, textDecoration: "none", border: "none", cursor: "pointer" }}>
+          {isAr ? "فهمت، تابع" : "I understand, continue"}
+        </button>
+      </div>
+    );
   }
 
   // ═══ CRITICAL BATTERY MODE ═══
