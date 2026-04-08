@@ -26,14 +26,15 @@ const LANGUAGES = [
   { code: "tr", name: "Turkish", native: "Türkçe", flag: "🇹🇷" },
 ];
 
-export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => void; lang?: string; onChangeLang?: (code: string) => void }) {
+export function LanguageScreen({ onBack, lang = "en", onChangeLang }: { onBack: () => void; lang?: Lang; onChangeLang?: (code: string) => void }) {
+  const t = useT(lang);
   const [selected, setSelected] = useState(lang || "en");
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Language" subtitle="Choose your preferred language" onBack={onBack} />
+          <ScreenHeader title={t("app.language")} subtitle={t("app.chooseLanguage")} onBack={onBack} />
 
           <div className="px-5">
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
@@ -65,7 +66,8 @@ export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => v
 }
 
 // ── Privacy Screen ─────────────────────────────────────────────
-export function PrivacyScreen({ onBack }: { onBack: () => void }) {
+export function PrivacyScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
+  const t = useT(lang);
   const [locationHistory, setLocationHistory] = useState(true);
   const [analytics, setAnalytics] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
@@ -87,7 +89,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Privacy & Security" subtitle="Control your data and access" onBack={onBack} />
+          <ScreenHeader title={t("app.privacy")} subtitle="Control your data and access" onBack={onBack} />
 
           {/* Toggles */}
           <div className="px-5 mb-5">
@@ -122,7 +124,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
           {/* Data Actions */}
           <div className="px-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px", marginBottom: 8, paddingLeft: 2, textTransform: "uppercase" }}>
-              Data Management
+              {t("app.help")}
             </p>
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {actions.map((a, i) => (
@@ -234,7 +236,7 @@ export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?:
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Help & Support" subtitle="Get help with SOSphere" onBack={onBack} />
+          <ScreenHeader title={t("app.help")} subtitle="Get help with SOSphere" onBack={onBack} />
 
           {/* Contact options */}
           <div className="px-5 mb-5">
