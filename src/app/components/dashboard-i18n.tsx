@@ -208,6 +208,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Allergies","med.medications":"Medications","med.conditions":"Medical Conditions",
     "med.organDonor":"Organ Donor","med.emergencyContact":"Emergency Medical Contact",
     "med.insuranceId":"Insurance ID","med.primaryDoctor":"Primary Doctor","med.notes":"Medical Notes",
+    "med.unknown":"Unknown","med.noneReported":"None Reported","med.noAllergies":"No Known Allergies",
+    "med.noMedications":"No Current Medications","med.criticalInfo":"Critical Health Info",
     // ── Settings Keys ──
     "set.thisDevice":"THIS DEVICE","set.smartwatch":"Smartwatch Integration","set.termsPrivacy":"Terms & Privacy Policy",
     "set.version":"Version","set.about":"About SOSphere","set.darkMode":"Dark Mode",
@@ -392,6 +394,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"الحساسية","med.medications":"الأدوية","med.conditions":"الحالات الطبية",
     "med.organDonor":"متبرع بالأعضاء","med.emergencyContact":"جهة اتصال طبية طارئة",
     "med.insuranceId":"رقم التأمين","med.primaryDoctor":"الطبيب الرئيسي","med.notes":"ملاحظات طبية",
+    "med.unknown":"غير معروف","med.noneReported":"لم يُبلَّغ عن أي شيء","med.noAllergies":"لا حساسية معروفة",
+    "med.noMedications":"لا أدوية حالية","med.criticalInfo":"معلومات صحية حرجة",
     // ── Settings Keys ──
     "set.thisDevice":"هذا الجهاز","set.smartwatch":"ربط الساعة الذكية","set.termsPrivacy":"الشروط وسياسة الخصوصية",
     "set.version":"الإصدار","set.about":"حول SOSphere","set.darkMode":"الوضع الداكن",
@@ -477,6 +481,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Allergies","med.medications":"Médicaments","med.conditions":"Conditions médicales",
     "med.organDonor":"Donneur d'organes","med.emergencyContact":"Contact médical d'urgence",
     "med.insuranceId":"Numéro d'assurance","med.primaryDoctor":"Médecin traitant","med.notes":"Notes médicales",
+    "med.unknown":"Inconnu","med.noneReported":"Aucun signalé","med.noAllergies":"Aucune allergie connue",
+    "med.noMedications":"Aucun médicament en cours","med.criticalInfo":"Info santé critique",
     // ── Settings Keys ──
     "set.thisDevice":"CET APPAREIL","set.smartwatch":"Intégration montre connectée","set.termsPrivacy":"Conditions et politique de confidentialité",
     "set.version":"Version","set.about":"À propos de SOSphere","set.darkMode":"Mode sombre",
@@ -562,6 +568,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Alergias","med.medications":"Medicamentos","med.conditions":"Condiciones médicas",
     "med.organDonor":"Donante de órganos","med.emergencyContact":"Contacto médico de emergencia",
     "med.insuranceId":"ID de seguro","med.primaryDoctor":"Médico principal","med.notes":"Notas médicas",
+    "med.unknown":"Desconocido","med.noneReported":"Ninguno reportado","med.noAllergies":"Sin alergias conocidas",
+    "med.noMedications":"Sin medicamentos actuales","med.criticalInfo":"Info de salud crítica",
     // ── Settings Keys ──
     "set.thisDevice":"ESTE DISPOSITIVO","set.smartwatch":"Integración smartwatch","set.termsPrivacy":"Términos y política de privacidad",
     "set.version":"Versión","set.about":"Acerca de SOSphere","set.darkMode":"Modo oscuro",
@@ -647,6 +655,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Allergien","med.medications":"Medikamente","med.conditions":"Erkrankungen",
     "med.organDonor":"Organspender","med.emergencyContact":"Medizinischer Notfallkontakt",
     "med.insuranceId":"Versicherungs-ID","med.primaryDoctor":"Hausarzt","med.notes":"Medizinische Notizen",
+    "med.unknown":"Unbekannt","med.noneReported":"Keine gemeldet","med.noAllergies":"Keine bekannten Allergien",
+    "med.noMedications":"Keine aktuellen Medikamente","med.criticalInfo":"Kritische Gesundheitsinfo",
     // ── Settings Keys ──
     "set.thisDevice":"DIESES GERÄT","set.smartwatch":"Smartwatch-Integration","set.termsPrivacy":"Nutzungsbedingungen & Datenschutz",
     "set.version":"Version","set.about":"Über SOSphere","set.darkMode":"Dunkelmodus",
@@ -731,6 +741,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"过敏","med.medications":"药物","med.conditions":"医疗状况",
     "med.organDonor":"器官捐献者","med.emergencyContact":"紧急医疗联系人",
     "med.insuranceId":"保险号","med.primaryDoctor":"主治医生","med.notes":"医疗备注",
+    "med.unknown":"未知","med.noneReported":"未报告","med.noAllergies":"无已知过敏",
+    "med.noMedications":"当前无用药","med.criticalInfo":"关键健康信息",
     // ── Settings Keys ──
     "set.thisDevice":"此设备","set.smartwatch":"智能手表集成","set.termsPrivacy":"条款和隐私政策",
     "set.version":"版本","set.about":"关于SOSphere","set.darkMode":"深色模式",
@@ -815,6 +827,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"एलर्जी","med.medications":"दवाइयाँ","med.conditions":"चिकित्सा स्थितियाँ",
     "med.organDonor":"अंग दाता","med.emergencyContact":"आपातकालीन चिकित्सा संपर्क",
     "med.insuranceId":"बीमा आईडी","med.primaryDoctor":"प्राथमिक चिकित्सक","med.notes":"चिकित्सा नोट्स",
+    "med.unknown":"अज्ञात","med.noneReported":"कोई रिपोर्ट नहीं","med.noAllergies":"कोई ज्ञात एलर्जी नहीं",
+    "med.noMedications":"कोई वर्तमान दवाई नहीं","med.criticalInfo":"महत्वपूर्ण स्वास्थ्य जानकारी",
     // ── Settings Keys ──
     "set.thisDevice":"यह डिवाइस","set.smartwatch":"स्मार्टवॉच एकीकरण","set.termsPrivacy":"शर्तें और गोपनीयता नीति",
     "set.version":"संस्करण","set.about":"SOSphere के बारे में","set.darkMode":"डार्क मोड",
@@ -899,6 +913,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Alergias","med.medications":"Medicamentos","med.conditions":"Condições médicas",
     "med.organDonor":"Doador de órgãos","med.emergencyContact":"Contato médico de emergência",
     "med.insuranceId":"ID do seguro","med.primaryDoctor":"Médico principal","med.notes":"Notas médicas",
+    "med.unknown":"Desconhecido","med.noneReported":"Nenhum reportado","med.noAllergies":"Sem alergias conhecidas",
+    "med.noMedications":"Sem medicamentos atuais","med.criticalInfo":"Info de saúde crítica",
     // ── Settings Keys ──
     "set.thisDevice":"ESTE DISPOSITIVO","set.smartwatch":"Integração smartwatch","set.termsPrivacy":"Termos e política de privacidade",
     "set.version":"Versão","set.about":"Sobre SOSphere","set.darkMode":"Modo escuro",
@@ -983,6 +999,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Аллергии","med.medications":"Лекарства","med.conditions":"Заболевания",
     "med.organDonor":"Донор органов","med.emergencyContact":"Экстренный медицинский контакт",
     "med.insuranceId":"Страховой ID","med.primaryDoctor":"Лечащий врач","med.notes":"Медицинские заметки",
+    "med.unknown":"Неизвестно","med.noneReported":"Не указано","med.noAllergies":"Аллергии не выявлены",
+    "med.noMedications":"Нет текущих лекарств","med.criticalInfo":"Критическая информация о здоровье",
     // ── Settings Keys ──
     "set.thisDevice":"ЭТО УСТРОЙСТВО","set.smartwatch":"Интеграция умных часов","set.termsPrivacy":"Условия и политика конфиденциальности",
     "set.version":"Версия","set.about":"О SOSphere","set.darkMode":"Тёмный режим",
@@ -1067,6 +1085,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"アレルギー","med.medications":"服用薬","med.conditions":"既往症",
     "med.organDonor":"臓器提供者","med.emergencyContact":"緊急医療連絡先",
     "med.insuranceId":"保険証番号","med.primaryDoctor":"かかりつけ医","med.notes":"医療メモ",
+    "med.unknown":"不明","med.noneReported":"報告なし","med.noAllergies":"既知のアレルギーなし",
+    "med.noMedications":"現在服用中の薬なし","med.criticalInfo":"重要な健康情報",
     // ── Settings Keys ──
     "set.thisDevice":"このデバイス","set.smartwatch":"スマートウォッチ連携","set.termsPrivacy":"利用規約とプライバシーポリシー",
     "set.version":"バージョン","set.about":"SOSphereについて","set.darkMode":"ダークモード",
@@ -1151,6 +1171,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"알레르기","med.medications":"복용약","med.conditions":"의료 상태",
     "med.organDonor":"장기 기증자","med.emergencyContact":"응급 의료 연락처",
     "med.insuranceId":"보험 ID","med.primaryDoctor":"주치의","med.notes":"의료 메모",
+    "med.unknown":"알 수 없음","med.noneReported":"보고된 것 없음","med.noAllergies":"알려진 알레르기 없음",
+    "med.noMedications":"현재 복용약 없음","med.criticalInfo":"중요 건강 정보",
     // ── Settings Keys ──
     "set.thisDevice":"이 기기","set.smartwatch":"스마트워치 연동","set.termsPrivacy":"약관 및 개인정보 처리방침",
     "set.version":"버전","set.about":"SOSphere 소개","set.darkMode":"다크 모드",
@@ -1235,6 +1257,8 @@ const S: Record<Lang, Record<string, string>> = {
     "med.allergies":"Alerjiler","med.medications":"İlaçlar","med.conditions":"Tıbbi Durumlar",
     "med.organDonor":"Organ Bağışçısı","med.emergencyContact":"Acil Tıbbi İletişim",
     "med.insuranceId":"Sigorta No","med.primaryDoctor":"Birincil Doktor","med.notes":"Tıbbi Notlar",
+    "med.unknown":"Bilinmiyor","med.noneReported":"Bildirilmedi","med.noAllergies":"Bilinen Alerji Yok",
+    "med.noMedications":"Mevcut İlaç Yok","med.criticalInfo":"Kritik Sağlık Bilgisi",
     // ── Settings Keys ──
     "set.thisDevice":"BU CİHAZ","set.smartwatch":"Akıllı Saat Entegrasyonu","set.termsPrivacy":"Şartlar ve Gizlilik Politikası",
     "set.version":"Sürüm","set.about":"SOSphere Hakkında","set.darkMode":"Karanlık Mod",

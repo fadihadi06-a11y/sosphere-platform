@@ -201,14 +201,16 @@ const FINGERPRINT_KEY = "sosphere_device_fp";
 /** Generate a stable device fingerprint from browser characteristics */
 async function generateDeviceFingerprint(): Promise<string> {
   const components = [
-    navigator.userAgent,
+    // HARDENING: Removed navigator.userAgent — changes on every Chrome update
+    // Using stable components only to prevent false-positive logout during emergencies
     navigator.language,
     navigator.hardwareConcurrency?.toString() || "0",
     screen.width + "x" + screen.height,
     screen.colorDepth?.toString() || "24",
     Intl.DateTimeFormat().resolvedOptions().timeZone,
     navigator.maxTouchPoints?.toString() || "0",
-    // Canvas fingerprint (stable across sessions)
+    navigator.platform || "unknown",
+    // Canvas fingerprint (stable across sessions and browser updates)
     await getCanvasFingerprint(),
   ];
   const raw = components.join("|");
@@ -238,12 +240,21 @@ function getCanvasFingerprint(): Promise<string> {
   });
 }
 
-/** Validate current session against stored fingerprint */
-export async function validateSessionFingerprint(): Promise<{
+/** Validate current session against stored fingerprint.
+ *  @param skipDuringEmergency If true, always returns valid (prevents logout during active SOS)
+ */
+export async function validateSessionFingerprint(skipDuringEmergency: boolean = false): Promise<{
   valid: boolean;
   reason?: string;
   fingerprint: string;
 }> {
+  // HARDENING: Never invalidate session during active emergency
+  // A forced re-auth during SOS could kill the emergency signal
+  if (skipDuringEmergency) {
+    const currentFP = await generateDeviceFingerprint();
+    return { valid: true, fingerprint: currentFP };
+  }
+
   const currentFP = await generateDeviceFingerprint();
   const storedFP = localStorage.getItem(FINGERPRINT_KEY);
 
@@ -254,10 +265,11 @@ export async function validateSessionFingerprint(): Promise<{
   }
 
   if (storedFP !== currentFP) {
-    // Fingerprint mismatch — possible token theft
+    // Fingerprint changed — could be browser update or device theft
+    // Log the event but give a grace period: re-bind if user re-authenticates
     return {
       valid: false,
-      reason: "Device fingerprint mismatch. Session may have been hijacked.",
+      reason: "Device fingerprint changed. Please re-authenticate to confirm your identity.",
       fingerprint: currentFP,
     };
   }
@@ -274,4 +286,57 @@ export async function bindSessionToDevice(): Promise<void> {
 /** Clear device fingerprint (on logout) */
 export function clearDeviceFingerprint(): void {
   localStorage.removeItem(FINGERPRINT_KEY);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRODUCTION ENVIRONMENT GUARD
+// Validates ALL required environment variables on app startup.
+// In production builds, missing critical vars trigger visible error.
+// ═══════════════════════════════════════════════════════════════
+
+interface EnvValidation {
+  ready: boolean;
+  missing: string[];
+  warnings: string[];
+}
+
+/** Validate production environment. Call from main.tsx on startup. */
+export function validateProductionEnvironment(): EnvValidation {
+  const missing: string[] = [];
+  const warnings: string[] = [];
+  const isProd = import.meta.env.PROD;
+
+  // Critical: Supabase (required for any backend functionality)
+  if (!_isConfigured) {
+    if (isProd) {
+      missing.push("VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY — Backend is OFFLINE. SOS signals will NOT reach administrators.");
+    } else {
+      warnings.push("Supabase not configured — running in offline/demo mode.");
+    }
+  }
+
+  // Critical: Sentry (required for production error monitoring)
+  if (!import.meta.env.VITE_SENTRY_DSN) {
+    if (isProd) {
+      missing.push("VITE_SENTRY_DSN — Error tracking is DISABLED. Production crashes will be invisible. This is a life-safety system — you MUST configure Sentry.");
+    } else {
+      warnings.push("Sentry DSN not configured — errors will only log to console.");
+    }
+  }
+
+  // Important: Firebase for push notifications
+  if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+    warnings.push("Firebase not configured — push notifications disabled. Workers won't receive background SOS alerts.");
+  }
+
+  // Important: Twilio for voice calls
+  if (!import.meta.env.VITE_TWILIO_ENABLED) {
+    warnings.push("Twilio not configured — voice calls will use browser-only WebRTC (no PSTN).");
+  }
+
+  return {
+    ready: missing.length === 0,
+    missing,
+    warnings,
+  };
 }

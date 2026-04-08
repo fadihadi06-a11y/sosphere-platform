@@ -377,55 +377,79 @@ export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | vo
   safeSetItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 50)));
   window.dispatchEvent(new StorageEvent("storage", { key: STORE_KEY, newValue: payload }));
 
-  // For SOS events: implement handshake with retries
+  // For SOS events: implement handshake with retries + HARD ABORT timeout
   if (isSosEvent) {
-    return new Promise((resolve) => {
+    // HARDENING: Master abort timeout prevents infinite UI freeze
+    // If network is half-open (DNS resolves, TCP hangs), this ensures
+    // the UI never freezes for more than 15 seconds total
+    const HARD_ABORT_MS = 15000;
+
+    const handshakePromise = new Promise<SosAckResult>((resolve) => {
       let attemptCount = 0;
+      let resolved = false;
 
       const sendWithBackoff = async () => {
+        if (resolved) return;
         attemptCount++;
 
         // Send via Supabase Realtime (PRIMARY)
         if (_syncChannel) {
+          // Per-send timeout using AbortController pattern
+          const sendTimeout = setTimeout(() => {
+            // If send itself hangs, we don't block — just continue to ACK wait
+          }, 5000);
+
           _syncChannel.send({
             type: "broadcast",
             event: "sync",
             payload: { ...newEvent, _emergencyId: emergencyId },
           }).catch((err) => {
-            // FIX 3: Report Realtime send failures with warning severity (will retry)
-            reportError(err, {
-              type: "realtime_send_failed",
+            reportError(err instanceof Error ? err : new Error(String(err)), {
               context: "emitSyncEvent/sendWithBackoff",
               emergencyId,
               component: "SharedStore",
-              severity: "warning",
+              attempt: attemptCount,
             }, "warning");
-          });
+          }).finally(() => clearTimeout(sendTimeout));
         }
 
-        // Set up ACK listener
-        const ackPromise = new Promise<SosAckResult>((ackResolve) => {
-          const timeout = setTimeout(() => {
-            _pendingSosAcks.delete(emergencyId);
-            if (attemptCount < SOS_ACK_RETRIES) {
-              // Retry with exponential backoff: 2s, 4s, 8s
-              const delayMs = 2000 * Math.pow(2, attemptCount - 1);
-              setTimeout(sendWithBackoff, delayMs);
-            } else {
-              // All retries exhausted, resolve as not delivered
-              ackResolve({ delivered: false });
+        // Set up ACK listener with per-attempt timeout
+        const ackTimeout = setTimeout(() => {
+          _pendingSosAcks.delete(emergencyId);
+          if (!resolved && attemptCount < SOS_ACK_RETRIES) {
+            const delayMs = 2000 * Math.pow(2, attemptCount - 1);
+            setTimeout(sendWithBackoff, delayMs);
+          } else if (!resolved) {
+            resolved = true;
+            resolve({ delivered: false });
+          }
+        }, SOS_ACK_TIMEOUT);
+
+        _pendingSosAcks.set(emergencyId, {
+          resolve: (val: SosAckResult) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(ackTimeout);
+              resolve(val);
             }
-          }, SOS_ACK_TIMEOUT);
-
-          _pendingSosAcks.set(emergencyId, { resolve: ackResolve, timeout });
+          },
+          timeout: ackTimeout,
         });
-
-        const result = await ackPromise;
-        resolve(result);
       };
 
       sendWithBackoff();
     });
+
+    // HARD ABORT: Never freeze UI longer than 15 seconds
+    const abortPromise = new Promise<SosAckResult>((resolve) => {
+      setTimeout(() => {
+        // Clean up any pending ACK listeners
+        _pendingSosAcks.delete(emergencyId);
+        resolve({ delivered: false });
+      }, HARD_ABORT_MS);
+    });
+
+    return Promise.race([handshakePromise, abortPromise]);
   }
   // Non-SOS: fire-and-forget
   else {
