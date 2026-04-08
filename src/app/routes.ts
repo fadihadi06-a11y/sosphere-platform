@@ -21,5 +21,7 @@ export const router = createBrowserRouter([
   // ── LEGAL: Privacy Policy and Terms of Service ──
   { path: "/privacy", lazy: () => import("./components/privacy-page").then(m => ({ Component: m.PrivacyPage })), HydrateFallback: RouteLoading },
   { path: "/terms", lazy: () => import("./components/terms-page").then(m => ({ Component: m.TermsPage })), HydrateFallback: RouteLoading },
+  // ── COMPLIANCE: Hidden ISO 27001 Auditor Dashboard (requires admin PIN) ──
+  { path: "/compliance", lazy: () => import("./components/compliance-dashboard").then(m => ({ Component: m.ComplianceDashboard })), HydrateFallback: RouteLoading },
   { path: "*", lazy: () => import("./components/not-found-page").then(m => ({ Component: m.NotFoundPage })), HydrateFallback: RouteLoading },
 ]);
