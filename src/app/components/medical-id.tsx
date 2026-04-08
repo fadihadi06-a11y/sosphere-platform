@@ -6,8 +6,8 @@ import {
   Plus, X, Stethoscope, Weight, Ruler, Activity,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-// FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
-import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+// ISO 27001 §A.8.2.3: Use encrypted storage for protected medical data
+import { secureStore, secureRead } from "./data-residency-guard";
 import { useT, type Lang } from "./dashboard-i18n";
 
 const MEDICAL_STORAGE_KEY = "sosphere_medical_id";
@@ -50,10 +50,8 @@ interface MedicalIDProps {
 
 export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
   const t = useT(lang);
-  // FIX FATAL-1: Load persisted medical data on mount
-  const [data, setData] = useState<MedicalData>(() =>
-    loadJSONSync<MedicalData>(MEDICAL_STORAGE_KEY, defaultData)
-  );
+  const [data, setData] = useState<MedicalData>(defaultData);
+  const [isLoading, setIsLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [newItem, setNewItem] = useState("");
@@ -61,10 +59,30 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
 
   const isPro = userPlan === "pro" || userPlan === "employee";
 
-  // FIX FATAL-1: Persist medical data whenever it changes
+  // Load encrypted medical data on mount
   useEffect(() => {
-    storeJSONSync(MEDICAL_STORAGE_KEY, data);
-  }, [data]);
+    (async () => {
+      try {
+        const encrypted = await secureRead<MedicalData>(MEDICAL_STORAGE_KEY, "medical");
+        if (encrypted) {
+          setData(encrypted);
+        }
+      } catch (err) {
+        console.error("[MedicalID] Failed to load encrypted data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, []);
+
+  // Persist encrypted medical data whenever it changes
+  useEffect(() => {
+    if (!isLoading) {
+      secureStore(MEDICAL_STORAGE_KEY, data, "medical").catch(err =>
+        console.error("[MedicalID] Failed to store encrypted data:", err)
+      );
+    }
+  }, [data, isLoading]);
 
   const addItemToList = (field: "conditions" | "allergies" | "medications") => {
     if (!newItem.trim()) return;
