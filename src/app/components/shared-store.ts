@@ -206,7 +206,14 @@ async function saveToIDB(key: string, value: string): Promise<boolean> {
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => resolve(false);
     });
-  } catch {
+  } catch (err) {
+    // FIX 3: Report IDB fallback failures with warning severity (fallback mechanism)
+    reportError(err, {
+      type: "idb_fallback_write_failed",
+      context: "storeIDBFallback",
+      component: "SharedStore",
+      severity: "warning",
+    }, "warning");
     return false;
   }
 }
@@ -230,7 +237,14 @@ export async function drainIDBFallback(): Promise<{ key: string; value: string; 
         }
       };
     });
-  } catch {
+  } catch (err) {
+    // FIX 3: Report IDB drain failures with warning severity (non-critical startup operation)
+    reportError(err, {
+      type: "idb_drain_failed",
+      context: "drainIDBFallback",
+      component: "SharedStore",
+      severity: "warning",
+    }, "warning");
     return [];
   }
 }
@@ -377,8 +391,15 @@ export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | vo
             type: "broadcast",
             event: "sync",
             payload: { ...newEvent, _emergencyId: emergencyId },
-          }).catch(() => {
-            // Realtime failed, will retry
+          }).catch((err) => {
+            // FIX 3: Report Realtime send failures with warning severity (will retry)
+            reportError(err, {
+              type: "realtime_send_failed",
+              context: "emitSyncEvent/sendWithBackoff",
+              emergencyId,
+              component: "SharedStore",
+              severity: "warning",
+            }, "warning");
           });
         }
 
@@ -413,8 +434,15 @@ export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | vo
         type: "broadcast",
         event: "sync",
         payload: newEvent,
-      }).catch(() => {
-        // Realtime failed — fallback to localStorage above
+      }).catch((err) => {
+        // FIX 3: Report non-SOS Realtime send failures with warning severity
+        reportError(err, {
+          type: "realtime_send_failed",
+          context: "emitSyncEvent/non-SOS",
+          eventType: newEvent.type,
+          component: "SharedStore",
+          severity: "warning",
+        }, "warning");
       });
     }
   }
@@ -434,8 +462,15 @@ export function emitSosAcknowledgment(emergencyId: string) {
         _emergencyId: emergencyId,
         ackTimestamp: Date.now(),
       },
-    }).catch(() => {
-      console.warn("[Realtime] Failed to send SOS ACK");
+    }).catch((err) => {
+      // FIX 3: Report SOS ACK send failures with error severity (life-critical)
+      reportError(err, {
+        type: "sos_ack_send_failed",
+        context: "broadcastSOSAcknowledgment",
+        emergencyId,
+        component: "SharedStore",
+        severity: "error",
+      }, "error");
     });
   }
 }
@@ -555,7 +590,14 @@ export function emitDashboardCommand(cmd: DashboardCommand): void {
       event: "command",
       payload,
     }).catch((err) => {
-      console.error("[Command] Broadcast failed:", err);
+      // FIX 3: Report dashboard command broadcast failures with warning severity
+      reportError(err, {
+        type: "dashboard_command_broadcast_failed",
+        context: "emitDashboardCommand",
+        command: cmd.command,
+        component: "SharedStore",
+        severity: "warning",
+      }, "warning");
     });
   }
 
@@ -2064,7 +2106,14 @@ export function sendChatMessage(msg: Omit<EmergencyChatMessage, "id" | "timestam
           }
         });
       } catch (e) {
-        console.warn("[Chat] Supabase send failed, localStorage only:", e);
+        // FIX 3: Report chat message send failures with warning severity
+        reportError(e, {
+          type: "chat_send_failed",
+          context: "addChatMessage/supabase",
+          emergencyId,
+          component: "SharedStore",
+          severity: "warning",
+        }, "warning");
       }
     })();
   }
@@ -2100,7 +2149,14 @@ export async function getChatMessagesAsync(emergencyId: string): Promise<Emergen
     localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(msgs));
     return msgs;
   } catch (e) {
-    console.warn("[Chat] Supabase load failed, using localStorage:", e);
+    // FIX 3: Report chat load failures with warning severity
+    reportError(e, {
+      type: "chat_load_failed",
+      context: "getChatMessagesAsync",
+      emergencyId,
+      component: "SharedStore",
+      severity: "warning",
+    }, "warning");
     return getChatMessages(emergencyId);
   }
 }

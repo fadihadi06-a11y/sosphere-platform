@@ -189,3 +189,89 @@ export async function checkServerRateLimit(
     return checkRateLimit(action, maxPerMinute);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// SESSION FINGERPRINTING — Anti-Hijack Defense
+// Binds session to device characteristics. If fingerprint changes,
+// forces re-authentication to prevent token theft via XSS.
+// ═══════════════════════════════════════════════════════════════
+
+const FINGERPRINT_KEY = "sosphere_device_fp";
+
+/** Generate a stable device fingerprint from browser characteristics */
+async function generateDeviceFingerprint(): Promise<string> {
+  const components = [
+    navigator.userAgent,
+    navigator.language,
+    navigator.hardwareConcurrency?.toString() || "0",
+    screen.width + "x" + screen.height,
+    screen.colorDepth?.toString() || "24",
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.maxTouchPoints?.toString() || "0",
+    // Canvas fingerprint (stable across sessions)
+    await getCanvasFingerprint(),
+  ];
+  const raw = components.join("|");
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Canvas-based fingerprint component */
+function getCanvasFingerprint(): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 200;
+      canvas.height = 50;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve("no-canvas"); return; }
+      ctx.textBaseline = "top";
+      ctx.font = "14px Arial";
+      ctx.fillStyle = "#f60";
+      ctx.fillRect(0, 0, 200, 50);
+      ctx.fillStyle = "#069";
+      ctx.fillText("SOSphere-FP", 2, 15);
+      resolve(canvas.toDataURL().slice(-32));
+    } catch {
+      resolve("canvas-error");
+    }
+  });
+}
+
+/** Validate current session against stored fingerprint */
+export async function validateSessionFingerprint(): Promise<{
+  valid: boolean;
+  reason?: string;
+  fingerprint: string;
+}> {
+  const currentFP = await generateDeviceFingerprint();
+  const storedFP = localStorage.getItem(FINGERPRINT_KEY);
+
+  if (!storedFP) {
+    // First login on this device — store fingerprint
+    localStorage.setItem(FINGERPRINT_KEY, currentFP);
+    return { valid: true, fingerprint: currentFP };
+  }
+
+  if (storedFP !== currentFP) {
+    // Fingerprint mismatch — possible token theft
+    return {
+      valid: false,
+      reason: "Device fingerprint mismatch. Session may have been hijacked.",
+      fingerprint: currentFP,
+    };
+  }
+
+  return { valid: true, fingerprint: currentFP };
+}
+
+/** Bind a new session to the current device */
+export async function bindSessionToDevice(): Promise<void> {
+  const fp = await generateDeviceFingerprint();
+  localStorage.setItem(FINGERPRINT_KEY, fp);
+}
+
+/** Clear device fingerprint (on logout) */
+export function clearDeviceFingerprint(): void {
+  localStorage.removeItem(FINGERPRINT_KEY);
+}

@@ -203,6 +203,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Fall Detected!","fall.imOk":"I'm OK — Cancel","fall.title":"Fall Detection",
     // ── Map & Location Keys ──
     "map.you":"YOU","map.nearby":"Nearby",
+    // ── Medical ID Keys ──
+    "med.title":"Medical ID","med.bloodType":"Blood Type","med.height":"Height","med.weight":"Weight",
+    "med.allergies":"Allergies","med.medications":"Medications","med.conditions":"Medical Conditions",
+    "med.organDonor":"Organ Donor","med.emergencyContact":"Emergency Medical Contact",
+    "med.insuranceId":"Insurance ID","med.primaryDoctor":"Primary Doctor","med.notes":"Medical Notes",
+    // ── Settings Keys ──
+    "set.thisDevice":"THIS DEVICE","set.smartwatch":"Smartwatch Integration","set.termsPrivacy":"Terms & Privacy Policy",
+    "set.version":"Version","set.about":"About SOSphere","set.darkMode":"Dark Mode",
+    "set.hapticFeedback":"Haptic Feedback","set.autoSOS":"Auto-SOS on Fall","set.locationSharing":"Location Sharing",
+    "set.checkInReminders":"Check-in Reminders",
   },
   ar: {
     "nav.ops":"العمليات","nav.mgmt":"الإدارة","nav.overview":"العمليات","nav.emg":"الطوارئ",
@@ -377,6 +387,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"تم اكتشاف سقوط!","fall.imOk":"أنا بخير — إلغاء","fall.title":"كشف السقوط",
     // ── Map & Location Keys ──
     "map.you":"أنت","map.nearby":"قريب",
+    // ── Medical ID Keys ──
+    "med.title":"الهوية الطبية","med.bloodType":"فصيلة الدم","med.height":"الطول","med.weight":"الوزن",
+    "med.allergies":"الحساسية","med.medications":"الأدوية","med.conditions":"الحالات الطبية",
+    "med.organDonor":"متبرع بالأعضاء","med.emergencyContact":"جهة اتصال طبية طارئة",
+    "med.insuranceId":"رقم التأمين","med.primaryDoctor":"الطبيب الرئيسي","med.notes":"ملاحظات طبية",
+    // ── Settings Keys ──
+    "set.thisDevice":"هذا الجهاز","set.smartwatch":"ربط الساعة الذكية","set.termsPrivacy":"الشروط وسياسة الخصوصية",
+    "set.version":"الإصدار","set.about":"حول SOSphere","set.darkMode":"الوضع الداكن",
+    "set.hapticFeedback":"اهتزاز اللمس","set.autoSOS":"SOS تلقائي عند السقوط","set.locationSharing":"مشاركة الموقع",
+    "set.checkInReminders":"تذكيرات التسجيل",
   },
   fr: {
     "nav.ops":"OPÉRATIONS","nav.mgmt":"GESTION","nav.overview":"Opérations","nav.emg":"Urgences",
@@ -452,6 +472,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Chute détectée !","fall.imOk":"Je vais bien — Annuler","fall.title":"Détection de chute",
     // ── Map & Location Keys ──
     "map.you":"VOUS","map.nearby":"À proximité",
+    // ── Medical ID Keys ──
+    "med.title":"ID médical","med.bloodType":"Groupe sanguin","med.height":"Taille","med.weight":"Poids",
+    "med.allergies":"Allergies","med.medications":"Médicaments","med.conditions":"Conditions médicales",
+    "med.organDonor":"Donneur d'organes","med.emergencyContact":"Contact médical d'urgence",
+    "med.insuranceId":"Numéro d'assurance","med.primaryDoctor":"Médecin traitant","med.notes":"Notes médicales",
+    // ── Settings Keys ──
+    "set.thisDevice":"CET APPAREIL","set.smartwatch":"Intégration montre connectée","set.termsPrivacy":"Conditions et politique de confidentialité",
+    "set.version":"Version","set.about":"À propos de SOSphere","set.darkMode":"Mode sombre",
+    "set.hapticFeedback":"Retour haptique","set.autoSOS":"SOS auto en cas de chute","set.locationSharing":"Partage de position",
+    "set.checkInReminders":"Rappels de pointage",
   },
   es: {
     "nav.ops":"OPERACIONES","nav.mgmt":"GESTIÓN","nav.overview":"Operaciones","nav.emg":"Emergencias",
@@ -527,6 +557,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"¡Caída detectada!","fall.imOk":"Estoy bien — Cancelar","fall.title":"Detección de caídas",
     // ── Map & Location Keys ──
     "map.you":"TÚ","map.nearby":"Cercano",
+    // ── Medical ID Keys ──
+    "med.title":"ID médico","med.bloodType":"Tipo de sangre","med.height":"Altura","med.weight":"Peso",
+    "med.allergies":"Alergias","med.medications":"Medicamentos","med.conditions":"Condiciones médicas",
+    "med.organDonor":"Donante de órganos","med.emergencyContact":"Contacto médico de emergencia",
+    "med.insuranceId":"ID de seguro","med.primaryDoctor":"Médico principal","med.notes":"Notas médicas",
+    // ── Settings Keys ──
+    "set.thisDevice":"ESTE DISPOSITIVO","set.smartwatch":"Integración smartwatch","set.termsPrivacy":"Términos y política de privacidad",
+    "set.version":"Versión","set.about":"Acerca de SOSphere","set.darkMode":"Modo oscuro",
+    "set.hapticFeedback":"Vibración háptica","set.autoSOS":"SOS automático al caer","set.locationSharing":"Compartir ubicación",
+    "set.checkInReminders":"Recordatorios de registro",
   },
   de: {
     "nav.ops":"BETRIEB","nav.mgmt":"VERWALTUNG","nav.overview":"Betrieb","nav.emg":"Notfälle",
@@ -602,6 +642,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Sturz erkannt!","fall.imOk":"Mir geht's gut — Abbrechen","fall.title":"Sturzerkennung",
     // ── Map & Location Keys ──
     "map.you":"DU","map.nearby":"In der Nähe",
+    // ── Medical ID Keys ──
+    "med.title":"Medizinischer Ausweis","med.bloodType":"Blutgruppe","med.height":"Größe","med.weight":"Gewicht",
+    "med.allergies":"Allergien","med.medications":"Medikamente","med.conditions":"Erkrankungen",
+    "med.organDonor":"Organspender","med.emergencyContact":"Medizinischer Notfallkontakt",
+    "med.insuranceId":"Versicherungs-ID","med.primaryDoctor":"Hausarzt","med.notes":"Medizinische Notizen",
+    // ── Settings Keys ──
+    "set.thisDevice":"DIESES GERÄT","set.smartwatch":"Smartwatch-Integration","set.termsPrivacy":"Nutzungsbedingungen & Datenschutz",
+    "set.version":"Version","set.about":"Über SOSphere","set.darkMode":"Dunkelmodus",
+    "set.hapticFeedback":"Haptisches Feedback","set.autoSOS":"Auto-SOS bei Sturz","set.locationSharing":"Standortfreigabe",
+    "set.checkInReminders":"Check-in Erinnerungen",
   },
   zh: {
     "nav.ops":"运营","nav.mgmt":"管理","nav.overview":"运营","nav.emg":"紧急",
@@ -676,6 +726,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"检测到跌倒！","fall.imOk":"我没事 — 取消","fall.title":"跌倒检测",
     // ── Map & Location Keys ──
     "map.you":"你","map.nearby":"附近",
+    // ── Medical ID Keys ──
+    "med.title":"医疗身份","med.bloodType":"血型","med.height":"身高","med.weight":"体重",
+    "med.allergies":"过敏","med.medications":"药物","med.conditions":"医疗状况",
+    "med.organDonor":"器官捐献者","med.emergencyContact":"紧急医疗联系人",
+    "med.insuranceId":"保险号","med.primaryDoctor":"主治医生","med.notes":"医疗备注",
+    // ── Settings Keys ──
+    "set.thisDevice":"此设备","set.smartwatch":"智能手表集成","set.termsPrivacy":"条款和隐私政策",
+    "set.version":"版本","set.about":"关于SOSphere","set.darkMode":"深色模式",
+    "set.hapticFeedback":"触觉反馈","set.autoSOS":"跌倒自动SOS","set.locationSharing":"位置共享",
+    "set.checkInReminders":"签到提醒",
   },
   hi: {
     "nav.ops":"संचालन","nav.mgmt":"प्रबंधन","nav.overview":"संचालन","nav.emg":"आपातकाल",
@@ -750,6 +810,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"गिरावट का पता चला!","fall.imOk":"मैं ठीक हूँ — रद्द करें","fall.title":"गिरावट पहचान",
     // ── Map & Location Keys ──
     "map.you":"आप","map.nearby":"पास में",
+    // ── Medical ID Keys ──
+    "med.title":"मेडिकल आईडी","med.bloodType":"रक्त प्रकार","med.height":"ऊंचाई","med.weight":"वजन",
+    "med.allergies":"एलर्जी","med.medications":"दवाइयाँ","med.conditions":"चिकित्सा स्थितियाँ",
+    "med.organDonor":"अंग दाता","med.emergencyContact":"आपातकालीन चिकित्सा संपर्क",
+    "med.insuranceId":"बीमा आईडी","med.primaryDoctor":"प्राथमिक चिकित्सक","med.notes":"चिकित्सा नोट्स",
+    // ── Settings Keys ──
+    "set.thisDevice":"यह डिवाइस","set.smartwatch":"स्मार्टवॉच एकीकरण","set.termsPrivacy":"शर्तें और गोपनीयता नीति",
+    "set.version":"संस्करण","set.about":"SOSphere के बारे में","set.darkMode":"डार्क मोड",
+    "set.hapticFeedback":"हैप्टिक फीडबैक","set.autoSOS":"गिरने पर ऑटो-SOS","set.locationSharing":"स्थान साझाकरण",
+    "set.checkInReminders":"चेक-इन रिमाइंडर",
   },
   pt: {
     "nav.ops":"OPERAÇÕES","nav.mgmt":"GESTÃO","nav.overview":"Operações","nav.emg":"Emergências",
@@ -824,6 +894,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Queda detectada!","fall.imOk":"Estou bem — Cancelar","fall.title":"Detecção de queda",
     // ── Map & Location Keys ──
     "map.you":"VOCÊ","map.nearby":"Próximo",
+    // ── Medical ID Keys ──
+    "med.title":"ID médico","med.bloodType":"Tipo sanguíneo","med.height":"Altura","med.weight":"Peso",
+    "med.allergies":"Alergias","med.medications":"Medicamentos","med.conditions":"Condições médicas",
+    "med.organDonor":"Doador de órgãos","med.emergencyContact":"Contato médico de emergência",
+    "med.insuranceId":"ID do seguro","med.primaryDoctor":"Médico principal","med.notes":"Notas médicas",
+    // ── Settings Keys ──
+    "set.thisDevice":"ESTE DISPOSITIVO","set.smartwatch":"Integração smartwatch","set.termsPrivacy":"Termos e política de privacidade",
+    "set.version":"Versão","set.about":"Sobre SOSphere","set.darkMode":"Modo escuro",
+    "set.hapticFeedback":"Feedback tátil","set.autoSOS":"SOS automático ao cair","set.locationSharing":"Compartilhamento de local",
+    "set.checkInReminders":"Lembretes de check-in",
   },
   ru: {
     "nav.ops":"ОПЕРАЦИИ","nav.mgmt":"УПРАВЛЕНИЕ","nav.overview":"Операции","nav.emg":"ЧП",
@@ -898,6 +978,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Обнаружено падение!","fall.imOk":"Я в порядке — Отмена","fall.title":"Обнаружение падения",
     // ── Map & Location Keys ──
     "map.you":"ВЫ","map.nearby":"Рядом",
+    // ── Medical ID Keys ──
+    "med.title":"Медицинский ID","med.bloodType":"Группа крови","med.height":"Рост","med.weight":"Вес",
+    "med.allergies":"Аллергии","med.medications":"Лекарства","med.conditions":"Заболевания",
+    "med.organDonor":"Донор органов","med.emergencyContact":"Экстренный медицинский контакт",
+    "med.insuranceId":"Страховой ID","med.primaryDoctor":"Лечащий врач","med.notes":"Медицинские заметки",
+    // ── Settings Keys ──
+    "set.thisDevice":"ЭТО УСТРОЙСТВО","set.smartwatch":"Интеграция умных часов","set.termsPrivacy":"Условия и политика конфиденциальности",
+    "set.version":"Версия","set.about":"О SOSphere","set.darkMode":"Тёмный режим",
+    "set.hapticFeedback":"Тактильная отдача","set.autoSOS":"Авто-SOS при падении","set.locationSharing":"Передача геолокации",
+    "set.checkInReminders":"Напоминания о чек-ине",
   },
   ja: {
     "nav.ops":"オペレーション","nav.mgmt":"管理","nav.overview":"オペレーション","nav.emg":"緊急",
@@ -972,6 +1062,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"転倒検出！","fall.imOk":"大丈夫 — キャンセル","fall.title":"転倒検知",
     // ── Map & Location Keys ──
     "map.you":"あなた","map.nearby":"近く",
+    // ── Medical ID Keys ──
+    "med.title":"メディカルID","med.bloodType":"血液型","med.height":"身長","med.weight":"体重",
+    "med.allergies":"アレルギー","med.medications":"服用薬","med.conditions":"既往症",
+    "med.organDonor":"臓器提供者","med.emergencyContact":"緊急医療連絡先",
+    "med.insuranceId":"保険証番号","med.primaryDoctor":"かかりつけ医","med.notes":"医療メモ",
+    // ── Settings Keys ──
+    "set.thisDevice":"このデバイス","set.smartwatch":"スマートウォッチ連携","set.termsPrivacy":"利用規約とプライバシーポリシー",
+    "set.version":"バージョン","set.about":"SOSphereについて","set.darkMode":"ダークモード",
+    "set.hapticFeedback":"触覚フィードバック","set.autoSOS":"転倒時自動SOS","set.locationSharing":"位置情報の共有",
+    "set.checkInReminders":"チェックインリマインダー",
   },
   ko: {
     "nav.ops":"운영","nav.mgmt":"관리","nav.overview":"운영","nav.emg":"긴급",
@@ -1046,6 +1146,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"낙상 감지!","fall.imOk":"괜찮습니다 — 취소","fall.title":"낙상 감지",
     // ── Map & Location Keys ──
     "map.you":"나","map.nearby":"근처",
+    // ── Medical ID Keys ──
+    "med.title":"의료 ID","med.bloodType":"혈액형","med.height":"키","med.weight":"체중",
+    "med.allergies":"알레르기","med.medications":"복용약","med.conditions":"의료 상태",
+    "med.organDonor":"장기 기증자","med.emergencyContact":"응급 의료 연락처",
+    "med.insuranceId":"보험 ID","med.primaryDoctor":"주치의","med.notes":"의료 메모",
+    // ── Settings Keys ──
+    "set.thisDevice":"이 기기","set.smartwatch":"스마트워치 연동","set.termsPrivacy":"약관 및 개인정보 처리방침",
+    "set.version":"버전","set.about":"SOSphere 소개","set.darkMode":"다크 모드",
+    "set.hapticFeedback":"햅틱 피드백","set.autoSOS":"낙상 시 자동 SOS","set.locationSharing":"위치 공유",
+    "set.checkInReminders":"체크인 알림",
   },
   tr: {
     "nav.ops":"OPERASYONLAR","nav.mgmt":"YÖNETİM","nav.overview":"Operasyonlar","nav.emg":"Acil",
@@ -1120,6 +1230,16 @@ const S: Record<Lang, Record<string, string>> = {
     "fall.detected":"Düşme Algılandı!","fall.imOk":"İyiyim — İptal","fall.title":"Düşme Algılama",
     // ── Map & Location Keys ──
     "map.you":"SEN","map.nearby":"Yakında",
+    // ── Medical ID Keys ──
+    "med.title":"Tıbbi Kimlik","med.bloodType":"Kan Grubu","med.height":"Boy","med.weight":"Kilo",
+    "med.allergies":"Alerjiler","med.medications":"İlaçlar","med.conditions":"Tıbbi Durumlar",
+    "med.organDonor":"Organ Bağışçısı","med.emergencyContact":"Acil Tıbbi İletişim",
+    "med.insuranceId":"Sigorta No","med.primaryDoctor":"Birincil Doktor","med.notes":"Tıbbi Notlar",
+    // ── Settings Keys ──
+    "set.thisDevice":"BU CİHAZ","set.smartwatch":"Akıllı Saat Entegrasyonu","set.termsPrivacy":"Şartlar ve Gizlilik Politikası",
+    "set.version":"Sürüm","set.about":"SOSphere Hakkında","set.darkMode":"Karanlık Mod",
+    "set.hapticFeedback":"Dokunsal Geri Bildirim","set.autoSOS":"Düşmede Otomatik SOS","set.locationSharing":"Konum Paylaşımı",
+    "set.checkInReminders":"Giriş Hatırlatıcıları",
   },
 };
 

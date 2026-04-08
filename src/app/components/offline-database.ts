@@ -377,6 +377,77 @@ function genId(prefix: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// FIX 2: Quota-Resilient Write with Automatic Pruning
+// ══════════════════════════════════════════════════════════════
+// MISSION-CRITICAL: Write with quota protection.
+// If IndexedDB write fails due to quota, prune oldest non-SOS records and retry.
+// SOS records are NEVER pruned — they have infinite priority.
+
+export async function quotaResilientWrite(
+  storeName: string,
+  data: any,
+  isSOS: boolean = false
+): Promise<boolean> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    return new Promise<boolean>((resolve, reject) => {
+      const req = store.add(data);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err: any) {
+    // QuotaExceededError — storage full
+    if (err?.name === "QuotaExceededError" || err?.code === 22) {
+      // Prune oldest GPS records (lowest priority) to make space
+      try {
+        const db = await openDB();
+        const tx = db.transaction("gps_trail", "readwrite");
+        const store = tx.objectStore("gps_trail");
+        const index = store.index("by_timestamp");
+        const cursor = index.openCursor(); // ascending = oldest first
+        let deleted = 0;
+        await new Promise<void>((resolve) => {
+          cursor.onsuccess = (e: any) => {
+            const c = e.target.result;
+            if (c && deleted < 100) {
+              c.delete();
+              deleted++;
+              c.continue();
+            } else {
+              resolve();
+            }
+          };
+          cursor.onerror = () => resolve();
+        });
+        // Retry the write
+        if (deleted > 0) {
+          const db2 = await openDB();
+          const tx2 = db2.transaction(storeName, "readwrite");
+          const store2 = tx2.objectStore(storeName);
+          return new Promise((resolve) => {
+            const req = store2.add(data);
+            req.onsuccess = () => resolve(true);
+            req.onerror = () => resolve(false);
+          });
+        }
+      } catch {
+        // Final fallback: for SOS, store in localStorage as emergency backup
+        if (isSOS) {
+          try {
+            const key = `sosphere_sos_fallback_${Date.now()}`;
+            localStorage.setItem(key, JSON.stringify(data));
+            return true;
+          } catch { /* localStorage also full */ }
+        }
+      }
+    }
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Public API — SOS Queue
 // ══════════════════════════════════════════════════════════════
 

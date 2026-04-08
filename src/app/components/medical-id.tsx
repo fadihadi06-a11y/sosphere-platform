@@ -8,6 +8,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 // FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+import { useT, type Lang } from "./dashboard-i18n";
 
 const MEDICAL_STORAGE_KEY = "sosphere_medical_id";
 
@@ -44,9 +45,11 @@ const defaultData: MedicalData = {
 interface MedicalIDProps {
   onBack: () => void;
   userPlan: "free" | "pro" | "employee";
+  lang?: Lang;
 }
 
-export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
+export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
+  const t = useT(lang);
   // FIX FATAL-1: Load persisted medical data on mount
   const [data, setData] = useState<MedicalData>(() =>
     loadJSONSync<MedicalData>(MEDICAL_STORAGE_KEY, defaultData)
@@ -136,7 +139,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-5">
           <div className="flex items-center gap-2.5 mb-1">
             <Heart style={{ width: 18, height: 18, color: "#FF2D55" }} />
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>Medical ID</h1>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>{t("med.title")}</h1>
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", lineHeight: 1.6 }}>
             Critical health information for emergency responders
@@ -160,7 +163,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
               }}
             >
               <Droplets style={{ width: 20, height: 20, color: "#FF2D55", marginBottom: 8 }} />
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500, marginBottom: 6 }}>Blood Type</span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500, marginBottom: 6 }}>{t("med.bloodType")}</span>
               {editing ? (
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {BLOOD_TYPES.map(bt => (
@@ -190,7 +193,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Ruler style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Height</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("med.height")}</span>
               </div>
               {editing ? (
                 <input
@@ -208,7 +211,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Weight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Weight</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("med.weight")}</span>
               </div>
               {editing ? (
                 <input
@@ -232,7 +235,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         >
           <div className="flex items-center gap-2.5">
             <Activity style={{ width: 14, height: 14, color: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>Organ Donor</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{t("med.organDonor")}</span>
           </div>
           <button
             onClick={() => editing && setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
@@ -258,9 +261,9 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
 
         {/* List Sections */}
         {([
-          { key: "conditions" as const, label: "Medical Conditions", icon: Stethoscope, color: "#FF9500", items: data.conditions },
-          { key: "allergies" as const, label: "Allergies", icon: AlertTriangle, color: "#FF2D55", items: data.allergies },
-          { key: "medications" as const, label: "Medications", icon: Pill, color: "#00C8E0", items: data.medications },
+          { key: "conditions" as const, label: t("med.conditions"), icon: Stethoscope, color: "#FF9500", items: data.conditions },
+          { key: "allergies" as const, label: t("med.allergies"), icon: AlertTriangle, color: "#FF2D55", items: data.allergies },
+          { key: "medications" as const, label: t("med.medications"), icon: Pill, color: "#00C8E0", items: data.medications },
         ]).map((section, si) => (
           <motion.div
             key={section.key}
@@ -368,7 +371,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         >
           <div className="flex items-center gap-2 mb-2.5">
             <Phone style={{ width: 13, height: 13, color: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Emergency Medical Contact</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{t("med.emergencyContact")}</span>
           </div>
           <div
             className="p-4 space-y-3"
