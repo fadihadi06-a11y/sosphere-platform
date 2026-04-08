@@ -142,8 +142,8 @@ export function VoiceSOSWidget({
   const isActive = voiceEnabled && isListening;
   const positionClass =
     position === "bottom-right"
-      ? "bottom-6 right-6"
-      : "bottom-6 left-6";
+      ? "fixed-bottom-safe-lg right-6"
+      : "fixed-bottom-safe-lg left-6";
 
   // ── Icon Color Based on State ────────────────────────────────
   let iconColor = "rgba(255,255,255,0.4)"; // idle (gray)
@@ -259,7 +259,7 @@ export function VoiceSOSWidget({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} bottom-8 z-40 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap pointer-events-none`}
+            className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} fixed-bottom-safe z-40 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap pointer-events-none`}
             style={{
               background: isActive
                 ? "rgba(76,175,80,0.2)"
@@ -282,8 +282,9 @@ export function VoiceSOSWidget({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} bottom-24 z-40 px-3 py-2 rounded-lg text-xs max-w-xs pointer-events-none`}
+          className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} fixed-bottom-safe-lg z-40 px-3 py-2 rounded-lg text-xs max-w-xs pointer-events-none`}
           style={{
+            bottom: 'calc(max(24px, env(safe-area-inset-bottom)) + 60px)',
             background: "rgba(100,150,200,0.15)",
             border: "1px solid rgba(100,150,200,0.3)",
             color: "#7DB1E0",

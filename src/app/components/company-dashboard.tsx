@@ -74,6 +74,9 @@ const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
 const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
 
+// ── NEW: Integrations Hub ────────────────────────────────────────
+const IntegrationsHubPage = lazy(() => import("./integrations-hub").then(m => ({ default: m.IntegrationsHubPage })));
+
 // ── NEW: CSV Field Guide ────────────────────────────────────────
 // ── PERF: CSVFieldGuide lazy-loaded (704 lines, only shown on csvGuide page) ──
 const CSVFieldGuide = lazy(() => import("./csv-field-guide").then(m => ({ default: m.CSVFieldGuide })));
@@ -200,6 +203,7 @@ const PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
   emailScheduler:         { hub: "reportsAnalytics",  tab: "scheduler" },
   auditLog:               { hub: "governance",        tab: "audit" },
   roles:                  { hub: "governance",        tab: "roles" },
+  integrations:           { hub: "governance",        tab: "integrations" },
   sarProtocol:            { hub: "emergencyHub",      tab: "sar" },
   playbook:               { hub: "emergencyHub",      tab: "playbook" },
   // ── Legacy page aliases (pre-hub) — redirected to their hub ──
@@ -313,6 +317,7 @@ function getHubTabs(t: (k: string) => string): Record<string, Array<{ id: string
     governance: [
       { id: "audit", label: t("tab.auditTrail"), icon: ScrollText, color: "#8090A5" },
       { id: "roles", label: t("tab.rolesAccess"), icon: UserCog, color: "#9B59B6" },
+      { id: "integrations", label: t("tab.integrations"), icon: Zap, color: "#00C8E0" },
     ],
   };
 }
@@ -1913,6 +1918,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                       >
                         {getHubTab("governance") === "audit" && <PlanGate feature="audit_logs" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AuditLogPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("governance") === "roles" && <RolesPermissionsPage t={t} webMode={webMode} onNavigate={(page) => navigateTo(page)} />}
+                        {getHubTab("governance") === "integrations" && <IntegrationsHubPage t={t} />}
                       </motion.div>
                     </AnimatePresence>
                   </div>

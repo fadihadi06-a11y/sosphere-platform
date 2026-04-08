@@ -10,6 +10,7 @@ import {
   AlertTriangle, CheckCircle2, Eye, EyeOff,
 } from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { useReducedMotion, springPresets, modalVariants, backdropVariants, contentFadeVariants } from "./view-transitions";
 
 type OperationType =
   | "change_permissions"
@@ -209,6 +210,8 @@ export function PINVerifyModal({
     }
   }
 
+  const prefersReduced = useReducedMotion();
+
   const NUMPAD = [
     ["1","2","3"],
     ["4","5","6"],
@@ -222,9 +225,11 @@ export function PINVerifyModal({
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
             className="fixed inset-0 z-50"
             style={{ background: "rgba(5,7,14,0.92)", backdropFilter: "blur(12px)" }}
             onClick={onCancel}
@@ -232,10 +237,11 @@ export function PINVerifyModal({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.92, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: 20 }}
-            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
             className="fixed inset-0 z-50 flex items-center justify-center p-6"
             style={{ pointerEvents: "none" }}
           >

@@ -1,22 +1,23 @@
 // ═══════════════════════════════════════════════════════════════
-// Emergency Warp — Rescue Mode Overlay Component
-// High-contrast UI for admin during active SOS emergency
+// Emergency Combat Mode — Rescue Mode Overlay Component
+// Full-screen map with floating Live Rescue Card and action bar
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle,
   MapPin,
   Heart,
   AlertCircle,
   Phone,
   MessageSquare,
-  Radio,
   Check,
   X,
   Clock,
   Zap,
+  Lock,
+  Signal,
+  Battery,
 } from "lucide-react";
 import {
   isRescueModeActive,
@@ -34,6 +35,8 @@ const COLORS = {
   darkPanel: "#111623",   // Slightly lighter for panels
   brightRed: "#ff2d2d",   // High-contrast red
   brightRedLight: "#ff4444",
+  green: "#00c853",       // For "Mark Safe"
+  blue: "#2196f3",        // For Call/SMS
   white: "#ffffff",
   textGray: "#e0e0e0",
   border: "rgba(255,45,45,0.3)",
@@ -52,13 +55,17 @@ export const RescueModeOverlay: React.FC<RescueModeOverlayProps> = ({ onMapConta
   const [isActive, setIsActive] = useState(false);
   const [rescueEvent, setRescueEvent] = useState<RescueEvent | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [isLongPressingExit, setIsLongPressingExit] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Subscribe to rescue mode state changes
   useEffect(() => {
     const unsub = onRescueModeChange((state: RescueModeState) => {
       setIsActive(state === "RESCUE_ACTIVE");
       setRescueEvent(getRescueEvent());
+      setLastUpdateTime(Date.now());
     });
 
     // Initial state
@@ -74,57 +81,55 @@ export const RescueModeOverlay: React.FC<RescueModeOverlayProps> = ({ onMapConta
 
     const interval = setInterval(() => {
       setElapsedSeconds(getElapsedSeconds());
+      setLastUpdateTime(Date.now());
     }, 100);
 
     return () => clearInterval(interval);
   }, [isActive]);
 
+  // Handle long-press for exit button
+  const handleExitMouseDown = () => {
+    setIsLongPressingExit(true);
+    longPressTimerRef.current = setTimeout(() => {
+      setExitConfirmOpen(true);
+      setIsLongPressingExit(false);
+    }, 2000);
+  };
+
+  const handleExitMouseUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    setIsLongPressingExit(false);
+  };
+
   return (
     <AnimatePresence>
       {isActive && rescueEvent && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.98 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
           className="fixed inset-0 z-[9999] overflow-hidden"
           style={{ background: COLORS.darkBg }}
         >
-          {/* Layout Container */}
-          <div className="w-full h-full flex flex-col">
-            {/* Top Alert Banner */}
-            <TopAlertBanner elapsedSeconds={elapsedSeconds} event={rescueEvent} />
+          {/* Full-screen Map Container - 100% of viewport */}
+          <MapContainer onContainerReady={onMapContainerReady} />
 
-            {/* Main Content Area */}
-            <div className="flex-1 flex gap-3 p-4 overflow-hidden">
-              {/* Map Container (70%) */}
-              <div className="flex-1 flex flex-col">
-                <MapContainer onContainerReady={onMapContainerReady} />
-              </div>
+          {/* Top Alert Strip - Pulsing red banner */}
+          <TopAlertBanner elapsedSeconds={elapsedSeconds} event={rescueEvent} />
 
-              {/* Right Sidebar (30%) */}
-              <div className="w-[30%] flex flex-col gap-3 overflow-hidden md:hidden lg:flex">
-                <MedicalIDCard event={rescueEvent} />
-                <GPSCoordinates event={rescueEvent} />
-                <ActionButtons event={rescueEvent} onExit={() => setExitConfirmOpen(true)} />
-              </div>
-            </div>
+          {/* Live Rescue Card - Top-right corner (or bottom on mobile) */}
+          <LiveRescueCard event={rescueEvent} lastUpdateTime={lastUpdateTime} />
 
-            {/* Mobile Stack - Visible on smaller screens */}
-            <div className="hidden md:flex lg:hidden flex-col gap-3 p-4 max-h-1/3 overflow-y-auto">
-              <MedicalIDCard event={rescueEvent} />
-              <GPSCoordinates event={rescueEvent} />
-              <div className="flex gap-2">
-                <ActionButtons event={rescueEvent} onExit={() => setExitConfirmOpen(true)} />
-              </div>
-            </div>
-
-            {/* Bottom Exit Bar */}
-            <BottomExitBar
-              onExit={() => setExitConfirmOpen(true)}
-              elapsedSeconds={elapsedSeconds}
-            />
-          </div>
+          {/* Bottom Action Bar - Floating center-bottom */}
+          <BottomActionBar
+            event={rescueEvent}
+            isLongPressingExit={isLongPressingExit}
+            onExitMouseDown={handleExitMouseDown}
+            onExitMouseUp={handleExitMouseUp}
+          />
 
           {/* Exit Confirmation Modal */}
           <AnimatePresence>
@@ -158,46 +163,29 @@ function TopAlertBanner({ event, elapsedSeconds }: TopAlertBannerProps) {
 
   return (
     <motion.div
-      className="w-full border-b-2 p-4"
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center z-[10001]"
       style={{
-        background: `linear-gradient(90deg, ${COLORS.darkPanel}, rgba(255,45,45,0.05))`,
-        borderColor: COLORS.brightRed,
+        background: COLORS.brightRed,
       }}
     >
-      <div className="flex items-center justify-between gap-4">
-        {/* Pulsing Alert */}
-        <motion.div
-          animate={{ scale: [1, 1.1, 1], opacity: [1, 0.7, 1] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="flex items-center gap-3"
-        >
-          <div className="size-4 rounded-full" style={{ background: COLORS.brightRed }} />
-          <span
-            className="text-sm font-bold tracking-wider"
-            style={{ color: COLORS.brightRed, textTransform: "uppercase" }}
-          >
-            🚨 SOS ACTIVE
-          </span>
-        </motion.div>
-
-        {/* Employee Name & Role */}
-        <div className="flex-1">
-          <p className="text-lg font-bold" style={{ color: COLORS.white }}>
-            {event.employeeName}
-          </p>
-          <p className="text-xs" style={{ color: COLORS.textGray }}>
-            {event.zone}
-          </p>
-        </div>
-
-        {/* Elapsed Timer */}
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: COLORS.darkPanel, border: `1px solid ${COLORS.border}` }}>
-          <Clock size={16} style={{ color: COLORS.brightRed }} />
-          <span className="font-mono font-bold text-lg" style={{ color: COLORS.brightRed }}>
-            {timeStr}
-          </span>
-        </div>
-      </div>
+      {/* Pulsing animation */}
+      <motion.div
+        animate={{ opacity: [1, 0.8, 1] }}
+        transition={{ duration: 1, repeat: Infinity }}
+        className="flex items-center justify-center gap-3 text-sm font-bold"
+        style={{ color: COLORS.white }}
+      >
+        <span>RESCUE ACTIVE</span>
+        <span>•</span>
+        <span>{event.employeeName}</span>
+        <span>•</span>
+        <span>{event.zone}</span>
+        <span>•</span>
+        <span className="font-mono">{timeStr}</span>
+      </motion.div>
     </motion.div>
   );
 }
@@ -215,16 +203,14 @@ function MapContainer({ onContainerReady }: MapContainerProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.1 }}
       ref={containerRef}
       id="rescue-map-container"
-      className="flex-1 rounded-xl border-2 overflow-hidden flex items-center justify-center"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden"
       style={{
         background: COLORS.darkPanel,
-        borderColor: COLORS.border,
-        minHeight: "100%",
       }}
       aria-label="Emergency map display"
     >
@@ -241,379 +227,288 @@ function MapContainer({ onContainerReady }: MapContainerProps) {
   );
 }
 
-interface MedicalIDCardProps {
+interface LiveRescueCardProps {
   event: RescueEvent;
+  lastUpdateTime: number;
 }
 
-function MedicalIDCard({ event }: MedicalIDCardProps) {
+function LiveRescueCard({ event, lastUpdateTime }: LiveRescueCardProps) {
+  const getAccuracyBadge = (accuracy?: number) => {
+    if (!accuracy) return { color: "#999", label: "?" };
+    if (accuracy < 5) return { color: COLORS.green, label: "High" };
+    if (accuracy < 20) return { color: "#ffb300", label: "Med" };
+    return { color: COLORS.brightRed, label: "Low" };
+  };
+
+  const accuracyBadge = getAccuracyBadge(event.accuracy);
+  const formattedUpdate = new Date(lastUpdateTime).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, delay: 0.15 }}
-      className="rounded-lg border-2 p-4 flex flex-col gap-3"
-      style={{
-        background: COLORS.darkPanel,
-        borderColor: COLORS.border,
-      }}
-      role="region"
-      aria-label="Medical information"
-    >
-      <div className="flex items-center gap-2">
-        <Heart size={18} style={{ color: COLORS.brightRed }} />
-        <span className="text-sm font-bold" style={{ color: COLORS.white, textTransform: "uppercase" }}>
-          Medical ID
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        {/* Blood Type */}
-        {event.bloodType && (
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: COLORS.textGray }}>
-              Blood Type
-            </span>
-            <span className="text-sm font-bold" style={{ color: COLORS.brightRed }}>
-              {event.bloodType}
-            </span>
-          </div>
-        )}
-
-        {/* Allergies */}
-        {event.allergies && (
-          <div>
-            <span className="text-xs" style={{ color: COLORS.textGray }}>
-              Allergies
-            </span>
-            <p className="text-xs mt-1" style={{ color: COLORS.white }}>
-              {event.allergies}
-            </p>
-          </div>
-        )}
-
-        {/* Medical Conditions */}
-        {event.medicalConditions && event.medicalConditions.length > 0 && (
-          <div>
-            <span className="text-xs" style={{ color: COLORS.textGray }}>
-              Conditions
-            </span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {event.medicalConditions.map((cond, i) => (
-                <span
-                  key={i}
-                  className="text-xs px-2 py-1 rounded"
-                  style={{
-                    background: "rgba(255,45,45,0.1)",
-                    color: COLORS.brightRed,
-                  }}
-                >
-                  {cond}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Emergency Contacts */}
-        {event.emergencyContacts && event.emergencyContacts.length > 0 && (
-          <div>
-            <span className="text-xs" style={{ color: COLORS.textGray }}>
-              Emergency Contacts
-            </span>
-            <div className="space-y-1 mt-1">
-              {event.emergencyContacts.map((contact, i) => (
-                <div key={i} className="text-xs" style={{ color: COLORS.white }}>
-                  <p className="font-semibold">{contact.name}</p>
-                  <p style={{ color: COLORS.textGray }}>{contact.phone}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!event.bloodType && !event.allergies && !event.medicalConditions?.length && !event.emergencyContacts?.length && (
-          <p className="text-xs" style={{ color: COLORS.textGray }}>
-            No medical data recorded
-          </p>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-interface GPSCoordinatesProps {
-  event: RescueEvent;
-}
-
-function GPSCoordinates({ event }: GPSCoordinatesProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
+      initial={{ opacity: 0, scale: 0.95, x: 20 }}
+      animate={{ opacity: 1, scale: 1, x: 0 }}
       transition={{ duration: 0.4, delay: 0.2 }}
-      className="rounded-lg border-2 p-4 flex flex-col gap-3"
+      className="fixed top-20 right-4 w-80 rounded-xl border-2 p-4 flex flex-col gap-4 z-[10000] md:bottom-24 md:right-4 md:top-auto md:w-full md:mx-4 md:max-w-sm lg:top-20 lg:bottom-auto"
       style={{
-        background: COLORS.darkPanel,
+        background: "rgba(0, 0, 0, 0.7)",
+        backdropFilter: "blur(40px)",
         borderColor: COLORS.border,
       }}
       role="region"
-      aria-label="GPS coordinates"
+      aria-label="Live rescue information card"
     >
-      <div className="flex items-center gap-2">
-        <MapPin size={18} style={{ color: COLORS.brightRed }} />
-        <span className="text-sm font-bold" style={{ color: COLORS.white, textTransform: "uppercase" }}>
-          GPS Coordinates
-        </span>
+      {/* Employee Info */}
+      <div className="flex items-start gap-3">
+        <div className="w-12 h-12 rounded-lg bg-gray-600 flex items-center justify-center" style={{ background: "rgba(200, 200, 200, 0.2)" }}>
+          <span style={{ color: COLORS.textGray, fontSize: 24 }}>👤</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold" style={{ color: COLORS.white }}>
+            {event.employeeName}
+          </p>
+          <p className="text-xs" style={{ color: COLORS.textGray }}>
+            {event.zone}
+          </p>
+        </div>
       </div>
 
+      {/* GPS Coordinates */}
       <div className="space-y-2">
+        <div className="flex items-center gap-2 mb-2">
+          <MapPin size={14} style={{ color: COLORS.brightRed }} />
+          <span className="text-xs font-bold" style={{ color: COLORS.white, textTransform: "uppercase" }}>
+            Location
+          </span>
+        </div>
         {event.lastGPS ? (
           <>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: COLORS.textGray }}>
-                Latitude
+            <div className="text-xs font-mono" style={{ color: COLORS.white }}>
+              <p>{event.lastGPS.lat.toFixed(6)}, {event.lastGPS.lng.toFixed(6)}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xs font-bold px-2 py-1 rounded"
+                style={{ background: accuracyBadge.color, color: "white" }}
+              >
+                ±{event.accuracy?.toFixed(0) || "?"} m
               </span>
-              <span className="text-sm font-mono" style={{ color: COLORS.white }}>
-                {event.lastGPS.lat.toFixed(6)}
+              <span className="text-xs" style={{ color: COLORS.textGray }}>
+                Accuracy
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: COLORS.textGray }}>
-                Longitude
-              </span>
-              <span className="text-sm font-mono" style={{ color: COLORS.white }}>
-                {event.lastGPS.lng.toFixed(6)}
-              </span>
-            </div>
-            {event.accuracy && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: COLORS.textGray }}>
-                  Accuracy
-                </span>
-                <span className="text-sm" style={{ color: COLORS.brightRed }}>
-                  ±{event.accuracy.toFixed(0)}m
-                </span>
-              </div>
-            )}
-            {event.lastGPS.address && (
-              <div className="mt-2 p-2 rounded" style={{ background: "rgba(255,45,45,0.05)", borderLeft: `2px solid ${COLORS.brightRed}` }}>
-                <p className="text-xs" style={{ color: COLORS.textGray }}>
-                  {event.lastGPS.address}
-                </p>
-              </div>
-            )}
           </>
         ) : (
           <p className="text-xs" style={{ color: COLORS.textGray }}>
-            GPS data not available
+            GPS unavailable
           </p>
         )}
+      </div>
 
-        {/* Device Status */}
-        {(event.batteryLevel !== undefined || event.signalStrength) && (
-          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.border }}>
-            {event.batteryLevel !== undefined && (
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs" style={{ color: COLORS.textGray }}>
-                  Battery
-                </span>
-                <span className="text-sm font-bold" style={{ color: event.batteryLevel < 20 ? COLORS.brightRed : COLORS.white }}>
-                  {event.batteryLevel}%
-                </span>
-              </div>
-            )}
-            {event.signalStrength && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: COLORS.textGray }}>
-                  Signal
-                </span>
-                <span className="text-sm" style={{ color: COLORS.white }}>
-                  {event.signalStrength}
-                </span>
-              </div>
-            )}
+      {/* Medical Info */}
+      <div className="space-y-2 pt-2 border-t" style={{ borderColor: COLORS.border }}>
+        <div className="flex items-center gap-2 mb-2">
+          <Heart size={14} style={{ color: COLORS.brightRed }} />
+          <span className="text-xs font-bold" style={{ color: COLORS.white, textTransform: "uppercase" }}>
+            Medical
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {event.bloodType && (
+            <span
+              className="text-xs px-2 py-1 rounded font-bold"
+              style={{ background: "rgba(255,45,45,0.2)", color: COLORS.brightRed }}
+            >
+              {event.bloodType}
+            </span>
+          )}
+          {event.allergies && (
+            <span
+              className="text-xs px-2 py-1 rounded"
+              style={{ background: "rgba(255,200,0,0.2)", color: "#ffc800" }}
+            >
+              Allergies
+            </span>
+          )}
+          {event.medicalConditions && event.medicalConditions.length > 0 && event.medicalConditions.map((cond, i) => (
+            <span
+              key={i}
+              className="text-xs px-2 py-1 rounded"
+              style={{ background: "rgba(100,200,255,0.2)", color: "#64c8ff" }}
+            >
+              {cond}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Device Status */}
+      <div className="flex items-center gap-3 pt-2 border-t" style={{ borderColor: COLORS.border }}>
+        {event.batteryLevel !== undefined && (
+          <div className="flex items-center gap-1">
+            <Battery size={14} style={{ color: event.batteryLevel < 20 ? COLORS.brightRed : COLORS.textGray }} />
+            <span className="text-xs" style={{ color: event.batteryLevel < 20 ? COLORS.brightRed : COLORS.textGray }}>
+              {event.batteryLevel}%
+            </span>
+          </div>
+        )}
+        {event.signalStrength && (
+          <div className="flex items-center gap-1">
+            <Signal size={14} style={{ color: COLORS.textGray }} />
+            <span className="text-xs" style={{ color: COLORS.textGray }}>
+              {event.signalStrength}
+            </span>
           </div>
         )}
       </div>
+
+      {/* Last Updated */}
+      <div className="text-xs" style={{ color: COLORS.textGray, textAlign: "center", paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
+        Last updated: {formattedUpdate}
+      </div>
     </motion.div>
   );
 }
 
-interface ActionButtonsProps {
+interface BottomActionBarProps {
   event: RescueEvent;
-  onExit: () => void;
+  isLongPressingExit: boolean;
+  onExitMouseDown: () => void;
+  onExitMouseUp: () => void;
 }
 
-function ActionButtons({ event, onExit }: ActionButtonsProps) {
-  const handleMarkSafe = () => {
-    if (import.meta.env.DEV) console.log("[RescueMode] Mark Safe clicked for:", event.employeeName);
-    // TODO: Emit event to update status
-  };
-
+function BottomActionBar({ event, isLongPressingExit, onExitMouseDown, onExitMouseUp }: BottomActionBarProps) {
   const handleDispatchHelp = () => {
     if (import.meta.env.DEV) console.log("[RescueMode] Dispatch Help clicked for:", event.employeeName);
-    // TODO: Emit event to dispatch team
   };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.25 }}
-      className="flex flex-col gap-2"
-      role="toolbar"
-      aria-label="Emergency action buttons"
-    >
-      {/* Primary Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={handleDispatchHelp}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all"
-          style={{
-            background: COLORS.brightRed,
-            color: COLORS.darkBg,
-            border: `1px solid ${COLORS.brightRed}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = COLORS.brightRedLight;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = COLORS.brightRed;
-          }}
-          aria-label="Dispatch help to emergency"
-        >
-          <Zap size={16} />
-          <span>Dispatch Help</span>
-        </button>
+  const handleMarkSafe = () => {
+    if (import.meta.env.DEV) console.log("[RescueMode] Mark Safe clicked for:", event.employeeName);
+  };
 
-        <button
-          onClick={handleMarkSafe}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all"
-          style={{
-            background: "transparent",
-            color: COLORS.white,
-            border: `1px solid ${COLORS.border}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "rgba(0,200,83,0.5)";
-            e.currentTarget.style.color = "rgba(0,200,83,1)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = COLORS.border;
-            e.currentTarget.style.color = COLORS.white;
-          }}
-          aria-label="Mark employee as safe"
-        >
-          <Check size={16} />
-          <span>Mark Safe</span>
-        </button>
-      </div>
+  const handleCall = () => {
+    if (import.meta.env.DEV) console.log("[RescueMode] Call clicked for:", event.employeeName);
+  };
 
-      {/* Communication Actions */}
-      <div className="flex gap-2 text-xs">
-        <button
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg transition-all"
-          style={{
-            background: "rgba(255,45,45,0.1)",
-            color: COLORS.brightRed,
-            border: `1px solid ${COLORS.border}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.15)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.1)";
-          }}
-          aria-label="Call employee"
-        >
-          <Phone size={14} />
-          Call
-        </button>
-        <button
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg transition-all"
-          style={{
-            background: "rgba(255,45,45,0.1)",
-            color: COLORS.brightRed,
-            border: `1px solid ${COLORS.border}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.15)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.1)";
-          }}
-          aria-label="Send SMS"
-        >
-          <MessageSquare size={14} />
-          SMS
-        </button>
-        <button
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg transition-all"
-          style={{
-            background: "rgba(255,45,45,0.1)",
-            color: COLORS.brightRed,
-            border: `1px solid ${COLORS.border}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.15)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255,45,45,0.1)";
-          }}
-          aria-label="Radio communication"
-        >
-          <Radio size={14} />
-          Radio
-        </button>
-      </div>
-    </motion.div>
-  );
-}
+  const handleSMS = () => {
+    if (import.meta.env.DEV) console.log("[RescueMode] SMS clicked for:", event.employeeName);
+  };
 
-interface BottomExitBarProps {
-  onExit: () => void;
-  elapsedSeconds: number;
-}
-
-function BottomExitBar({ onExit, elapsedSeconds }: BottomExitBarProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.3 }}
-      className="border-t-2 p-3 flex items-center justify-between"
+      className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[10000] flex items-center gap-3 px-4 py-3 rounded-full"
       style={{
-        background: COLORS.darkPanel,
+        background: "rgba(0, 0, 0, 0.7)",
+        backdropFilter: "blur(40px)",
         borderColor: COLORS.border,
+        border: `1px solid ${COLORS.border}`,
       }}
+      role="toolbar"
+      aria-label="Emergency action buttons"
     >
-      <div className="text-xs" style={{ color: COLORS.textGray }}>
-        Emergency Mode Active — {elapsedSeconds} seconds elapsed
-      </div>
-      <button
-        onClick={onExit}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all"
+      {/* Dispatch Help */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleDispatchHelp}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm transition-all"
         style={{
-          background: "transparent",
-          color: COLORS.textGray,
-          border: `1px solid ${COLORS.border}`,
+          background: COLORS.brightRed,
+          color: COLORS.white,
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "rgba(255,45,45,0.08)";
-          e.currentTarget.style.color = COLORS.brightRed;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = COLORS.textGray;
-        }}
-        aria-label="Exit rescue mode"
+        aria-label="Dispatch help to emergency"
       >
-        <X size={16} />
-        Exit Rescue Mode
-      </button>
+        <Zap size={16} />
+        <span>Dispatch</span>
+      </motion.button>
+
+      {/* Mark Safe */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleMarkSafe}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm transition-all"
+        style={{
+          background: COLORS.green,
+          color: COLORS.white,
+        }}
+        aria-label="Mark employee as safe"
+      >
+        <Check size={16} />
+        <span>Safe</span>
+      </motion.button>
+
+      {/* Call */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleCall}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm transition-all"
+        style={{
+          background: COLORS.blue,
+          color: COLORS.white,
+        }}
+        aria-label="Call employee"
+      >
+        <Phone size={16} />
+        <span>Call</span>
+      </motion.button>
+
+      {/* SMS */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={handleSMS}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm transition-all"
+        style={{
+          background: COLORS.blue,
+          color: COLORS.white,
+        }}
+        aria-label="Send SMS"
+      >
+        <MessageSquare size={16} />
+        <span>SMS</span>
+      </motion.button>
+
+      {/* Exit Combat Mode - with long-press */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onMouseDown={onExitMouseDown}
+        onMouseUp={onExitMouseUp}
+        onMouseLeave={onExitMouseUp}
+        onTouchStart={onExitMouseDown}
+        onTouchEnd={onExitMouseUp}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-bold text-sm transition-all relative"
+        style={{
+          background: isLongPressingExit ? "rgba(255,45,45,0.8)" : "rgba(255,45,45,0.2)",
+          color: COLORS.brightRed,
+          border: `1px solid ${COLORS.brightRed}`,
+        }}
+        aria-label="Exit combat mode (long-press 2 seconds)"
+      >
+        <Lock size={16} />
+        <span>Exit</span>
+        {isLongPressingExit && (
+          <motion.div
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 2 }}
+            className="absolute inset-0 rounded-full opacity-20"
+            style={{ background: COLORS.brightRed }}
+          />
+        )}
+      </motion.button>
     </motion.div>
   );
 }
+
 
 interface ExitConfirmationModalProps {
   onConfirm: () => void;

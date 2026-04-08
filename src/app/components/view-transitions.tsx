@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState, ReactNode } from "react";
 import { motion, AnimatePresence, Variants } from "motion/react";
+import { springPresets, modalVariants, backdropVariants, slideUpVariants, slideRightVariants, slideLeftVariants, slideDownVariants, scaleInVariants, popoverVariants, contentFadeVariants } from "./spring-presets";
 
 // ─────────────────────────────────────────────────────────────
 // Motion Configuration — Apple-grade easing curves
@@ -398,8 +399,25 @@ export const listItemVariants: Variants = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Re-export Spring Presets from spring-presets.ts
+// ─────────────────────────────────────────────────────────────
+export {
+  springPresets,
+  modalVariants,
+  backdropVariants,
+  slideUpVariants,
+  slideRightVariants,
+  slideLeftVariants,
+  slideDownVariants,
+  scaleInVariants,
+  popoverVariants,
+  contentFadeVariants,
+} from "./spring-presets";
+
+// ─────────────────────────────────────────────────────────────
 // Dev logging utility
 // ─────────────────────────────────────────────────────────────
 if (import.meta.env.DEV) {
   console.debug("[ViewTransitions] Motion config loaded. useReducedMotion() hook available.");
+  console.debug("[ViewTransitions] Spring presets re-exported from spring-presets.ts");
 }

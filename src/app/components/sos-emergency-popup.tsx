@@ -23,6 +23,7 @@ import {
   emitAdminSignal, emitCallSignal, clearCallSignal,
   emitSyncEvent, addMissedCall,
 } from "./shared-store";
+import { useReducedMotion, springPresets, modalVariants, contentFadeVariants } from "./view-transitions";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface SOSEmployee {
@@ -681,12 +682,15 @@ export function SOSEmergencyPopup({
     : cs === "missed" ? "rgba(255,150,0,0.3)"
     : "rgba(255,45,85,0.3)";
 
+  const prefersReduced = useReducedMotion();
+
   return (
     <motion.div
-      initial={{ x: 320, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 320, opacity: 0 }}
-      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      variants={modalVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      transition={prefersReduced ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 28 }}
       className="fixed right-4 top-4 z-[9998] w-72"
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >

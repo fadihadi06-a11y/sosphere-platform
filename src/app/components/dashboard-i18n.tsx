@@ -159,7 +159,7 @@ const S: Record<Lang, Record<string, string>> = {
     // ── Reports & Analytics Tabs ──
     "tab.analytics":"Analytics","tab.leaderboard":"Leaderboard","tab.scheduler":"Scheduler",
     // ── Governance Tabs ──
-    "tab.auditTrail":"Audit Trail","tab.rolesAccess":"Roles & Access",
+    "tab.auditTrail":"Audit Trail","tab.rolesAccess":"Roles & Access","tab.integrations":"Integrations",
     // ── Page Titles ──
     "pg.emergencyHub":"Emergency Hub","pg.safetyIntel":"Safety Intelligence","pg.riskMapLive":"Risk Map Live",
     "pg.analyticsInsights":"Analytics & Insights","pg.employees":"Employees","pg.locationZones":"Location & Zones",
@@ -238,6 +238,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Upgrade to Pro for unlimited history + PDF export","inc.archive":"Complete incident archive",
     "inc.lastWeek":"Last 7 days","inc.severity":"Severity","inc.date":"Date","inc.duration":"Duration","inc.location":"Location",
     "inc.contacts":"Contacts","inc.type":"Type","inc.critical":"Critical","inc.high":"High","inc.medium":"Medium",
+    // ── Integrations Hub ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   ar: {
     "nav.ops":"العمليات","nav.mgmt":"الإدارة","nav.overview":"العمليات","nav.emg":"الطوارئ",
@@ -447,6 +455,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"الترقية إلى احترافي للحصول على سجل غير محدود وتصدير PDF","inc.archive":"أرشيف كامل للحوادث",
     "inc.lastWeek":"آخر 7 أيام","inc.severity":"الخطورة","inc.date":"التاريخ","inc.duration":"المدة","inc.location":"الموقع",
     "inc.contacts":"جهات الاتصال","inc.type":"النوع","inc.critical":"حرج","inc.high":"عالي","inc.medium":"متوسط",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   fr: {
     "nav.ops":"OPÉRATIONS","nav.mgmt":"GESTION","nav.overview":"Opérations","nav.emg":"Urgences",
@@ -557,6 +573,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Mettre à jour vers Pro pour historique illimité + export PDF","inc.archive":"Archive complète incidents",
     "inc.lastWeek":"7 derniers jours","inc.severity":"Sévérité","inc.date":"Date","inc.duration":"Durée","inc.location":"Position",
     "inc.contacts":"Contacts","inc.type":"Type","inc.critical":"Critique","inc.high":"Élevé","inc.medium":"Moyen",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   es: {
     "nav.ops":"OPERACIONES","nav.mgmt":"GESTIÓN","nav.overview":"Operaciones","nav.emg":"Emergencias",
@@ -667,6 +691,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Actualiza a Pro para historial ilimitado + exportar PDF","inc.archive":"Archivo completo de incidentes",
     "inc.lastWeek":"Últimos 7 días","inc.severity":"Severidad","inc.date":"Fecha","inc.duration":"Duración","inc.location":"Ubicación",
     "inc.contacts":"Contactos","inc.type":"Tipo","inc.critical":"Crítico","inc.high":"Alto","inc.medium":"Medio","inc.resolved":"Resuelto",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   de: {
     "nav.ops":"BETRIEB","nav.mgmt":"VERWALTUNG","nav.overview":"Betrieb","nav.emg":"Notfälle",
@@ -777,6 +809,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Aktualisiere auf Pro für unbegrenzten Verlauf + PDF-Export","inc.archive":"Komplettes Vorfallsarchiv",
     "inc.lastWeek":"Letzte 7 Tage","inc.severity":"Schweregrad","inc.date":"Datum","inc.duration":"Dauer","inc.location":"Standort",
     "inc.contacts":"Kontakte","inc.type":"Typ","inc.critical":"Kritisch","inc.high":"Hoch","inc.medium":"Mittel","inc.resolved":"Gelöst",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   zh: {
     "nav.ops":"运营","nav.mgmt":"管理","nav.overview":"运营","nav.emg":"紧急",
@@ -886,6 +926,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"升级到专业版以获得无限历史+PDF导出","inc.archive":"完整事件存档",
     "inc.lastWeek":"最后7天","inc.severity":"严重程度","inc.date":"日期","inc.duration":"持续时间","inc.location":"位置",
     "inc.contacts":"联系人","inc.type":"类型","inc.critical":"严重","inc.high":"高","inc.medium":"中","inc.resolved":"已解决",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   hi: {
     "nav.ops":"संचालन","nav.mgmt":"प्रबंधन","nav.overview":"संचालन","nav.emg":"आपातकाल",
@@ -995,6 +1043,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"असीमित इतिहास + PDF निर्यात के लिए Pro में अपग्रेड करें","inc.archive":"पूर्ण घटना संग्रह",
     "inc.lastWeek":"पिछले 7 दिन","inc.severity":"गंभीरता","inc.date":"तारीख","inc.duration":"अवधि","inc.location":"स्थान",
     "inc.contacts":"संपर्क","inc.type":"प्रकार","inc.critical":"महत्वपूर्ण","inc.high":"उच्च","inc.medium":"मध्यम","inc.resolved":"हल",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   pt: {
     "nav.ops":"OPERAÇÕES","nav.mgmt":"GESTÃO","nav.overview":"Operações","nav.emg":"Emergências",
@@ -1104,6 +1160,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Atualize para Pro para histórico ilimitado + exportar PDF","inc.archive":"Arquivo completo de incidentes",
     "inc.lastWeek":"Últimos 7 dias","inc.severity":"Severidade","inc.date":"Data","inc.duration":"Duração","inc.location":"Localização",
     "inc.contacts":"Contatos","inc.type":"Tipo","inc.critical":"Crítico","inc.high":"Alto","inc.medium":"Médio","inc.resolved":"Resolvido",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   ru: {
     "nav.ops":"ОПЕРАЦИИ","nav.mgmt":"УПРАВЛЕНИЕ","nav.overview":"Операции","nav.emg":"ЧП",
@@ -1213,6 +1277,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Обновитесь до Pro для неограниченной истории + экспорта PDF","inc.archive":"Полный архив инцидентов",
     "inc.lastWeek":"Последние 7 дней","inc.severity":"Серьёзность","inc.date":"Дата","inc.duration":"Продолжительность","inc.location":"Местоположение",
     "inc.contacts":"Контакты","inc.type":"Тип","inc.critical":"Критический","inc.high":"Высокий","inc.medium":"Средний","inc.resolved":"Разрешено",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   ja: {
     "nav.ops":"オペレーション","nav.mgmt":"管理","nav.overview":"オペレーション","nav.emg":"緊急",
@@ -1322,6 +1394,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Pro にアップグレードして、無制限の履歴 + PDFエクスポートを取得","inc.archive":"完全なインシデントアーカイブ",
     "inc.lastWeek":"過去7日間","inc.severity":"重大度","inc.date":"日付","inc.duration":"期間","inc.location":"位置情報",
     "inc.contacts":"連絡先","inc.type":"タイプ","inc.critical":"重大","inc.high":"高","inc.medium":"中","inc.resolved":"解決",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   ko: {
     "nav.ops":"운영","nav.mgmt":"관리","nav.overview":"운영","nav.emg":"긴급",
@@ -1431,6 +1511,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"무제한 기록 + PDF 내보내기를 위해 Pro로 업그레이드","inc.archive":"완전한 사건 아카이브",
     "inc.lastWeek":"지난 7일","inc.severity":"심각도","inc.date":"날짜","inc.duration":"기간","inc.location":"위치",
     "inc.contacts":"연락처","inc.type":"유형","inc.critical":"심각","inc.high":"높음","inc.medium":"중간","inc.resolved":"해결",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
   tr: {
     "nav.ops":"OPERASYONLAR","nav.mgmt":"YÖNETİM","nav.overview":"Operasyonlar","nav.emg":"Acil",
@@ -1540,6 +1628,14 @@ const S: Record<Lang, Record<string, string>> = {
     "inc.upgradePro":"Sınırsız geçmiş + PDF dışa aktarma için Pro sürümüne yükseltin","inc.archive":"Tam olay arşivi",
     "inc.lastWeek":"Son 7 gün","inc.severity":"Önem","inc.date":"Tarih","inc.duration":"Süre","inc.location":"Konum",
     "inc.contacts":"İletişim Bilgileri","inc.type":"Tür","inc.critical":"Kritik","inc.high":"Yüksek","inc.medium":"Orta","inc.resolved":"Çözüldü",
+    // ── Integrations Hub (Fallback to English) ──
+    "integ.title":"Integrations Hub","integ.subtitle":"Connect SOSphere with your existing safety infrastructure","integ.search":"Search integrations...",
+    "integ.smartwatch.title":"Smartwatch Sync","integ.smartwatch.subtitle":"Apple Watch & Samsung Galaxy Watch","integ.smartwatch.description":"Real-time heart rate monitoring, fall detection from wrist, one-tap SOS from your watch face. Automatic emergency alerts when abnormal vitals are detected.","integ.smartwatch.badge":"Coming Q3 2026","integ.smartwatch.f1":"Heart Rate Monitoring","integ.smartwatch.f2":"Wrist Fall Detection","integ.smartwatch.f3":"Watch Face SOS","integ.smartwatch.f4":"Vital Alerts",
+    "integ.dispatch.title":"Direct Dispatch","integ.dispatch.subtitle":"Police & EMS Integration","integ.dispatch.description":"One-click API integration with emergency dispatch centers. Automatically relay SOS location, medical ID, and incident details directly to first responders. Reduces response time by up to 40%.","integ.dispatch.badge":"Coming Q4 2026","integ.dispatch.f1":"Police Dispatch API","integ.dispatch.f2":"EMS Auto-Relay","integ.dispatch.f3":"Fire Department Link","integ.dispatch.f4":"Response Time Tracking",
+    "integ.predictive.title":"AI Predictive Danger","integ.predictive.subtitle":"Biometric Intelligence Engine","integ.predictive.description":"Machine learning models analyze biometric patterns, environmental data, and historical incidents to predict emergencies before they happen. Get proactive alerts for high-risk situations.","integ.predictive.badge":"Coming 2027","integ.predictive.f1":"Biometric Analysis","integ.predictive.f2":"Risk Prediction","integ.predictive.f3":"Proactive Alerts","integ.predictive.f4":"Pattern Recognition",
+    "integ.feedback.title":"Have an integration request?","integ.feedback.description":"Tell us what integrations would help your team. Your feedback shapes our roadmap.","integ.feedback.placeholder":"Describe your integration request...","integ.feedback.submit":"Submit",
+    "integ.apiDocs.title":"API Documentation","integ.apiDocs.description":"Explore our API reference and build custom integrations with SOSphere.",
+    "integ.notify":"Notify Me","integ.subscribed":"Subscribed ✓",
   },
 };
 
