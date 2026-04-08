@@ -93,6 +93,9 @@ let syncAborted = false;
 let progressListeners: ProgressListener[] = [];
 let reconnectListenerAttached = false;
 
+// ── SOS Deduplication ──
+const _syncedSosIds = new Set<string>();
+
 let currentProgress: SyncProgress = {
   isRunning: false,
   currentCategory: null,
@@ -244,6 +247,20 @@ async function syncSOSAlerts(): Promise<void> {
 
   for (const sos of items) {
     if (syncAborted) return;
+
+    // ── SOS Deduplication ──
+    const sosId = sos.data?.emergencyId || sos.id;
+    if (_syncedSosIds.has(sosId)) {
+      // Already synced — skip duplicate
+      continue;
+    }
+    _syncedSosIds.add(sosId);
+    // Prevent memory leak: cap at 1000 entries
+    if (_syncedSosIds.size > 1000) {
+      const first = _syncedSosIds.values().next().value;
+      if (first) _syncedSosIds.delete(first);
+    }
+
     // HARDENING: SOS never gives up — infinite retries (respects Number.MAX_SAFE_INTEGER)
     if (sos.syncAttempts >= SOS_RETRY_CONFIG.maxRetries) {
       updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
