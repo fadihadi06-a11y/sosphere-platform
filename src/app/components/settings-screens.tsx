@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight, hapticWarning, hapticSuccess } from "./haptic-feedback";
+import { useT, type Lang } from "./dashboard-i18n";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -151,7 +152,8 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ── Connected Devices Screen ───────────────────────────────────
-export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
+export function ConnectedDevicesScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
+  const t = useT(lang);
   const devices = [
     { id: "1", name: "iPhone 14 Pro", type: "phone", status: "current", lastSeen: "Now", os: "iOS 18.2" },
     { id: "2", name: "Apple Watch S9", type: "watch", status: "connected", lastSeen: "Connected", os: "watchOS 11" },
@@ -183,7 +185,7 @@ export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-2">
                       <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{d.name}</p>
                       {d.status === "current" && (
-                        <span className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)", fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>THIS DEVICE</span>
+                        <span className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)", fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>{t("set.thisDevice")}</span>
                       )}
                     </div>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{d.os} • {d.lastSeen}</p>
@@ -201,7 +203,7 @@ export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
               <div className="flex items-start gap-3">
                 <Watch className="size-5 shrink-0 mt-0.5" style={{ color: "#AF52DE" }} />
                 <div>
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>Smartwatch Integration</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{t("set.smartwatch")}</p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 3, lineHeight: 1.5 }}>
                     Native smartwatch app is coming soon. You'll be able to trigger SOS and share location directly from your wrist.
                   </p>
@@ -216,7 +218,8 @@ export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ── Help & Support Screen ──────────────────────────────────────
-export function HelpScreen({ onBack }: { onBack: () => void }) {
+export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
+  const t = useT(lang);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -289,7 +292,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               onClick={() => { hapticLight(); toast("Terms & Privacy", { description: "Opening Terms of Service & Privacy Policy..." }); }}
               style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
-              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>Terms & Privacy Policy</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>{t("set.termsPrivacy")}</span>
               <ChevronRight className="size-4 ml-auto" style={{ color: "rgba(255,255,255,0.1)" }} />
             </button>
           </div>
@@ -300,7 +303,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               <Shield style={{ width: 11, height: 11, color: "rgba(0,200,224,0.2)" }} />
               <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.08)" }}>SOSphere</span>
             </div>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0 • Build 2026.03</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>{t("set.version")} 1.0.0 • Build 2026.03</p>
           </div>
         </div>
       </div>

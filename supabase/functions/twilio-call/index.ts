@@ -1,127 +1,148 @@
-// ═══════════════════════════════════════════════════════════════
-// SOSphere — Twilio PSTN Call (Edge Function)
-// Calls admin's REAL phone number when browser call unanswered.
-//
-// This is Level 3 of the escalation chain.
-// Cost: ~$0.013/min (US) — a 3-min SOS call costs ~$0.04
-//
-// Required Supabase Secrets:
-//   TWILIO_ACCOUNT_SID
-//   TWILIO_AUTH_TOKEN
-//   SOSPHERE_BASE_URL  (e.g. https://sosphere-platform.vercel.app)
-// ═══════════════════════════════════════════════════════════════
+// SOSphere — Twilio Voice Call Edge Function
+// Handles: POST /functions/v1/twilio-call
+// Purpose: Initiate emergency voice calls from mobile app to safety admin
+// Security: Validates JWT, enforces rate limits, logs to audit trail
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-serve(async (req) => {
+// Rate limit: max 5 calls per user per 10 minutes
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(userId) || []).filter(t => t > now - RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    rateLimitMap.set(userId, timestamps);
+    return false;
+  }
+  timestamps.push(now);
+  rateLimitMap.set(userId, timestamps);
+  return true;
+}
+
+serve(async (req: Request) => {
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      },
+    });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
   }
 
   try {
-    const {
-      to,           // Admin's phone: "+966XXXXXXXXX"
-      from,         // Twilio number: "+1XXXXXXXXXX"
-      callId,       // Emergency ID
-      employeeName, // "Ahmed Ali"
-      companyName,  // "SOSphere"
-      zoneName,     // "Zone B - North Tower"
-    } = await req.json();
-
-    if (!to || !from || !callId) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields: to, from, callId" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    // Validate JWT from Authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Missing authorization" }), { status: 401 });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401 });
     }
 
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-
-    if (!accountSid || !authToken) {
-      return new Response(
-        JSON.stringify({ error: "Twilio credentials not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    // Rate limit check
+    if (!checkRateLimit(user.id)) {
+      return new Response(JSON.stringify({ error: "Rate limited. Max 5 calls per 10 minutes." }), { status: 429 });
     }
 
-    // Build TwiML — what the admin hears when they answer
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna" language="en-US">
-    Emergency S.O.S. alert from ${employeeName || "an employee"} at ${companyName || "your company"}.
-    Location: ${zoneName || "unknown zone"}.
-    Press 1 to connect to the emergency dashboard.
-    Press 2 to hear the alert again.
-  </Say>
-  <Gather numDigits="1" action="${supabaseUrl}/functions/v1/twilio-status?action=gather&amp;callId=${callId}&amp;baseUrl=${encodeURIComponent(baseUrl)}" method="POST" timeout="10">
-    <Play loop="2">https://api.twilio.com/cowbell.mp3</Play>
-  </Gather>
-  <Say voice="Polly.Joanna">No response received. The emergency team has been notified. Goodbye.</Say>
-</Response>`;
+    // Parse request body
+    const { to, emergencyId, callerName, companyId } = await req.json();
+    if (!to || !emergencyId) {
+      return new Response(JSON.stringify({ error: "Missing required fields: to, emergencyId" }), { status: 400 });
+    }
 
-    // Status callback URL for tracking call progress
-    const statusCallback = `${supabaseUrl}/functions/v1/twilio-status?callId=${callId}`;
+    // Validate phone number format (E.164)
+    const cleanPhone = to.replace(/[^+\d]/g, "");
+    if (!/^\+\d{7,15}$/.test(cleanPhone)) {
+      return new Response(JSON.stringify({ error: "Invalid phone number format. Use E.164 (e.g., +966501234567)" }), { status: 400 });
+    }
 
-    // Initiate PSTN call via Twilio REST API
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
-    const auth = btoa(`${accountSid}:${authToken}`);
+    // Initiate Twilio call
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`;
+    const twimlUrl = `${SUPABASE_URL}/functions/v1/twilio-twiml?emergencyId=${emergencyId}&caller=${encodeURIComponent(callerName || "SOSphere")}`;
 
-    const formData = new URLSearchParams({
-      To: to,
-      From: from,
-      Twiml: twiml,
-      StatusCallback: statusCallback,
-      StatusCallbackEvent: "initiated ringing answered completed",
-      StatusCallbackMethod: "POST",
-      Timeout: "30",        // Ring for 30 seconds max
-      MachineDetection: "Enable", // Detect voicemail
-    });
-
-    const response = await fetch(twilioUrl, {
+    const twilioResponse = await fetch(twilioUrl, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${auth}`,
+        "Authorization": "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: formData.toString(),
+      body: new URLSearchParams({
+        To: cleanPhone,
+        From: TWILIO_FROM_NUMBER,
+        Url: twimlUrl,
+        StatusCallback: `${SUPABASE_URL}/functions/v1/twilio-status`,
+        StatusCallbackMethod: "POST",
+        StatusCallbackEvent: "initiated ringing answered completed",
+        Timeout: "30",
+        MachineDetection: "Enable",
+      }),
     });
 
-    const result = await response.json();
+    const twilioData = await twilioResponse.json();
 
-    if (!response.ok) {
-      console.error("[twilio-call] Twilio API error:", result);
-      return new Response(
-        JSON.stringify({ error: "Twilio call failed", detail: result.message || result }),
-        { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (!twilioResponse.ok) {
+      // Log failure to audit
+      await supabase.from("audit_log").insert({
+        id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        action: "twilio_call_failed",
+        actor: user.id,
+        operation: "emergency_call",
+        target: cleanPhone,
+        created_at: new Date().toISOString(),
+        metadata: { error: twilioData.message, emergencyId, companyId },
+      });
+
+      return new Response(JSON.stringify({
+        error: "Failed to initiate call",
+        detail: twilioData.message,
+      }), { status: 502 });
     }
 
-    console.log(`[twilio-call] Call initiated: ${result.sid} → ${to} (callId: ${callId})`);
+    // Log success to audit
+    await supabase.from("audit_log").insert({
+      id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      action: "twilio_call_initiated",
+      actor: user.id,
+      operation: "emergency_call",
+      target: cleanPhone,
+      created_at: new Date().toISOString(),
+      metadata: { callSid: twilioData.sid, emergencyId, companyId },
+    });
 
-    return new Response(
-      JSON.stringify({
-        callSid: result.sid,
-        status: result.status,
-        to: result.to,
-        from: result.from,
-        callId,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({
+      success: true,
+      callSid: twilioData.sid,
+      status: twilioData.status,
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
   } catch (err) {
-    console.error("[twilio-call] Error:", err);
-    return new Response(
-      JSON.stringify({ error: "Internal server error", detail: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({
+      error: "Internal server error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    }), { status: 500 });
   }
 });

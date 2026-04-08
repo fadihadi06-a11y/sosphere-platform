@@ -1762,8 +1762,37 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   }
 
   // ═══ LOW BATTERY WARNING ═══
-  // Show amber warning when battery is between 20-35% during active SOS
+  // FIX 1: NON-BLOCKING during active SOS — show as banner, not modal
+  // If SOS is active, battery modal should not steal focus or throttle background processes.
+  // During active SOS, emit "last-gasp" GPS position instead.
   if (lowBattery && !criticalBattery && phase !== "ended") {
+    // GUARD: If SOS is active (not idle), show compact banner instead of full-screen modal
+    if (phase !== "idle") {
+      // Emit last-gasp GPS position for battery-critical scenario
+      if (phase === "triggered" || phase === "escalating") {
+        const gps = getLastKnownPosition();
+        if (gps) {
+          emitSyncEvent({
+            type: "GPS_LAST_GASP",
+            employeeId: userId,
+            data: { position: gps, reason: "low_battery", level: batteryLevelRef.current },
+          });
+        }
+      }
+      // Show compact banner, not blocking modal
+      return (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0,
+          height: 48, background: "linear-gradient(135deg, #FF9500, #FF7700)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999, fontSize: 13, color: "#fff", fontWeight: 600,
+        }}>
+          <AlertTriangle size={16} style={{ marginRight: 8 }} />
+          {isAr ? "البطارية منخفضة — ابق بالقرب من مصدر كهربائي" : "Battery low — stay near power source"}
+        </div>
+      );
+    }
+    // Only show full-screen modal if idle (not during active SOS)
     return (
       <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0A00" }}>
         <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
@@ -1789,8 +1818,35 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   }
 
   // ═══ CRITICAL BATTERY MODE ═══
-  // Full-screen takeover when battery critically low during active SOS
+  // FIX 1: NON-BLOCKING during active SOS — show as compact banner, not full-screen modal
+  // During active SOS, critical battery should NOT steal focus which could throttle background processes.
   if (criticalBattery && phase !== "ended") {
+    // GUARD: If SOS is active (not idle), do NOT render full-screen modal — show banner instead
+    if (phase !== "idle") {
+      // Emit final last-gasp GPS position immediately
+      const gps = getLastKnownPosition();
+      if (gps) {
+        emitSyncEvent({
+          type: "GPS_LAST_GASP",
+          employeeId: userId,
+          data: { position: gps, reason: "critical_battery", level: batteryLevelRef.current },
+        });
+      }
+      // Show compact critical banner at top, not blocking modal
+      return (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0,
+          height: 56, background: "linear-gradient(135deg, #FF2D55, #CC0033)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999, fontSize: 14, color: "#fff", fontWeight: 700,
+          boxShadow: "0 4px 16px rgba(255,45,85,0.4)",
+        }}>
+          <AlertTriangle size={18} style={{ marginRight: 8 }} />
+          {isAr ? "البطارية حرجة — أقل من 5%!" : "CRITICAL BATTERY — below 5%!"}
+        </div>
+      );
+    }
+    // Only show full-screen modal if idle (not during active SOS)
     return (
       <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0005" }}>
         <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}

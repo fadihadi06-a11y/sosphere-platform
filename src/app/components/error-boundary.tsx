@@ -18,6 +18,45 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
 
+// ── Sentry Integration ──
+// Install: npm install @sentry/react
+// The SDK is dynamically imported to avoid blocking app startup
+let _sentryInitialized = false;
+let _Sentry: any = null;
+
+/** Initialize Sentry for production error tracking */
+export async function initSentry(dsn?: string): Promise<void> {
+  if (_sentryInitialized) return;
+  const sentryDsn = dsn || import.meta.env.VITE_SENTRY_DSN;
+  if (!sentryDsn) {
+    console.warn("[Sentry] No DSN configured. Set VITE_SENTRY_DSN in .env to enable error tracking.");
+    return;
+  }
+  try {
+    // Dynamic import with variable to prevent Vite from resolving at build time
+    const sentryModule = "@sentry/" + "react";
+    _Sentry = await import(/* @vite-ignore */ sentryModule);
+    _Sentry.init({
+      dsn: sentryDsn,
+      environment: import.meta.env.MODE || "production",
+      release: `sosphere@${import.meta.env.VITE_APP_VERSION || "1.0.0"}`,
+      tracesSampleRate: 0.1, // 10% of transactions for performance monitoring
+      replaysSessionSampleRate: 0.0, // Disable session replay for privacy
+      replaysOnErrorSampleRate: 1.0, // Capture replay on every error
+      beforeSend(event: any) {
+        // Scrub sensitive data
+        if (event.request?.headers) delete event.request.headers["Authorization"];
+        if (event.extra?.phone) event.extra.phone = "[REDACTED]";
+        return event;
+      },
+    });
+    _sentryInitialized = true;
+    console.log("[Sentry] Initialized successfully");
+  } catch (err) {
+    console.warn("[Sentry] Failed to initialize:", err);
+  }
+}
+
 // ── SOSphere Error Telemetry ──
 // Production-ready error reporting. Sentry integration point.
 // When Sentry is connected, replace reportError() body with Sentry.captureException()
@@ -53,9 +92,16 @@ export function reportError(
     try { cb(report); } catch { /* prevent listener errors from cascading */ }
   }
 
-  // SENTRY INTEGRATION POINT:
-  // import * as Sentry from "@sentry/react";
-  // Sentry.captureException(err, { extra: context, level: severity });
+  // Send to Sentry if initialized
+  if (_sentryInitialized && _Sentry) {
+    try {
+      _Sentry.captureException(err, {
+        extra: context,
+        level: severity,
+        tags: { component: context?.component || "unknown" },
+      });
+    } catch { /* Sentry send failed — don't recurse */ }
+  }
 }
 
 /** Subscribe to error reports (for dashboard error indicators) */

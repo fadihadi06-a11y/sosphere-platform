@@ -276,6 +276,13 @@ async function syncSOSAlerts(): Promise<void> {
       await markSOSSynced(sos.id);
       updateCategory("sos", { synced: currentProgress.categories.sos.synced + 1 });
     } catch (err) {
+      // FIX 3: Report SOS sync failures with error severity (life-critical)
+      reportError(err, {
+        type: "sos_sync_failed",
+        context: "syncSOSAlerts",
+        sosId: sos.id,
+        severity: "error",
+      }, "error");
       await incrementSOSRetry(sos.id, String(err));
       updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
       currentProgress.errors.push(`SOS ${sos.id}: ${err}`);
@@ -303,6 +310,13 @@ async function syncCheckins(): Promise<void> {
       await markCheckinSynced(ci.id);
       updateCategory("checkins", { synced: currentProgress.categories.checkins.synced + 1 });
     } catch (err) {
+      // FIX 3: Report checkin sync failures with error severity (safety-critical path)
+      reportError(err, {
+        type: "checkin_sync_failed",
+        context: "syncCheckins",
+        checkinId: ci.id,
+        severity: "error",
+      }, "error");
       updateCategory("checkins", { failed: currentProgress.categories.checkins.failed + 1 });
       currentProgress.errors.push(`Checkin ${ci.id}: ${err}`);
       emitProgress();
@@ -332,6 +346,13 @@ async function syncIncidents(): Promise<void> {
       await markIncidentSynced(inc.id);
       updateCategory("incidents", { synced: currentProgress.categories.incidents.synced + 1 });
     } catch (err) {
+      // FIX 3: Report incident sync failures with error severity
+      reportError(err, {
+        type: "incident_sync_failed",
+        context: "syncIncidents",
+        incidentId: inc.id,
+        severity: "error",
+      }, "error");
       updateCategory("incidents", { failed: currentProgress.categories.incidents.failed + 1 });
       currentProgress.errors.push(`Incident ${inc.id}: ${err}`);
       emitProgress();
@@ -358,6 +379,13 @@ async function syncMessages(): Promise<void> {
       await markMessageSynced(msg.id);
       updateCategory("messages", { synced: currentProgress.categories.messages.synced + 1 });
     } catch (err) {
+      // FIX 3: Report message sync failures with warning severity (non-critical path)
+      reportError(err, {
+        type: "message_sync_failed",
+        context: "syncMessages",
+        messageId: msg.id,
+        severity: "warning",
+      }, "warning");
       updateCategory("messages", { failed: currentProgress.categories.messages.failed + 1 });
       currentProgress.errors.push(`Message ${msg.id}: ${err}`);
       emitProgress();
@@ -390,6 +418,14 @@ async function syncGPSTrail(): Promise<void> {
       await markGPSBatchSynced(batch.map(p => p.id));
       updateCategory("gps", { synced: currentProgress.categories.gps.synced + batch.length });
     } catch (err) {
+      // FIX 3: Report GPS batch sync failures with warning severity (non-critical path)
+      reportError(err, {
+        type: "gps_batch_sync_failed",
+        context: "syncGPSTrail",
+        batchRange: `${i}-${i + batch.length}`,
+        pointsInBatch: batch.length,
+        severity: "warning",
+      }, "warning");
       updateCategory("gps", { failed: currentProgress.categories.gps.failed + batch.length });
       currentProgress.errors.push(`GPS batch ${i}-${i + batch.length}: ${err}`);
       emitProgress();
@@ -452,6 +488,14 @@ export async function startSync(options?: { categories?: SyncCategory[] }): Prom
     if (categoriesToSync.includes("messages")) await syncMessages();
     if (categoriesToSync.includes("gps")) await syncGPSTrail();
   } catch (err) {
+    // FIX 3: Report critical sync errors with error severity
+    reportError(err, {
+      type: "critical_sync_error",
+      context: "startSync",
+      component: "OfflineSyncEngine",
+      categoriesToSync: categoriesToSync.join(","),
+      severity: "error",
+    }, "error");
     currentProgress.errors.push(`Critical sync error: ${err}`);
   }
 
@@ -544,7 +588,14 @@ export async function getQuickSyncStats(): Promise<QuickSyncStats> {
       lastSyncTime: lastSync,
       isOnline: navigator.onLine,
     };
-  } catch {
+  } catch (err) {
+    // FIX 3: Report stats retrieval failures with warning severity (non-critical UI call)
+    reportError(err, {
+      type: "quick_sync_stats_failed",
+      context: "getQuickSyncStats",
+      component: "OfflineSyncEngine",
+      severity: "warning",
+    }, "warning");
     return {
       totalUnsynced: 0,
       sosUnsynced: 0,
