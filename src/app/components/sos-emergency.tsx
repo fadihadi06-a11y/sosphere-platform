@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
+import { useT } from "./dashboard-i18n";
 import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor } from "./shared-store";
 import { toast } from "sonner";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
@@ -322,13 +323,13 @@ function GlowCircle({
                       <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
                         className="size-1.5 rounded-full" style={{ background: "#00C853" }}
                       />
-                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>Monitoring</span>
+                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>{t("sos.monitoring")}</span>
                     </div>
                   )}
                   {phase === "answered" && (
                     <div className="flex items-center justify-center gap-1 mt-0.5">
                       <div className="size-1.5 rounded-full" style={{ background: "#00C853" }} />
-                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>Connected</span>
+                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>{t("sos.connected")}</span>
                     </div>
                   )}
                   {phase === "documenting" && (
@@ -373,7 +374,7 @@ function GlowCircle({
                 >
                   SOS
                 </motion.span>
-                <span style={{ fontSize: 9, color: "rgba(255,45,85,0.35)", fontFamily: "inherit", marginTop: 4, letterSpacing: "2px" }}>{isAr ? "جاري التفعيل" : "ACTIVATING"}</span>
+                <span style={{ fontSize: 9, color: "rgba(255,45,85,0.35)", fontFamily: "inherit", marginTop: 4, letterSpacing: "2px" }}>{t("sos.activating")}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -612,7 +613,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
           </div>
         </div>
 
-        <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{isAr ? "مسؤول السلامة" : "Safety Admin"}</p>
+        <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{t("sos.safetyAdmin")}</p>
         <div className="flex items-center gap-1.5 mt-1 mb-3">
           <Building2 style={{ width: 11, height: 11, color: "rgba(0,200,224,0.6)" }} />
           <span style={{ fontSize: 11, color: "rgba(0,200,224,0.7)", fontWeight: 600 }}>
@@ -636,7 +637,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                   style={{ background: "#00C8E0" }}
                 />
               ))}
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>Ringing...</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>{t("sos.ringing")}</span>
             </motion.div>
           )}
 
@@ -664,7 +665,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                 <span style={{ fontSize: 14, fontWeight: 700, color: "#00C853", fontVariantNumeric: "tabular-nums" }}>
                   {fmtTime(elapsed)}
                 </span>
-                <span style={{ fontSize: 11, color: "rgba(0,200,83,0.6)" }}>{isAr ? "الصوت نشط" : "Voice Active"}</span>
+                <span style={{ fontSize: 11, color: "rgba(0,200,83,0.6)" }}>{t("sos.voiceActive")}</span>
               </div>
               {/* Duration limit indicator */}
               <div className="flex items-center gap-1.5">
@@ -704,7 +705,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
               className="px-4 py-2 rounded-full"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
             >
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{isAr ? "انتهت المكالمة" : "Call Ended"}</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{t("sos.callEnded")}</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -767,7 +768,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                 <PhoneOff style={{ width: 16, height: 16, color: "#fff" }} />
               </div>
               <div className="text-left">
-              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{isAr ? "إنهاء المكالمة" : "End Call"}</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{t("sos.endCall")}</p>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{isAr ? "SOS لا يزال نشطاً" : "SOS stays active"}</p>
             </div>
             </motion.button>
@@ -795,7 +796,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl"
             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
           >
-            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>Close</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>{t("sos.close")}</span>
           </motion.button>
         )}
       </div>
@@ -822,7 +823,8 @@ interface SosEmergencyProps {
 }
 
 export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
-  const { isAr } = useLang();
+  const { isAr, lang } = useLang();
+  const t = useT(lang);
   // ══════════════════════════════════════════════════════════════
   // SOS is never blocked by trial status — safety first
   // SUPABASE_MIGRATION_POINT: this guarantee must be
@@ -848,26 +850,32 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const oneHourAgo = Date.now() - 3600000;
     // Prune expired entries
     sosRateHistory = sosRateHistory.filter(t => t > oneHourAgo);
-    
+
     console.log("[SUPABASE_READY] rate_limit_check: " + sosRateHistory.length + " recent triggers");
-    
+
     if (sosRateHistory.length >= SOS_RATE_LIMIT.maxPerHour) {
       setShowRateLimitWarning(true);
       setSosRateFlagged(true);
-      
+
       // Emit admin warning
-      emitSyncEvent({
-        type: "SOS_TRIGGERED",
-        employeeId: userId,
-        employeeName: userName,
-        zone: userZone,
-        timestamp: Date.now(),
-        data: {
-          rateLimitTriggered: true,
-          sosCountLastHour: sosRateHistory.length,
-          warning: `${userName} triggered ${sosRateHistory.length} SOS in 1 hour — possible false alarms or system testing`,
-        },
-      });
+      (async () => {
+        const ackResult = await emitSyncEvent({
+          type: "SOS_TRIGGERED",
+          employeeId: userId,
+          employeeName: userName,
+          zone: userZone,
+          timestamp: Date.now(),
+          data: {
+            rateLimitTriggered: true,
+            sosCountLastHour: sosRateHistory.length,
+            warning: `${userName} triggered ${sosRateHistory.length} SOS in 1 hour — possible false alarms or system testing`,
+          },
+        });
+        // Check if dashboard received the signal
+        if (ackResult && typeof ackResult === 'object' && 'delivered' in ackResult && !ackResult.delivered) {
+          console.warn("[SOS] Dashboard did not acknowledge — signal may be queued for retry");
+        }
+      })();
     } else {
       // Normal SOS — log timestamp to session history
       sosRateHistory.push(Date.now());
@@ -1399,23 +1407,30 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               ? (navigator as any).connection?.effectiveType ?? "unknown"
               : "unknown";
             // FIX I: Include bypass flag if supervisor is being bypassed
-            emitSyncEvent({
-              type: "SOS_TRIGGERED",
-              employeeId: userId,
-              employeeName: userName,
-              zone: userZone,
-              timestamp: Date.now(),
-              data: {
-                phone: userPhone,
-                bloodType: userBloodType,
-                emergencyId: errIdRef.current,
-                battery: null,
-                signal: signalType,
-                bypassZoneAdmin: bypassSupervisor,
-                escalateTo: bypassSupervisor ? "company_admin" : undefined,
-                sensitiveReport: bypassSupervisor,
+            // Await SOS acknowledgment from dashboard
+            (async () => {
+              const ackResult = await emitSyncEvent({
+                type: "SOS_TRIGGERED",
+                employeeId: userId,
+                employeeName: userName,
+                zone: userZone,
+                timestamp: Date.now(),
+                data: {
+                  phone: userPhone,
+                  bloodType: userBloodType,
+                  emergencyId: errIdRef.current,
+                  battery: null,
+                  signal: signalType,
+                  bypassZoneAdmin: bypassSupervisor,
+                  escalateTo: bypassSupervisor ? "company_admin" : undefined,
+                  sensitiveReport: bypassSupervisor,
+                }
+              });
+              // Check if dashboard received the signal
+              if (ackResult && typeof ackResult === 'object' && 'delivered' in ackResult && !ackResult.delivered) {
+                console.warn("[SOS] Dashboard did not acknowledge — signal may be queued for retry");
               }
-            });
+            })();
             // ── SMART TIMELINE: Track SOS trigger ──
             trackEventSync(errIdRef.current, "sos_triggered",
               `SOS triggered by ${userName} in ${userZone}`,

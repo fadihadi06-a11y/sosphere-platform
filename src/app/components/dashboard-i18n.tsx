@@ -194,6 +194,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Connected","app.offline":"Offline","app.noAlerts":"No Active Alerts",
     "app.recentActivity":"Recent Activity","app.viewAll":"View All",
     "app.chooseLanguage":"Choose your preferred language",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Monitoring","sos.connected":"Connected","sos.documenting":"Documenting",
+    "sos.activating":"ACTIVATING","sos.ringing":"Ringing...","sos.voiceActive":"Voice Active",
+    "sos.callEnded":"Call Ended","sos.endCall":"End Call","sos.close":"Close",
+    "sos.retrying":"Retrying","sos.safetyAdmin":"Safety Admin",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Fall Detected!","fall.imOk":"I'm OK — Cancel","fall.title":"Fall Detection",
+    // ── Map & Location Keys ──
+    "map.you":"YOU","map.nearby":"Nearby",
   },
   ar: {
     "nav.ops":"العمليات","nav.mgmt":"الإدارة","nav.overview":"العمليات","nav.emg":"الطوارئ",
@@ -359,6 +368,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"متصل","app.offline":"غير متصل","app.noAlerts":"لا توجد تنبيهات نشطة",
     "app.recentActivity":"النشاط الأخير","app.viewAll":"عرض الكل",
     "app.chooseLanguage":"اختر لغتك المفضلة",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"مراقبة","sos.connected":"متصل","sos.documenting":"توثيق",
+    "sos.activating":"جاري التفعيل","sos.ringing":"جاري الاتصال...","sos.voiceActive":"صوت نشط",
+    "sos.callEnded":"انتهت المكالمة","sos.endCall":"إنهاء المكالمة","sos.close":"إغلاق",
+    "sos.retrying":"إعادة المحاولة","sos.safetyAdmin":"مسؤول السلامة",
+    // ── Fall Detection Keys ──
+    "fall.detected":"تم اكتشاف سقوط!","fall.imOk":"أنا بخير — إلغاء","fall.title":"كشف السقوط",
+    // ── Map & Location Keys ──
+    "map.you":"أنت","map.nearby":"قريب",
   },
   fr: {
     "nav.ops":"OPÉRATIONS","nav.mgmt":"GESTION","nav.overview":"Opérations","nav.emg":"Urgences",
@@ -425,6 +443,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Connecté","app.offline":"Hors ligne","app.noAlerts":"Aucune alerte active",
     "app.recentActivity":"Activité récente","app.viewAll":"Voir tout",
     "app.chooseLanguage":"Choisissez votre langue préférée",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Surveillance","sos.connected":"Connecté","sos.documenting":"Documentation",
+    "sos.activating":"ACTIVATION","sos.ringing":"Sonnerie...","sos.voiceActive":"Voix active",
+    "sos.callEnded":"Appel terminé","sos.endCall":"Fin d'appel","sos.close":"Fermer",
+    "sos.retrying":"Nouvelle tentative","sos.safetyAdmin":"Admin sécurité",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Chute détectée !","fall.imOk":"Je vais bien — Annuler","fall.title":"Détection de chute",
+    // ── Map & Location Keys ──
+    "map.you":"VOUS","map.nearby":"À proximité",
   },
   es: {
     "nav.ops":"OPERACIONES","nav.mgmt":"GESTIÓN","nav.overview":"Operaciones","nav.emg":"Emergencias",
@@ -491,6 +518,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Conectado","app.offline":"Sin conexión","app.noAlerts":"Sin alertas activas",
     "app.recentActivity":"Actividad reciente","app.viewAll":"Ver todo",
     "app.chooseLanguage":"Elige tu idioma preferido",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Monitoreo","sos.connected":"Conectado","sos.documenting":"Documentando",
+    "sos.activating":"ACTIVANDO","sos.ringing":"Llamando...","sos.voiceActive":"Voz activa",
+    "sos.callEnded":"Llamada terminada","sos.endCall":"Finalizar llamada","sos.close":"Cerrar",
+    "sos.retrying":"Reintentando","sos.safetyAdmin":"Admin seguridad",
+    // ── Fall Detection Keys ──
+    "fall.detected":"¡Caída detectada!","fall.imOk":"Estoy bien — Cancelar","fall.title":"Detección de caídas",
+    // ── Map & Location Keys ──
+    "map.you":"TÚ","map.nearby":"Cercano",
   },
   de: {
     "nav.ops":"BETRIEB","nav.mgmt":"VERWALTUNG","nav.overview":"Betrieb","nav.emg":"Notfälle",
@@ -557,6 +593,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Verbunden","app.offline":"Offline","app.noAlerts":"Keine aktiven Warnungen",
     "app.recentActivity":"Letzte Aktivität","app.viewAll":"Alle anzeigen",
     "app.chooseLanguage":"Wählen Sie Ihre bevorzugte Sprache",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Überwachung","sos.connected":"Verbunden","sos.documenting":"Dokumentieren",
+    "sos.activating":"AKTIVIERUNG","sos.ringing":"Klingelt...","sos.voiceActive":"Stimme aktiv",
+    "sos.callEnded":"Anruf beendet","sos.endCall":"Anruf beenden","sos.close":"Schließen",
+    "sos.retrying":"Erneuter Versuch","sos.safetyAdmin":"Sicherheitsadmin",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Sturz erkannt!","fall.imOk":"Mir geht's gut — Abbrechen","fall.title":"Sturzerkennung",
+    // ── Map & Location Keys ──
+    "map.you":"DU","map.nearby":"In der Nähe",
   },
   zh: {
     "nav.ops":"运营","nav.mgmt":"管理","nav.overview":"运营","nav.emg":"紧急",
@@ -622,6 +667,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"已连接","app.offline":"离线","app.noAlerts":"无活跃警报",
     "app.recentActivity":"最近活动","app.viewAll":"查看全部",
     "app.chooseLanguage":"选择您的首选语言",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"监控中","sos.connected":"已连接","sos.documenting":"记录中",
+    "sos.activating":"正在激活","sos.ringing":"呼叫中...","sos.voiceActive":"语音活跃",
+    "sos.callEnded":"通话结束","sos.endCall":"结束通话","sos.close":"关闭",
+    "sos.retrying":"重试中","sos.safetyAdmin":"安全管理员",
+    // ── Fall Detection Keys ──
+    "fall.detected":"检测到跌倒！","fall.imOk":"我没事 — 取消","fall.title":"跌倒检测",
+    // ── Map & Location Keys ──
+    "map.you":"你","map.nearby":"附近",
   },
   hi: {
     "nav.ops":"संचालन","nav.mgmt":"प्रबंधन","nav.overview":"संचालन","nav.emg":"आपातकाल",
@@ -687,6 +741,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"कनेक्टेड","app.offline":"ऑफ़लाइन","app.noAlerts":"कोई सक्रिय अलर्ट नहीं",
     "app.recentActivity":"हाल की गतिविधि","app.viewAll":"सभी देखें",
     "app.chooseLanguage":"अपनी पसंदीदा भाषा चुनें",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"निगरानी","sos.connected":"कनेक्टेड","sos.documenting":"दस्तावेज़ीकरण",
+    "sos.activating":"सक्रिय हो रहा","sos.ringing":"कॉल कर रहा...","sos.voiceActive":"वॉइस एक्टिव",
+    "sos.callEnded":"कॉल समाप्त","sos.endCall":"कॉल समाप्त करें","sos.close":"बंद करें",
+    "sos.retrying":"पुनः प्रयास","sos.safetyAdmin":"सुरक्षा व्यवस्थापक",
+    // ── Fall Detection Keys ──
+    "fall.detected":"गिरावट का पता चला!","fall.imOk":"मैं ठीक हूँ — रद्द करें","fall.title":"गिरावट पहचान",
+    // ── Map & Location Keys ──
+    "map.you":"आप","map.nearby":"पास में",
   },
   pt: {
     "nav.ops":"OPERAÇÕES","nav.mgmt":"GESTÃO","nav.overview":"Operações","nav.emg":"Emergências",
@@ -752,6 +815,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Conectado","app.offline":"Offline","app.noAlerts":"Sem alertas ativos",
     "app.recentActivity":"Atividade recente","app.viewAll":"Ver tudo",
     "app.chooseLanguage":"Escolha seu idioma preferido",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Monitoramento","sos.connected":"Conectado","sos.documenting":"Documentando",
+    "sos.activating":"ATIVANDO","sos.ringing":"Chamando...","sos.voiceActive":"Voz ativa",
+    "sos.callEnded":"Chamada encerrada","sos.endCall":"Encerrar chamada","sos.close":"Fechar",
+    "sos.retrying":"Tentando novamente","sos.safetyAdmin":"Admin segurança",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Queda detectada!","fall.imOk":"Estou bem — Cancelar","fall.title":"Detecção de queda",
+    // ── Map & Location Keys ──
+    "map.you":"VOCÊ","map.nearby":"Próximo",
   },
   ru: {
     "nav.ops":"ОПЕРАЦИИ","nav.mgmt":"УПРАВЛЕНИЕ","nav.overview":"Операции","nav.emg":"ЧП",
@@ -817,6 +889,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Подключен","app.offline":"Офлайн","app.noAlerts":"Нет активных оповещений",
     "app.recentActivity":"Недавняя активность","app.viewAll":"Показать все",
     "app.chooseLanguage":"Выберите предпочитаемый язык",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"Мониторинг","sos.connected":"Подключено","sos.documenting":"Документирование",
+    "sos.activating":"АКТИВАЦИЯ","sos.ringing":"Звонок...","sos.voiceActive":"Голос активен",
+    "sos.callEnded":"Звонок завершён","sos.endCall":"Завершить звонок","sos.close":"Закрыть",
+    "sos.retrying":"Повтор","sos.safetyAdmin":"Админ безопасности",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Обнаружено падение!","fall.imOk":"Я в порядке — Отмена","fall.title":"Обнаружение падения",
+    // ── Map & Location Keys ──
+    "map.you":"ВЫ","map.nearby":"Рядом",
   },
   ja: {
     "nav.ops":"オペレーション","nav.mgmt":"管理","nav.overview":"オペレーション","nav.emg":"緊急",
@@ -882,6 +963,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"接続済み","app.offline":"オフライン","app.noAlerts":"アクティブなアラートなし",
     "app.recentActivity":"最近のアクティビティ","app.viewAll":"すべて表示",
     "app.chooseLanguage":"お好みの言語を選択してください",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"モニタリング","sos.connected":"接続済み","sos.documenting":"記録中",
+    "sos.activating":"起動中","sos.ringing":"呼び出し中...","sos.voiceActive":"音声アクティブ",
+    "sos.callEnded":"通話終了","sos.endCall":"通話終了","sos.close":"閉じる",
+    "sos.retrying":"再試行","sos.safetyAdmin":"安全管理者",
+    // ── Fall Detection Keys ──
+    "fall.detected":"転倒検出！","fall.imOk":"大丈夫 — キャンセル","fall.title":"転倒検知",
+    // ── Map & Location Keys ──
+    "map.you":"あなた","map.nearby":"近く",
   },
   ko: {
     "nav.ops":"운영","nav.mgmt":"관리","nav.overview":"운영","nav.emg":"긴급",
@@ -947,6 +1037,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"연결됨","app.offline":"오프라인","app.noAlerts":"활성 알림 없음",
     "app.recentActivity":"최근 활동","app.viewAll":"전체 보기",
     "app.chooseLanguage":"원하는 언어를 선택하세요",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"모니터링","sos.connected":"연결됨","sos.documenting":"문서화",
+    "sos.activating":"활성화 중","sos.ringing":"호출 중...","sos.voiceActive":"음성 활성",
+    "sos.callEnded":"통화 종료","sos.endCall":"통화 종료","sos.close":"닫기",
+    "sos.retrying":"재시도","sos.safetyAdmin":"안전 관리자",
+    // ── Fall Detection Keys ──
+    "fall.detected":"낙상 감지!","fall.imOk":"괜찮습니다 — 취소","fall.title":"낙상 감지",
+    // ── Map & Location Keys ──
+    "map.you":"나","map.nearby":"근처",
   },
   tr: {
     "nav.ops":"OPERASYONLAR","nav.mgmt":"YÖNETİM","nav.overview":"Operasyonlar","nav.emg":"Acil",
@@ -1012,6 +1111,15 @@ const S: Record<Lang, Record<string, string>> = {
     "app.connected":"Bağlı","app.offline":"Çevrimdışı","app.noAlerts":"Aktif uyarı yok",
     "app.recentActivity":"Son Aktivite","app.viewAll":"Tümünü Gör",
     "app.chooseLanguage":"Tercih ettiğiniz dili seçin",
+    // ── SOS Emergency Keys ──
+    "sos.monitoring":"İzleme","sos.connected":"Bağlandı","sos.documenting":"Belgeleme",
+    "sos.activating":"AKTİVASYON","sos.ringing":"Çalıyor...","sos.voiceActive":"Ses Aktif",
+    "sos.callEnded":"Arama Bitti","sos.endCall":"Aramayı Bitir","sos.close":"Kapat",
+    "sos.retrying":"Yeniden Deneniyor","sos.safetyAdmin":"Güvenlik Yöneticisi",
+    // ── Fall Detection Keys ──
+    "fall.detected":"Düşme Algılandı!","fall.imOk":"İyiyim — İptal","fall.title":"Düşme Algılama",
+    // ── Map & Location Keys ──
+    "map.you":"SEN","map.nearby":"Yakında",
   },
 };
 

@@ -16,6 +16,7 @@ import {
   Volume2, MapPin, ChevronRight,
 } from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { useT } from "./dashboard-i18n";
 
 // ── Persist sensor events to Supabase ────────────────────────
 export async function saveSensorEvent(type: "fall" | "shake", acceleration: number) {
@@ -251,6 +252,8 @@ interface FallDetectionOverlayProps {
 }
 
 export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetectionOverlayProps) {
+  const lang = (localStorage.getItem("sosphere_language") || "en") as any;
+  const t = useT(lang);
   if (state === "monitoring" || state === "cancelled") return null;
 
   return (
@@ -288,7 +291,7 @@ export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetecti
                 <AlertTriangle className="size-10" style={{ color: "#FF9500" }} />
               </motion.div>
               <p className="text-white text-center" style={{ fontSize: 22, fontWeight: 800 }}>
-                Fall Detected
+                {t("fall.detected")}
               </p>
               <p className="text-center mt-2" style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
                 Analyzing movement pattern...
@@ -349,7 +352,7 @@ export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetecti
                 }}
               >
                 <CheckCircle className="size-5" style={{ color: "#00C853" }} />
-                <span style={{ fontSize: 16, fontWeight: 800, color: "#00C853" }}>I'm OK — Cancel</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#00C853" }}>{t("fall.imOk")}</span>
               </motion.button>
 
               {/* Auto-SOS info */}
@@ -443,7 +446,7 @@ export function FallDetectionSettings({
             <Activity className="size-5" style={{ color: enabled ? "#00C853" : "rgba(255,255,255,0.2)" }} />
           </div>
           <div className="flex-1">
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Fall Detection</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("fall.title")}</p>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
               Uses phone accelerometer to detect falls. Auto-triggers SOS after 15s if no response.
             </p>

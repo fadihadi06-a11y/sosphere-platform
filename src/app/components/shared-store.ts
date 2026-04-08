@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { reportError } from "./error-boundary";
 
 // ── Supabase Realtime Channels ──────────────────────────────
 // One channel per company — isolated from other companies
@@ -487,7 +488,9 @@ export function emitAdminSignal(
       type: "broadcast",
       event: "signal",
       payload: data,
-    }).catch(() => {});
+    }).catch((err) => {
+      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Admin signal broadcast failed'), { context: 'admin_signal' }, 'warning');
+    });
   }
 
   // SECONDARY: localStorage fallback
@@ -844,7 +847,9 @@ export function triggerEvacuation(evacuation: ActiveEvacuation) {
       type: "broadcast",
       event: "evacuation",
       payload: evacuation,
-    }).catch(() => {});
+    }).catch((err) => {
+      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Evacuation broadcast failed'), { context: 'evacuation_signal' }, 'warning');
+    });
   }
   // SECONDARY: localStorage fallback
   localStorage.setItem(ACTIVE_EVAC_KEY, JSON.stringify(evacuation));
@@ -947,7 +952,9 @@ export function updateEmployeeEvacuationStatus(status: EmployeeEvacuationStatus)
       type: "broadcast",
       event: "evac_status",
       payload: status,
-    }).catch(() => {});
+    }).catch((err) => {
+      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Evacuation status update broadcast failed'), { context: 'evac_status_signal' }, 'warning');
+    });
   }
   // SECONDARY: localStorage
   const allStatuses = getEvacuationStatuses();
