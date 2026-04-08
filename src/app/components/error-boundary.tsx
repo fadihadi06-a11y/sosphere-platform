@@ -19,8 +19,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
 
 // ── Sentry Integration ──
-// Install: npm install @sentry/react
-// The SDK is dynamically imported to avoid blocking app startup
+// Now installed as @sentry/react dependency
 let _sentryInitialized = false;
 let _Sentry: any = null;
 
@@ -33,9 +32,15 @@ export async function initSentry(dsn?: string): Promise<void> {
     return;
   }
   try {
-    // Dynamic import with variable to prevent Vite from resolving at build time
-    const sentryModule = "@sentry/" + "react";
-    _Sentry = await import(/* @vite-ignore */ sentryModule);
+    // Try to import the actual package first (it's now installed)
+    try {
+      _Sentry = await import("@sentry/react");
+    } catch {
+      // Fallback to dynamic import if package isn't available
+      const sentryModule = "@sentry/" + "react";
+      _Sentry = await import(/* @vite-ignore */ sentryModule);
+    }
+
     _Sentry.init({
       dsn: sentryDsn,
       environment: import.meta.env.MODE || "production",
@@ -54,6 +59,31 @@ export async function initSentry(dsn?: string): Promise<void> {
     console.log("[Sentry] Initialized successfully");
   } catch (err) {
     console.warn("[Sentry] Failed to initialize:", err);
+  }
+}
+
+/** Set Sentry user context (call when user logs in) */
+export function setSentryUser(userId: string, email?: string, phone?: string): void {
+  if (_sentryInitialized && _Sentry?.setUser) {
+    _Sentry.setUser({
+      id: userId,
+      email: email || undefined,
+      username: phone || undefined,
+    });
+  }
+}
+
+/** Clear Sentry user context (call on logout) */
+export function clearSentryUser(): void {
+  if (_sentryInitialized && _Sentry?.setUser) {
+    _Sentry.setUser(null);
+  }
+}
+
+/** Tag events with emergency context (critical for safety) */
+export function setSentryEmergencyContext(active: boolean): void {
+  if (_sentryInitialized && _Sentry?.setTag) {
+    _Sentry.setTag("emergency_active", active ? "true" : "false");
   }
 }
 
@@ -349,6 +379,52 @@ export function WidgetErrorBoundary({ children, label }: { children: ReactNode; 
     <ErrorBoundary level="widget" label={label} inline>
       {children}
     </ErrorBoundary>
+  );
+}
+
+// =================================================================
+// Sentry Test Button (Dev-Only)
+// =================================================================
+
+/**
+ * Dev-only button to trigger a test error and verify Sentry integration.
+ * Visible only in development mode (import.meta.env.MODE !== 'production')
+ */
+export function SentryTestButton() {
+  if (import.meta.env.MODE === 'production') return null;
+
+  const handleTestError = () => {
+    try {
+      throw new Error('[Sentry Test] This is a intentional test error to verify Sentry integration');
+    } catch (err) {
+      reportError(err, { type: 'sentry_test_error', context: 'SentryTestButton', severity: 'warning' }, 'warning');
+    }
+  };
+
+  return (
+    <button
+      onClick={handleTestError}
+      style={{
+        position: 'fixed',
+        bottom: 16,
+        right: 16,
+        padding: '8px 12px',
+        fontSize: 12,
+        backgroundColor: '#00C8E0',
+        color: '#000',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        zIndex: 9999,
+        opacity: 0.7,
+        transition: 'opacity 0.2s',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+      title="Dev: Click to test Sentry error reporting"
+    >
+      Test Sentry
+    </button>
   );
 }
 
