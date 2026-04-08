@@ -1,8 +1,10 @@
 ﻿{
+  "id": "https://sosphere.co/app",
   "name": "SOSphere — Field Safety",
   "short_name": "SOSphere",
   "description": "Emergency safety platform for field workers",
   "start_url": "/app",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#05070E",
   "theme_color": "#FF2D55",

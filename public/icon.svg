@@ -1,1 +1,57 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="40" fill="#FF2D55"/><text x="96" y="130" font-size="100" text-anchor="middle" fill="white" font-family="Arial">SOS</text></svg>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF2D55;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E01E45;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00C8E0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00A3BB;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowFilter" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="192" height="192" fill="#05070E" rx="32"/>
+
+  <!-- Shield shape (main container) -->
+  <g filter="url(#shadowFilter)">
+    <!-- Shield body with gradient -->
+    <path d="M 96 28 L 140 52 L 140 98 Q 96 142 96 142 Q 96 142 52 98 L 52 52 Z"
+          fill="url(#shieldGradient)"
+          stroke="none"/>
+
+    <!-- Inner shield highlight/shine effect -->
+    <path d="M 96 32 L 136 54 L 136 96 Q 96 138 96 138 Q 100 132 134 96 L 134 56 Z"
+          fill="#FF5277"
+          opacity="0.4"/>
+  </g>
+
+  <!-- SOS Signal - Three circles representing SOS pattern -->
+  <g id="sosSignal">
+    <!-- First circle (S) -->
+    <circle cx="72" cy="96" r="12" fill="#00C8E0" opacity="0.95"/>
+
+    <!-- Second circle (O - center emphasis) -->
+    <circle cx="96" cy="96" r="14" fill="#00C8E0" opacity="1"/>
+    <circle cx="96" cy="96" r="10" fill="#05070E" opacity="1"/>
+
+    <!-- Third circle (S) -->
+    <circle cx="120" cy="96" r="12" fill="#00C8E0" opacity="0.95"/>
+  </g>
+
+  <!-- Accent accent line underneath for depth -->
+  <line x1="60" y1="118" x2="132" y2="118"
+        stroke="url(#accentGradient)"
+        stroke-width="2"
+        stroke-linecap="round"
+        opacity="0.8"/>
+
+  <!-- Protective corner accents -->
+  <g opacity="0.6">
+    <rect x="56" y="50" width="3" height="8" fill="#00C8E0" rx="1.5"/>
+    <rect x="133" y="50" width="3" height="8" fill="#00C8E0" rx="1.5"/>
+  </g>
+</svg>

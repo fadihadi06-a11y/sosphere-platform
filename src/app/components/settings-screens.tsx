@@ -242,11 +242,11 @@ export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?:
           <div className="px-5 mb-5">
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { icon: Mail, label: "Email Support", sub: "support@sosphere.app", color: "#00C8E0" },
+                { icon: Mail, label: "Email Support", sub: "info@sosphere.co", color: "#00C8E0" },
                 { icon: MessageCircle, label: "Live Chat", sub: "Available 24/7", color: "#00C853" },
               ].map(c => (
                 <button key={c.label} className="p-4 text-left"
-                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — support@sosphere.app" : "Connecting to live chat agent..." }); }}
+                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — info@sosphere.co" : "Connecting to live chat agent..." }); }}
                   style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
                   <c.icon className="size-5 mb-2.5" style={{ color: c.color }} />
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</p>

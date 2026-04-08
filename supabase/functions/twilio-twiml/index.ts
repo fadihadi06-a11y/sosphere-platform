@@ -83,7 +83,7 @@ serve(async (req: Request) => {
     }
 
     // Build the emergency announcement message
-    const announcementMessage = `Emergency Alert from SOSphere. User ${decodedCaller} has triggered an SOS emergency. Emergency ID: ${emergencyId}. Please respond immediately. This is not a drill.`;
+    const announcementMessage = `Emergency Alert from SOSphere Official. User ${decodedCaller} has triggered an SOS emergency. Emergency ID: ${emergencyId}. For more information visit sosphere.co. Please respond immediately. This is not a drill.`;
 
     // Build TwiML response with:
     // 1. First announcement
