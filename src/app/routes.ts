@@ -14,6 +14,10 @@ export const router = createBrowserRouter([
   { path: "/welcome", lazy: () => import("./components/welcome-activation").then(m => ({ Component: m.WelcomeActivation })), HydrateFallback: RouteLoading },
   { path: "/demo", lazy: () => import("./components/wow-demo").then(m => ({ Component: m.WowDemo })), HydrateFallback: RouteLoading },
   { path: "/training", lazy: () => import("./components/training-center").then(m => ({ Component: m.TrainingCenter })), HydrateFallback: RouteLoading },
+  // ── DEV: Diagnostic Stress-Test Suite (dev mode only) ──
+  ...(import.meta.env.DEV ? [
+    { path: "/dev/stress-test", lazy: () => import("./components/diagnostic-stress-test").then(m => ({ Component: m.DiagnosticStressTest })), HydrateFallback: RouteLoading },
+  ] : []),
   // ── LEGAL: Privacy Policy and Terms of Service ──
   { path: "/privacy", lazy: () => import("./components/privacy-page").then(m => ({ Component: m.PrivacyPage })), HydrateFallback: RouteLoading },
   { path: "/terms", lazy: () => import("./components/terms-page").then(m => ({ Component: m.TermsPage })), HydrateFallback: RouteLoading },
