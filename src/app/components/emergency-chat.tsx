@@ -386,7 +386,7 @@ export function DashboardEmergencyChat({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="fixed right-4 bottom-4 z-[200] flex flex-col"
+      className="fixed right-4 fixed-bottom-safe z-[200] flex flex-col"
       style={{
         width: 380,
         height: 520,

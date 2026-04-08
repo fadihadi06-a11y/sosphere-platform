@@ -11,6 +11,7 @@ import {
   CheckCircle2, FileText, Users, Paperclip,
   AlertTriangle, Loader2, Globe, ChevronDown,
 } from "lucide-react";
+import { useReducedMotion, springPresets, modalVariants, backdropVariants, contentFadeVariants } from "./view-transitions";
 
 // ── Types ──────────────────────────────────────────────────────
 interface EmailRecipient {
@@ -141,22 +142,26 @@ export function PdfEmailModal({
   };
 
   const activeStages = isEncrypted ? DELIVERY_STAGES : DELIVERY_STAGES.filter(s => s.label !== "Applying encryption layer...");
+  const prefersReduced = useReducedMotion();
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          variants={backdropVariants}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
           className="fixed inset-0 z-[410] flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(16px)" }}
         >
           <motion.div
-            initial={{ scale: 0.88, y: 30, opacity: 0 }}
-            animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.92, y: 20, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
             className="relative w-full max-w-lg mx-4"
             style={{
               background: "linear-gradient(180deg, #0E1529 0%, #080C18 100%)",
@@ -177,8 +182,11 @@ export function PdfEmailModal({
                 {sendingState === "success" ? (
                   <motion.div
                     key="success"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    variants={contentFadeVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={prefersReduced ? { duration: 0 } : { duration: 0.25 }}
                     className="px-6 py-10 flex flex-col items-center text-center"
                   >
                     <motion.div

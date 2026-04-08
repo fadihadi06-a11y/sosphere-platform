@@ -30,7 +30,7 @@ export function GlobalQuickActions({ onCreateEmergency, onBroadcast, onEvacuatio
         onClick={() => setIsOpen(!isOpen)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className="fixed bottom-8 right-8 size-14 rounded-2xl flex items-center justify-center z-[9998]"
+        className="fixed fixed-bottom-safe-lg right-8 size-14 rounded-2xl flex items-center justify-center z-[9998]"
         style={{
           background: "linear-gradient(135deg, #00C8E0 0%, #0099B8 100%)",
           boxShadow: isOpen
@@ -85,8 +85,8 @@ export function GlobalQuickActions({ onCreateEmergency, onBroadcast, onEvacuatio
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className="fixed bottom-28 right-8 z-[9998] grid gap-2"
-              style={{ width: 280 }}
+              className="fixed z-[9998] grid gap-2"
+              style={{ width: 280, bottom: 'calc(max(24px, env(safe-area-inset-bottom)) + 112px)', right: 32 }}
             >
               {actions.map((action, i) => {
                 const Icon = action.icon;

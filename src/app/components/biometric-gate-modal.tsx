@@ -21,6 +21,7 @@ import {
   unenrollBiometric,
   type BiometricStatus,
 } from "./biometric-gate";
+import { useReducedMotion, springPresets, modalVariants, backdropVariants, contentFadeVariants } from "./view-transitions";
 
 interface BiometricGateModalProps {
   isOpen: boolean;
@@ -184,25 +185,30 @@ export function BiometricGateModal({
     setError("");
   };
 
+  const prefersReduced = useReducedMotion();
+
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             onClick={onCancel}
           />
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ pointerEvents: "none" }}
           >
@@ -306,9 +312,11 @@ export function BiometricGateModal({
                   {(state === "enroll" || state === "enroll_waiting") && (
                     <motion.div
                       key="enroll"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
                       className="space-y-4"
                     >
                       <div className="p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
@@ -354,9 +362,11 @@ export function BiometricGateModal({
                   {(state === "verify" || state === "verify_waiting") && (
                     <motion.div
                       key="verify"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
                       className="space-y-4"
                     >
                       {state === "verify_waiting" && (
@@ -410,9 +420,11 @@ export function BiometricGateModal({
                   {state === "pin_fallback" && (
                     <motion.div
                       key="pin"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
                       className="space-y-4"
                     >
                       <div className="space-y-2">
@@ -469,9 +481,11 @@ export function BiometricGateModal({
                   {state === "error" && (
                     <motion.div
                       key="error"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
                       className="space-y-4"
                     >
                       <button
@@ -487,8 +501,10 @@ export function BiometricGateModal({
                   {state === "verified" && (
                     <motion.div
                       key="verified"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
                       className="flex flex-col items-center justify-center py-4"
                     >
                       <motion.div

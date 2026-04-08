@@ -4,6 +4,7 @@ import {
   Mic, Shield, AlertTriangle, CheckCircle,
   X, ChevronRight, Globe, Lock, FileText,
 } from "lucide-react";
+import { useReducedMotion, springPresets, backdropVariants, slideUpVariants } from "./view-transitions";
 
 interface RecordingConsentModalProps {
   visible: boolean;
@@ -55,6 +56,7 @@ export function RecordingConsentModal({
   const [checked3, setChecked3] = useState(false);
 
   const allChecked = checked1 && checked2 && checked3;
+  const prefersReduced = useReducedMotion();
 
   return (
     <AnimatePresence>
@@ -63,9 +65,11 @@ export function RecordingConsentModal({
           {/* Backdrop */}
           <motion.div
             key="rc-bg"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
             className="absolute inset-0 z-50"
             style={{ background: "rgba(0,0,0,0.82)", backdropFilter: "blur(12px)" }}
           />
@@ -73,10 +77,11 @@ export function RecordingConsentModal({
           {/* Sheet */}
           <motion.div
             key="rc-sheet"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", stiffness: 320, damping: 38 }}
+            variants={slideUpVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={prefersReduced ? { duration: 0 } : springPresets.sheetSlide}
             className="absolute inset-x-0 bottom-0 z-50 flex flex-col"
             style={{
               maxHeight: "92%",

@@ -659,6 +659,56 @@ html.native-ios {
   min-height: env(safe-area-inset-bottom);
 }
 
+/* ─────────────────────────────────────────────────────────────────────── */
+/* FIXED POSITIONING WITH SAFE AREA AWARENESS */
+/* ─────────────────────────────────────────────────────────────────────── */
+
+/**
+ * For fixed elements positioned at bottom, account for home indicator area.
+ * Use on floating elements that must stay above the home indicator bar.
+ *
+ * Example: <div class="fixed bottom-0 right-0 fixed-bottom-safe">
+ */
+.fixed-bottom-safe {
+  bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.fixed-bottom-safe-lg {
+  bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/**
+ * For fixed elements at top (status bar area)
+ */
+.fixed-top-safe {
+  top: max(16px, env(safe-area-inset-top));
+}
+
+/**
+ * For floating actions or badges that should respect safe areas on all sides
+ */
+.floating-safe-position {
+  &[data-position="bottom-right"] {
+    bottom: max(16px, env(safe-area-inset-bottom));
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  &[data-position="bottom-left"] {
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: max(16px, env(safe-area-inset-left));
+  }
+
+  &[data-position="top-right"] {
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  &[data-position="top-left"] {
+    top: max(16px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* MEDIA QUERIES — Mobile-First Responsive */
 /* ─────────────────────────────────────────────────────────────────────────── */
