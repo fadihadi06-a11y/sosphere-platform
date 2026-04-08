@@ -72,7 +72,7 @@ export async function decryptData(encrypted: string): Promise<string> {
 }
 
 const DB_NAME = "sosphere_offline";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // ── Store Schemas ──────────────────────────────────────────────
 
@@ -167,6 +167,13 @@ export interface CachedResponse {
   etag: string | null;
 }
 
+export interface ColdLocationRecord {
+  id: string; // GPS point ID
+  originalDataEncrypted: string; // Full original GPS data (encrypted)
+  obfuscatedAt: number;
+  expiresAt: number;
+}
+
 // ── Database Initialization ────────────────────────────────────
 
 let dbInstance: IDBDatabase | null = null;
@@ -233,6 +240,22 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("app_cache")) {
         const cacheStore = db.createObjectStore("app_cache", { keyPath: "id" });
         cacheStore.createIndex("by_expires", "expiresAt", { unique: false });
+      }
+
+      // ── Cold Location Storage (for GDPR compliance) ──
+      if (!db.objectStoreNames.contains("cold_location_storage")) {
+        const coldStore = db.createObjectStore("cold_location_storage", { keyPath: "id" });
+        coldStore.createIndex("by_expires", "expiresAt", { unique: false });
+        coldStore.createIndex("by_obfuscated_at", "obfuscatedAt", { unique: false });
+      }
+
+      // ── Emergency Buffer Store (v3) ──
+      // Failover buffer when primary Supabase is unreachable
+      if (!db.objectStoreNames.contains("emergency_buffer")) {
+        const bufferStore = db.createObjectStore("emergency_buffer", { keyPath: "id" });
+        bufferStore.createIndex("by_priority", "priority", { unique: false });
+        bufferStore.createIndex("by_type", "type", { unique: false });
+        bufferStore.createIndex("by_timestamp", "timestamp", { unique: false });
       }
     };
 
@@ -838,6 +861,43 @@ export async function getStorageStats(): Promise<OfflineStorageStats> {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Public API — Cold Location Storage
+// ═══════════════════════════════════════════════════════════════
+
+export async function saveColdLocationRecord(record: ColdLocationRecord): Promise<void> {
+  await dbPut("cold_location_storage", record);
+}
+
+export async function getColdLocationRecord(id: string): Promise<ColdLocationRecord | undefined> {
+  return dbGet<ColdLocationRecord>("cold_location_storage", id);
+}
+
+export async function deleteColdLocationRecord(id: string): Promise<void> {
+  await dbDelete("cold_location_storage", id);
+}
+
+export async function deleteColdLocationRecordsBulk(ids: string[]): Promise<void> {
+  await dbDeleteBulk("cold_location_storage", ids);
+}
+
+export async function getColdLocationRecordsExpiredBefore(timestamp: number): Promise<ColdLocationRecord[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("cold_location_storage", "readonly");
+    const store = tx.objectStore("cold_location_storage");
+    const index = store.index("by_expires");
+    const range = IDBKeyRange.upperBound(timestamp, false);
+    const req = index.getAll(range);
+    req.onsuccess = () => resolve(req.result as ColdLocationRecord[]);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function countColdLocationRecords(): Promise<number> {
+  return dbCount("cold_location_storage");
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Danger Zone — Full Reset
 // ═══════════════════════════════════════════════════════════════
 
@@ -850,6 +910,8 @@ export async function resetOfflineDatabase(): Promise<void> {
     dbClear("messages"),
     dbClear("sync_log"),
     dbClear("app_cache"),
+    dbClear("cold_location_storage"),
+    dbClear("emergency_buffer"),
   ]);
 }
 
