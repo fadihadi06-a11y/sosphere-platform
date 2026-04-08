@@ -185,7 +185,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
                   ))}
                 </div>
               ) : (
-                <span style={{ fontSize: 36, fontWeight: 900, color: "#FF2D55", letterSpacing: "-1px" }}>{data.bloodType}</span>
+                <span style={{ fontSize: 36, fontWeight: 900, color: "#FF2D55", letterSpacing: "-1px" }}>{data.bloodType || t("med.unknown")}</span>
               )}
             </div>
 
@@ -294,7 +294,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
             >
               {section.items.length === 0 ? (
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.12)", textAlign: "center", padding: "8px 0" }}>
-                  No {section.label.toLowerCase()} added
+                  {section.key === "allergies" ? t("med.noAllergies") : section.key === "medications" ? t("med.noMedications") : "No " + section.label.toLowerCase() + " added"}
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">

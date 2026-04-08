@@ -377,6 +377,19 @@ function genId(prefix: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// FIX 1: Quota Resilient Write — Prevent Recursive Re-sync
+// ═══════════════════════════════════════════════════════════════
+// HARDENING: Prevent recursive re-sync during quota recovery
+// When GPS records are pruned to make space, the sync engine must NOT
+// attempt to re-fetch or re-write those records — that would cause a loop
+let _pruningInProgress = false;
+
+/** Check if a quota recovery prune is in progress (used by sync engine) */
+export function isPruningInProgress(): boolean {
+  return _pruningInProgress;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // FIX 2: Quota-Resilient Write with Automatic Pruning
 // ══════════════════════════════════════════════════════════════
 // MISSION-CRITICAL: Write with quota protection.
@@ -402,35 +415,40 @@ export async function quotaResilientWrite(
     if (err?.name === "QuotaExceededError" || err?.code === 22) {
       // Prune oldest GPS records (lowest priority) to make space
       try {
-        const db = await openDB();
-        const tx = db.transaction("gps_trail", "readwrite");
-        const store = tx.objectStore("gps_trail");
-        const index = store.index("by_timestamp");
-        const cursor = index.openCursor(); // ascending = oldest first
-        let deleted = 0;
-        await new Promise<void>((resolve) => {
-          cursor.onsuccess = (e: any) => {
-            const c = e.target.result;
-            if (c && deleted < 100) {
-              c.delete();
-              deleted++;
-              c.continue();
-            } else {
-              resolve();
-            }
-          };
-          cursor.onerror = () => resolve();
-        });
-        // Retry the write
-        if (deleted > 0) {
-          const db2 = await openDB();
-          const tx2 = db2.transaction(storeName, "readwrite");
-          const store2 = tx2.objectStore(storeName);
-          return new Promise((resolve) => {
-            const req = store2.add(data);
-            req.onsuccess = () => resolve(true);
-            req.onerror = () => resolve(false);
+        _pruningInProgress = true;
+        try {
+          const db = await openDB();
+          const tx = db.transaction("gps_trail", "readwrite");
+          const store = tx.objectStore("gps_trail");
+          const index = store.index("by_timestamp");
+          const cursor = index.openCursor(); // ascending = oldest first
+          let deleted = 0;
+          await new Promise<void>((resolve) => {
+            cursor.onsuccess = (e: any) => {
+              const c = e.target.result;
+              if (c && deleted < 100) {
+                c.delete();
+                deleted++;
+                c.continue();
+              } else {
+                resolve();
+              }
+            };
+            cursor.onerror = () => resolve();
           });
+          // Retry the write
+          if (deleted > 0) {
+            const db2 = await openDB();
+            const tx2 = db2.transaction(storeName, "readwrite");
+            const store2 = tx2.objectStore(storeName);
+            return new Promise((resolve) => {
+              const req = store2.add(data);
+              req.onsuccess = () => resolve(true);
+              req.onerror = () => resolve(false);
+            });
+          }
+        } finally {
+          _pruningInProgress = false;
         }
       } catch {
         // Final fallback: for SOS, store in localStorage as emergency backup
