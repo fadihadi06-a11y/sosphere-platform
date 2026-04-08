@@ -263,7 +263,7 @@ export function BuddySystemPage({ t, webMode }: { t: (k: string) => string; webM
         },
       });
     }
-    console.log("[SUPABASE_READY] buddy_locate_requested: " + name);
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] buddy_locate_requested: " + name);
     toast.success("Locating Buddy", { description: `GPS location of ${name} shown on map` });
   }, [pairs]);
 

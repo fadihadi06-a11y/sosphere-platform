@@ -296,7 +296,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             {(["7d", "30d", "90d", "1y"] as const).map(r => (
               <button key={r} onClick={() => {
                 setTimeRange(r);
-                console.log("[SUPABASE_READY] analytics_timerange_changed: " + r);
+                if (import.meta.env.DEV) console.log("[SUPABASE_READY] analytics_timerange_changed: " + r);
               }}
                 className="px-3 py-1.5 rounded-lg transition-all"
                 style={{
@@ -313,7 +313,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           <button className="flex items-center gap-2 px-4 py-2 rounded-xl"
             onClick={async () => {
               hapticSuccess();
-              console.log("[SUPABASE_READY] analytics_pdf_export", { timeRange });
+              if (import.meta.env.DEV) console.log("[SUPABASE_READY] analytics_pdf_export", { timeRange });
               toast.loading("Generating analytics PDF...", { id: "analytics-pdf" });
               try {
                 await import("jspdf-autotable");
@@ -381,7 +381,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 doc.text("SOSphere Analytics | Confidential | " + new Date().toISOString().split("T")[0], pw / 2, ph - 6, { align: "center" });
                 doc.save(`SOSphere_Analytics_${timeRange}_${new Date().toISOString().split("T")[0]}.pdf`);
                 toast.success("Analytics PDF Generated", { id: "analytics-pdf", description: `${timeRange} analytics report downloaded` });
-                console.log("[SUPABASE_READY] analytics_pdf_generated", { timeRange });
+                if (import.meta.env.DEV) console.log("[SUPABASE_READY] analytics_pdf_generated", { timeRange });
               } catch (err) {
                 console.error("Analytics PDF error:", err);
                 toast.error("PDF Generation Failed", { id: "analytics-pdf" });

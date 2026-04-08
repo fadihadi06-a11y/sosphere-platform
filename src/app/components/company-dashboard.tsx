@@ -665,7 +665,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
       : 0;
     const daysUntilDeletion = Math.max(0, 30 - daysSinceExpired);
 
-    console.log("[SUPABASE_READY] trial_status: " + JSON.stringify({
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] trial_status: " + JSON.stringify({
       daysLeft: trialDaysLeft,
       isActive: isTrialActive,
       endsAt: trialEndsAt,
@@ -706,7 +706,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
 
   const handleRiskUpdateFromInvestigation = (riskId: string, update: Record<string, any>) => {
     setPendingRiskUpdates(prev => [...prev, { riskId, update }]);
-    console.log("[SUPABASE_READY] risk_update_bridged: " + JSON.stringify({ riskId }));
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] risk_update_bridged: " + JSON.stringify({ riskId }));
   };
 
   const handleEscalateToInvestigation = (newInv: any) => {
@@ -1062,7 +1062,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           description: `Zone: ${event.zone} — ${(event.data?.guardians as string[])?.length || 0} guardian(s) monitoring`,
           duration: 4000,
         });
-        console.log("[SUPABASE_READY] safe_walk_started_received: " + event.employeeName);
+        if (import.meta.env.DEV) console.log("[SUPABASE_READY] safe_walk_started_received: " + event.employeeName);
       }
 
       if (event.type === "SAFE_WALK_ENDED") {
@@ -1074,7 +1074,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           `${event.employeeName} — Safe Walk ${arrivedSafely ? "completed safely ✓" : "ended"}`,
           { duration: 4000 }
         );
-        console.log("[SUPABASE_READY] safe_walk_ended_received: " + event.employeeName);
+        if (import.meta.env.DEV) console.log("[SUPABASE_READY] safe_walk_ended_received: " + event.employeeName);
       }
 
       // ── Buddy Locate Request ──────────────────────────────────────────────────
@@ -1084,7 +1084,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           description: `Requested by ${event.employeeName} — Zone: ${event.zone}`,
           duration: 5000,
         });
-        console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
+        if (import.meta.env.DEV) console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
       }
     });
     return unsub;

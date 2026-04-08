@@ -1369,7 +1369,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                       if (invError) console.error("[Register] Invitations save failed:", invError);
                     }
 
-                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: allMembers.length });
+                    if (import.meta.env.DEV) console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: allMembers.length });
                     toast.success("Company registered successfully!");
 
                     onComplete(companyName, { companyName, plan: planId, billing, employeeCount: totalEmp });

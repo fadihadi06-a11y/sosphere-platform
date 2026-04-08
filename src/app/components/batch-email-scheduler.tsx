@@ -418,7 +418,7 @@ export function BatchEmailScheduler({ t, webMode, onGenerateReport }: { t: (k: s
     setShowCreate(false);
     playUISound("actionDone");
     toast.success("Schedule created successfully!");
-    console.log("[SUPABASE_READY] schedule_created: " + JSON.stringify({ id: schedule.id, name: schedule.name, frequency: schedule.frequency, reportTypes: schedule.reportTypes, recipientCount: schedule.recipients.length }));
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] schedule_created: " + JSON.stringify({ id: schedule.id, name: schedule.name, frequency: schedule.frequency, reportTypes: schedule.reportTypes, recipientCount: schedule.recipients.length }));
   };
 
   const toggleSchedule = (id: string) => {
@@ -426,7 +426,7 @@ export function BatchEmailScheduler({ t, webMode, onGenerateReport }: { t: (k: s
     setSchedules(updated);
     saveSchedules(updated);
     const toggled = updated.find(s => s.id === id);
-    console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id, enabled: toggled?.enabled }));
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id, enabled: toggled?.enabled }));
   };
 
   const deleteSchedule = (id: string) => {
@@ -434,11 +434,11 @@ export function BatchEmailScheduler({ t, webMode, onGenerateReport }: { t: (k: s
     setSchedules(updated);
     saveSchedules(updated);
     toast.success("Schedule deleted");
-    console.log("[SUPABASE_READY] schedule_deleted: " + JSON.stringify({ id }));
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] schedule_deleted: " + JSON.stringify({ id }));
   };
 
   const runNow = (schedule: ScheduledReport) => {
-    console.log("[SUPABASE_READY] schedule_run_now: " + JSON.stringify({ id: schedule.id, reportTypes: schedule.reportTypes }));
+    if (import.meta.env.DEV) console.log("[SUPABASE_READY] schedule_run_now: " + JSON.stringify({ id: schedule.id, reportTypes: schedule.reportTypes }));
     if (onGenerateReport) {
       onGenerateReport(schedule.reportTypes);
     }

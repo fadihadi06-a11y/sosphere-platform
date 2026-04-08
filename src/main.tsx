@@ -2,8 +2,12 @@
 import App from "./app/App.tsx";
 import "./styles/index.css";
 import "./styles/mobile.css";
+import { initEnvShield } from "./app/components/env-shield";
 import { testConnection, validateProductionEnvironment } from "./app/components/api/supabase-client";
 import { initSentry, AppErrorBoundary } from "./app/components/error-boundary";
+
+// MUST RUN FIRST: Initialize Environment Shield to prevent secret leakage
+initEnvShield();
 
 // Initialize application with async setup (Sentry, validation, connectivity)
 async function initializeApp() {
