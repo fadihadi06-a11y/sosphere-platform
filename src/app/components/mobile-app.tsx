@@ -42,6 +42,7 @@ import { enableAutoSync } from "./offline-sync-engine";
 import { useFallDetection, FallDetectionOverlay } from "./fall-detection";
 import { useNotifications } from "./push-notifications";
 import { useShakeDetection } from "./shake-to-sos";
+import { VoiceSOSWidget } from "./voice-sos-widget";
 import { useT, type Lang } from "./dashboard-i18n";
 import { MobileEmergencyChat } from "./emergency-chat";
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
@@ -252,7 +253,7 @@ export function MobileApp() {
   const MAX_SOS_DURATION_MS = 30 * 60 * 1000; // 30 min safety reset
 
   /** Guarded SOS trigger — only allows one SOS per 30s window. First trigger wins. */
-  const guardedSOSTrigger = useCallback((source: "hold" | "shake" | "fall", customSource?: "individual-home" | "employee-dashboard") => {
+  const guardedSOSTrigger = useCallback((source: "hold" | "shake" | "fall" | "voice", customSource?: "individual-home" | "employee-dashboard") => {
     const now = Date.now();
     if (sosInProgressRef.current) return false;
     if (now - sosLastTriggerRef.current < 30000) return false;
@@ -347,6 +348,27 @@ export function MobileApp() {
       if (shakeTimerRef.current) clearInterval(shakeTimerRef.current);
     };
   }, []);
+
+  // -- Voice SOS Trigger Handler --------------------------------
+  const handleVoiceSOSTriggered = useCallback(
+    (keyword: string, confidence: number) => {
+      if (import.meta.env.DEV) {
+        console.log(`[Voice SOS] Keyword detected: "${keyword}" (confidence: ${(confidence * 100).toFixed(1)}%)`);
+      }
+      // Use guardedSOSTrigger to prevent spam and concurrent SOS
+      if (!guardedSOSTrigger("voice")) return;
+      // Emit SOS event
+      emitSyncEvent({
+        type: "VOICE_SOS",
+        employeeId: `EMP-${loginName.replace(/\s+/g, "")}`,
+        employeeName: loginName,
+        zone: userZone,
+        timestamp: Date.now(),
+        data: { triggerMethod: "voice", keyword, confidence },
+      });
+    },
+    [guardedSOSTrigger, loginName, userZone]
+  );
 
   // -- SAR Alert (Search & Rescue notification from admin) ------
   const [sarAlert, setSarAlert] = useState<{ active: boolean; employeeName?: string; zone?: string } | null>(null);
@@ -562,6 +584,16 @@ export function MobileApp() {
     >
                 {/* Broadcast Island � floating broadcast alert */}
         <BroadcastIsland />
+
+        {/* Voice SOS Widget -- floating microphone for voice-activated SOS */}
+        <VoiceSOSWidget
+          onVoiceSOSTriggered={handleVoiceSOSTriggered}
+          primaryKeyword="help me"
+          secondaryKeywords={["emergency", "mayday"]}
+          confidenceThreshold={0.7}
+          cooldownMs={30000}
+          position="bottom-left"
+        />
 
         {/* -- SAR Alert Banner � slides down when SAR activated --- */}
         <AnimatePresence>

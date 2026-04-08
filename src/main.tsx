@@ -2,12 +2,17 @@
 import App from "./app/App.tsx";
 import "./styles/index.css";
 import "./styles/mobile.css";
+import "./styles/native-compat.css";
 import { initEnvShield } from "./app/components/env-shield";
 import { testConnection, validateProductionEnvironment } from "./app/components/api/supabase-client";
 import { initSentry, AppErrorBoundary } from "./app/components/error-boundary";
+import { initCapacitorBridge } from "./app/components/capacitor-bridge";
 
 // MUST RUN FIRST: Initialize Environment Shield to prevent secret leakage
 initEnvShield();
+
+// Initialize Capacitor bridge for native platform features
+initCapacitorBridge();
 
 // Initialize application with async setup (Sentry, validation, connectivity)
 async function initializeApp() {
