@@ -84,6 +84,7 @@ export function useFallDetection({
 
   // Simulate fall detection for demo (since DeviceMotion needs real device)
   const simulateFall = useCallback(() => {
+    if (import.meta.env.PROD) return; // HARDENING: Disable simulation in production builds
     if (!enabled || state !== "monitoring") return;
     
     // Prevent rapid re-triggers
@@ -148,6 +149,7 @@ export function useFallDetection({
   const IMPACT_THRESHOLD    = 25.0;  // m/s² above this = hard impact (~2.5G)
   const freeFallRef  = useRef(false);
   const impactTimeRef = useRef(0);
+  const lowGStartRef = useRef<number>(0);
 
   useEffect(() => {
     if (!enabled) return;
@@ -175,6 +177,30 @@ export function useFallDetection({
           }
         } else if (mag > 12) {
           freeFallRef.current = false; // reset on normal movement
+        }
+
+        // HARDENING: Detect slow collapses (no free-fall phase)
+        // If gravity is abnormally low for >800ms, person may be collapsing
+        if (mag < 7.0 && mag > FREE_FALL_THRESHOLD) {
+          if (lowGStartRef.current === 0) lowGStartRef.current = Date.now();
+          else if (Date.now() - lowGStartRef.current > 800 && Date.now() - lastFallRef.current > 30000) {
+            lowGStartRef.current = 0;
+            // Trigger fall detection for slow collapse
+            const event: FallEvent = {
+              timestamp: Date.now(),
+              acceleration: mag,
+              type: "free_fall", // classify as fall event
+            };
+            setState("fall_detected");
+            onFallDetected?.(event);
+            saveSensorEvent("fall", mag);
+            setTimeout(() => {
+              setState("countdown");
+              setCountdown(countdownSeconds);
+            }, 1500);
+          }
+        } else if (mag >= 7.0) {
+          lowGStartRef.current = 0; // reset when normal gravity detected
         }
       };
 

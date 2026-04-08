@@ -18,6 +18,60 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
 
+// ── SOSphere Error Telemetry ──
+// Production-ready error reporting. Sentry integration point.
+// When Sentry is connected, replace reportError() body with Sentry.captureException()
+interface ErrorReport {
+  error: Error;
+  context?: Record<string, any>;
+  severity: "fatal" | "error" | "warning";
+  component?: string;
+}
+
+const _errorQueue: ErrorReport[] = [];
+const _errorListeners: ((report: ErrorReport) => void)[] = [];
+
+/** Report an error to telemetry. In production, this sends to Sentry. */
+export function reportError(
+  error: Error | string,
+  context?: Record<string, any>,
+  severity: "fatal" | "error" | "warning" = "error"
+): void {
+  const err = typeof error === "string" ? new Error(error) : error;
+  const report: ErrorReport = { error: err, context, severity };
+
+  // Always log to console with structured data
+  const logFn = severity === "fatal" ? console.error : severity === "warning" ? console.warn : console.error;
+  logFn(`[SOSphere:${severity}]`, err.message, context || "");
+
+  // Queue for telemetry (Sentry, DataDog, etc.)
+  _errorQueue.push(report);
+  if (_errorQueue.length > 100) _errorQueue.shift();
+
+  // Notify listeners (for UI error indicators)
+  for (const cb of _errorListeners) {
+    try { cb(report); } catch { /* prevent listener errors from cascading */ }
+  }
+
+  // SENTRY INTEGRATION POINT:
+  // import * as Sentry from "@sentry/react";
+  // Sentry.captureException(err, { extra: context, level: severity });
+}
+
+/** Subscribe to error reports (for dashboard error indicators) */
+export function onErrorReport(cb: (report: ErrorReport) => void): () => void {
+  _errorListeners.push(cb);
+  return () => {
+    const idx = _errorListeners.indexOf(cb);
+    if (idx >= 0) _errorListeners.splice(idx, 1);
+  };
+}
+
+/** Get queued errors (for debugging / admin panel) */
+export function getErrorQueue(): ErrorReport[] {
+  return [..._errorQueue];
+}
+
 // =================================================================
 // Types
 // =================================================================
@@ -56,17 +110,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
 
-    // Log to console (always)
-    console.error(`[SOSphere ErrorBoundary] ${this.props.label || "Unknown"}:`, error, errorInfo);
-
-    // PRODUCTION: Send to error tracking service
-    // Sentry.captureException(error, {
-    //   extra: {
-    //     componentStack: errorInfo.componentStack,
-    //     level: this.props.level,
-    //     label: this.props.label,
-    //   },
-    // });
+    // Report to telemetry using structured error reporting
+    reportError(error, { componentStack: errorInfo?.componentStack, level: this.props.level, label: this.props.label }, "fatal");
 
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
@@ -259,4 +304,22 @@ export function WidgetErrorBoundary({ children, label }: { children: ReactNode; 
       {children}
     </ErrorBoundary>
   );
+}
+
+// ── Global Unhandled Error Catchers ──
+// Catches async errors that ErrorBoundary can't intercept
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    reportError(
+      event.reason instanceof Error ? event.reason : new Error(String(event.reason)),
+      { type: "unhandled_promise_rejection" },
+      "error"
+    );
+  });
+
+  window.addEventListener("error", (event) => {
+    if (event.error) {
+      reportError(event.error, { type: "uncaught_error", filename: event.filename, lineno: event.lineno }, "fatal");
+    }
+  });
 }

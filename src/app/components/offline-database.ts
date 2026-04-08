@@ -19,6 +19,58 @@
 //  7. app_cache      — Cached API responses for offline reads
 // ═══════════════════════════════════════════════════════════════
 
+// ── Client-Side Encryption for Offline Storage ──
+// Uses AES-GCM via Web Crypto API (no external dependencies)
+const CRYPTO_ALGO = "AES-GCM";
+const IV_LENGTH = 12;
+
+let _encryptionKey: CryptoKey | null = null;
+
+/** Derive a stable encryption key from a seed (e.g. user session token) */
+export async function initOfflineEncryption(seed: string): Promise<void> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", encoder.encode(seed), "PBKDF2", false, ["deriveKey"]
+  );
+  _encryptionKey = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: encoder.encode("sosphere_offline_v1"), iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: CRYPTO_ALGO, length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+/** Encrypt a string → base64(iv + ciphertext) */
+export async function encryptData(plaintext: string): Promise<string> {
+  if (!_encryptionKey) return plaintext; // graceful degradation if not initialized
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: CRYPTO_ALGO, iv }, _encryptionKey, encoded
+  );
+  const combined = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), IV_LENGTH);
+  return btoa(String.fromCharCode(...combined));
+}
+
+/** Decrypt base64(iv + ciphertext) → string */
+export async function decryptData(encrypted: string): Promise<string> {
+  if (!_encryptionKey) return encrypted; // graceful degradation
+  try {
+    const raw = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
+    const iv = raw.slice(0, IV_LENGTH);
+    const ciphertext = raw.slice(IV_LENGTH);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: CRYPTO_ALGO, iv }, _encryptionKey, ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return encrypted; // return as-is if decryption fails (might be unencrypted legacy data)
+  }
+}
+
 const DB_NAME = "sosphere_offline";
 const DB_VERSION = 2;
 

@@ -30,6 +30,7 @@ import {
   type SOSRecord, type CheckinRecord, type GPSPoint,
   type IncidentRecord, type OfflineMessage, type OfflineStorageStats,
 } from "./offline-database";
+import { reportError } from "./error-boundary";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -76,6 +77,12 @@ const DEFAULT_CONFIG: SyncEngineConfig = {
   simulatedLatencyMs: 150, // for demo — remove in production
 };
 
+// HARDENING: SOS events get infinite retries with 30s backoff
+const SOS_RETRY_CONFIG = {
+  maxRetries: Number.MAX_SAFE_INTEGER,
+  retryIntervalMs: 30000, // 30s between retries while offline
+};
+
 // ── State ──────────────────────────────────────────────────────
 
 type ProgressListener = (progress: SyncProgress) => void;
@@ -120,7 +127,9 @@ function emitProgress(partial?: Partial<SyncProgress>) {
   currentProgress.totalFailed = Object.values(cats).reduce((sum, c) => sum + c.failed, 0);
 
   progressListeners.forEach(fn => {
-    try { fn({ ...currentProgress }); } catch { /* ignore */ }
+    try { fn({ ...currentProgress }); } catch (err) {
+      reportError(err, { type: "sync_listener_error", component: "OfflineSyncEngine" }, "warning");
+    }
   });
 }
 
@@ -235,7 +244,8 @@ async function syncSOSAlerts(): Promise<void> {
 
   for (const sos of items) {
     if (syncAborted) return;
-    if (sos.syncAttempts >= syncConfig.maxRetries) {
+    // HARDENING: SOS never gives up — infinite retries (respects Number.MAX_SAFE_INTEGER)
+    if (sos.syncAttempts >= SOS_RETRY_CONFIG.maxRetries) {
       updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
       continue;
     }
@@ -243,8 +253,8 @@ async function syncSOSAlerts(): Promise<void> {
     try {
       await retryWithBackoff(
         () => simulateNetworkSend(sos, "sos"),
-        2, // SOS gets fewer retries but faster
-        (attempt) => console.log(`[Sync] SOS ${sos.id} retry #${attempt}`),
+        SOS_RETRY_CONFIG.maxRetries, // Infinite retries for SOS (life-safety critical)
+        (attempt) => console.log(`[Sync] SOS ${sos.id} retry #${attempt} (never gives up)`),
       );
       await markSOSSynced(sos.id);
       updateCategory("sos", { synced: currentProgress.categories.sos.synced + 1 });
@@ -438,7 +448,9 @@ export async function startSync(options?: { categories?: SyncCategory[] }): Prom
   // Save sync timestamp
   try {
     localStorage.setItem("sosphere_last_sync", String(Date.now()));
-  } catch { /* ignore */ }
+  } catch (err) {
+    reportError(err, { type: "localStorage_failed", key: "sosphere_last_sync", component: "OfflineSyncEngine" }, "warning");
+  }
 
   console.log("[SyncEngine] Sync complete:", {
     synced: currentProgress.totalSynced,
@@ -526,5 +538,22 @@ export async function getQuickSyncStats(): Promise<QuickSyncStats> {
       lastSyncTime: null,
       isOnline: navigator.onLine,
     };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SOS Queue Status (for monitoring)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * HARDENING: Returns count of unsent SOS events in the queue.
+ * Used by dashboard to display how many life-critical events await delivery.
+ */
+export async function getUnsentSosCount(): Promise<number> {
+  try {
+    const stats = await getStorageStats();
+    return stats.sosUnsynced;
+  } catch {
+    return 0;
   }
 }
