@@ -39,6 +39,14 @@ export interface GPSTrackerConfig {
   deadReckoningEnabled: boolean;
   /** Employee ID for this tracker */
   employeeId: string;
+  /** GPS interval when user is stationary (default: 2min = 120000ms) */
+  stationaryIntervalMs: number;
+  /** Acceleration std dev threshold to detect motion (default: 0.3 m/s²) */
+  motionThreshold: number;
+  /** Milliseconds without motion before switching to stationary (default: 30000 = 30s) */
+  stationaryDelayMs: number;
+  /** Enable motion-aware GPS frequency reduction */
+  motionAwareEnabled: boolean;
 }
 
 const DEFAULT_CONFIG: GPSTrackerConfig = {
@@ -51,6 +59,10 @@ const DEFAULT_CONFIG: GPSTrackerConfig = {
   batterySaveIntervalMs: 60000, // 1 minute in save mode
   deadReckoningEnabled: true,
   employeeId: "EMP-001",
+  stationaryIntervalMs: 120000, // 2 minutes when stationary
+  motionThreshold: 0.3,       // m/s² std dev threshold
+  stationaryDelayMs: 30000,   // 30 seconds of no motion to declare stationary
+  motionAwareEnabled: true,   // Enable by default
 };
 
 // ── Tracker State ──────────────────────────────────────────────
@@ -68,6 +80,11 @@ export interface GPSTrackerState {
   errors: string[];
   startedAt: number | null;
   lastError: string | null;
+  // Motion-aware fields
+  motionState: "moving" | "stationary" | "unknown";
+  motionAwareActive: boolean;
+  lastMotionDetected: number | null;
+  estimatedBatterySavedPct: number;
 }
 
 type StateListener = (state: GPSTrackerState) => void;
@@ -87,6 +104,10 @@ let trackerState: GPSTrackerState = {
   errors: [],
   startedAt: null,
   lastError: null,
+  motionState: "unknown",
+  motionAwareActive: false,
+  lastMotionDetected: null,
+  estimatedBatterySavedPct: 0,
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -99,6 +120,13 @@ let _batteryObj: any = null;
 let _batteryHandler: (() => void) | null = null;
 let stateListeners: StateListener[] = [];
 let deadReckoningIntervalId: ReturnType<typeof setInterval> | null = null;
+
+// ── Motion-Aware Tracking ──────────────────────────────────────
+let _motionHandler: ((event: DeviceMotionEvent) => void) | null = null;
+let _motionAccelerations: number[] = []; // Rolling 5-second window of acceleration magnitudes
+let _lastMotionCheckTime: number = 0;
+let _stationaryStartTime: number | null = null;
+let _sosActive: boolean = false; // Flag to prevent motion-aware from reducing SOS frequency
 
 // ── Haversine Distance (meters) ────────────────────────────────
 
@@ -206,6 +234,145 @@ async function checkBattery(): Promise<void> {
     }
   } catch {
     // Battery API not available — continue normally
+  }
+}
+
+// ── Motion Detection via DeviceMotion API ──────────────────────
+// Calculates acceleration magnitude and maintains rolling window
+// for motion state detection (stationary vs moving)
+
+function calculateStdDev(values: number[]): number {
+  if (values.length === 0) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function startMotionDetection(): void {
+  if (!config.motionAwareEnabled || _motionHandler) return;
+  if (typeof window === "undefined" || !("DeviceMotionEvent" in window)) return;
+
+  _motionHandler = (event: DeviceMotionEvent) => {
+    const acc = event.acceleration;
+    if (!acc) return;
+
+    // Calculate total acceleration magnitude: sqrt(x² + y² + z²)
+    const magnitude = Math.sqrt(
+      (acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2
+    );
+
+    // Maintain rolling 5-second window (at ~60Hz events, ~300 samples)
+    _motionAccelerations.push(magnitude);
+    if (_motionAccelerations.length > 300) {
+      _motionAccelerations.shift();
+    }
+
+    // Check motion state every 100ms to avoid excessive processing
+    const now = Date.now();
+    if (now - _lastMotionCheckTime < 100) return;
+    _lastMotionCheckTime = now;
+
+    if (_motionAccelerations.length < 50) return; // Wait for buffer to fill
+
+    const stdDev = calculateStdDev(_motionAccelerations);
+    const wasMoving = trackerState.motionState === "moving";
+    let newMotionState = trackerState.motionState;
+
+    // Hysteresis: use thresholds to prevent flickering
+    if (trackerState.motionState === "moving") {
+      // Moving → Stationary threshold is lower (0.3)
+      if (stdDev < config.motionThreshold) {
+        newMotionState = "stationary";
+        _stationaryStartTime = now;
+      }
+    } else if (trackerState.motionState === "stationary") {
+      // Stationary → Moving threshold is higher (0.5)
+      if (stdDev > 0.5) {
+        newMotionState = "moving";
+        _stationaryStartTime = null;
+      }
+    } else if (trackerState.motionState === "unknown") {
+      // Initial state: decide based on motion threshold
+      if (stdDev < config.motionThreshold) {
+        newMotionState = "stationary";
+        _stationaryStartTime = now;
+      } else if (stdDev > 0.5) {
+        newMotionState = "moving";
+      }
+    }
+
+    // Transition handling
+    if (newMotionState !== trackerState.motionState) {
+      updateState({ motionState: newMotionState });
+
+      if (newMotionState === "stationary" && wasMoving) {
+        // Transition to stationary: reduce GPS frequency
+        if (!_sosActive && config.motionAwareEnabled) {
+          console.log("[GPSTracker] Motion-Aware: stationary detected, reducing to 2min interval");
+          applyMotionAwareInterval();
+        }
+      } else if (newMotionState === "moving" && trackerState.motionState === "stationary") {
+        // Transition to moving: record position immediately and restore normal frequency
+        recordCurrentPosition();
+        if (!_sosActive && config.motionAwareEnabled) {
+          console.log("[GPSTracker] Motion-Aware: motion detected, restoring normal interval");
+          applyMotionAwareInterval();
+        }
+      }
+    }
+
+    updateState({ lastMotionDetected: now });
+  };
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("devicemotion", _motionHandler as any);
+    updateState({ motionAwareActive: true });
+    console.log("[GPSTracker] Motion detection started");
+  }
+}
+
+function stopMotionDetection(): void {
+  if (_motionHandler && typeof window !== "undefined") {
+    window.removeEventListener("devicemotion", _motionHandler as any);
+    _motionHandler = null;
+  }
+  _motionAccelerations = [];
+  _stationaryStartTime = null;
+  _lastMotionCheckTime = 0;
+  updateState({ motionAwareActive: false, motionState: "unknown" });
+  console.log("[GPSTracker] Motion detection stopped");
+}
+
+function applyMotionAwareInterval(): void {
+  if (!config.motionAwareEnabled || _sosActive) return;
+
+  const newInterval =
+    trackerState.motionState === "stationary"
+      ? config.stationaryIntervalMs
+      : config.intervalMs;
+
+  if (newInterval === trackerState.currentInterval) return;
+
+  // Update interval in real-time if tracking
+  if (trackerState.isTracking && intervalId) {
+    clearInterval(intervalId);
+    intervalId = setInterval(recordCurrentPosition, newInterval);
+  }
+
+  updateState({ currentInterval: newInterval });
+
+  // Calculate battery savings estimate
+  if (trackerState.motionState === "stationary" && trackerState.startedAt) {
+    const uptime = Date.now() - trackerState.startedAt;
+    const stationaryTime = _stationaryStartTime ? Date.now() - _stationaryStartTime : 0;
+    if (stationaryTime > 0) {
+      // Estimate calls avoided: if stationary for X seconds with 2min interval vs 15s normal
+      const normalCalls = uptime / config.intervalMs;
+      const reducedCalls = uptime / config.stationaryIntervalMs;
+      const callsAvoided = normalCalls - reducedCalls;
+      const savedPct = Math.round((callsAvoided / normalCalls) * 100);
+      updateState({ estimatedBatterySavedPct: Math.max(0, savedPct) });
+    }
   }
 }
 
@@ -458,6 +625,9 @@ export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolea
   // Check battery
   checkBattery();
 
+  // Start motion-aware detection
+  startMotionDetection();
+
   // Start watchPosition for real-time updates
   watchId = navigator.geolocation.watchPosition(
     processPosition,
@@ -505,6 +675,7 @@ export function stopGPSTracking(): void {
     intervalId = null;
   }
   stopDeadReckoning();
+  stopMotionDetection();
 
   // Clean up battery listener to prevent memory leak
   if (_batteryObj && _batteryHandler) {
@@ -565,8 +736,10 @@ export const ZONE_PRESETS: Record<string, Partial<GPSTrackerConfig>> = {
 
 // ── Emergency Override ─────────────────────────────────────────
 // When SOS is triggered, switch to maximum tracking frequency
+// This overrides motion-aware to ensure high frequency during emergency
 
 export function activateEmergencyTracking(): void {
+  _sosActive = true; // Prevent motion-aware from reducing frequency
   updateTrackerConfig({
     intervalMs: 3000,       // Every 3 seconds
     highAccuracy: true,
@@ -574,10 +747,11 @@ export function activateEmergencyTracking(): void {
     deadReckoningEnabled: true,
     batterySaveThreshold: 0, // Ignore battery saving during emergency
   });
-  console.log("[GPSTracker] EMERGENCY MODE: tracking every 3s");
+  console.log("[GPSTracker] EMERGENCY MODE: tracking every 3s (motion-aware overridden)");
 }
 
 export function deactivateEmergencyTracking(): void {
+  _sosActive = false; // Re-enable motion-aware
   updateTrackerConfig({
     intervalMs: DEFAULT_CONFIG.intervalMs,
     highAccuracy: DEFAULT_CONFIG.highAccuracy,

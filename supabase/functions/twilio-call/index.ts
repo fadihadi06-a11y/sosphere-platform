@@ -8,29 +8,17 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  markSosPriority,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
 
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// ── Rate limiting (max 5 calls per user per 10 minutes) ────────
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const timestamps = (rateLimitMap.get(userId) || []).filter(t => t > now - RATE_LIMIT_WINDOW_MS);
-  if (timestamps.length >= RATE_LIMIT_MAX) {
-    rateLimitMap.set(userId, timestamps);
-    return false;
-  }
-  timestamps.push(now);
-  rateLimitMap.set(userId, timestamps);
-  return true;
-}
 
 // ── Twilio error code mapping ──────────────────────────────────
 interface TwilioError {
@@ -173,12 +161,30 @@ serve(async (req: Request) => {
     }
 
     // Rate limit check (skip for service accounts)
-    if (userId !== "service-account" && !checkRateLimit(userId)) {
+    // Check if this is an SOS emergency call
+    const isSosCall = emergencyId !== undefined;
+    if (isSosCall) {
+      markSosPriority(userId);
+    }
+
+    const rateLimitResult = checkRateLimit(userId, "api", isSosCall);
+    if (!rateLimitResult.allowed) {
+      const headers: Record<string, string> = {
+        "Access-Control-Allow-Origin": "*",
+        ...getRateLimitHeaders(rateLimitResult),
+      };
       return new Response(
-        JSON.stringify({ error: "Rate limited. Max 5 calls per 10 minutes." }),
+        JSON.stringify({
+          error: "Rate limited",
+          message: isSosCall
+            ? "Emergency call rate limit exceeded. SOS priority users get 10x higher limits."
+            : "API rate limit exceeded. Max 60 requests per minute.",
+          remaining: rateLimitResult.remaining,
+          retryAfterMs: rateLimitResult.retryAfterMs,
+        }),
         {
           status: 429,
-          headers: { "Access-Control-Allow-Origin": "*" },
+          headers,
         }
       );
     }
@@ -321,6 +327,7 @@ serve(async (req: Request) => {
       },
     });
 
+    const rateLimitHeaders = getRateLimitHeaders(rateLimitResult);
     return new Response(
       JSON.stringify({
         success: true,
@@ -333,6 +340,7 @@ serve(async (req: Request) => {
         headers: {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
+          ...rateLimitHeaders,
         },
       }
     );
