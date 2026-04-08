@@ -542,7 +542,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
 
   // Generate unique verification ID and QR code
   const verificationId = `RPT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-  const verificationURL = `https://sosphere.app/verify/${verificationId}`;
+  const verificationURL = `https://sosphere.co/verify/${verificationId}`;
 
   // ── REAL SHA-256: Hash the document identity for legal integrity ──
   // eslint-disable-next-line no-useless-assignment -- used on line 1095

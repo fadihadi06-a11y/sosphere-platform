@@ -588,7 +588,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                       🚨 <span style={{ fontWeight: 700, color: "#FF2D55" }}>EMERGENCY ALERT</span> — {userName || "User"} needs help!
                       <br />📍 King Fahad Rd, Riyadh
                       <br />🩸 Blood: O+ | Allergies: Penicillin, Peanuts
-                      <br />🔗 View full packet: sosphere.app/e/7A3F1C
+                      <br />🔗 View full packet: sosphere.co/e/7A3F1C
                     </p>
                   </div>
                 </div>

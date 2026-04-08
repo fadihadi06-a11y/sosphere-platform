@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF2D55;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E01E45;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00C8E0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00A3BB;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowFilter" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <!-- Shield Logo -->
+  <g filter="url(#shadowFilter)">
+    <!-- Shield body with gradient -->
+    <path d="M 24 8 L 40 18 L 40 32 Q 24 44 24 44 Q 24 44 8 32 L 8 18 Z"
+          fill="url(#shieldGradient)"
+          stroke="none"/>
+
+    <!-- Inner shield highlight/shine effect -->
+    <path d="M 24 10 L 38 19 L 38 31 Q 24 42 24 42 Q 26 38 38 31 L 38 20 Z"
+          fill="#FF5277"
+          opacity="0.4"/>
+  </g>
+
+  <!-- SOS Signal - Three circles -->
+  <g id="sosSignal">
+    <circle cx="15" cy="28" r="3.5" fill="#00C8E0" opacity="0.95"/>
+    <circle cx="24" cy="28" r="4" fill="#00C8E0" opacity="1"/>
+    <circle cx="24" cy="28" r="2.5" fill="#05070E" opacity="1"/>
+    <circle cx="33" cy="28" r="3.5" fill="#00C8E0" opacity="0.95"/>
+  </g>
+
+  <!-- Accent line -->
+  <line x1="10" y1="36" x2="38" y2="36"
+        stroke="url(#accentGradient)"
+        stroke-width="0.8"
+        stroke-linecap="round"
+        opacity="0.7"/>
+
+  <!-- SOSphere Text -->
+  <text x="56" y="40" font-family="'Inter', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="700" fill="#FFFFFF" letter-spacing="-0.5">
+    SOSphere
+  </text>
+
+  <!-- Tagline (optional - can be hidden) -->
+  <text x="56" y="54" font-family="'Inter', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="8" font-weight="500" fill="rgba(255,255,255,0.35)" letter-spacing="0.5">
+    FIELD SAFETY PLATFORM
+  </text>
+</svg>

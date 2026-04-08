@@ -541,7 +541,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     const ph = doc.internal.pageSize.getHeight();
     const today = new Date();
     const docId = `AUD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const verifyURL = `https://sosphere.app/verify/${docId}`;
+    const verifyURL = `https://sosphere.co/verify/${docId}`;
     let qrDataURL = "";
     try {
       qrDataURL = await QRCode.toDataURL(verifyURL, {

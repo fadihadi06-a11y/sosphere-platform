@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
     // Supabase recommends small batches to avoid rate limiting
     const results: InviteResult[] = [];
     const batchSize = 10;
-    const redirectTo = redirect_to || `${Deno.env.get("SITE_URL") || "https://sosphere.app"}/welcome`;
+    const redirectTo = redirect_to || `${Deno.env.get("SITE_URL") || "https://sosphere.co"}/welcome`;
 
     for (let i = 0; i < employees.length; i += batchSize) {
       const batch = employees.slice(i, i + batchSize);

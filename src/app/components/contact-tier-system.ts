@@ -197,7 +197,7 @@ export function generateSafetyLink(contactId: string, userName: string): {
   const expiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   return {
     linkId,
-    url: `https://sosphere.app/safety/${userName.toLowerCase().replace(/\s+/g, "-")}/${linkId}`,
+    url: `https://sosphere.co/safety/${userName.toLowerCase().replace(/\s+/g, "-")}/${linkId}`,
     expiry,
   };
 }
