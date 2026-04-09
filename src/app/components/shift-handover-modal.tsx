@@ -9,7 +9,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, Clock, MapPin, X } from "lucide-react";
-import { useReducedMotion, springPresets, modalVariants } from "./view-transitions";
 
 export interface EmergencyForHandover {
   id: string;
@@ -39,15 +38,12 @@ export function ShiftHandoverModal({
   const [confirmNextAdmin, setConfirmNextAdmin] = useState(false);
 
   const canComplete = handoverNotes.trim().length >= 20 && confirmNextAdmin;
-  const prefersReduced = useReducedMotion();
 
   return (
     <motion.div
-      variants={modalVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="fixed inset-0 z-[99999] flex items-center justify-center p-6"
       style={{
         background: "rgba(5,7,14,0.96)",
@@ -55,11 +51,8 @@ export function ShiftHandoverModal({
       }}
     >
       <motion.div
-        variants={modalVariants}
-        initial="hidden"
-        animate="visible"
-        exit="exit"
-        transition={prefersReduced ? { duration: 0 } : { duration: 0.35, delay: 0.05 }}
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
         className="w-full max-w-2xl rounded-3xl overflow-y-auto"
         style={{
           background: "linear-gradient(135deg, rgba(255,45,85,0.10), rgba(255,149,0,0.08))",

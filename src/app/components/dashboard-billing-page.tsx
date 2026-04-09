@@ -34,7 +34,7 @@ const CUSTOMER_RIGHTS = [
 
 function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
-    if (import.meta.env.DEV) console.log("[SUPABASE_READY] customer_rights_viewed");
+    console.log("[SUPABASE_READY] customer_rights_viewed");
   }, []);
 
   return (
@@ -184,7 +184,7 @@ export function BillingPage({ companyState, webMode = false }: {
       const extraEmp = planDef && planDef.maxEmployees > 0 ? Math.max(0, storeEmployees.length - planDef.maxEmployees) : 0;
       const extraCost = extraEmp * (planDef?.extraEmployeePrice ?? 0);
       const newTotal = (baseCost > 0 ? baseCost : 0) + extraCost + newAddonsTotal;
-      if (import.meta.env.DEV) console.log("[SUPABASE_READY] addon_toggled: " + JSON.stringify({ addonId, active: next[addonId], newTotal }));
+      console.log("[SUPABASE_READY] addon_toggled: " + JSON.stringify({ addonId, active: next[addonId], newTotal }));
       return next;
     });
   }, [billingCycle, storeEmployees.length]);
@@ -231,7 +231,7 @@ export function BillingPage({ companyState, webMode = false }: {
     }, ...prev]);
 
     hapticSuccess();
-    if (import.meta.env.DEV) console.log("[SUPABASE_READY] plan_switched: " + JSON.stringify({ oldPlan, newPlan: planId, newMonthly: newTotal }));
+    console.log("[SUPABASE_READY] plan_switched: " + JSON.stringify({ oldPlan, newPlan: planId, newMonthly: newTotal }));
     toast.success(`Plan updated to ${newPlanDef.name} — $${newTotal}/month`, {
       description: `Base $${bill.planCost} + ${extraCount > 0 ? `${extraCount} extra employees $${extraCost}` : "no extra employees"} + addons $${addonsTotal}`,
     });

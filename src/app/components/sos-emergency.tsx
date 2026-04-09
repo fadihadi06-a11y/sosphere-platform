@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
-import { useT } from "./dashboard-i18n";
 import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor } from "./shared-store";
 import { toast } from "sonner";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
@@ -18,7 +17,6 @@ import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
-import { reportError } from "./error-boundary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase =
@@ -323,13 +321,13 @@ function GlowCircle({
                       <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
                         className="size-1.5 rounded-full" style={{ background: "#00C853" }}
                       />
-                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>{t("sos.monitoring")}</span>
+                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>Monitoring</span>
                     </div>
                   )}
                   {phase === "answered" && (
                     <div className="flex items-center justify-center gap-1 mt-0.5">
                       <div className="size-1.5 rounded-full" style={{ background: "#00C853" }} />
-                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>{t("sos.connected")}</span>
+                      <span style={{ fontSize: 9, color: "rgba(0,200,83,0.9)", fontWeight: 600, fontFamily: "inherit" }}>Connected</span>
                     </div>
                   )}
                   {phase === "documenting" && (
@@ -374,7 +372,7 @@ function GlowCircle({
                 >
                   SOS
                 </motion.span>
-                <span style={{ fontSize: 9, color: "rgba(255,45,85,0.35)", fontFamily: "inherit", marginTop: 4, letterSpacing: "2px" }}>{t("sos.activating")}</span>
+                <span style={{ fontSize: 9, color: "rgba(255,45,85,0.35)", fontFamily: "inherit", marginTop: 4, letterSpacing: "2px" }}>{isAr ? "جاري التفعيل" : "ACTIVATING"}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -613,7 +611,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
           </div>
         </div>
 
-        <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{t("sos.safetyAdmin")}</p>
+        <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{isAr ? "مسؤول السلامة" : "Safety Admin"}</p>
         <div className="flex items-center gap-1.5 mt-1 mb-3">
           <Building2 style={{ width: 11, height: 11, color: "rgba(0,200,224,0.6)" }} />
           <span style={{ fontSize: 11, color: "rgba(0,200,224,0.7)", fontWeight: 600 }}>
@@ -637,7 +635,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                   style={{ background: "#00C8E0" }}
                 />
               ))}
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>{t("sos.ringing")}</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>Ringing...</span>
             </motion.div>
           )}
 
@@ -665,7 +663,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                 <span style={{ fontSize: 14, fontWeight: 700, color: "#00C853", fontVariantNumeric: "tabular-nums" }}>
                   {fmtTime(elapsed)}
                 </span>
-                <span style={{ fontSize: 11, color: "rgba(0,200,83,0.6)" }}>{t("sos.voiceActive")}</span>
+                <span style={{ fontSize: 11, color: "rgba(0,200,83,0.6)" }}>{isAr ? "الصوت نشط" : "Voice Active"}</span>
               </div>
               {/* Duration limit indicator */}
               <div className="flex items-center gap-1.5">
@@ -705,7 +703,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
               className="px-4 py-2 rounded-full"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
             >
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{t("sos.callEnded")}</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{isAr ? "انتهت المكالمة" : "Call Ended"}</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -768,7 +766,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
                 <PhoneOff style={{ width: 16, height: 16, color: "#fff" }} />
               </div>
               <div className="text-left">
-              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{t("sos.endCall")}</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{isAr ? "إنهاء المكالمة" : "End Call"}</p>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{isAr ? "SOS لا يزال نشطاً" : "SOS stays active"}</p>
             </div>
             </motion.button>
@@ -796,7 +794,7 @@ function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl"
             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
           >
-            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>{t("sos.close")}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>Close</span>
           </motion.button>
         )}
       </div>
@@ -823,8 +821,7 @@ interface SosEmergencyProps {
 }
 
 export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
-  const { isAr, lang } = useLang();
-  const t = useT(lang);
+  const { isAr } = useLang();
   // ══════════════════════════════════════════════════════════════
   // SOS is never blocked by trial status — safety first
   // SUPABASE_MIGRATION_POINT: this guarantee must be
@@ -850,32 +847,26 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const oneHourAgo = Date.now() - 3600000;
     // Prune expired entries
     sosRateHistory = sosRateHistory.filter(t => t > oneHourAgo);
-
+    
     console.log("[SUPABASE_READY] rate_limit_check: " + sosRateHistory.length + " recent triggers");
-
+    
     if (sosRateHistory.length >= SOS_RATE_LIMIT.maxPerHour) {
       setShowRateLimitWarning(true);
       setSosRateFlagged(true);
-
+      
       // Emit admin warning
-      (async () => {
-        const ackResult = await emitSyncEvent({
-          type: "SOS_TRIGGERED",
-          employeeId: userId,
-          employeeName: userName,
-          zone: userZone,
-          timestamp: Date.now(),
-          data: {
-            rateLimitTriggered: true,
-            sosCountLastHour: sosRateHistory.length,
-            warning: `${userName} triggered ${sosRateHistory.length} SOS in 1 hour — possible false alarms or system testing`,
-          },
-        });
-        // Check if dashboard received the signal
-        if (ackResult && typeof ackResult === 'object' && 'delivered' in ackResult && !ackResult.delivered) {
-          console.warn("[SOS] Dashboard did not acknowledge — signal may be queued for retry");
-        }
-      })();
+      emitSyncEvent({
+        type: "SOS_TRIGGERED",
+        employeeId: userId,
+        employeeName: userName,
+        zone: userZone,
+        timestamp: Date.now(),
+        data: {
+          rateLimitTriggered: true,
+          sosCountLastHour: sosRateHistory.length,
+          warning: `${userName} triggered ${sosRateHistory.length} SOS in 1 hour — possible false alarms or system testing`,
+        },
+      });
     } else {
       // Normal SOS — log timestamp to session history
       sosRateHistory.push(Date.now());
@@ -912,27 +903,16 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   };
 
   // ══════════════════════════════════════════════════════════════
-  // BATTERY WARNING TIERS:
-  // • 35% (0.35): Amber warning "Battery low — stay near power source"
-  // • 20% (0.20): Red critical "Battery critical — SOS may not complete"
+  // CRITICAL BATTERY MODE: When battery < 5% during active SOS,
+  // show full-screen "CALL 911/997 NOW" with direct dial button.
   // ══════════════════════════════════════════════════════════════
   const [criticalBattery, setCriticalBattery] = useState(false);
-  const [lowBattery, setLowBattery] = useState(false);
   useEffect(() => {
     const checkBattery = async () => {
       try {
         const level = await getBatteryLevel();
-        if (level !== null) {
-          if (level < 0.20) {
-            setCriticalBattery(true);
-            setLowBattery(false);
-          } else if (level < 0.35) {
-            setLowBattery(true);
-            setCriticalBattery(false);
-          } else {
-            setCriticalBattery(false);
-            setLowBattery(false);
-          }
+        if (level !== null && level < 5) {
+          setCriticalBattery(true);
         }
       } catch { /* battery API not available */ }
     };
@@ -1354,7 +1334,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       // ── FIX FATAL-2: Battery last gasp — send final known position ──
       // Throttled: only emit BATTERY_CRITICAL if 5min passed since last emit
       const currentBattery = getBatteryLevel();
-      if (currentBattery !== null && currentBattery <= 0.20) {
+      if (currentBattery !== null && currentBattery <= 0.10) {
         const now = Date.now();
         if (now - lastBatteryCriticalEmit >= BATTERY_CRITICAL_COOLDOWN_MS) {
           lastBatteryCriticalEmit = now;
@@ -1407,30 +1387,23 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               ? (navigator as any).connection?.effectiveType ?? "unknown"
               : "unknown";
             // FIX I: Include bypass flag if supervisor is being bypassed
-            // Await SOS acknowledgment from dashboard
-            (async () => {
-              const ackResult = await emitSyncEvent({
-                type: "SOS_TRIGGERED",
-                employeeId: userId,
-                employeeName: userName,
-                zone: userZone,
-                timestamp: Date.now(),
-                data: {
-                  phone: userPhone,
-                  bloodType: userBloodType,
-                  emergencyId: errIdRef.current,
-                  battery: null,
-                  signal: signalType,
-                  bypassZoneAdmin: bypassSupervisor,
-                  escalateTo: bypassSupervisor ? "company_admin" : undefined,
-                  sensitiveReport: bypassSupervisor,
-                }
-              });
-              // Check if dashboard received the signal
-              if (ackResult && typeof ackResult === 'object' && 'delivered' in ackResult && !ackResult.delivered) {
-                console.warn("[SOS] Dashboard did not acknowledge — signal may be queued for retry");
+            emitSyncEvent({
+              type: "SOS_TRIGGERED",
+              employeeId: userId,
+              employeeName: userName,
+              zone: userZone,
+              timestamp: Date.now(),
+              data: {
+                phone: userPhone,
+                bloodType: userBloodType,
+                emergencyId: errIdRef.current,
+                battery: null,
+                signal: signalType,
+                bypassZoneAdmin: bypassSupervisor,
+                escalateTo: bypassSupervisor ? "company_admin" : undefined,
+                sensitiveReport: bypassSupervisor,
               }
-            })();
+            });
             // ── SMART TIMELINE: Track SOS trigger ──
             trackEventSync(errIdRef.current, "sos_triggered",
               `SOS triggered by ${userName} in ${userZone}`,
@@ -1443,9 +1416,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               (navigator as any).getBattery().then((b: any) => {
                 const lvl = Math.round(b.level * 100);
                 saveEmployeeSync({ employeeId: userId, battery: lvl, signal: signalType, updatedAt: Date.now() });
-              }).catch((err) => {
-                reportError(err, { type: "battery_api_failed", component: "SOSEmergency" }, "warning");
-              });
+              }).catch(() => {});
             }
             // ── FIX 1: Buddy Alert — notify buddy partner via sync event ──
             if (mode === "employee") {
@@ -1491,13 +1462,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             if (phone) {
               // Open native phone dialer via tel: URI
               try { window.open(`tel:${phone.replace(/\s/g, "")}`, "_system"); }
-              catch (err) {
-                /* fallback: link click */
-                try { window.location.href = `tel:${phone.replace(/\s/g, "")}`; }
-                catch (fallbackErr) {
-                  reportError(fallbackErr, { type: "dialer_fallback_failed", phone: phone.slice(-4), component: "SOSEmergency" }, "warning");
-                }
-              }
+              catch { /* fallback: link click */ try { window.location.href = `tel:${phone.replace(/\s/g, "")}`; } catch {} }
               addEvent({ type: "call_out", title: `Dialing ${contactsRef.current[idx].name}`, detail: `Native call: ${phone}`, color: "#00C8E0" });
               trackEventSync(errIdRef.current, "contact_called",
                 `Calling emergency contact: ${contactsRef.current[idx].name} (${phone})`,
@@ -1761,92 +1726,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     doEnd("SOS ended by user");
   }
 
-  // ═══ LOW BATTERY WARNING ═══
-  // FIX 1: NON-BLOCKING during active SOS — show as banner, not modal
-  // If SOS is active, battery modal should not steal focus or throttle background processes.
-  // During active SOS, emit "last-gasp" GPS position instead.
-  if (lowBattery && !criticalBattery && phase !== "ended") {
-    // GUARD: If SOS is active (not idle), show compact banner instead of full-screen modal
-    if (phase !== "idle") {
-      // Emit last-gasp GPS position for battery-critical scenario
-      if (phase === "triggered" || phase === "escalating") {
-        const gps = getLastKnownPosition();
-        if (gps) {
-          emitSyncEvent({
-            type: "GPS_LAST_GASP",
-            employeeId: userId,
-            data: { position: gps, reason: "low_battery", level: batteryLevelRef.current },
-          });
-        }
-      }
-      // Show compact banner, not blocking modal
-      return (
-        <div style={{
-          position: "fixed", top: 0, left: 0, right: 0,
-          height: 48, background: "linear-gradient(135deg, #FF9500, #FF7700)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 9999, fontSize: 13, color: "#fff", fontWeight: 600,
-        }}>
-          <AlertTriangle size={16} style={{ marginRight: 8 }} />
-          {isAr ? "البطارية منخفضة — ابق بالقرب من مصدر كهربائي" : "Battery low — stay near power source"}
-        </div>
-      );
-    }
-    // Only show full-screen modal if idle (not during active SOS)
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0A00" }}>
-        <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
-          style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(255,149,0,0.15)",
-            border: "3px solid #FF9500", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
-          <AlertTriangle size={40} color="#FF9500" />
-        </motion.div>
-        <h1 style={{ fontSize: 24, fontWeight: 900, color: "#FF9500", textAlign: "center", marginBottom: 8 }}>
-          {isAr ? "البطارية منخفضة" : "Battery Low"}
-        </h1>
-        <p style={{ fontSize: 15, color: "rgba(255,255,255,0.7)", textAlign: "center", marginBottom: 24, lineHeight: 1.8 }}>
-          {isAr ? "البطارية بين 20-35% — ابق بالقرب من مصدر كهربائي" : "Battery 20-35% — stay near power source"}
-        </p>
-        <button onClick={() => setLowBattery(false)}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
-            width: "100%", maxWidth: 280, height: 56, borderRadius: 16,
-            background: "linear-gradient(135deg, #FF9500, #FF7700)", boxShadow: "0 8px 32px rgba(255,149,0,0.3)",
-            color: "#fff", fontSize: 16, fontWeight: 700, textDecoration: "none", border: "none", cursor: "pointer" }}>
-          {isAr ? "فهمت، تابع" : "I understand, continue"}
-        </button>
-      </div>
-    );
-  }
-
   // ═══ CRITICAL BATTERY MODE ═══
-  // FIX 1: NON-BLOCKING during active SOS — show as compact banner, not full-screen modal
-  // During active SOS, critical battery should NOT steal focus which could throttle background processes.
+  // Full-screen takeover when battery critically low during active SOS
   if (criticalBattery && phase !== "ended") {
-    // GUARD: If SOS is active (not idle), do NOT render full-screen modal — show banner instead
-    if (phase !== "idle") {
-      // Emit final last-gasp GPS position immediately
-      const gps = getLastKnownPosition();
-      if (gps) {
-        emitSyncEvent({
-          type: "GPS_LAST_GASP",
-          employeeId: userId,
-          data: { position: gps, reason: "critical_battery", level: batteryLevelRef.current },
-        });
-      }
-      // Show compact critical banner at top, not blocking modal
-      return (
-        <div style={{
-          position: "fixed", top: 0, left: 0, right: 0,
-          height: 56, background: "linear-gradient(135deg, #FF2D55, #CC0033)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 9999, fontSize: 14, color: "#fff", fontWeight: 700,
-          boxShadow: "0 4px 16px rgba(255,45,85,0.4)",
-        }}>
-          <AlertTriangle size={18} style={{ marginRight: 8 }} />
-          {isAr ? "البطارية حرجة — أقل من 5%!" : "CRITICAL BATTERY — below 5%!"}
-        </div>
-      );
-    }
-    // Only show full-screen modal if idle (not during active SOS)
     return (
       <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0005" }}>
         <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}

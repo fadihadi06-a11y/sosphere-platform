@@ -352,7 +352,6 @@ export function IncidentPhotoReport({
                     style={{ border: "1px solid rgba(0,200,224,0.2)" }}
                   >
                     <img src={photo.dataUrl} alt={`Incident ${i + 1}`}
-                      loading="lazy" decoding="async"
                       className="w-full h-full object-cover" />
                     {/* Overlay */}
                     <div className="absolute inset-0 flex flex-col justify-between p-2"
@@ -775,7 +774,7 @@ export function IncidentPhotoReport({
                   {photos.map((photo, i) => (
                     <div key={photo.id} className="relative flex-shrink-0 size-16 rounded-xl overflow-hidden"
                       style={{ border: "1px solid rgba(0,200,224,0.2)" }}>
-                      <img src={photo.dataUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={photo.dataUrl} alt="" className="w-full h-full object-cover" />
                       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center py-0.5"
                         style={{ background: "rgba(0,0,0,0.6)" }}>
                         <span style={{ fontSize: 8, color: "rgba(255,255,255,0.6)" }}>Photo {i + 1}</span>
@@ -1023,7 +1022,7 @@ export function AdminBroadcastPanel({
             {report.photos.map((photo, i) => (
               <div key={photo.id} className="size-12 rounded-xl overflow-hidden flex-shrink-0"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-                <img src={photo.dataUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                <img src={photo.dataUrl} alt="" className="w-full h-full object-cover" />
               </div>
             ))}
             <div className="size-12 rounded-xl flex items-center justify-center flex-shrink-0"

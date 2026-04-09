@@ -93,7 +93,7 @@ serve(async (req) => {
                   <li>Verify your phone number</li>
                 </ol>
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="https://sosphere.co/join/${inviteCode || ""}"
+                  <a href="https://sosphere.app/join/${inviteCode || ""}"
                      style="background: #00C8E0; color: white; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: bold;">
                     Join Now
                   </a>

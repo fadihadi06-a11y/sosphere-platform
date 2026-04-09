@@ -7,7 +7,7 @@
 //
 // SMS includes a direct link to the emergency dashboard:
 //   "🚨 SOS from Ahmed in Zone B
-//    View: https://sosphere.co/emergency/EMG-123"
+//    View: https://sosphere-platform.vercel.app/emergency/EMG-123"
 //
 // Required Supabase Secrets:
 //   TWILIO_ACCOUNT_SID
@@ -50,7 +50,7 @@ serve(async (req) => {
 
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
+    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
 
     if (!accountSid || !authToken) {
       return new Response(

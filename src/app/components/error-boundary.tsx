@@ -18,136 +18,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
 
-// ── Sentry Integration ──
-// Now installed as @sentry/react dependency
-let _sentryInitialized = false;
-let _Sentry: any = null;
-
-/** Initialize Sentry for production error tracking */
-export async function initSentry(dsn?: string): Promise<void> {
-  if (_sentryInitialized) return;
-  const sentryDsn = dsn || import.meta.env.VITE_SENTRY_DSN;
-  if (!sentryDsn) {
-    console.warn("[Sentry] No DSN configured. Set VITE_SENTRY_DSN in .env to enable error tracking.");
-    return;
-  }
-  try {
-    // Try to import the actual package first (it's now installed)
-    try {
-      _Sentry = await import("@sentry/react");
-    } catch {
-      // Fallback to dynamic import if package isn't available
-      const sentryModule = "@sentry/" + "react";
-      _Sentry = await import(/* @vite-ignore */ sentryModule);
-    }
-
-    _Sentry.init({
-      dsn: sentryDsn,
-      environment: import.meta.env.MODE || "production",
-      release: `sosphere@${import.meta.env.VITE_APP_VERSION || "1.0.0"}`,
-      tracesSampleRate: 0.1, // 10% of transactions for performance monitoring
-      replaysSessionSampleRate: 0.0, // Disable session replay for privacy
-      replaysOnErrorSampleRate: 1.0, // Capture replay on every error
-      beforeSend(event: any) {
-        // Scrub sensitive data
-        if (event.request?.headers) delete event.request.headers["Authorization"];
-        if (event.extra?.phone) event.extra.phone = "[REDACTED]";
-        return event;
-      },
-    });
-    _sentryInitialized = true;
-    console.log("[Sentry] Initialized successfully");
-  } catch (err) {
-    console.warn("[Sentry] Failed to initialize:", err);
-  }
-}
-
-/** Set Sentry user context (call when user logs in) */
-export function setSentryUser(userId: string, email?: string, phone?: string): void {
-  if (_sentryInitialized && _Sentry?.setUser) {
-    _Sentry.setUser({
-      id: userId,
-      email: email || undefined,
-      username: phone || undefined,
-    });
-  }
-}
-
-/** Clear Sentry user context (call on logout) */
-export function clearSentryUser(): void {
-  if (_sentryInitialized && _Sentry?.setUser) {
-    _Sentry.setUser(null);
-  }
-}
-
-/** Tag events with emergency context (critical for safety) */
-export function setSentryEmergencyContext(active: boolean): void {
-  if (_sentryInitialized && _Sentry?.setTag) {
-    _Sentry.setTag("emergency_active", active ? "true" : "false");
-  }
-}
-
-// ── SOSphere Error Telemetry ──
-// Production-ready error reporting. Sentry integration point.
-// When Sentry is connected, replace reportError() body with Sentry.captureException()
-interface ErrorReport {
-  error: Error;
-  context?: Record<string, any>;
-  severity: "fatal" | "error" | "warning";
-  component?: string;
-}
-
-const _errorQueue: ErrorReport[] = [];
-const _errorListeners: ((report: ErrorReport) => void)[] = [];
-
-/** Report an error to telemetry. In production, this sends to Sentry. */
-export function reportError(
-  error: Error | string,
-  context?: Record<string, any>,
-  severity: "fatal" | "error" | "warning" = "error"
-): void {
-  const err = typeof error === "string" ? new Error(error) : error;
-  const report: ErrorReport = { error: err, context, severity };
-
-  // Always log to console with structured data
-  const logFn = severity === "fatal" ? console.error : severity === "warning" ? console.warn : console.error;
-  logFn(`[SOSphere:${severity}]`, err.message, context || "");
-
-  // Queue for telemetry (Sentry, DataDog, etc.)
-  _errorQueue.push(report);
-  if (_errorQueue.length > 100) _errorQueue.shift();
-
-  // Notify listeners (for UI error indicators)
-  for (const cb of _errorListeners) {
-    try { cb(report); } catch { /* prevent listener errors from cascading */ }
-  }
-
-  // Send to Sentry if initialized
-  if (_sentryInitialized && _Sentry) {
-    try {
-      _Sentry.captureException(err, {
-        extra: context,
-        level: severity,
-        tags: { component: context?.component || "unknown" },
-      });
-    } catch { /* Sentry send failed — don't recurse */ }
-  }
-}
-
-/** Subscribe to error reports (for dashboard error indicators) */
-export function onErrorReport(cb: (report: ErrorReport) => void): () => void {
-  _errorListeners.push(cb);
-  return () => {
-    const idx = _errorListeners.indexOf(cb);
-    if (idx >= 0) _errorListeners.splice(idx, 1);
-  };
-}
-
-/** Get queued errors (for debugging / admin panel) */
-export function getErrorQueue(): ErrorReport[] {
-  return [..._errorQueue];
-}
-
 // =================================================================
 // Types
 // =================================================================
@@ -186,8 +56,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
 
-    // Report to telemetry using structured error reporting
-    reportError(error, { componentStack: errorInfo?.componentStack, level: this.props.level, label: this.props.label }, "fatal");
+    // Log to console (always)
+    console.error(`[SOSphere ErrorBoundary] ${this.props.label || "Unknown"}:`, error, errorInfo);
+
+    // PRODUCTION: Send to error tracking service
+    // Sentry.captureException(error, {
+    //   extra: {
+    //     componentStack: errorInfo.componentStack,
+    //     level: this.props.level,
+    //     label: this.props.label,
+    //   },
+    // });
 
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
@@ -380,68 +259,4 @@ export function WidgetErrorBoundary({ children, label }: { children: ReactNode; 
       {children}
     </ErrorBoundary>
   );
-}
-
-// =================================================================
-// Sentry Test Button (Dev-Only)
-// =================================================================
-
-/**
- * Dev-only button to trigger a test error and verify Sentry integration.
- * Visible only in development mode (import.meta.env.MODE !== 'production')
- */
-export function SentryTestButton() {
-  if (import.meta.env.MODE === 'production') return null;
-
-  const handleTestError = () => {
-    try {
-      throw new Error('[Sentry Test] This is a intentional test error to verify Sentry integration');
-    } catch (err) {
-      reportError(err, { type: 'sentry_test_error', context: 'SentryTestButton', severity: 'warning' }, 'warning');
-    }
-  };
-
-  return (
-    <button
-      onClick={handleTestError}
-      style={{
-        position: 'fixed',
-        bottom: 16,
-        right: 16,
-        padding: '8px 12px',
-        fontSize: 12,
-        backgroundColor: '#00C8E0',
-        color: '#000',
-        border: 'none',
-        borderRadius: 6,
-        cursor: 'pointer',
-        zIndex: 9999,
-        opacity: 0.7,
-        transition: 'opacity 0.2s',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-      title="Dev: Click to test Sentry error reporting"
-    >
-      Test Sentry
-    </button>
-  );
-}
-
-// ── Global Unhandled Error Catchers ──
-// Catches async errors that ErrorBoundary can't intercept
-if (typeof window !== "undefined") {
-  window.addEventListener("unhandledrejection", (event) => {
-    reportError(
-      event.reason instanceof Error ? event.reason : new Error(String(event.reason)),
-      { type: "unhandled_promise_rejection" },
-      "error"
-    );
-  });
-
-  window.addEventListener("error", (event) => {
-    if (event.error) {
-      reportError(event.error, { type: "uncaught_error", filename: event.filename, lineno: event.lineno }, "fatal");
-    }
-  });
 }

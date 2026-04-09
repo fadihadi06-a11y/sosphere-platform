@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { storeJSONSync, loadJSONSync, removeJSONSync } from "./api/storage-adapter";
-import { useReducedMotion, springPresets, modalVariants, backdropVariants } from "./view-transitions";
 
 // ── Storage Key ────────────────────────────────────────────────
 const LS_KEY = "sosphere_pdf_enc_prefs";
@@ -227,26 +226,22 @@ export function PdfPasswordModal({
   const savedAgo = hasSavedPrefs
     ? Math.round((Date.now() - savedPrefs.savedAt) / 60000)
     : 0;
-  const prefersReduced = useReducedMotion();
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          variants={backdropVariants}
-          initial="hidden"
-          animate="visible"
-          exit="exit"
-          transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 z-[400] flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)" }}
         >
           <motion.div
-            variants={modalVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
+            initial={{ scale: 0.88, y: 30, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.92, y: 20, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
             className="relative w-full max-w-md mx-4"
             style={{
               background: "linear-gradient(180deg, #0E1529 0%, #080C18 100%)",

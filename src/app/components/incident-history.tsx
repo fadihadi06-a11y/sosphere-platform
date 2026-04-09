@@ -7,7 +7,6 @@ import {
   Mic, Zap, Timer, X, Eye, Trash2, Share2,
 } from "lucide-react";
 import { generateDemoIndividualReport } from "./individual-pdf-report";
-import { useT, type Lang } from "./dashboard-i18n";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type IncidentType = "sos" | "checkin_expired" | "dms_auto";
@@ -263,8 +262,7 @@ interface IncidentHistoryProps {
 type FilterType = "all" | "sos" | "checkin_expired" | "dms_auto";
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: IncidentHistoryProps & { lang?: Lang }) {
-  const t = useT(lang);
+export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
@@ -351,7 +349,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="flex items-center gap-1 -ml-1 p-1">
             <ChevronLeft style={{ width: 20, height: 20, color: "#00C8E0" }} />
-            <span style={{ fontSize: 15, color: "#00C8E0", fontWeight: 500 }}>{t("inc.back")}</span>
+            <span style={{ fontSize: 15, color: "#00C8E0", fontWeight: 500 }}>Back</span>
           </button>
           <div className="flex items-center gap-2">
             <motion.button
@@ -384,10 +382,10 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-3">
           <div className="flex items-center gap-2.5 mb-1">
             <Clock style={{ width: 18, height: 18, color: "#00C8E0" }} />
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>{t("inc.title")}</h1>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>Incident History</h1>
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
-            {isPro ? t("inc.archive") : `${t("inc.lastWeek")} · ${hiddenCount > 0 ? `${hiddenCount} ${t("inc.hiddenCount")}` : "All visible"}`}
+            {isPro ? "Complete incident archive" : `Last 7 days · ${hiddenCount > 0 ? `${hiddenCount} older hidden` : "All visible"}`}
           </p>
         </motion.div>
 
@@ -412,7 +410,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                 <input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder={t("inc.search")}
+                  placeholder="Search by ID, location..."
                   className="flex-1 bg-transparent text-white outline-none"
                   style={{ fontSize: 13, caretColor: "#00C8E0" }}
                   autoFocus
@@ -489,9 +487,9 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
         {visibleIncidents.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16">
             <Shield style={{ width: 36, height: 36, color: "rgba(255,255,255,0.06)", marginBottom: 12 }} />
-            <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>{t("inc.noResults")}</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>No incidents found</p>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.08)", marginTop: 4 }}>
-              {searchQuery ? t("inc.tryDifferent") : t("inc.safe")}
+              {searchQuery ? "Try a different search" : "You're safe!"}
             </p>
           </motion.div>
         ) : (
@@ -587,14 +585,14 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                                     <Phone style={{ width: 10, height: 10, color: "#00C8E0" }} />
                                     <span style={{ fontSize: 14, fontWeight: 800, color: "#00C8E0" }}>{inc.contactsCalled}</span>
                                   </div>
-                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>{t("inc.callsMade")}</span>
+                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>Calls Made</span>
                                 </div>
                                 <div className="py-2 text-center" style={{ borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
                                   <div className="flex items-center justify-center gap-1 mb-1">
                                     <CheckCircle style={{ width: 10, height: 10, color: "#00C853" }} />
                                     <span style={{ fontSize: 14, fontWeight: 800, color: "#00C853" }}>{inc.contactsAnswered}</span>
                                   </div>
-                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>{t("inc.answered")}</span>
+                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>Answered</span>
                                 </div>
                                 <div className="py-2 text-center" style={{ borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
                                   <div className="flex items-center justify-center gap-1 mb-1">
@@ -603,7 +601,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                                       {inc.hasRecording ? `${inc.recordingDuration}s` : "—"}
                                     </span>
                                   </div>
-                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>{t("inc.recording")}</span>
+                                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)" }}>Recording</span>
                                 </div>
                               </div>
 
@@ -622,7 +620,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                               {/* Mini Timeline */}
                               <div>
                                 <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 6, textTransform: "uppercase" }}>
-                                  {t("inc.timeline")} · {inc.events.length} {t("inc.events")}
+                                  Timeline · {inc.events.length} events
                                 </p>
                                 <div className="space-y-1 relative">
                                   {/* Timeline line */}
@@ -672,7 +670,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                                     }}
                                   >
                                     <Download style={{ width: 12, height: 12 }} />
-                                    {t("inc.exportPdf")}
+                                    Export PDF
                                   </motion.button>
                                 )}
                                 {!isPro && (
@@ -688,7 +686,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                                     }}
                                   >
                                     <Lock style={{ width: 12, height: 12 }} />
-                                    {t("inc.exportPro")}
+                                    Export (Pro)
                                   </motion.button>
                                 )}
                                 <motion.button
@@ -764,10 +762,10 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                 </div>
                 <div className="flex-1">
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>
-                    {hiddenCount} {t("inc.hiddenCount")}
+                    {hiddenCount} older incidents hidden
                   </p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
-                    {t("inc.upgradePro")}
+                    Upgrade to Pro for unlimited history + PDF export
                   </p>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "rgba(0,200,224,0.3)" }} />
@@ -785,7 +783,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
         >
           <Shield style={{ width: 10, height: 10, color: "rgba(0,200,224,0.15)" }} />
           <span style={{ fontSize: 9, color: "rgba(255,255,255,0.08)" }}>
-            {t("inc.auditTrail")}
+            All records have audit trails
           </span>
         </motion.div>
       </div>
@@ -818,10 +816,10 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                 <div className="size-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}>
                   <AlertTriangle style={{ width: 16, height: 16, color: "#FF2D55" }} />
                 </div>
-                <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>{t("inc.deleteTitle")}</p>
+                <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>Delete Record?</p>
               </div>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", lineHeight: 1.6, marginBottom: 16 }}>
-                {t("inc.deleteMsg")}
+                This incident record will be permanently deleted. This action cannot be undone and may affect legal documentation.
               </p>
               <div className="flex gap-2.5">
                 <button
@@ -836,8 +834,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                 >
                   Cancel
                 </button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
+                <button
                   onClick={() => handleDelete(showDeleteConfirm)}
                   className="flex-1 py-3"
                   style={{
@@ -848,7 +845,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade, lang = "en" }: In
                   }}
                 >
                   Delete
-                </motion.button>
+                </button>
               </div>
             </motion.div>
           </>

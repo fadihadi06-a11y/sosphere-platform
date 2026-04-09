@@ -314,18 +314,6 @@ export function DashboardWebPage() {
   // Stats
   const [statsIdx, setStatsIdx] = useState(0);
 
-    // ── Loading timeout: recover from stuck auth (orphaned Web Lock) ──
-      useEffect(() => {
-          if (step !== "loading") return;
-              const timeout = setTimeout(() => {
-                    if (mountedRef.current && step === "loading") {
-                            console.warn("[SOSphere] Auth loading timed out after 8s — possible orphaned Web Lock. Falling back to login.");
-                                    setStep("form");
-                                          }
-                                              }, 8000);
-                                                  return () => clearTimeout(timeout);
-                                                    }, [step]);
-
   // ── Check session on mount — auto-login if already authenticated ──
   useEffect(() => {
     if (window.location.hash.includes("access_token")) return; // OAuth redirect handled by onAuthStateChange

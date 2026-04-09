@@ -3,7 +3,6 @@ import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { AppErrorBoundary } from "./components/error-boundary";
 import { registerServiceWorker } from "./components/service-worker-register";
-import { SafeAreaProvider } from "./components/native-safe-area";
 
 export default function App() {
   useEffect(() => {
@@ -12,9 +11,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <SafeAreaProvider>
-        <RouterProvider router={router} />
-      </SafeAreaProvider>
+      <RouterProvider router={router} />
     </AppErrorBoundary>
   );
 }

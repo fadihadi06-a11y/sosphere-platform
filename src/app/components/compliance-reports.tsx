@@ -508,7 +508,7 @@ function buildRealPdfData() {
 // containing: kpiData, incidentTable, correctiveActions, zoneRisks, employeeRoster,
 // checkinCompliance, journeyLog, playbookData — all fetched from Supabase.
 async function generatePDF(selectedSections: string[], companyName: string, preparedFor?: string, reportFormat?: ReportFormat, recipients?: ExportRecipient[], encryptionConfig?: PdfEncryptionConfig | null, data?: PdfReportData) {
-  if (import.meta.env.DEV) console.log("[SUPABASE_READY] pdf_generated: " + JSON.stringify({sections: selectedSections, timestamp: new Date().toISOString()}));
+  console.log("[SUPABASE_READY] pdf_generated: " + JSON.stringify({sections: selectedSections, timestamp: new Date().toISOString()}));
   await ensureAutoTable();
 
   // ── Resolve data: use provided (Supabase) or fall back to mock ──
@@ -542,7 +542,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
 
   // Generate unique verification ID and QR code
   const verificationId = `RPT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-  const verificationURL = `https://sosphere.co/verify/${verificationId}`;
+  const verificationURL = `https://sosphere.app/verify/${verificationId}`;
 
   // ── REAL SHA-256: Hash the document identity for legal integrity ──
   // eslint-disable-next-line no-useless-assignment -- used on line 1095
@@ -1162,7 +1162,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // Save
   const filename = `SOSphere_Safety_Report_${companyName.replace(/\s/g, "_")}_${today.toISOString().split("T")[0]}.pdf`;
   doc.save(filename);
-  if (import.meta.env.DEV) console.log("[SUPABASE_READY] compliance_pdf_generated", { verificationId, totalPages, wasEncrypted, sectionCount: selectedSections.length });
+  console.log("[SUPABASE_READY] compliance_pdf_generated", { verificationId, totalPages, wasEncrypted, sectionCount: selectedSections.length });
   return { verificationId, verificationURL, generatedAt: today.toISOString(), totalPages, companyName, wasEncrypted };
 }
 
@@ -1611,7 +1611,7 @@ export function ComplianceReportsPage({ t, webMode, companyName: companyNameProp
     setSchedules(prev => prev.map(s => {
       if (s.id !== id) return s;
       const enabled = !s.active;
-      if (import.meta.env.DEV) console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id: s.id, name: s.name, frequency: s.frequency, enabled, reportTypes: s.reportTypes }));
+      console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id: s.id, name: s.name, frequency: s.frequency, enabled, reportTypes: s.reportTypes }));
       return { ...s, active: enabled };
     }));
   }, []);
