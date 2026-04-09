@@ -7,7 +7,6 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
-import { reportError } from "./error-boundary";
 
 // ── Supabase Realtime Channels ──────────────────────────────
 // One channel per company — isolated from other companies
@@ -15,7 +14,6 @@ let _companyId: string | null = null;
 let _syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let _adminChannel: ReturnType<typeof supabase.channel> | null = null;
 let _evacChannel: ReturnType<typeof supabase.channel> | null = null;
-let _dbChannel: ReturnType<typeof supabase.channel> | null = null;
 
 /** Call this once after login with the company ID */
 export function initRealtimeChannels(companyId: string) {
@@ -31,7 +29,6 @@ export function initRealtimeChannels(companyId: string) {
   if (_syncChannel) supabase.removeChannel(_syncChannel);
   if (_adminChannel) supabase.removeChannel(_adminChannel);
   if (_evacChannel) supabase.removeChannel(_evacChannel);
-  if (_dbChannel) supabase.removeChannel(_dbChannel);
 
   _syncChannel = supabase.channel(`sync:${companyId}`);
   _adminChannel = supabase.channel(`admin:${companyId}`);
@@ -46,37 +43,6 @@ export function initRealtimeChannels(companyId: string) {
   _evacChannel.subscribe((status) => {
     if (status === "CHANNEL_ERROR") console.warn("[Realtime] evac channel error — retrying on next event");
   });
-
-  // HARDENING: Subscribe to database changes for guaranteed SOS visibility
-  // This catches SOS inserts that arrive via sync engine (not broadcast)
-  _dbChannel = supabase.channel(`db:${companyId}`);
-  _dbChannel
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "sos_queue",
-        filter: `company_id=eq.${companyId}`,
-      },
-      (payload: any) => {
-        // Convert DB row to SyncEvent and process through existing pipeline
-        if (_syncEventCallback && payload.new) {
-          const row = payload.new;
-          _syncEventCallback({
-            type: "SOS_TRIGGERED",
-            employeeId: row.employee_id || row.user_id || "unknown",
-            employeeName: row.employee_name || row.name || "Unknown",
-            zone: row.zone || "",
-            timestamp: new Date(row.created_at || Date.now()).getTime(),
-            data: { source: "db_subscription", ...row },
-          } as SyncEvent);
-        }
-      },
-    )
-    .subscribe((status) => {
-      if (status === "CHANNEL_ERROR") console.warn("[Realtime] DB channel error — retrying on next event");
-    });
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
 }
@@ -98,7 +64,6 @@ export interface SyncEvent {
     | "ESCALATION_UPDATE"    // Smart escalation level changed
     // Round 1 features
     | "SHAKE_SOS"            // Shake-to-SOS triggered
-    | "VOICE_SOS"            // Voice-activated SOS triggered
     | "EMERGENCY_CHAT"       // Emergency chat message
     | "AUDIO_EVIDENCE"       // Audio recording evidence uploaded
     // SOS Live Intelligence
@@ -207,14 +172,7 @@ async function saveToIDB(key: string, value: string): Promise<boolean> {
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => resolve(false);
     });
-  } catch (err) {
-    // FIX 3: Report IDB fallback failures with warning severity (fallback mechanism)
-    reportError(err, {
-      type: "idb_fallback_write_failed",
-      context: "storeIDBFallback",
-      component: "SharedStore",
-      severity: "warning",
-    }, "warning");
+  } catch {
     return false;
   }
 }
@@ -238,14 +196,7 @@ export async function drainIDBFallback(): Promise<{ key: string; value: string; 
         }
       };
     });
-  } catch (err) {
-    // FIX 3: Report IDB drain failures with warning severity (non-critical startup operation)
-    reportError(err, {
-      type: "idb_drain_failed",
-      context: "drainIDBFallback",
-      component: "SharedStore",
-      severity: "warning",
-    }, "warning");
+  } catch {
     return [];
   }
 }
@@ -327,32 +278,22 @@ function checkAndPruneStorage(): void {
   } catch { /* localStorage unavailable */ }
 }
 
-// HARDENING: SOS Acknowledgment Handshake
-interface SosAckResult {
-  delivered: boolean;
-  ackTimestamp?: number;
-}
-
-const SOS_ACK_TIMEOUT = 10000; // 10 second timeout
-const SOS_ACK_RETRIES = 3;
-let _pendingSosAcks: Map<string, { resolve: (val: SosAckResult) => void; timeout: NodeJS.Timeout }> = new Map();
-
-/**
- * HARDENING: Emit sync event with optional acknowledgment for SOS events.
- *
- * For SOS_TRIGGERED events:
- *  - Waits for ACK broadcast from dashboard (10s timeout)
- *  - Retries up to 3 times with exponential backoff (2s, 4s, 8s)
- *  - Returns Promise<{delivered: boolean; ackTimestamp?: number}>
- *
- * For non-SOS events: fire-and-forget (void, backward compatible)
- */
-export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | void> {
+// ── Emit event (from Mobile App) ──────────────────────────────
+export function emitSyncEvent(event: SyncEvent) {
   const newEvent = { ...event, _ts: Date.now() };
-  const isSosEvent = event.type === "SOS_TRIGGERED";
-  const emergencyId = `${event.employeeId}-${newEvent._ts}`;
 
-  // Always store in localStorage (offline fallback)
+  // PRIMARY: Supabase Realtime (cross-device)
+  if (_syncChannel) {
+    _syncChannel.send({
+      type: "broadcast",
+      event: "sync",
+      payload: newEvent,
+    }).catch(() => {
+      // Realtime failed — fallback to localStorage below
+    });
+  }
+
+  // SECONDARY: localStorage (same-device fallback + offline)
   checkAndPruneStorage();
   let queue: any[];
   try {
@@ -377,166 +318,11 @@ export async function emitSyncEvent(event: SyncEvent): Promise<SosAckResult | vo
   });
   safeSetItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 50)));
   window.dispatchEvent(new StorageEvent("storage", { key: STORE_KEY, newValue: payload }));
-
-  // For SOS events: implement handshake with retries + HARD ABORT timeout
-  if (isSosEvent) {
-    // HARDENING: Master abort timeout prevents infinite UI freeze
-    // If network is half-open (DNS resolves, TCP hangs), this ensures
-    // the UI never freezes for more than 15 seconds total
-    const HARD_ABORT_MS = 15000;
-
-    const handshakePromise = new Promise<SosAckResult>((resolve) => {
-      let attemptCount = 0;
-      let resolved = false;
-
-      const sendWithBackoff = async () => {
-        if (resolved) return;
-        attemptCount++;
-
-        // Send via Supabase Realtime (PRIMARY)
-        if (_syncChannel) {
-          // Per-send timeout using AbortController pattern
-          const sendTimeout = setTimeout(() => {
-            // If send itself hangs, we don't block — just continue to ACK wait
-          }, 5000);
-
-          _syncChannel.send({
-            type: "broadcast",
-            event: "sync",
-            payload: { ...newEvent, _emergencyId: emergencyId },
-          }).catch((err) => {
-            reportError(err instanceof Error ? err : new Error(String(err)), {
-              context: "emitSyncEvent/sendWithBackoff",
-              emergencyId,
-              component: "SharedStore",
-              attempt: attemptCount,
-            }, "warning");
-          }).finally(() => clearTimeout(sendTimeout));
-        }
-
-        // Set up ACK listener with per-attempt timeout
-        const ackTimeout = setTimeout(() => {
-          _pendingSosAcks.delete(emergencyId);
-          if (!resolved && attemptCount < SOS_ACK_RETRIES) {
-            const delayMs = 2000 * Math.pow(2, attemptCount - 1);
-            setTimeout(sendWithBackoff, delayMs);
-          } else if (!resolved) {
-            resolved = true;
-            resolve({ delivered: false });
-          }
-        }, SOS_ACK_TIMEOUT);
-
-        _pendingSosAcks.set(emergencyId, {
-          resolve: (val: SosAckResult) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(ackTimeout);
-              resolve(val);
-            }
-          },
-          timeout: ackTimeout,
-        });
-      };
-
-      sendWithBackoff();
-    });
-
-    // HARD ABORT: Never freeze UI longer than 15 seconds
-    const abortPromise = new Promise<SosAckResult>((resolve) => {
-      setTimeout(() => {
-        // Clean up any pending ACK listeners
-        _pendingSosAcks.delete(emergencyId);
-        resolve({ delivered: false });
-      }, HARD_ABORT_MS);
-    });
-
-    return Promise.race([handshakePromise, abortPromise]);
-  }
-  // Non-SOS: fire-and-forget
-  else {
-    if (_syncChannel) {
-      _syncChannel.send({
-        type: "broadcast",
-        event: "sync",
-        payload: newEvent,
-      }).catch((err) => {
-        // FIX 3: Report non-SOS Realtime send failures with warning severity
-        reportError(err, {
-          type: "realtime_send_failed",
-          context: "emitSyncEvent/non-SOS",
-          eventType: newEvent.type,
-          component: "SharedStore",
-          severity: "warning",
-        }, "warning");
-      });
-    }
-  }
-}
-
-// HARDENING: SOS Acknowledgment from Dashboard
-/**
- * Called by the dashboard when it receives an SOS alert.
- * Broadcasts ACK back to the mobile app via sync channel.
- */
-export function emitSosAcknowledgment(emergencyId: string) {
-  if (_syncChannel) {
-    _syncChannel.send({
-      type: "broadcast",
-      event: "sos_ack",
-      payload: {
-        _emergencyId: emergencyId,
-        ackTimestamp: Date.now(),
-      },
-    }).catch((err) => {
-      // FIX 3: Report SOS ACK send failures with error severity (life-critical)
-      reportError(err, {
-        type: "sos_ack_send_failed",
-        context: "broadcastSOSAcknowledgment",
-        emergencyId,
-        component: "SharedStore",
-        severity: "error",
-      }, "error");
-    });
-  }
-}
-
-/**
- * Mobile app registers a listener for SOS acknowledgments from the dashboard.
- * Returns unsubscribe function.
- */
-let _sosAckCallback: ((emergencyId: string, ackTimestamp: number) => void) | null = null;
-let _sosAckRealtimeRegistered = false;
-
-export function onSosAck(callback: (emergencyId: string, ackTimestamp: number) => void) {
-  _sosAckCallback = callback;
-
-  // PRIMARY: Supabase Realtime (register ONCE)
-  if (_syncChannel && !_sosAckRealtimeRegistered) {
-    _sosAckRealtimeRegistered = true;
-    _syncChannel.on("broadcast", { event: "sos_ack" }, ({ payload }: any) => {
-      if (payload && _sosAckCallback) {
-        const { _emergencyId, ackTimestamp } = payload;
-        _sosAckCallback(_emergencyId, ackTimestamp);
-
-        // Resolve any pending ACK promises
-        if (_pendingSosAcks.has(_emergencyId)) {
-          const { resolve, timeout } = _pendingSosAcks.get(_emergencyId)!;
-          clearTimeout(timeout);
-          _pendingSosAcks.delete(_emergencyId);
-          resolve({ delivered: true, ackTimestamp });
-        }
-      }
-    });
-  }
-
-  return () => {
-    _sosAckCallback = null;
-  };
 }
 
 // ── Admin → Employee signal ──────────────────────────────────
 export function emitAdminSignal(
-  type: "ADMIN_UNREACHABLE" | "ADMIN_ACKNOWLEDGED" | "SAR_ACTIVATED" | "SAR_WORKER_FOUND" | "BUDDY_ALERT" | "EVACUATE_ZONE" | "DISPATCH_RESPONDER" | "CANCEL_EMERGENCY" | "REQUEST_LOCATION" | "SAFETY_CHECK",
+  type: "ADMIN_UNREACHABLE" | "ADMIN_ACKNOWLEDGED" | "SAR_ACTIVATED" | "SAR_WORKER_FOUND" | "BUDDY_ALERT",
   employeeId: string,
   extra?: Record<string, any>,
 ) {
@@ -548,9 +334,7 @@ export function emitAdminSignal(
       type: "broadcast",
       event: "signal",
       payload: data,
-    }).catch((err) => {
-      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Admin signal broadcast failed'), { context: 'admin_signal' }, 'warning');
-    });
+    }).catch(() => {});
   }
 
   // SECONDARY: localStorage fallback
@@ -590,81 +374,6 @@ export function onAdminSignal(callback: (type: string, employeeId: string, extra
   return () => {
     window.removeEventListener("storage", handler);
     _adminSignalCallback = null;
-  };
-}
-
-// ── Dashboard → Mobile Command Interface ─────────────────────
-export interface DashboardCommand {
-  command: "EVACUATE" | "ACKNOWLEDGE" | "DISPATCH" | "CANCEL" | "LOCATE" | "SAFETY_CHECK";
-  targetEmployeeId?: string;  // specific employee, or omit for zone-wide
-  targetZone?: string;        // zone-wide command
-  emergencyId?: string;
-  data?: Record<string, any>;
-  issuedBy: string;           // admin name
-  issuedAt: number;
-}
-
-/** Dashboard → Mobile: Send structured command via realtime channel */
-export function emitDashboardCommand(cmd: DashboardCommand): void {
-  const payload = { ...cmd, _ts: Date.now() };
-
-  // PRIMARY: Supabase Realtime
-  if (_adminChannel) {
-    _adminChannel.send({
-      type: "broadcast",
-      event: "command",
-      payload,
-    }).catch((err) => {
-      // FIX 3: Report dashboard command broadcast failures with warning severity
-      reportError(err, {
-        type: "dashboard_command_broadcast_failed",
-        context: "emitDashboardCommand",
-        command: cmd.command,
-        component: "SharedStore",
-        severity: "warning",
-      }, "warning");
-    });
-  }
-
-  // SECONDARY: localStorage fallback
-  const key = "sosphere_dashboard_cmd";
-  try {
-    localStorage.setItem(key, JSON.stringify(payload));
-    window.dispatchEvent(new StorageEvent("storage", { key, newValue: JSON.stringify(payload) }));
-  } catch { /* quota exceeded — realtime is primary anyway */ }
-}
-
-// ── Listen for Dashboard Commands ────────────────────────────
-let _dashboardCmdCallback: ((cmd: DashboardCommand) => void) | null = null;
-let _cmdRealtimeRegistered = false;
-
-/** Mobile App: Listen for dashboard commands */
-export function onDashboardCommand(callback: (cmd: DashboardCommand) => void): () => void {
-  _dashboardCmdCallback = callback;
-
-  // PRIMARY: Supabase Realtime
-  if (_adminChannel && !_cmdRealtimeRegistered) {
-    _cmdRealtimeRegistered = true;
-    _adminChannel.on("broadcast", { event: "command" }, ({ payload }: any) => {
-      if (payload && _dashboardCmdCallback) _dashboardCmdCallback(payload as DashboardCommand);
-    });
-  }
-
-  // SECONDARY: localStorage fallback
-  const key = "sosphere_dashboard_cmd";
-  const handler = (e: StorageEvent) => {
-    if (e.key === key && e.newValue) {
-      try {
-        const cmd = JSON.parse(e.newValue) as DashboardCommand;
-        if (_dashboardCmdCallback) _dashboardCmdCallback(cmd);
-      } catch { /* ignore parse errors */ }
-    }
-  };
-  window.addEventListener("storage", handler);
-
-  return () => {
-    window.removeEventListener("storage", handler);
-    _dashboardCmdCallback = null;
   };
 }
 
@@ -710,7 +419,7 @@ export function onSyncEvent(callback: (event: SyncEvent) => void) {
 
   return () => {
     window.removeEventListener("storage", handler);
-    _syncEventCallback = null;
+    if (realtimeUnsub) realtimeUnsub();
   };
 }
 
@@ -753,22 +462,8 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
-    // Buddy System
-    BUDDY_ALERT: "Buddy Alert Triggered",
-    BUDDY_LOCATE_REQUEST: "Buddy Locate Requested",
-    // Post-Incident Monitoring
-    MONITORING_ACTIVATED: "Monitoring Mode Activated",
-    MONITORING_CHECKIN: "Monitoring Check-in Submitted",
-    MONITORING_MISSED: "Monitoring Check-in Missed",
-    MONITORING_CLEARED: "Monitoring Cleared",
-    // Individual Safety
-    PERSONAL_SOS: "Personal SOS Activated",
-    // Safe Walk
-    SAFE_WALK_STARTED: "Safe Walk Started",
-    SAFE_WALK_ENDED: "Safe Walk Ended",
   };
-
-  return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());  
+  return map[type];
 }
 
 function getIconKey(type: SyncEvent["type"]): string {
@@ -795,21 +490,8 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "Radar",
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
-    // Buddy System
-    BUDDY_ALERT: "Users",
-    BUDDY_LOCATE_REQUEST: "Locate",
-    // Post-Incident Monitoring
-    MONITORING_ACTIVATED: "Eye",
-    MONITORING_CHECKIN: "ClipboardCheck",
-    MONITORING_MISSED: "AlertCircle",
-    MONITORING_CLEARED: "ShieldCheck",
-    // Individual Safety
-    PERSONAL_SOS: "AlertTriangle",
-    // Safe Walk
-    SAFE_WALK_STARTED: "Footprints",
-    SAFE_WALK_ENDED: "CheckCircle",
   };
-    return map[type] || "Activity";
+  return map[type];
 }
 
 // ── Connected employees state ─────────────────────────────────
@@ -914,9 +596,7 @@ export function triggerEvacuation(evacuation: ActiveEvacuation) {
       type: "broadcast",
       event: "evacuation",
       payload: evacuation,
-    }).catch((err) => {
-      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Evacuation broadcast failed'), { context: 'evacuation_signal' }, 'warning');
-    });
+    }).catch(() => {});
   }
   // SECONDARY: localStorage fallback
   localStorage.setItem(ACTIVE_EVAC_KEY, JSON.stringify(evacuation));
@@ -1019,9 +699,7 @@ export function updateEmployeeEvacuationStatus(status: EmployeeEvacuationStatus)
       type: "broadcast",
       event: "evac_status",
       payload: status,
-    }).catch((err) => {
-      reportError(typeof err === 'string' ? new Error(err) : err instanceof Error ? err : new Error('Evacuation status update broadcast failed'), { context: 'evac_status_signal' }, 'warning');
-    });
+    }).catch(() => {});
   }
   // SECONDARY: localStorage
   const allStatuses = getEvacuationStatuses();
@@ -2131,14 +1809,7 @@ export function sendChatMessage(msg: Omit<EmergencyChatMessage, "id" | "timestam
           }
         });
       } catch (e) {
-        // FIX 3: Report chat message send failures with warning severity
-        reportError(e, {
-          type: "chat_send_failed",
-          context: "addChatMessage/supabase",
-          emergencyId,
-          component: "SharedStore",
-          severity: "warning",
-        }, "warning");
+        console.warn("[Chat] Supabase send failed, localStorage only:", e);
       }
     })();
   }
@@ -2174,14 +1845,7 @@ export async function getChatMessagesAsync(emergencyId: string): Promise<Emergen
     localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(msgs));
     return msgs;
   } catch (e) {
-    // FIX 3: Report chat load failures with warning severity
-    reportError(e, {
-      type: "chat_load_failed",
-      context: "getChatMessagesAsync",
-      emergencyId,
-      component: "SharedStore",
-      severity: "warning",
-    }, "warning");
+    console.warn("[Chat] Supabase load failed, using localStorage:", e);
     return getChatMessages(emergencyId);
   }
 }

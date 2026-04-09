@@ -274,7 +274,7 @@ export function CompanyJoin({ onSubmit, onBack }: CompanyJoinProps) {
               <div className="mb-5" style={{borderRadius:16,background:"rgba(255,255,255,.03)",border:focusedField==="link"?"1px solid rgba(0,200,224,.3)":"1px solid rgba(255,255,255,.08)",boxShadow:focusedField==="link"?"0 0 0 4px rgba(0,200,224,.06)":"none",transition:"all .25s"}}>
                 <div className="flex items-center px-4 gap-3">
                   <Link2 size={15} color={focusedField==="link"?"#00C8E0":"rgba(255,255,255,.25)"}/>
-                  <input type="url" value={inviteLink} onChange={e=>setInviteLink(e.target.value)} onFocus={()=>setFocusedField("link")} onBlur={()=>setFocusedField(null)} placeholder="https://sosphere.co/join/XXXXXX" style={{flex:1,background:"transparent",color:"#fff",fontSize:13,fontFamily:"'Outfit',monospace",caretColor:"#00C8E0",paddingBlock:18,direction:"ltr"}}/>
+                  <input type="url" value={inviteLink} onChange={e=>setInviteLink(e.target.value)} onFocus={()=>setFocusedField("link")} onBlur={()=>setFocusedField(null)} placeholder="https://sosphere.app/join/XXXXXX" style={{flex:1,background:"transparent",color:"#fff",fontSize:13,fontFamily:"'Outfit',monospace",caretColor:"#00C8E0",paddingBlock:18,direction:"ltr"}}/>
                 </div>
               </div>
 

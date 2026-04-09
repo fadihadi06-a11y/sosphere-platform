@@ -407,6 +407,76 @@ export function MobileApp() {
     console.log("[SUPABASE_READY] profile_restored: " + JSON.stringify({ hasProfile: !!savedProfile, hasPhone }));
   }, []);
 
+  // -- Silent Sign-In: check for valid session on app launch (< 2s) --
+  useEffect(() => {
+    const attemptSilentSignIn = async () => {
+      try {
+        const { checkExistingSession } = await import("./api/supabase-client");
+        const { session, provider, profile } = await checkExistingSession();
+        if (!session || !profile) return;
+
+        console.log("[Auth] Silent sign-in success:", { provider, name: profile.name });
+        setLoginName(profile.name || "User");
+
+        if (provider === "google") {
+          setLoginMode("individual");
+          const savedProfile = safeLoadJSON<any>("sosphere_individual_profile", null);
+          if (savedProfile?.registeredAt) {
+            navigate("individual-home");
+          } else {
+            navigate("individual-register");
+          }
+        } else {
+          const savedProfile = safeLoadJSON<any>("sosphere_individual_profile", null);
+          if (savedProfile?.registeredAt) {
+            setLoginMode("individual");
+            navigate("individual-home");
+          }
+        }
+      } catch (e) {
+        console.warn("[Auth] Silent sign-in check failed:", e);
+      }
+    };
+
+    attemptSilentSignIn();
+  }, []);
+
+  // -- Google OAuth Callback: listen for auth state changes (after redirect) --
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const setupAuthListener = async () => {
+      const { onAuthStateChange, handleGoogleCallback } = await import("./api/supabase-client");
+
+      unsubscribe = onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" && session) {
+          const provider = session.user?.app_metadata?.provider;
+
+          if (provider === "google") {
+            console.log("[Auth] Google OAuth callback received");
+            const { isNewUser, profile } = await handleGoogleCallback();
+
+            setLoginName(profile?.name || "User");
+            setLoginMode("individual");
+
+            if (isNewUser) {
+              setLoginPhone("");
+              navigate("individual-register");
+            } else {
+              navigate("login-welcome");
+            }
+          }
+        }
+      });
+    };
+
+    setupAuthListener();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
@@ -523,10 +593,14 @@ export function MobileApp() {
     // No navigate here — LoginPhone shows its OTP input after this callback returns.
   };
 
-  const handleGmailLogin = () => {
-    setLoginMode("individual");
-    setLoginName("Mohammed Ali");
-    navigate("login-welcome");
+  const handleGmailLogin = async () => {
+    const { signInWithGoogle } = await import("./api/supabase-client");
+    const { error } = await signInWithGoogle();
+    if (error) {
+      console.error("[Auth] Google sign-in failed:", error);
+      return;
+    }
+    // Supabase redirects to Google. The onAuthStateChange listener handles the callback.
   };
 
   const handleEmailLogin = (_email: string, name: string) => {
@@ -895,14 +969,20 @@ export function MobileApp() {
           )}
         </AnimatePresence>
 
-        {/* Screen transitions */}
+        {/* Screen transitions — Spring Physics */}
         <AnimatePresence mode="wait">
           <motion.div
             key={screen}
-            initial={{ opacity: 0, x: direction * 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: direction * -15 }}
-            transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+            initial={{ opacity: 0, x: direction * 40, scale: 0.97 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: direction * -20, scale: 0.98 }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              mass: 0.8,
+              opacity: { duration: 0.25 },
+            }}
             className="absolute inset-0"
           >
             {/* -- Restoring spinner � shown while profile loads from localStorage -- */}
@@ -1066,9 +1146,17 @@ export function MobileApp() {
                 onNavigateToDevices={(() => navigate("connected-devices"))}
                 onNavigateToHelp={(() => navigate("help"))}
                 onNavigateToSafeWalk={(() => { setSourceScreen("individual-home"); navigate("safe-walk"); })}
-                onLogout={() => {
+                onLogout={async () => {
+                  const { signOut } = await import("./api/supabase-client");
+                  await signOut();
+                  localStorage.removeItem("sosphere_individual_profile");
+                  localStorage.removeItem("sosphere_tos_consent");
+                  localStorage.removeItem("sosphere_gps_consent");
                   setUserPlan("free");
-                  navigate("login", -1);
+                  setLoginName("");
+                  setLoginPhone("");
+                  screenHistoryRef.current = [];
+                  navigate("welcome", -1);
                 }}
                 t={t}
               />
@@ -1099,6 +1187,7 @@ export function MobileApp() {
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
+                  screenHistoryRef.current = [];
                   navigate("welcome", -1);
                 }}
               />

@@ -10,7 +10,6 @@ import {
   AlertTriangle, CheckCircle2, Eye, EyeOff,
 } from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
-import { useReducedMotion, springPresets, modalVariants, backdropVariants, contentFadeVariants } from "./view-transitions";
 
 type OperationType =
   | "change_permissions"
@@ -46,7 +45,9 @@ const ACTOR_CONFIG = {
   main_admin: { label: "Main Admin", color: "#FF9500", icon: Key   },
 };
 
-// PIN verification — checks Supabase hash, no demo fallback
+// PIN verification — checks Supabase hash, falls back to demo mode in DEV only
+const DEMO_PIN = "123456";
+const IS_DEV = import.meta.env.DEV === true;
 const MAX_ATTEMPTS = 3;
 
 /** Hash PIN using SHA-256 for secure comparison */
@@ -56,11 +57,11 @@ async function hashPIN(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Verify PIN against Supabase, no fallback */
+/** Verify PIN against Supabase, fallback to demo ONLY in development */
 async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) {
-    // No Supabase configured — always reject
-    return false;
+    // No Supabase — only accept demo PIN in dev mode
+    return IS_DEV && enteredPin === DEMO_PIN;
   }
   try {
     const pinHash = await hashPIN(enteredPin);
@@ -70,13 +71,15 @@ async function verifyPIN(userId: string, enteredPin: string): Promise<boolean> {
       .eq("user_id", userId)
       .single();
     if (error || !data) {
-      // No PIN found in database — reject
-      console.warn("[PIN] No PIN found in DB");
+      // No PIN set yet — accept demo PIN ONLY in dev mode
+      if (IS_DEV) return enteredPin === DEMO_PIN;
+      console.warn("[PIN] No PIN found in DB and not in dev mode");
       return false;
     }
     return data.pin_hash === pinHash;
   } catch (e) {
     console.warn("[PIN] Verification failed:", e);
+    if (IS_DEV) return enteredPin === DEMO_PIN;
     return false;
   }
 }
@@ -210,8 +213,6 @@ export function PINVerifyModal({
     }
   }
 
-  const prefersReduced = useReducedMotion();
-
   const NUMPAD = [
     ["1","2","3"],
     ["4","5","6"],
@@ -225,11 +226,9 @@ export function PINVerifyModal({
         <>
           {/* Backdrop */}
           <motion.div
-            variants={backdropVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-50"
             style={{ background: "rgba(5,7,14,0.92)", backdropFilter: "blur(12px)" }}
             onClick={onCancel}
@@ -237,11 +236,10 @@ export function PINVerifyModal({
 
           {/* Modal */}
           <motion.div
-            variants={modalVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={prefersReduced ? { duration: 0 } : springPresets.modalEntry}
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            transition={{ type: "spring", stiffness: 340, damping: 28 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-6"
             style={{ pointerEvents: "none" }}
           >
@@ -430,7 +428,10 @@ export function PINVerifyModal({
 
                   {/* Hint */}
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "center", marginTop: 16, lineHeight: 1.6 }}>
-                    Enter your secure PIN to continue
+                    {SUPABASE_CONFIG.isConfigured
+                      ? "Enter your secure PIN to continue"
+                      : "Demo mode: use PIN 123456"
+                    }
                   </p>
                 </div>
               )}

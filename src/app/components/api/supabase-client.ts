@@ -91,6 +91,105 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+// ── Google OAuth for Civilian Users ──────────────────────────
+
+/**
+ * Initiates Google OAuth sign-in via Supabase.
+ * Uses popup redirect so the user stays in the app context.
+ */
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin + "/app",
+      queryParams: {
+        access_type: "offline",
+        prompt: "select_account", // Always show account picker
+      },
+    },
+  });
+  return { data, error: error?.message || null };
+}
+
+/**
+ * Handle the OAuth callback after Google redirects back.
+ * Returns session + whether this is a brand-new user.
+ */
+export async function handleGoogleCallback(): Promise<{
+  session: any;
+  isNewUser: boolean;
+  error: string | null;
+  profile: { name: string; email: string; avatar: string } | null;
+}> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) {
+    return { session: null, isNewUser: false, error: error?.message || "No session found", profile: null };
+  }
+
+  const user = session.user;
+  const meta = user.user_metadata || {};
+  const profile = {
+    name: meta.full_name || meta.name || "",
+    email: user.email || "",
+    avatar: meta.avatar_url || meta.picture || "",
+  };
+
+  // Determine if this is a first-time civilian user:
+  // Check if they have completed profile registration in our system
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id, onboarding_complete")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isNewUser = !existingProfile || !existingProfile.onboarding_complete;
+
+  return { session, isNewUser, error: null, profile };
+}
+
+/**
+ * Silent sign-in: check for an existing valid session on app launch.
+ * Returns within ~200ms if no session, enabling < 2s cold start.
+ */
+export async function checkExistingSession(): Promise<{
+  session: any;
+  provider: "google" | "phone" | "email" | null;
+  profile: { name: string; email: string; avatar: string } | null;
+}> {
+  if (!_isConfigured) return { session: null, provider: null, profile: null };
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { session: null, provider: null, profile: null };
+
+  // Determine the auth provider from the session
+  const provider = session.user?.app_metadata?.provider as string || "";
+  const authProvider: "google" | "phone" | "email" | null =
+    provider === "google" ? "google" :
+    provider === "phone" ? "phone" :
+    provider === "email" ? "email" : null;
+
+  const meta = session.user?.user_metadata || {};
+  const profile = {
+    name: meta.full_name || meta.name || "",
+    email: session.user?.email || "",
+    avatar: meta.avatar_url || meta.picture || "",
+  };
+
+  return { session, provider: authProvider, profile };
+}
+
+/**
+ * Listen for auth state changes (e.g., after OAuth redirect).
+ * Returns an unsubscribe function.
+ */
+export function onAuthStateChange(
+  callback: (event: string, session: any) => void,
+) {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
+  return () => subscription.unsubscribe();
+}
+
+
 // ── Read role + company_id from JWT claims (set by custom_access_token_hook) ──
 function decodeJWTPayload(token: string): Record<string, any> {
   try {

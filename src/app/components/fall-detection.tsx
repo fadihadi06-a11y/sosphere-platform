@@ -16,7 +16,6 @@ import {
   Volume2, MapPin, ChevronRight,
 } from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
-import { useT } from "./dashboard-i18n";
 
 // ── Persist sensor events to Supabase ────────────────────────
 export async function saveSensorEvent(type: "fall" | "shake", acceleration: number) {
@@ -85,7 +84,6 @@ export function useFallDetection({
 
   // Simulate fall detection for demo (since DeviceMotion needs real device)
   const simulateFall = useCallback(() => {
-    if (import.meta.env.PROD) return; // HARDENING: Disable simulation in production builds
     if (!enabled || state !== "monitoring") return;
     
     // Prevent rapid re-triggers
@@ -150,7 +148,6 @@ export function useFallDetection({
   const IMPACT_THRESHOLD    = 25.0;  // m/s² above this = hard impact (~2.5G)
   const freeFallRef  = useRef(false);
   const impactTimeRef = useRef(0);
-  const lowGStartRef = useRef<number>(0);
 
   useEffect(() => {
     if (!enabled) return;
@@ -178,30 +175,6 @@ export function useFallDetection({
           }
         } else if (mag > 12) {
           freeFallRef.current = false; // reset on normal movement
-        }
-
-        // HARDENING: Detect slow collapses (no free-fall phase)
-        // If gravity is abnormally low for >800ms, person may be collapsing
-        if (mag < 7.0 && mag > FREE_FALL_THRESHOLD) {
-          if (lowGStartRef.current === 0) lowGStartRef.current = Date.now();
-          else if (Date.now() - lowGStartRef.current > 800 && Date.now() - lastFallRef.current > 30000) {
-            lowGStartRef.current = 0;
-            // Trigger fall detection for slow collapse
-            const event: FallEvent = {
-              timestamp: Date.now(),
-              acceleration: mag,
-              type: "free_fall", // classify as fall event
-            };
-            setState("fall_detected");
-            onFallDetected?.(event);
-            saveSensorEvent("fall", mag);
-            setTimeout(() => {
-              setState("countdown");
-              setCountdown(countdownSeconds);
-            }, 1500);
-          }
-        } else if (mag >= 7.0) {
-          lowGStartRef.current = 0; // reset when normal gravity detected
         }
       };
 
@@ -252,8 +225,6 @@ interface FallDetectionOverlayProps {
 }
 
 export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetectionOverlayProps) {
-  const lang = (localStorage.getItem("sosphere_language") || "en") as any;
-  const t = useT(lang);
   if (state === "monitoring" || state === "cancelled") return null;
 
   return (
@@ -291,7 +262,7 @@ export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetecti
                 <AlertTriangle className="size-10" style={{ color: "#FF9500" }} />
               </motion.div>
               <p className="text-white text-center" style={{ fontSize: 22, fontWeight: 800 }}>
-                {t("fall.detected")}
+                Fall Detected
               </p>
               <p className="text-center mt-2" style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
                 Analyzing movement pattern...
@@ -352,7 +323,7 @@ export function FallDetectionOverlay({ state, countdown, onCancel }: FallDetecti
                 }}
               >
                 <CheckCircle className="size-5" style={{ color: "#00C853" }} />
-                <span style={{ fontSize: 16, fontWeight: 800, color: "#00C853" }}>{t("fall.imOk")}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#00C853" }}>I'm OK — Cancel</span>
               </motion.button>
 
               {/* Auto-SOS info */}
@@ -446,7 +417,7 @@ export function FallDetectionSettings({
             <Activity className="size-5" style={{ color: enabled ? "#00C853" : "rgba(255,255,255,0.2)" }} />
           </div>
           <div className="flex-1">
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("fall.title")}</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Fall Detection</p>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
               Uses phone accelerometer to detect falls. Auto-triggers SOS after 15s if no response.
             </p>

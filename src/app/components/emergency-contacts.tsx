@@ -128,7 +128,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
 
   const handleCopyLink = (contact: SafetyContact) => {
     const link = contact.safetyLinkId 
-      ? `https://sosphere.co/safety/${contact.name.toLowerCase().replace(/\s+/g, "-")}/${contact.safetyLinkId}`
+      ? `https://sosphere.app/safety/${contact.name.toLowerCase().replace(/\s+/g, "-")}/${contact.safetyLinkId}`
       : generateSafetyLink(contact.id, contact.name).url;
     navigator.clipboard?.writeText(link);
     setLinkCopied(true);
@@ -1164,7 +1164,7 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
             <div className="flex items-center gap-2 px-3 py-2" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
               <Lock className="size-3" style={{ color: "#00C853" }} />
               <p className="flex-1 truncate" style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>
-                sosphere.co/safety/{contact.name.toLowerCase().replace(/\s+/g, "-")}/{contact.safetyLinkId || "xxx"}
+                sosphere.app/safety/{contact.name.toLowerCase().replace(/\s+/g, "-")}/{contact.safetyLinkId || "xxx"}
               </p>
             </div>
 
