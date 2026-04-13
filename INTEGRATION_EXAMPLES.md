@@ -521,26 +521,4 @@ curl -X POST http://localhost:3000/functions/v1/twilio-call \
 **Cause**: Wrong relative path
 **Fix**: Use ../\_shared/rate-limiter.ts (escape underscore in markdown)
 
-## Troubleshooting
-
-View rate limit state:
-
-```typescript
-import { getRateLimitStats } from "../_shared/rate-limiter.ts";
-const stats = getRateLimitStats();
-console.log(stats); // { activeWindows: N, sosPriorityUsers: M }
-```
-
-Check headers manually:
-
-```bash
-curl -X POST http://localhost:3000/functions/v1/api \
-  -H "Content-Type: application/json" \
-  -d '{"test":true}' -v 2>&1 | grep -i "x-ratelimit"
-```
-
-Monitor health endpoint:
-
-```bash
-watch -n 2 'curl -s http://localhost:3000/functions/v1/api-health | jq .rateLimitStats'
-```
+## Troubleshoot

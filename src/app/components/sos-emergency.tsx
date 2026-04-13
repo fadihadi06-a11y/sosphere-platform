@@ -89,10 +89,24 @@ async function directCall(phone: string): Promise<boolean> {
     console.warn("[SOS] CallNumber plugin failed:", err);
   }
 
-  // Method 3: Direct tel: URI (last resort — may show chooser on some devices)
+  // Method 3: Web browser fallback — ONLY used when NOT running inside the
+  // Capacitor native shell. The tel: URI scheme on Android always triggers
+  // the app chooser (WhatsApp / Contacts / Truecaller / etc.), which is
+  // exactly what we are trying to avoid. Inside the native app the two
+  // methods above are authoritative — if they both fail, we surface the
+  // failure to the caller rather than dump to the chooser.
+  const isNativeShell =
+    typeof (window as any).Capacitor !== "undefined" &&
+    (window as any).Capacitor?.isNativePlatform?.() === true;
+
+  if (isNativeShell) {
+    console.error("[SOS] directCall: native paths exhausted — refusing tel: fallback to avoid app chooser");
+    return false;
+  }
+
   try {
     window.location.href = `tel:${cleaned}`;
-    console.log("[SOS] directCall fallback tel:", cleaned);
+    console.log("[SOS] directCall fallback tel: (web only):", cleaned);
     return true;
   } catch {
     return false;

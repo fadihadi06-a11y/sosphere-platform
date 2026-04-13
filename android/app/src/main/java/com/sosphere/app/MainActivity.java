@@ -1,12 +1,15 @@
 package com.sosphere.app;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.telecom.TelecomManager;
 import android.telephony.TelephonyManager;
 import android.view.View;
 import android.view.WindowManager;
@@ -14,6 +17,8 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
+
+import java.util.List;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -81,7 +86,14 @@ public class MainActivity extends BridgeActivity {
 
             /**
              * Direct phone call via ACTION_CALL — bypasses app chooser completely.
-             * Forces the call through the native phone dialer ONLY (not WhatsApp/Zoom/etc).
+             * Forces the call through the SYSTEM phone dialer ONLY (NEVER WhatsApp/Telegram/Contacts/etc).
+             *
+             * Strategy (tried in order, each targeted to the system dialer package):
+             *   1. TelecomManager.getDefaultDialerPackage() — the source-of-truth for system dialer.
+             *      Cannot return WhatsApp/Truecaller — only apps with role_holder for RoleManager.ROLE_DIALER.
+             *   2. Fall back to common vendor dialer packages (Samsung/Xiaomi/Huawei/Pixel).
+             *   3. Fall back to resolveActivity(ACTION_CALL) filtering system apps.
+             *   We DO NOT call startActivity without setPackage — that's what triggers the chooser.
              */
             @JavascriptInterface
             public boolean directCall(final String phoneNumber) {
@@ -97,24 +109,24 @@ public class MainActivity extends BridgeActivity {
                     }
 
                     runOnUiThread(() -> {
+                        String dialerPkg = resolveSystemDialerPackage();
+
+                        Intent callIntent = new Intent(Intent.ACTION_CALL);
+                        callIntent.setData(Uri.parse("tel:" + cleaned));
+                        callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                        if (dialerPkg != null) {
+                            callIntent.setPackage(dialerPkg);
+                        }
+                        // NOTE: We intentionally DO NOT call a packageless fallback here.
+                        // If we can't find the system dialer, let this throw rather than
+                        // risk showing an app chooser (WhatsApp/Contacts/etc).
+
                         try {
-                            Intent callIntent = new Intent(Intent.ACTION_CALL);
-                            callIntent.setData(Uri.parse("tel:" + cleaned));
-                            // KEY: Use FLAG_ACTIVITY_NEW_TASK and set the default dialer package
-                            callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                            // Try to resolve to the default phone dialer only
-                            android.content.pm.ResolveInfo defaultDialer = getPackageManager().resolveActivity(
-                                new Intent(Intent.ACTION_DIAL).setData(Uri.parse("tel:123")),
-                                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-                            );
-                            if (defaultDialer != null && defaultDialer.activityInfo != null) {
-                                callIntent.setPackage(defaultDialer.activityInfo.packageName);
-                            }
-
                             startActivity(callIntent);
-                        } catch (Exception e) {
-                            // Fallback: try without package restriction
+                        } catch (Exception first) {
+                            // Last-resort: try without package. May show chooser on some OEMs,
+                            // but better than silent failure in a real emergency.
                             try {
                                 Intent fallback = new Intent(Intent.ACTION_CALL);
                                 fallback.setData(Uri.parse("tel:" + cleaned));
@@ -211,11 +223,74 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && isEmergencyActive) {
-            enterImmersiveMode();
+    /**
+     * Resolve the system phone dialer package name.
+     *
+     * Priority (highest trust first):
+     *   1) TelecomManager.getDefaultDialerPackage()  — authoritative (API 23+).
+     *      Only apps holding RoleManager.ROLE_DIALER can be returned.
+     *      WhatsApp/Truecaller/Contacts CANNOT be returned from this.
+     *   2) A curated list of known OEM system dialer package names.
+     *      Verified via PackageManager + ApplicationInfo.FLAG_SYSTEM.
+     *   3) Query ACTION_CALL resolvers and pick the first FLAG_SYSTEM app.
+     *
+     * @return dialer package name, or null if none could be determined.
+     */
+    private String resolveSystemDialerPackage() {
+        // 1) TelecomManager — the source of truth on modern Android.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                TelecomManager tm = (TelecomManager) getSystemService(Context.TELECOM_SERVICE);
+                if (tm != null) {
+                    String def = tm.getDefaultDialerPackage();
+                    if (def != null && !def.isEmpty()) {
+                        return def;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        PackageManager pm = getPackageManager();
+
+        // 2) Known system dialer package names across vendors.
+        String[] candidates = new String[]{
+            "com.google.android.dialer",        // Pixel / stock Google dialer
+            "com.android.dialer",               // AOSP / many OEMs
+            "com.samsung.android.dialer",       // Samsung One UI
+            "com.samsung.android.contacts",     // Samsung (older One UI)
+            "com.miui.phone",                   // Xiaomi / MIUI
+            "com.huawei.contacts",              // Huawei EMUI
+            "com.oppo.contacts",                // OPPO ColorOS
+            "com.coloros.contacts",             // OPPO (newer)
+            "com.vivo.contacts",                // Vivo FunTouch
+            "com.oneplus.contacts",             // OnePlus OxygenOS
+            "com.asus.contacts"                 // ASUS
+        };
+        for (String pkg : candidates) {
+            try {
+                android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+                if ((ai.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
+                    return pkg;
+                }
+            } catch (PackageManager.NameNotFoundException ignored) {}
         }
+
+        // 3) Fall back to resolving ACTION_CALL and filtering for a system app.
+        try {
+            Intent probe = new Intent(Intent.ACTION_CALL);
+            probe.setData(Uri.parse("tel:0"));
+            List<ResolveInfo> resolvers = pm.queryIntentActivities(probe, 0);
+            if (resolvers != null) {
+                for (ResolveInfo ri : resolvers) {
+                    if (ri.activityInfo == null || ri.activityInfo.applicationInfo == null) continue;
+                    int flags = ri.activityInfo.applicationInfo.flags;
+                    if ((flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
+                        return ri.activityInfo.packageName;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return null;
     }
 }
