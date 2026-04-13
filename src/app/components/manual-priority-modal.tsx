@@ -5,7 +5,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, ArrowUp, X, Shield, FileText } from "lucide-react";
-import { useReducedMotion, springPresets, backdropVariants, slideUpVariants } from "./view-transitions";
 
 interface ManualPriorityModalProps {
   isOpen: boolean;
@@ -35,19 +34,15 @@ export function ManualPriorityModal({ isOpen, emergencyId, currentPosition, onCo
     setSelectedQuick(null);
   };
 
-  const prefersReduced = useReducedMotion();
-
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           {/* Backdrop */}
           <motion.div
-            variants={backdropVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={prefersReduced ? { duration: 0 } : springPresets.backdrop}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="absolute inset-0 z-[90]"
             style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
             onClick={onCancel}
@@ -55,11 +50,10 @@ export function ManualPriorityModal({ isOpen, emergencyId, currentPosition, onCo
 
           {/* Bottom Sheet */}
           <motion.div
-            variants={slideUpVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            transition={prefersReduced ? { duration: 0 } : springPresets.sheetSlide}
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 400, damping: 35 }}
             className="absolute bottom-0 left-0 right-0 z-[91] rounded-t-2xl"
             style={{
               background: "#0A1220",

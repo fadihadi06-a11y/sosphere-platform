@@ -100,7 +100,6 @@ export function useShakeDetection({
 
   // Demo: simulate shake
   const simulateShake = useCallback(() => {
-    if (import.meta.env.PROD) return; // HARDENING: Disable simulation in production builds
     if (!enabled) return;
     if (Date.now() - lastTriggerRef.current < cooldownMs) return;
 
