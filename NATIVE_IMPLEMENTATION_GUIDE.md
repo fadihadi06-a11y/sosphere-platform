@@ -422,20 +422,4 @@ console.log({ top, bottom }); // Debug output
 | Fixed top bar | `safe-area-top` padding | Header, toolbar |
 | Container with safe padding | `safe-area-all` | Modal, dialog |
 | Dynamic positioning | `useSafeArea()` hook | Complex layouts |
-| Icon button touch target | `p-3` wrapper | Close buttons, icons |
-
----
-
-## References
-
-- **Audit Report:** `src/app/components/native-audit-report.ts`
-- **Implementation:** `src/app/components/native-safe-area.tsx`
-- **CSS Utilities:** `src/styles/native-compat.css`
-- **Bridge:** `src/app/components/capacitor-bridge.ts`
-- **Full Guide:** `NATIVE_AUDIT_FIXES.md`
-
----
-
-**Last Updated:** 2026-04-08  
-**Version:** v11  
-**Status:** Production Ready
+| Icon button touch target 

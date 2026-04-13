@@ -77,7 +77,4 @@ for (const filePath of allGradleFiles) {
     const rel = path.relative(nodeModules, filePath);
     console.log('[fix-gradle] Patched:', rel);
     totalPatched++;
-  }
-}
-
-console.log('[fix-gradle] Done. ' + totalPatched + ' file(s) patched.');
+ 

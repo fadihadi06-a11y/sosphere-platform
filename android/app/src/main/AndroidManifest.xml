@@ -6,6 +6,36 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!--
+      Android 11+ package visibility. Without this <queries> block, apps targeting
+      API 30+ cannot see or resolve other apps installed on the device. This is
+      required for TelecomManager.getDefaultDialerPackage() to return a non-null
+      value on some OEMs, and for PackageManager.queryIntentActivities(ACTION_CALL)
+      to return the list of dialers we filter on.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.CALL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <!-- Explicitly allow resolving known system dialer packages -->
+        <package android:name="com.google.android.dialer" />
+        <package android:name="com.android.dialer" />
+        <package android:name="com.samsung.android.dialer" />
+        <package android:name="com.samsung.android.contacts" />
+        <package android:name="com.miui.phone" />
+        <package android:name="com.huawei.contacts" />
+        <package android:name="com.oppo.contacts" />
+        <package android:name="com.coloros.contacts" />
+        <package android:name="com.vivo.contacts" />
+        <package android:name="com.oneplus.contacts" />
+        <package android:name="com.asus.contacts" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

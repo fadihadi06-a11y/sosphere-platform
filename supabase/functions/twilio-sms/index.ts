@@ -152,7 +152,4 @@ serve(async (req) => {
     console.error("[twilio-sms] Error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error", detail: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-});
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "applicat
