@@ -7,29 +7,28 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RecordingConsentModal } from "./recording-consent-modal";
+import { useLang } from "./useLang";
 
-const familyMembers = [
-  {
-    id: 1, name: "Sarah", role: "Wife",
-    avatar: "https://images.unsplash.com/photo-1655249493799-9cee4fe983bb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjB3b21hbiUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MXx8fHwxNzcyNzY3MDk0fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    online: true, lastSeen: "Now",
-  },
-  {
-    id: 2, name: "Alex", role: "Son",
-    avatar: "https://images.unsplash.com/photo-1631905131477-eefc1360588a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZWVuYWdlciUyMGJveSUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MXx8fHwxNzcyODMyMjM5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    online: true, lastSeen: "Now",
-  },
-  {
-    id: 3, name: "Mom", role: "Mother",
-    avatar: "https://images.unsplash.com/photo-1758686254563-5c5ab338c8b9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxlbGRlcmx5JTIwd29tYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzcyNzU4MDg3fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    online: false, lastSeen: "25m ago",
-  },
-  {
-    id: 4, name: "David", role: "Brother",
-    avatar: "https://images.unsplash.com/photo-1628619487925-e9b8fc4c6b08?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx5b3VuZyUyMG1hbiUyMHBvcnRyYWl0JTIwY2FzdWFsJTIwaGVhZHNob3R8ZW58MXx8fHwxNzcyODMyMjM4fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    online: false, lastSeen: "1h ago",
-  },
-];
+// Load REAL emergency contacts from localStorage (saved during registration)
+function loadFamilyMembers(): { id: number; name: string; role: string; avatar: string; online: boolean; lastSeen: string }[] {
+  try {
+    const raw = localStorage.getItem("sosphere_emergency_contacts");
+    if (raw) {
+      const contacts: { name: string; phone: string }[] = JSON.parse(raw);
+      return contacts
+        .filter(c => c.name?.trim())
+        .map((c, i) => ({
+          id: i + 1,
+          name: c.name,
+          role: c.phone || "",
+          avatar: "",  // no avatar for real contacts — initials will show
+          online: false,
+          lastSeen: c.phone || "",
+        }));
+    }
+  } catch (_) { /* ignore */ }
+  return [];
+}
 
 function getQuickActions(t: (k: string) => string) {
   return [
@@ -42,7 +41,9 @@ function getQuickActions(t: (k: string) => string) {
 
 export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
   const t = tProp || ((k: string) => k);
+  const { isAr } = useLang();
   const quickActions = getQuickActions(t);
+  const familyMembers = loadFamilyMembers();
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activated, setActivated] = useState(false);
@@ -90,7 +91,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
     if (!activated) { setHolding(false); setProgress(0); }
   }, [activated]);
 
-  const radius = 62;
+  const radius = 78;
   const circumference = 2 * Math.PI * radius;
 
   return (
@@ -213,69 +214,135 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
               </button>
             </div>
 
-            {/* Button */}
-            <div className="relative flex items-center justify-center" style={{ width: 150, height: 150 }}>
+            {/* ── Premium SOS Button ── */}
+            <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
               {/* Shake ring */}
               <AnimatePresence>
                 {shakeFlash && (
                   <motion.div key="sr"
-                    initial={{ scale: 1, opacity: 0.4 }} animate={{ scale: 1.4, opacity: 0 }} exit={{}}
-                    transition={{ duration: 0.5 }}
+                    initial={{ scale: 1, opacity: 0.6 }} animate={{ scale: 1.5, opacity: 0 }} exit={{}}
+                    transition={{ duration: 0.6 }}
                     className="absolute rounded-full pointer-events-none"
-                    style={{ width: 150, height: 150, border: "2px solid rgba(255,45,85,0.4)" }}
+                    style={{ width: 200, height: 200, border: "2px solid rgba(255,45,85,0.5)" }}
                   />
                 )}
               </AnimatePresence>
 
-              {/* Ambient pulse */}
+              {/* Outer glow halo — large soft red/green light */}
               <motion.div
-                animate={{ scale: [1, 1.12, 1], opacity: [0.08, 0, 0.08] }}
+                animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0.7, 0.4] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute rounded-full"
-                style={{ width: 150, height: 150, background: activated ? "rgba(0,200,83,0.1)" : "rgba(255,45,85,0.06)" }}
+                className="absolute rounded-full pointer-events-none"
+                style={{
+                  width: 210, height: 210,
+                  background: activated
+                    ? "radial-gradient(circle, rgba(0,200,83,0.35) 0%, rgba(0,200,83,0.1) 50%, transparent 72%)"
+                    : "radial-gradient(circle, rgba(255,45,85,0.3) 0%, rgba(255,45,85,0.08) 50%, transparent 72%)",
+                  filter: "blur(4px)",
+                }}
               />
 
-              {/* Progress ring */}
+              {/* Middle glow ring — medium bright pulse */}
+              <motion.div
+                animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.9, 0.5] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+                className="absolute rounded-full pointer-events-none"
+                style={{
+                  width: 180, height: 180,
+                  border: activated
+                    ? "1.5px solid rgba(0,200,83,0.4)"
+                    : "1.5px solid rgba(255,45,85,0.35)",
+                  background: activated
+                    ? "radial-gradient(circle, rgba(0,200,83,0.12) 0%, transparent 65%)"
+                    : "radial-gradient(circle, rgba(255,45,85,0.1) 0%, transparent 65%)",
+                }}
+              />
+
+              {/* Inner glow ring — fast bright pulse */}
+              <motion.div
+                animate={{ scale: [1, 1.06, 1], opacity: [0.6, 1, 0.6] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+                className="absolute rounded-full pointer-events-none"
+                style={{
+                  width: 160, height: 160,
+                  border: activated
+                    ? "1px solid rgba(0,200,83,0.5)"
+                    : "1px solid rgba(255,45,85,0.4)",
+                  background: "transparent",
+                }}
+              />
+
+              {/* Progress ring — SVG */}
               {(holding || activated) && (
-                <svg className="absolute" width="142" height="142" viewBox="0 0 142 142" style={{ transform: "rotate(-90deg)" }}>
-                  <circle cx="71" cy="71" r={radius} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="2" />
-                  <circle cx="71" cy="71" r={radius} fill="none"
-                    stroke={activated ? "#00C853" : "rgba(255,255,255,0.5)"}
-                    strokeWidth="2" strokeLinecap="round"
+                <svg className="absolute" width="170" height="170" viewBox="0 0 170 170" style={{ transform: "rotate(-90deg)" }}>
+                  <circle cx="85" cy="85" r={radius} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="2.5" />
+                  <circle cx="85" cy="85" r={radius} fill="none"
+                    stroke={activated ? "#00C853" : "rgba(255,255,255,0.6)"}
+                    strokeWidth="2.5" strokeLinecap="round"
                     strokeDasharray={circumference}
                     strokeDashoffset={circumference * (1 - progress)}
-                    style={{ transition: "stroke-dashoffset 0.05s linear, stroke 0.5s" }}
+                    style={{ transition: "stroke-dashoffset 0.05s linear, stroke 0.5s", filter: activated ? "drop-shadow(0 0 6px rgba(0,200,83,0.5))" : "drop-shadow(0 0 4px rgba(255,255,255,0.3))" }}
                   />
                 </svg>
               )}
 
-              {/* The button */}
+              {/* The main button */}
               <motion.button
                 onMouseDown={startHold} onMouseUp={endHold} onMouseLeave={endHold}
                 onTouchStart={startHold} onTouchEnd={endHold}
-                whileTap={{ scale: 0.95 }}
-                animate={shakeFlash ? { scale: [1, 0.94, 1] } : {}}
+                whileTap={{ scale: 0.93 }}
+                animate={shakeFlash ? { scale: [1, 0.92, 1] } : {}}
                 transition={shakeFlash ? { duration: 0.3 } : {}}
                 className="relative z-10 rounded-full flex flex-col items-center justify-center select-none cursor-pointer"
                 style={{
-                  width: 128, height: 128,
+                  width: 144, height: 144,
+                  WebkitUserSelect: "none",
+                  userSelect: "none",
+                  WebkitTouchCallout: "none",
+                  WebkitTapHighlightColor: "transparent",
                   background: activated
-                    ? "linear-gradient(180deg, #00C853 0%, #009940 100%)"
-                    : "linear-gradient(180deg, #FF2D55 0%, #CC0033 100%)",
-                  boxShadow: activated
-                    ? "0 0 40px rgba(0,200,83,0.2), 0 12px 40px rgba(0,200,83,0.1), inset 0 1.5px 0 rgba(255,255,255,0.15)"
+                    ? "radial-gradient(circle at 40% 35%, #00E676 0%, #00C853 40%, #009940 100%)"
                     : holding
-                      ? `0 0 ${30 + progress * 30}px rgba(255,45,85,${0.15 + progress * 0.15}), inset 0 1.5px 0 rgba(255,255,255,0.12)`
-                      : "0 0 30px rgba(255,45,85,0.12), 0 12px 40px rgba(255,45,85,0.06), inset 0 1.5px 0 rgba(255,255,255,0.12)",
+                      ? `radial-gradient(circle at 40% 35%, #FF6B81 0%, #FF2D55 40%, #B8002B 100%)`
+                      : "radial-gradient(circle at 40% 35%, #FF4F6E 0%, #FF2D55 35%, #CC0033 70%, #99001A 100%)",
+                  boxShadow: activated
+                    ? "0 0 60px rgba(0,200,83,0.35), 0 0 120px rgba(0,200,83,0.15), 0 8px 32px rgba(0,200,83,0.2), inset 0 2px 0 rgba(255,255,255,0.2)"
+                    : holding
+                      ? `0 0 ${40 + progress * 60}px rgba(255,45,85,${0.2 + progress * 0.3}), 0 0 ${80 + progress * 40}px rgba(255,45,85,${0.08 + progress * 0.12}), inset 0 2px 0 rgba(255,255,255,0.15)`
+                      : "0 0 50px rgba(255,45,85,0.2), 0 0 100px rgba(255,45,85,0.08), 0 8px 32px rgba(255,45,85,0.12), inset 0 2px 0 rgba(255,255,255,0.15)",
                   transition: "background 0.5s, box-shadow 0.3s",
                 }}
               >
-                <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 50%)" }} />
-                <span className="relative text-white" style={{ fontSize: activated ? 15 : 32, fontWeight: 800, letterSpacing: activated ? "1px" : "3px" }}>
-                  {activated ? "SENT ✓" : "SOS"}
+                {/* Glass highlight overlay */}
+                <div className="absolute inset-0 rounded-full" style={{
+                  background: "linear-gradient(170deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.05) 30%, transparent 55%)",
+                }} />
+
+                {/* Subtle inner ring */}
+                <div className="absolute rounded-full" style={{
+                  inset: 4,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "50%",
+                }} />
+
+                {/* SOSphere text + SOS */}
+                <span className="relative pointer-events-none" style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.5)", letterSpacing: "2.5px", marginBottom: 2 }}>
+                  SOSphere
                 </span>
-                <span className="relative text-white/40 mt-0.5" style={{ fontSize: 9, fontWeight: 500 }}>
-                  {activated ? "Help is on the way" : "Hold 3 seconds"}
+                <span className="relative text-white pointer-events-none" style={{
+                  fontSize: activated ? 16 : 38,
+                  fontWeight: 900,
+                  letterSpacing: activated ? "1.5px" : "5px",
+                  textShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                }}>
+                  {activated ? (isAr ? "تم" : "SENT") : "SOS"}
+                </span>
+                <span className="relative mt-0.5 pointer-events-none" style={{
+                  fontSize: 9,
+                  fontWeight: 500,
+                  color: "rgba(255,255,255,0.45)",
+                }}>
+                  {activated ? (isAr ? "المساعدة في الطريق" : "Help is on the way") : (isAr ? "اضغط 3 ثواني" : "Hold 3 seconds")}
                 </span>
               </motion.button>
             </div>
@@ -287,7 +354,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
                 animate={{ opacity: 1 }}
                 style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 10 }}
               >
-                أو هز هاتفك 3 مرات بقوة
+                {isAr ? "أو هز هاتفك 3 مرات بقوة" : "Or shake your phone 3 times"}
               </motion.p>
             )}
           </div>
@@ -330,7 +397,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
           </div>
         </motion.div>
 
-        {/* ── Family Circle ── */}
+        {/* ── Emergency Contacts (Family Circle) ── */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -339,7 +406,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
         >
           <div className="flex items-center justify-between mb-3">
             <p className="text-white" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
-              {t("app.familyCircle")}
+              {isAr ? "جهات الطوارئ" : "Emergency Contacts"}
             </p>
             <button className="flex items-center gap-0.5" onClick={onFamilyCircle} style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>
               {t("app.viewAll")} <ChevronRight className="size-3.5" />
@@ -353,82 +420,93 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
               border: "1px solid rgba(255,255,255,0.035)",
             }}
           >
-            <div className="flex items-center justify-around">
-              {familyMembers.map((member) => (
-                <div key={member.id} className="flex flex-col items-center gap-1.5">
-                  <div className="relative">
-                    <div
-                      className="size-[46px] rounded-full overflow-hidden"
-                      style={{
-                        border: member.online ? "1.5px solid rgba(0,200,83,0.35)" : "1.5px solid rgba(255,255,255,0.06)",
-                        padding: 1.5,
-                      }}
-                    >
-                      <ImageWithFallback src={member.avatar} alt={member.name} className="w-full h-full rounded-full object-cover" />
+            {familyMembers.length > 0 ? (
+              <div className="flex items-center justify-around">
+                {familyMembers.map((member) => (
+                  <div key={member.id} className="flex flex-col items-center gap-1.5">
+                    <div className="relative">
+                      <div
+                        className="size-[46px] rounded-full overflow-hidden flex items-center justify-center"
+                        style={{
+                          border: "1.5px solid rgba(0,200,224,0.2)",
+                          padding: 1.5,
+                          background: "rgba(0,200,224,0.08)",
+                        }}
+                      >
+                        {member.avatar ? (
+                          <ImageWithFallback src={member.avatar} alt={member.name} className="w-full h-full rounded-full object-cover" />
+                        ) : (
+                          <span style={{ fontSize: 18, fontWeight: 700, color: "#00C8E0" }}>
+                            {member.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span
-                      className="absolute bottom-0 right-0 size-3 rounded-full"
-                      style={{
-                        background: member.online ? "#00C853" : "rgba(255,255,255,0.12)",
-                        border: "2px solid #0A1220",
-                        boxShadow: member.online ? "0 0 6px rgba(0,200,83,0.4)" : "none",
-                      }}
-                    />
+                    <div className="text-center">
+                      <p className="text-white" style={{ fontSize: 11, fontWeight: 600 }}>{member.name}</p>
+                      <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 500 }}>
+                        {member.role}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-white" style={{ fontSize: 11, fontWeight: 600 }}>{member.name}</p>
-                    <p style={{ fontSize: 9, color: member.online ? "rgba(0,200,83,0.6)" : "rgba(255,255,255,0.15)", fontWeight: 500 }}>
-                      {member.lastSeen}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center py-3">
+                <Users className="size-6 mb-2" style={{ color: "rgba(255,255,255,0.15)" }} />
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
+                  {isAr ? "لم تُضف جهات طوارئ بعد" : "No emergency contacts added yet"}
+                </p>
+                <button onClick={onFamilyCircle} className="mt-2" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 500 }}>
+                  {isAr ? "إضافة جهة اتصال" : "Add Contact"}
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
 
-        {/* ── Status Card ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-          className="px-5"
-        >
-          <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
-            Status
-          </p>
-          <div className="space-y-2">
-            {[
-              { label: "Sarah", sub: "Checked in", time: "2m ago", color: "#00C853", dot: true },
-              { label: "Alex", sub: "Left school zone", time: "18m ago", color: "#00C8E0", dot: true },
-              { label: "Mom", sub: "Last check-in", time: "25m ago", color: "#FF9500", dot: false },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 px-3.5 py-3"
-                style={{
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.015)",
-                  border: "1px solid rgba(255,255,255,0.035)",
-                }}
-              >
-                <div className="relative">
-                  <div
-                    className="size-[7px] rounded-full"
-                    style={{ background: item.color, boxShadow: item.dot ? `0 0 6px ${item.color}40` : "none", opacity: item.dot ? 1 : 0.4 }}
-                  />
+        {/* ── Status: show real emergency contacts status (only if contacts exist) ── */}
+        {familyMembers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="px-5"
+          >
+            <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
+              {isAr ? "الحالة" : "Status"}
+            </p>
+            <div className="space-y-2">
+              {familyMembers.map((member, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 px-3.5 py-3"
+                  style={{
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.015)",
+                    border: "1px solid rgba(255,255,255,0.035)",
+                  }}
+                >
+                  <div className="relative">
+                    <div
+                      className="size-[7px] rounded-full"
+                      style={{ background: "#00C8E0", opacity: 0.4 }}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>
+                      <span style={{ fontWeight: 600, color: "#fff" }}>{member.name}</span>{" "}
+                      <span style={{ color: "rgba(255,255,255,0.3)" }}>{member.role}</span>
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.12)", fontWeight: 400 }}>
+                    {isAr ? "جهة طوارئ" : "Emergency"}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>
-                    <span style={{ fontWeight: 600, color: "#fff" }}>{item.label}</span>{" "}
-                    <span style={{ color: "rgba(255,255,255,0.3)" }}>{item.sub}</span>
-                  </p>
-                </div>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.12)", fontWeight: 400 }}>{item.time}</span>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* Recording Consent Modal */}

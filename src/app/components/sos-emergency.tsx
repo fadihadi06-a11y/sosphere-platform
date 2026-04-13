@@ -16,9 +16,117 @@ import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
 import { storeEvidence } from "./evidence-store";
 import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
-import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
+import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
 import { reportError } from "./error-boundary";
+import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, type SubscriptionTier } from "./subscription-service";
+// ── Server-side SOS trigger (Path B — parallel to local dialer) ──
+import {
+  triggerServerSOS, endServerSOS,
+  startWatchdog, reportWatchdogEvent, stopWatchdog,
+  getServerTriggerResult, type ServerTriggerResult,
+} from "./sos-server-trigger";
+
+// ─── Haptic Feedback (vibration pattern during active SOS) ───────────────────
+let hapticIntervalId: ReturnType<typeof setInterval> | null = null;
+function startHapticFeedback() {
+  stopHapticFeedback();
+  // Immediate confirmation pulse
+  try { navigator.vibrate?.([100, 50, 100]); } catch {}
+  // Repeat every 30 seconds: 2 short pulses to confirm data is being sent
+  hapticIntervalId = setInterval(() => {
+    try { navigator.vibrate?.([80, 60, 80]); } catch {}
+  }, 30000);
+}
+function stopHapticFeedback() {
+  if (hapticIntervalId) { clearInterval(hapticIntervalId); hapticIntervalId = null; }
+  try { navigator.vibrate?.(0); } catch {} // Cancel any ongoing vibration
+}
+
+// ─── SMS with Tracking Link (Free tier — sends web-viewer link to non-app contacts) ──
+async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: number, lng: number) {
+  const trackingUrl = `https://sosphere.co/track?lat=${lat}&lng=${lng}&name=${encodeURIComponent(userName)}&t=${Date.now()}`;
+  const message = `🚨 SOS from ${userName}! Live location: ${trackingUrl}`;
+  try {
+    // Try native SMS via Capacitor
+    const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor.isNativePlatform()) {
+      // Use SMS URI scheme
+      window.location.href = `sms:${contactPhone.replace(/[\s\-()]/g, "")}?body=${encodeURIComponent(message)}`;
+      return true;
+    }
+  } catch {}
+  console.log("[SOS] SMS tracking link would be sent:", message);
+  return false;
+}
+
+// ─── Direct Call (bypasses OS app chooser) ───────────────────────────────────
+async function directCall(phone: string): Promise<boolean> {
+  const cleaned = phone.replace(/[\s\-()]/g, "");
+  if (!cleaned) return false;
+
+  // Method 1: Native Java bridge — ACTION_CALL directly to phone dialer (NO chooser)
+  try {
+    const native = (window as any).SOSphereNative;
+    if (native?.directCall) {
+      const ok = native.directCall(cleaned);
+      if (ok) {
+        console.log("[SOS] directCall success via SOSphereNative:", cleaned);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn("[SOS] SOSphereNative.directCall failed:", err);
+  }
+
+  // Method 2: capacitor-call-number plugin (backup)
+  try {
+    const { CallNumber } = await import("capacitor-call-number");
+    await CallNumber.call({ number: cleaned, bypassAppChooser: true });
+    console.log("[SOS] directCall success via CallNumber plugin:", cleaned);
+    return true;
+  } catch (err) {
+    console.warn("[SOS] CallNumber plugin failed:", err);
+  }
+
+  // Method 3: Direct tel: URI (last resort — may show chooser on some devices)
+  try {
+    window.location.href = `tel:${cleaned}`;
+    console.log("[SOS] directCall fallback tel:", cleaned);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─── Work Hours Check ────────────────────────────────────────────────────────
+// Returns true if current local time falls within office hours (Sun-Thu 8:00-17:00 for Arabic region, Mon-Fri otherwise)
+function isWithinWorkHours(): boolean {
+  try {
+    const profile = localStorage.getItem("sosphere_employee_profile");
+    if (profile) {
+      const p = JSON.parse(profile);
+      if (p.workStartHour !== undefined && p.workEndHour !== undefined) {
+        const now = new Date();
+        const hour = now.getHours();
+        const day = now.getDay(); // 0=Sun, 6=Sat
+        const workDays = p.workDays || [1, 2, 3, 4, 5]; // default Mon-Fri
+        return workDays.includes(day) && hour >= p.workStartHour && hour < p.workEndHour;
+      }
+    }
+  } catch { /* ignore */ }
+  // Default: Mon-Fri 8:00-17:00
+  const now = new Date();
+  const hour = now.getHours();
+  const day = now.getDay();
+  return day >= 1 && day <= 5 && hour >= 8 && hour < 17;
+}
+
+// ─── Subscription-aware contact list ─────────────────────────────────────────
+function getSubscriptionContacts(allContacts: ERContact[], isPremium: boolean): ERContact[] {
+  if (isPremium) return allContacts; // Paid: all contacts
+  return allContacts.slice(0, 1);    // Free: only first (primary) contact
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase =
@@ -55,10 +163,14 @@ export interface IncidentRecord {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// ── SOS Timing Constants (Production) ─────────────────────────
-const CALL_SEC      = 30;   // 30 seconds per contact before marking no_answer
+// ── SOS Timing Constants — read from subscription tier ─────────
+// Free=30s | Basic=60s | Elite=300s (5 min) per contact
+const CALL_SEC      = getCallDurationSec();
 const PAUSE_SEC     = 60;   // 60 seconds pause between retry cycles
-const REC_MAX       = 60;   // 60 seconds max voice recording
+// Free=30s | Basic=60s | Elite=90s recording
+const REC_MAX       = getRecordingMaxSec();
+// Max photos: Free=1 | Basic=6 | Elite=unlimited
+const PHOTO_MAX     = getMaxPhotos();
 const DMS_FIRST_SEC = 10;
 const DMS_GAP_SEC   = 10;
 // REMOVED: ANSWER_CYCLE / ANSWER_AT — was hardcoded simulation.
@@ -149,16 +261,17 @@ function hasEmergencyContacts(): boolean {
   return false;
 }
 
-/** Build contacts list based on user mode */
-function getContactsForMode(mode: "employee" | "individual"): ERContact[] {
+/** Build contacts list based on user mode and subscription tier */
+function getContactsForMode(mode: "employee" | "individual", isPremium = false): ERContact[] {
   const baseContacts = getEmergencyContacts();
   if (mode === "employee") {
-    // Admin is notified separately via CallingAdminView (SOSphere system protocol).
-    // GlowCircle only calls personal emergency contacts to avoid duplicate "calling admin" UI.
-    // Return up to 3 personal contacts (no fake fallbacks)
-    return baseContacts.slice(0, 3);
+    // During work hours: admin is notified first via CallingAdminView.
+    // Outside work hours: skip admin, go straight to personal contacts.
+    // Return subscription-aware list of personal contacts.
+    return getSubscriptionContacts(baseContacts.slice(0, 3), isPremium);
   }
-  return baseContacts;
+  // Individual mode: subscription-aware
+  return getSubscriptionContacts(baseContacts, isPremium);
 }
 
 /** Get admin contact from company profile — returns null if not configured */
@@ -184,7 +297,8 @@ function GlowCircle({
   callRemaining, pauseRemaining, recordingSec, isRecording,
   userAvatar, userName,
 }: GlowCircleProps) {
-  const { isAr } = useLang();
+  const { isAr, lang } = useLang();
+  const t = useT(lang);
   const isConnected = ["answered", "recording", "documenting", "monitoring"].includes(phase);
   const isCalling   = phase === "calling";
   const isPausing   = phase === "pausing";
@@ -305,9 +419,6 @@ function GlowCircle({
                 )}
 
                 <div className="absolute bottom-0 left-0 right-0 px-2 pb-3 text-center">
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", textShadow: "0 1px 8px rgba(0,0,0,0.9)", fontFamily: "inherit" }}>
-                    {displayContact.name}
-                  </p>
                   {isRecording && (
                     <div className="flex items-center justify-center gap-1 mt-0.5">
                       <motion.div animate={{ opacity: [1, 0.1, 1] }} transition={{ duration: 0.8, repeat: Infinity }}
@@ -441,7 +552,8 @@ interface CallingAdminViewProps {
 }
 
 function CallingAdminView({ employeeId, employeeName, zone, onDismiss, isPremium = true }: CallingAdminViewProps) {
-  const { isAr } = useLang();
+  const { isAr, lang } = useLang();
+  const t = useT(lang);
   const [callState, setCallState] = useState<AdminCallState>("calling");
   const callStateRef = useRef<AdminCallState>("calling");
   const [voiceInfo, setVoiceInfo] = useState<VoiceCallInfo | null>(null);
@@ -813,6 +925,8 @@ interface SosEmergencyProps {
   mode?: "employee" | "individual";
   /** Premium user — enables PDF export + extended recording */
   isPremium?: boolean;
+  /** Navigate to subscription/pricing page */
+  onNavigateToSubscription?: () => void;
   /** Real user identity — passed from auth context */
   userName: string;
   userId: string;
@@ -822,7 +936,7 @@ interface SosEmergencyProps {
   userAvatar?: string;
 }
 
-export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
+export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, onNavigateToSubscription, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
   const { isAr, lang } = useLang();
   const t = useT(lang);
   // ══════════════════════════════════════════════════════════════
@@ -843,6 +957,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const [showRateLimitWarning, setShowRateLimitWarning] = useState(false);
   const [rateLimitChoice, setRateLimitChoice] = useState<"testing" | "real" | null>(null);
   const [sosRateFlagged, setSosRateFlagged] = useState(false);
+
+  // ── Core SOS state — declared early because escalation useEffect needs `phase` ──
+  const [phase, setPhase]               = useState<Phase>("starting");
+  const [showBypassOption, setShowBypassOption] = useState(false);
+  const [bypassSupervisor, setBypassSupervisor] = useState(false);
 
   // Check rate limit on mount — session-based (module-level array, not localStorage)
   useEffect(() => {
@@ -882,7 +1001,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }
   }, [userId, userName, userZone]);
 
-  const modeContacts = getContactsForMode(mode);
+  // ── Work-hours routing for employees ──
+  // During office hours → admin first, then personal contacts
+  // Outside office hours → skip admin, personal contacts only
+  const duringWorkHours = mode === "employee" ? isWithinWorkHours() : false;
+
+  const modeContacts = getContactsForMode(mode, isPremium);
   const noContacts = modeContacts.length === 0;
 
   // ══════════════════════════════════════════════════════════════
@@ -1018,11 +1142,6 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }
   };
 
-  // FIX I: Safe Escalation Path (Bypass Supervisor)
-  const [showBypassOption, setShowBypassOption] = useState(false);
-  const [bypassSupervisor, setBypassSupervisor] = useState(false);
-  
-  const [phase, setPhase]               = useState<Phase>("starting");
   const [contacts, setContacts]         = useState<ERContact[]>(modeContacts);
   const [currentIdx, setCurrentIdx]     = useState(0);
   const [cycle, setCycle]               = useState(1);
@@ -1040,8 +1159,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const [adminCallEmitted, setAdminCallEmitted] = useState(false);
   const [showPersonalSosNotice, setShowPersonalSosNotice] = useState(false);
   // Ref: pauses the tick while CallingAdminView is visible (employee mode only).
-  // Tick resumes when admin sheet is dismissed (answered or X pressed).
-  const adminCallPendingRef = useRef(mode === "employee");
+  // Only pause for admin call during work hours — outside work hours, skip admin entirely.
+  const adminCallPendingRef = useRef(mode === "employee" && duringWorkHours);
 
   // ── Documenting State (photos + comment after recording) ────
   const [docPhotos, setDocPhotos]     = useState<string[]>([]);
@@ -1060,6 +1179,29 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const [dmsCountdown, setDmsCountdown] = useState(30);
 
   const [showCancel, setShowCancel] = useState(false);
+
+  // ── Deactivation PIN (prevents accidental/forced SOS termination) ──
+  const [showPinEntry, setShowPinEntry] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const deactivationPin = useRef(() => {
+    try {
+      const stored = localStorage.getItem("sosphere_deactivation_pin");
+      if (stored) return stored;
+    } catch {}
+    return "1234"; // Default PIN — user should change in settings
+  });
+  // Track if SMS tracking was already sent for each contact index
+  const smsTrackingSentRef = useRef<number[]>([]);
+
+  // ── Upgrade Modal (for gated Elite features) ──
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeatureName, setUpgradeFeatureName] = useState("");
+
+  // ── Incident Record Overlay (view live record WITHOUT ending SOS) ──
+  const [showIncidentOverlay, setShowIncidentOverlay] = useState(false);
+  // ── Server-side SOS result (Path B) ──
+  const [serverResult, setServerResult] = useState<ServerTriggerResult | null>(null);
 
   // Mutable ref (avoids stale closures in setInterval)
   const q = useRef({
@@ -1128,12 +1270,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }
   }, []);
 
-  // ── Load contacts from localStorage on mount (swappable for Supabase) ──
+  // ── Load contacts from localStorage on mount (subscription-aware) ──
   useEffect(() => {
-    const loaded = getContactsForMode(mode);
+    const loaded = getContactsForMode(mode, isPremium);
     setContacts(loaded);
     contactsRef.current = loaded;
-    console.log("[SUPABASE_READY] contacts_loaded: " + loaded.length + " contacts");
+    console.log("[SOS] contacts_loaded:", loaded.length, "contacts | tier:", isPremium ? "paid" : "free", "| mode:", mode, "| workHours:", duringWorkHours);
   }, []);
 
   const addEvent = useCallback((ev: Omit<ERREvent, "id" | "ts">) => {
@@ -1197,8 +1339,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           } catch { return null; }
         })();
         const bestPos = realPos || storedPos;
-        const trailLat = bestPos ? bestPos.lat : 24.7136;
-        const trailLng = bestPos ? bestPos.lng : 46.6753;
+        // Use real GPS position — no hardcoded fallback coordinates
+        const trailLat = bestPos ? bestPos.lat : 0;
+        const trailLng = bestPos ? bestPos.lng : 0;
         gpsBufferRef.current.push({
           trailPoint: newCount,
           lat: trailLat,
@@ -1233,13 +1376,26 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     if (tickRef.current)    clearInterval(tickRef.current);
     if (dmsTickRef.current) clearInterval(dmsTickRef.current);
     if (gpsTrailRef.current) clearInterval(gpsTrailRef.current);
+    stopHapticFeedback(); // Stop vibration feedback
+    stopWatchdog(); // Stop watchdog timer
+    deactivateEmergencyTracking(); // Restore normal GPS interval
+    // ── Exit Immersive Mode: Restore system UI ──
+    try { (window as any).SOSphereNative?.setEmergencyActive(false); } catch {}
+    // ── End server-side SOS session (Path B cleanup) ──
+    endServerSOS({
+      emergencyId: errIdRef.current,
+      reason,
+      recordingSec: q.current.recordingSec,
+      photos: docPhotosRef.current,
+      comment: docCommentRef.current,
+    }).catch(() => {});
     q.current.phase = "ended";
     addEvent({ type: "sos_end", title: reason, detail: `Duration: ${fmt(q.current.elapsed)}`, color: "#00C8E0" });
     const record: IncidentRecord = {
       id: errIdRef.current, startTime: new Date(Date.now() - q.current.elapsed * 1000),
       endTime: new Date(), triggerMethod: "hold",
       // FIX FATAL-1: Use real GPS from tracker instead of hardcoded Riyadh coords
-      location: getLastKnownPosition() ?? { lat: 24.7136, lng: 46.6753, accuracy: 9999, address: "Location unavailable — GPS not acquired" },
+      location: getLastKnownPosition() ?? { lat: 0, lng: 0, accuracy: 9999, address: "Location unavailable — GPS not acquired" },
       contacts: contactsRef.current, events: eventsRef.current,
       cyclesCompleted: q.current.cycle, recordingSeconds: q.current.recordingSec, isPremium,
       photos: docPhotosRef.current,
@@ -1315,24 +1471,103 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     addEvent({ type: "dms_dismissed", title: `Still in danger — Check #${q.current.dmsCheckNum - 1}`, color: "#FF2D55" });
   }, [addEvent]);
 
-  // ── Show CallingAdminView when SOS starts (employee mode only) ──
-  // Triggered during "starting" phase so admin is notified BEFORE personal contacts are called.
-  // adminCallPendingRef keeps the tick paused until the sheet is dismissed.
+  // ── Show CallingAdminView when SOS starts (employee mode, DURING work hours only) ──
+  // Outside work hours → skip admin, go straight to personal contacts.
   useEffect(() => {
-    if (mode === "employee" && phase === "starting" && !adminCallEmitted) {
+    if (mode === "employee" && duringWorkHours && phase === "starting" && !adminCallEmitted) {
       setShowAdminCall(true);
       setAdminCallEmitted(true);
     }
-    // ── FIX 2: Show Personal SOS notice for individual users ──
+    // ── FIX 2: Show Personal SOS notice for individual users (auto-dismiss after 3s) ──
     if (mode === "individual" && phase === "calling" && !showPersonalSosNotice) {
       setShowPersonalSosNotice(true);
+      // Auto-dismiss after 3 seconds — don't make user wait, SOS continues in background
+      setTimeout(() => setShowPersonalSosNotice(false), 3000);
     }
-  }, [phase, adminCallEmitted, mode, showPersonalSosNotice]);
+    // Outside work hours for employees — show personal SOS notice instead of admin
+    if (mode === "employee" && !duringWorkHours && phase === "calling" && !showPersonalSosNotice) {
+      setShowPersonalSosNotice(true);
+      setTimeout(() => setShowPersonalSosNotice(false), 3000);
+    }
+  }, [phase, adminCallEmitted, mode, showPersonalSosNotice, duringWorkHours]);
 
   // Main tick
   useEffect(() => {
     addEvent({ type: "sos_start", title: "SOS Activated", detail: "3-second hold trigger", color: "#FF2D55" });
     addEvent({ type: "location_share", title: "GPS tracking your location", detail: "Will be shared when someone answers", color: "#00C8E0" });
+    // ── Haptic feedback: 2 short pulses every 30s to confirm data is being sent ──
+    startHapticFeedback();
+    // ── Immersive Mode: Lock screen to SOSphere only (hides status bar, nav bar, blocks notifications) ──
+    try { (window as any).SOSphereNative?.setEmergencyActive(true); } catch {}
+
+    // ── Switch GPS to emergency high-frequency mode (3s intervals) ──
+    activateEmergencyTracking();
+
+    // ══════════════════════════════════════════════════════════
+    // PATH B: Server-side SOS trigger (fires in PARALLEL with local dialer)
+    // Does NOT block or wait for Path A (local call).
+    // ══════════════════════════════════════════════════════════
+    triggerServerSOS({
+      emergencyId: errIdRef.current,
+      userId,
+      userName,
+      userPhone,
+      contacts: contactsRef.current.map(c => ({ name: c.name, phone: c.phone, relation: c.relation })),
+      bloodType: userBloodType,
+      zone: userZone,
+    }).then(result => {
+      setServerResult(result);
+      if (result.success) {
+        console.log("[SOS] Path B (server) completed:", result.results?.length, "contacts processed");
+        addEvent({ type: "sms_sent", title: "Server alerts sent", detail: `Tier: ${result.tier} · ${result.results?.length || 0} contacts`, color: "#00C8E0" });
+      } else {
+        console.warn("[SOS] Path B (server) failed:", result.error);
+        // Server failure is non-fatal — local call (Path A) continues
+      }
+    }).catch(err => {
+      console.warn("[SOS] Path B error (non-fatal):", err);
+    });
+
+    // ── Start Watchdog: if local dialer doesn't open in 5s → escalate ──
+    startWatchdog((reason) => {
+      console.warn("[SOS] Watchdog escalation:", reason);
+      addEvent({ type: "sos_start", title: "Watchdog: local dialer failed", detail: reason, color: "#FF9500" });
+      toast.error(isAr ? "فشل الاتصال المحلي — السيرفر يتكفل" : "Local call failed — server handling it");
+    });
+
+    // ── Auto-detect call answered/ended via native Android CallStateReceiver ──
+    // IMPORTANT: On Android, OFFHOOK fires when dialing starts (not when someone answers).
+    // We track: first OFFHOOK = dialing started, then IDLE = call ended.
+    // If OFFHOOK lasted >5 seconds before IDLE, someone likely answered.
+    let callDialStartTime = 0;
+    const handleCallState = (e: Event) => {
+      const state = (e as CustomEvent).detail?.state;
+      console.log("[SOS] Native call state:", state, "phase:", q.current.phase, "dialStart:", callDialStartTime);
+
+      if (state === "answered") {
+        // OFFHOOK detected — record when dialing started
+        callDialStartTime = Date.now();
+        reportWatchdogEvent("dialer_ringing"); // Watchdog: call is ringing
+        console.log("[SOS] Call dialing started (OFFHOOK)");
+        // Do NOT mark as answered yet — OFFHOOK fires immediately when dialing
+      } else if (state === "ended" && q.current.phase === "calling") {
+        // Call ended — check if it lasted long enough to have been answered
+        const callDuration = callDialStartTime > 0 ? (Date.now() - callDialStartTime) / 1000 : 0;
+        console.log("[SOS] Call ended, duration:", callDuration, "seconds");
+        if (callDuration >= 5) {
+          // Call lasted >5 seconds — someone likely answered and talked
+          console.log("[SOS] Call was answered (duration > 5s) — marking connected");
+          manualAnswerRef.current = true;
+        }
+        // If <5s, it was probably rejected or went to voicemail — let timeout handle it
+        callDialStartTime = 0;
+      } else if (state === "ended" && q.current.phase !== "ended") {
+        console.log("[SOS] Call ended during phase:", q.current.phase);
+        callDialStartTime = 0;
+      }
+    };
+    window.addEventListener("sosphere-call-state", handleCallState);
+
     // FIX FATAL-2: Reset last gasp flag on SOS start
     lastGaspSentRef.current = false;
 
@@ -1483,22 +1718,33 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
         case "calling": {
           const idx = r.currentIdx;
-          // ── REAL CALL: Open native dialer at second 1 (once per contact) ──
+          // ── REAL CALL: Direct dial at second 1 (once per contact, bypasses OS chooser) ──
           if (r.phaseTimer === 1 && !r.dialerOpenedForIdx?.includes(idx)) {
             if (!r.dialerOpenedForIdx) r.dialerOpenedForIdx = [];
             r.dialerOpenedForIdx.push(idx);
             const phone = contactsRef.current[idx]?.phone;
             if (phone) {
-              // Open native phone dialer via tel: URI
-              try { window.open(`tel:${phone.replace(/\s/g, "")}`, "_system"); }
-              catch (err) {
-                /* fallback: link click */
-                try { window.location.href = `tel:${phone.replace(/\s/g, "")}`; }
-                catch (fallbackErr) {
-                  reportError(fallbackErr, { type: "dialer_fallback_failed", phone: phone.slice(-4), component: "SOSEmergency" }, "warning");
+              // Direct call via Capacitor CallNumber plugin (bypassAppChooser: true)
+              directCall(phone).then(ok => {
+                if (ok) {
+                  reportWatchdogEvent("dialer_opened"); // Watchdog: Path A success
+                } else {
+                  reportError(new Error("directCall failed"), { type: "dialer_failed", phone: phone.slice(-4), component: "SOSEmergency" }, "warning");
+                }
+              });
+              // ── SMS Tracking Link: Send web-viewer link to non-app contacts (Free tier gets this) ──
+              if (hasFeature("webViewerLink") && !smsTrackingSentRef.current.includes(idx)) {
+                smsTrackingSentRef.current.push(idx);
+                const gps = getLastKnownPosition();
+                if (gps) {
+                  sendSOSTrackingLink(phone, userName, gps.lat, gps.lng).then(sent => {
+                    if (sent) {
+                      addEvent({ type: "sms_sent", title: `Tracking link sent to ${contactsRef.current[idx]?.name}`, detail: "Web-viewer link via SMS", color: "#00C8E0" });
+                    }
+                  });
                 }
               }
-              addEvent({ type: "call_out", title: `Dialing ${contactsRef.current[idx].name}`, detail: `Native call: ${phone}`, color: "#00C8E0" });
+              addEvent({ type: "call_out", title: `Dialing ${contactsRef.current[idx].name}`, detail: `Direct call: ${phone}`, color: "#00C8E0" });
               trackEventSync(errIdRef.current, "contact_called",
                 `Calling emergency contact: ${contactsRef.current[idx].name} (${phone})`,
                 "System", "System",
@@ -1535,6 +1781,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         case "no_answer": {
           if (r.phaseTimer >= 1) {
             const next = r.currentIdx + 1;
+            manualAnswerRef.current = false; // FIX: Clear stale answer flag before next contact
+            callDialStartTime = 0; // FIX: Reset dial timer for next contact
             if (next < contactsRef.current.length) {
               r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = next;
               setPhase("calling"); setPhaseTimer(0); setCurrentIdx(next);
@@ -1553,6 +1801,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           setPhaseTimer(r.phaseTimer);
           if (r.phaseTimer >= PAUSE_SEC) {
             r.cycle += 1; r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = 0;
+            r.dialerOpenedForIdx = []; // FIX: Reset dialer tracking so calls actually dial on retry cycles
+            manualAnswerRef.current = false; // FIX: Clear stale answer flag from previous cycle
+            callDialStartTime = 0; // FIX: Reset call timer for new cycle
             setCycle(r.cycle); setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             resetContacts(); updateContact(0, "calling");
             addEvent({ type: "pause_end", title: `Cycle ${r.cycle} — Retrying`, color: "#00C8E0" });
@@ -1611,6 +1862,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     return () => {
       if (tickRef.current)    clearInterval(tickRef.current);
       if (dmsTickRef.current) clearInterval(dmsTickRef.current);
+      window.removeEventListener("sosphere-call-state", handleCallState);
     };
   }, []);
 
@@ -1637,8 +1889,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddPhoto = () => {
-    if (docPhotos.length >= 5) {
-      toast.info(isAr ? "الحد الأقصى 5 صور" : "Maximum 5 photos");
+    if (docPhotos.length >= PHOTO_MAX) {
+      toast.info(isAr ? `الحد الأقصى ${PHOTO_MAX} صور` : `Maximum ${PHOTO_MAX} photos`);
       return;
     }
     // ── REAL CAMERA: Use native file input with camera capture ──
@@ -1654,13 +1906,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach(file => {
-      if (docPhotos.length >= 5) return;
+      if (docPhotos.length >= PHOTO_MAX) return;
 
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
         setDocPhotos(prev => {
-          if (prev.length >= 5) return prev;
+          if (prev.length >= PHOTO_MAX) return prev;
           return [...prev, dataUrl];
         });
         // Track evidence photo in timeline
@@ -1757,8 +2009,33 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   };
 
   function handleEndSOS() {
+    // If deactivation PIN is enabled (Elite feature or custom-set), require PIN entry
+    const storedPin = (() => { try { return localStorage.getItem("sosphere_deactivation_pin"); } catch { return null; } })();
+    if (storedPin) {
+      setShowCancel(false);
+      setShowPinEntry(true);
+      setPinInput("");
+      setPinError(false);
+      return;
+    }
+    // No PIN set — end immediately
     setShowCancel(false); setShowDMS(false);
     doEnd("SOS ended by user");
+  }
+
+  function handlePinSubmit() {
+    const storedPin = (() => { try { return localStorage.getItem("sosphere_deactivation_pin") || "1234"; } catch { return "1234"; } })();
+    if (pinInput === storedPin) {
+      setShowPinEntry(false);
+      setShowDMS(false);
+      doEnd("SOS ended by user (PIN verified)");
+    } else {
+      setPinError(true);
+      setPinInput("");
+      // Vibrate on wrong PIN
+      try { navigator.vibrate?.([200]); } catch {}
+      setTimeout(() => setPinError(false), 2000);
+    }
   }
 
   // ═══ LOW BATTERY WARNING ═══
@@ -1860,18 +2137,18 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         <p style={{ fontSize: 16, color: "rgba(255,255,255,0.7)", textAlign: "center", marginBottom: 32, lineHeight: 1.8 }}>
           {isAr ? "البطارية أقل من 5% — اتصل بالطوارئ الآن قبل ما ينطفئ الجهاز" : "Battery below 5% — call emergency services NOW before device shuts off"}
         </p>
-        <a href="tel:997" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
-          width: "100%", maxWidth: 320, height: 64, borderRadius: 20,
+        <button onClick={() => directCall("997")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          width: "100%", maxWidth: 320, height: 64, borderRadius: 20, cursor: "pointer",
           background: "linear-gradient(135deg, #FF2D55, #CC0033)", boxShadow: "0 8px 32px rgba(255,45,85,0.4)",
-          color: "#fff", fontSize: 22, fontWeight: 800, textDecoration: "none" }}>
+          color: "#fff", fontSize: 22, fontWeight: 800, border: "none" }}>
           <Phone size={24} /> {isAr ? "اتصل 997 الآن" : "Call 997 NOW"}
-        </a>
-        <a href="tel:911" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
-          width: "100%", maxWidth: 320, height: 54, borderRadius: 16, marginTop: 12,
+        </button>
+        <button onClick={() => directCall("911")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          width: "100%", maxWidth: 320, height: 54, borderRadius: 16, marginTop: 12, cursor: "pointer",
           background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
-          color: "#fff", fontSize: 18, fontWeight: 700, textDecoration: "none" }}>
+          color: "#fff", fontSize: 18, fontWeight: 700 }}>
           <Phone size={20} /> {isAr ? "اتصل 911" : "Call 911"}
-        </a>
+        </button>
         <button onClick={() => setCriticalBattery(false)}
           style={{ marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.3)", background: "none", border: "none" }}>
           {isAr ? "عودة لشاشة الطوارئ" : "Back to SOS screen"}
@@ -1937,12 +2214,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E" }}>
 
-      {/* Ambient background */}
+      {/* Ambient background — subtle radial glow */}
       <motion.div
-        animate={{ opacity: [0.5, 1, 0.5] }}
-        transition={{ duration: 3.5, repeat: Infinity }}
+        animate={{ opacity: [0.4, 0.7, 0.4] }}
+        transition={{ duration: 4, repeat: Infinity }}
         className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none"
-        style={{ width: 600, height: 550, background: `radial-gradient(ellipse, ${statusColor}0A 0%, transparent 60%)`, transition: "background 1.5s" }}
+        style={{ width: 500, height: 500, background: `radial-gradient(ellipse, ${statusColor}08 0%, transparent 65%)`, transition: "background 1.5s" }}
       />
 
       {/* FIX I: Bypass Supervisor Modal */}
@@ -1969,15 +2246,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                 <div className="mb-4 p-4 rounded-full" style={{ background: "rgba(0,200,224,0.15)" }}>
                   <Shield className="size-8" style={{ color: "#00C8E0" }} />
                 </div>
-                
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
-                  🔒 Safe Reporting Options
+                  {isAr ? "خيارات الإبلاغ الآمن" : "Safe Reporting Options"}
                 </h2>
-                
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6, marginBottom: 24 }}>
-                  If your supervisor is involved in the emergency or cannot help, you can bypass them and report directly to company admin.
+                  {isAr ? "إذا كان مشرفك جزءاً من المشكلة، يمكنك تجاوزه والإبلاغ لمسؤول الشركة مباشرة." : "If your supervisor is involved in the emergency, you can bypass them and report directly to company admin."}
                 </p>
-
                 <div className="flex flex-col gap-3 w-full">
                   <button
                     onClick={() => {
@@ -1989,512 +2263,341 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                       });
                     }}
                     className="px-6 py-4 rounded-xl"
-                    style={{
-                      background: "linear-gradient(135deg, #FF9500, #E67E00)",
-                      boxShadow: "0 4px 16px rgba(255,149,0,0.4)",
-                    }}
+                    style={{ background: "linear-gradient(135deg, #FF9500, #E67E00)", boxShadow: "0 4px 16px rgba(255,149,0,0.4)" }}
                   >
                     <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>
-                      🚨 Yes, Bypass Supervisor
+                      {isAr ? "نعم، تجاوز المشرف" : "Yes, Bypass Supervisor"}
                     </span>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
-                      Report directly to company admin
-                    </p>
                   </button>
-
                   <button
-                    onClick={() => {
-                      setBypassSupervisor(false);
-                      setShowBypassOption(false);
-                    }}
+                    onClick={() => { setBypassSupervisor(false); setShowBypassOption(false); }}
                     className="px-6 py-3 rounded-xl"
-                    style={{
-                      background: "rgba(255,255,255,0.05)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
                   >
                     <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>
-                      No, Normal SOS
+                      {isAr ? "لا، SOS عادي" : "No, Normal SOS"}
                     </span>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
-                      Notify my supervisor as usual
-                    </p>
                   </button>
                 </div>
-
-                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 16 }}>
-                  This report will be marked as sensitive and confidential.
-                </p>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Header ── */}
-      <div className="shrink-0 px-5 pt-14 pb-2">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 100, background: `${statusColor}10`, border: `1px solid ${statusColor}28` }}>
-            <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} className="size-2 rounded-full" style={{ background: statusColor }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, letterSpacing: "0.8px", fontFamily: "inherit" }}>
-              {isConnected ? "CONNECTED" : "EMERGENCY ACTIVE"}
+      {/* ══════════════════════════════════════════════════════════════════
+          HEADER — Minimal: status pill + timer
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="shrink-0 px-5 pt-12 pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 100, background: `${statusColor}0D`, border: `1px solid ${statusColor}20` }}>
+            <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} className="size-2 rounded-full" style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}` }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, letterSpacing: "0.8px" }}>
+              {isConnected ? (isAr ? "متصل" : "CONNECTED") : phase === "pausing" ? (isAr ? "إعادة المحاولة" : "RETRYING") : (isAr ? "طوارئ نشطة" : "EMERGENCY ACTIVE")}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            <Clock style={{ width: 11, height: 11, color: "rgba(255,255,255,0.2)" }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.4)", fontFamily: "inherit" }}>{fmt(elapsed)}</span>
-          </div>
-        </div>
-        <p style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: "-0.2px", fontFamily: "inherit" }}>{statusLabel()}</p>
-        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.14)", fontFamily: "inherit" }}>Cycle {cycle} · {errIdRef.current}</p>
-      </div>
-
-      {/* ── Scrollable middle content ── */}
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
-
-      {/* FIX I: Bypass Supervisor Link - only during starting phase */}
-      {phase === "starting" && mode === "employee" && !bypassSupervisor && (
-        <div className="px-5 mb-2 text-center">
-          <button
-            onClick={() => setShowBypassOption(true)}
-            className="text-xs underline"
-            style={{ color: "rgba(255,255,255,0.3)" }}
-          >
-            Supervisor involved? Report directly to company admin →
-          </button>
-        </div>
-      )}
-
-      {/* ── GLOW CIRCLE ── */}
-      <div className="shrink-0 flex justify-center py-3">
-        <GlowCircle
-          phase={phase}
-          currentContact={currentContact}
-          answeredContact={answeredContact}
-          callRemaining={callRemaining}
-          pauseRemaining={pauseRemaining}
-          recordingSec={recordingSec}
-          isRecording={isRecording}
-          userAvatar={userAvatar}
-          userName={userName}
-        />
-      </div>
-
-      {/* ── RECORDING STATUS BANNER ── */}
-      <AnimatePresence>
-        {(isConnected || phase === "answered") && phase !== "documenting" && (
-          <motion.div
-            key="rec-banner"
-            initial={{ opacity: 0, y: -8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 28 }}
-            className="shrink-0 mx-5 mb-2"
-          >
-            {recordingEnabled ? (
-              <div
-                className="flex items-center gap-3 px-4 py-3"
-                style={{
-                  borderRadius: 14,
-                  background: phase === "recording"
-                    ? "rgba(255,45,85,0.08)"
-                    : phase === "monitoring" && !isRecording
-                    ? "rgba(0,200,83,0.06)"
-                    : "rgba(255,45,85,0.05)",
-                  border: `1px solid ${phase === "recording" ? "rgba(255,45,85,0.25)" : phase === "monitoring" ? "rgba(0,200,83,0.18)" : "rgba(255,45,85,0.12)"}`,
-                }}
-              >
-                {phase === "recording" ? (
-                  <motion.div animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 0.8, repeat: Infinity }}>
-                    <Mic style={{ width: 15, height: 15, color: "#FF2D55", flexShrink: 0, filter: "drop-shadow(0 0 4px #FF2D55)" }} />
-                  </motion.div>
-                ) : (
-                  <Mic style={{ width: 15, height: 15, color: phase === "monitoring" ? "#00C853" : "rgba(255,45,85,0.5)", flexShrink: 0 }} />
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <p style={{
-                    fontSize: 12, fontWeight: 700, fontFamily: "inherit",
-                    color: phase === "recording" ? "#FF6060" : phase === "monitoring" ? "rgba(0,200,83,0.9)" : "rgba(255,150,150,0.7)",
-                  }}>
-                    {phase === "recording"   ? `Recording — ${recordingSec}s / 60s` :
-                     phase === "monitoring"  ? (isAr ? "اكتمل التسجيل — رُفع بأمان" : "Recording complete — Uploaded securely") :
-                                               (isAr ? "المذكرة الصوتية تبدأ بعد انتهاء المكالمة..." : "Voice memo starts after call ends...")}
-                  </p>
-                  {phase === "recording" && (
-                    <div style={{ marginTop: 5, height: 2.5, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-                      <motion.div
-                        style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #FF2D55, #FF6080)", originX: 0 }}
-                        animate={{ width: `${(recordingSec / REC_MAX) * 100}%` }}
-                        transition={{ duration: 1, ease: "linear" }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {phase === "recording" && (
-                  <div className="flex items-center gap-[2px] shrink-0">
-                    {[4, 8, 6, 10, 7, 5, 9, 6].map((h, i) => (
-                      <motion.div key={i}
-                        animate={{ height: [h, h + 6, h] }}
-                        transition={{ duration: 0.4, repeat: Infinity, delay: i * 0.06 }}
-                        style={{ width: 2, borderRadius: 1, background: "rgba(255,45,85,0.65)", minHeight: h }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 px-4 py-2.5"
-                style={{ borderRadius: 14, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}
-              >
-                <MicOff style={{ width: 14, height: 14, color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", fontFamily: "inherit", flex: 1 }}>
-                  Voice recording <span style={{ color: "rgba(255,80,80,0.4)" }}>disabled</span>
-                </p>
-                <span style={{ fontSize: 10, color: "rgba(0,200,224,0.4)", fontWeight: 600, fontFamily: "inherit" }}>Settings</span>
+          {/* Timer + status indicators */}
+          <div className="flex items-center gap-3">
+            {/* GPS indicator dot */}
+            <div className="flex items-center gap-1">
+              <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: getLastKnownPosition() ? "#00C853" : "#FF9500" }} />
+              <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.2)" }}>GPS</span>
+            </div>
+            {/* Recording indicator */}
+            {isRecording && (
+              <div className="flex items-center gap-1">
+                <motion.div animate={{ opacity: [1, 0.1, 1] }} transition={{ duration: 0.8, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#FF2D55" }} />
+                <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,45,85,0.6)" }}>REC</span>
               </div>
             )}
-          </motion.div>
+            {/* Elapsed timer */}
+            <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.35)", fontVariantNumeric: "tabular-nums" }}>{fmt(elapsed)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SCROLLABLE CENTER — GlowCircle + phase-specific content
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-y-auto flex flex-col" style={{ WebkitOverflowScrolling: "touch" }}>
+
+        {/* Bypass supervisor link — starting phase only */}
+        {phase === "starting" && mode === "employee" && !bypassSupervisor && (
+          <div className="px-5 mb-1 text-center">
+            <button onClick={() => setShowBypassOption(true)} style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", background: "none", border: "none", textDecoration: "underline" }}>
+              {isAr ? "المشرف جزء من المشكلة؟ →" : "Supervisor involved? →"}
+            </button>
+          </div>
         )}
-      </AnimatePresence>
 
-      {/* ── DOCUMENTING PHASE UI ── */}
-      <AnimatePresence>
-        {phase === "documenting" && !docSubmitted && (
-          <motion.div
-            key="doc-phase"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 28 }}
-            className="shrink-0 mx-5 mb-2 space-y-3"
-          >
-            {/* Header card */}
-            <div className="px-4 py-3" style={{ borderRadius: 14, background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.12)" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Camera style={{ width: 14, height: 14, color: "#00C8E0" }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", fontFamily: "inherit" }}>
-                  Document the Incident
-                </span>
-              </div>
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", lineHeight: 1.6, fontFamily: "inherit" }}>
-                Take photos and add a comment. This evidence will be attached to your incident report.
-                {recordingEnabled && " Voice recording has been saved."}
-              </p>
-            </div>
+        {/* ── GLOW CIRCLE — the hero element ── */}
+        <div className="shrink-0 flex justify-center" style={{ paddingTop: phase === "documenting" ? 8 : 20, paddingBottom: 8 }}>
+          <GlowCircle
+            phase={phase}
+            currentContact={currentContact}
+            answeredContact={answeredContact}
+            callRemaining={callRemaining}
+            pauseRemaining={pauseRemaining}
+            recordingSec={recordingSec}
+            isRecording={isRecording}
+            userAvatar={userAvatar}
+            userName={userName}
+          />
+        </div>
 
-            {/* Photo capture area */}
-            <div className="flex gap-2 items-center">
-              {docPhotos.map((photo, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: i * 0.1 }}
-                  className="size-16 rounded-xl overflow-hidden relative"
-                  style={{ border: "1.5px solid rgba(0,200,224,0.2)" }}
-                >
-                  <ImageWithFallback src={photo} alt={`Evidence ${i + 1}`} className="w-full h-full object-cover" />
-                  <div className="absolute top-0.5 right-0.5 size-4 rounded-full flex items-center justify-center" style={{ background: "rgba(0,200,83,0.9)" }}>
-                    <CheckCircle style={{ width: 10, height: 10, color: "#fff" }} />
-                  </div>
-                </motion.div>
-              ))}
-              {/* Hidden file input for real camera/photo capture */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                multiple
-                onChange={handlePhotoCapture}
-                style={{ display: "none" }}
-              />
-              {docPhotos.length < 5 && (
-                <motion.button
-                  whileTap={{ scale: 0.92 }}
-                  onClick={handleAddPhoto}
-                  className="size-16 rounded-xl flex flex-col items-center justify-center gap-1"
-                  style={{ border: "1.5px dashed rgba(0,200,224,0.25)", background: "rgba(0,200,224,0.03)" }}
-                >
-                  <Camera style={{ width: 16, height: 16, color: "#00C8E0" }} />
-                  <span style={{ fontSize: 8, color: "rgba(0,200,224,0.5)", fontWeight: 600, fontFamily: "inherit" }}>
-                    {docPhotos.length === 0 ? (isAr ? "التقط صورة" : "Take Photo") : (isAr ? `${5 - docPhotos.length} متبقي` : `${5 - docPhotos.length} left`)}
-                  </span>
-                </motion.button>
-              )}
-            </div>
+        {/* ── Status text below circle ── */}
+        <div className="text-center px-5 mb-4">
+          <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", letterSpacing: "-0.2px" }}>{statusLabel()}</p>
+          {cycle > 1 && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 2 }}>{isAr ? `الدورة ${cycle}` : `Cycle ${cycle}`}</p>}
+        </div>
 
-            {/* Comment input */}
-            <div style={{ borderRadius: 12, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
-              <textarea
-                value={docComment}
-                onChange={(e) => setDocComment(e.target.value)}
-                placeholder={isAr ? "صف ما حدث... (اختياري)" : "Describe what happened... (optional)"}
-                maxLength={2000}
-                rows={2}
-                style={{
-                  width: "100%", padding: "10px 12px", background: "transparent", border: "none", outline: "none", resize: "none",
-                  fontSize: 12, color: "rgba(255,255,255,0.7)", fontFamily: "inherit",
-                }}
-              />
-            </div>
-
-            {/* Submit / Skip buttons */}
-            <div className="flex gap-2">
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={handleSubmitDoc}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl"
-                style={{
-                  background: docPhotos.length > 0 || docComment
-                    ? "linear-gradient(135deg, rgba(0,200,224,0.12), rgba(0,200,224,0.04))"
-                    : "rgba(0,200,224,0.06)",
-                  border: `1.5px solid ${docPhotos.length > 0 || docComment ? "rgba(0,200,224,0.3)" : "rgba(0,200,224,0.12)"}`,
-                }}
-              >
-                <Send style={{ width: 13, height: 13, color: "#00C8E0" }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", fontFamily: "inherit" }}>
-                  Submit Report
-                </span>
-              </motion.button>
-              <button
-                onClick={handleSkipDoc}
-                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.25)", fontFamily: "inherit" }}>Skip</span>
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Submitted confirmation */}
-      <AnimatePresence>
-        {phase === "documenting" && docSubmitted && (
-          <motion.div
-            key="doc-submitted"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            className="shrink-0 mx-5 mb-2 flex items-center gap-3 px-4 py-3"
-            style={{ borderRadius: 14, background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}
-          >
+        {/* ── DOCUMENTING PHASE — photos + comment ── */}
+        <AnimatePresence>
+          {phase === "documenting" && !docSubmitted && (
             <motion.div
-              initial={{ scale: 0 }} animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20, delay: 0.2 }}
+              key="doc-phase"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 28 }}
+              className="shrink-0 mx-5 mb-3 space-y-3"
             >
-              <CheckCircle style={{ width: 18, height: 18, color: "#00C853" }} />
-            </motion.div>
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,200,83,0.9)", fontFamily: "inherit" }}>
-                Evidence submitted
-              </p>
-              <p style={{ fontSize: 10, color: "rgba(0,200,83,0.5)", fontFamily: "inherit" }}>
-                {docPhotos.length} photo(s) · Moving to monitoring...
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── SMS badge ── */}
-      <AnimatePresence>
-        {smsSent && phase !== "documenting" && (
-          <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="shrink-0 mx-5 mb-2">
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5" style={{ borderRadius: 13, background: "rgba(0,200,83,0.05)", border: "1px solid rgba(0,200,83,0.15)" }}>
-              <MessageSquare style={{ width: 12, height: 12, color: "#00C853", flexShrink: 0 }} />
-              <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,200,83,0.8)", fontFamily: "inherit", flex: 1 }}>
-                Location sent to {answeredContact?.name}
-              </p>
-              <CheckCircle style={{ width: 12, height: 12, color: "#00C853", flexShrink: 0 }} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Location + GPS Trail ── */}
-      {phase !== "documenting" && (
-        <div className="shrink-0 mx-5 mb-2 space-y-1.5">
-          <div className="flex items-center gap-2.5 px-3.5 py-2.5" style={{ borderRadius: 13, background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.09)" }}>
-            <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-              <MapPin style={{ width: 12, height: 12, color: "#00C8E0", flexShrink: 0 }} />
-            </motion.div>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", fontFamily: "inherit", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              King Fahd Rd, Riyadh · 24.7136° N, 46.6753° E
-            </p>
-            <div className="flex items-center gap-1 shrink-0">
-              <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#00C853", boxShadow: "0 0 4px #00C853" }} />
-              <span style={{ fontSize: 9, color: "rgba(0,200,83,0.7)", fontWeight: 700, fontFamily: "inherit" }}>LIVE TRAIL</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3.5 py-1.5" style={{ borderRadius: 10, background: locationSent ? "rgba(0,200,83,0.04)" : "rgba(255,150,0,0.04)", border: `1px solid ${locationSent ? "rgba(0,200,83,0.1)" : "rgba(255,150,0,0.1)"}` }}>
-            <motion.div animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }}>
-              <RefreshCw style={{ width: 10, height: 10, color: locationSent ? "#00C853" : "#FF9500" }} />
-            </motion.div>
-            <span style={{ fontSize: 9, color: locationSent ? "rgba(0,200,83,0.6)" : "rgba(255,150,0,0.6)", fontWeight: 600, fontFamily: "inherit", flex: 1 }}>
-              {locationSent ? `GPS Trail active — ${gpsTrailCount} updates sent` : "GPS tracking — awaiting first answer to share"}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Contacts list ── */}
-      {phase !== "documenting" && (
-        <div className="shrink-0 px-5 mb-2">
-          <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 5, fontFamily: "inherit" }}>
-            Emergency Contacts
-          </p>
-          <div className="space-y-1.5">
-            {contacts.map((c, i) => {
-              const isActive = phase === "calling" && i === currentIdx;
-              const sc = c.status === "answered" ? "#00C853" : c.status === "no_answer" ? "#FF9500" : isActive ? "#00C8E0" : "rgba(255,255,255,0.07)";
-              return (
-                <motion.div key={c.id} layout className="flex items-center gap-3 px-3.5"
-                  style={{ height: 50, borderRadius: 13, background: isActive ? "rgba(0,200,224,0.05)" : c.status === "answered" ? "rgba(0,200,83,0.04)" : "rgba(255,255,255,0.02)", border: `1px solid ${sc}22`, transition: "all 0.4s" }}
-                >
-                  <div className="size-8 rounded-full overflow-hidden shrink-0" style={{ border: `1.5px solid ${sc}50`, boxShadow: isActive ? `0 0 8px ${sc}40` : "none" }}>
-                    <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "inherit" }}>{c.name}</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "inherit" }}>{c.relation} · {c.phone}</p>
-                  </div>
-                  <div className="shrink-0">
-                    {isActive ? (
-                      <div className="text-right">
-                        <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", fontFamily: "inherit" }}>{callRemaining}s</p>
-                        <p style={{ fontSize: 9, color: "rgba(0,200,224,0.3)", fontFamily: "inherit" }}>Ringing</p>
-                      </div>
-                    ) : c.status === "answered" ? <CheckCircle style={{ width: 15, height: 15, color: "#00C853" }} />
-                      : c.status === "no_answer" ? <PhoneMissed style={{ width: 14, height: 14, color: "#FF9500" }} />
-                      : <Phone style={{ width: 12, height: 12, color: "rgba(255,255,255,0.1)" }} />}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Pause bar ── */}
-      <AnimatePresence>
-        {phase === "pausing" && (
-          <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="shrink-0 mx-5 mb-2">
-            <div className="px-4 py-2.5" style={{ borderRadius: 13, background: "rgba(255,45,85,0.05)", border: "1px solid rgba(255,45,85,0.1)" }}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <RefreshCw style={{ width: 11, height: 11, color: "#FF2D55" }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#FF2D55", fontFamily: "inherit" }}>Retrying</span>
+              <div className="px-4 py-3" style={{ borderRadius: 14, background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.12)" }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Camera style={{ width: 14, height: 14, color: "#00C8E0" }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{isAr ? "وثّق الحادثة" : "Document the Incident"}</span>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#FF9500", fontFamily: "inherit" }}>{pauseRemaining}s</span>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
+                  {isAr ? "التقط صور وأضف تعليق. سيُرفق كدليل." : "Take photos and add a comment — attached as evidence."}
+                </p>
               </div>
-              <div style={{ height: 2, borderRadius: 99, background: "rgba(255,255,255,0.05)" }}>
-                <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#FF2D55,#FF9500)", width: `${((PAUSE_SEC - pauseRemaining) / PAUSE_SEC) * 100}%`, transition: "width 1s linear" }} />
+              <div className="flex gap-2 items-center">
+                {docPhotos.map((photo, i) => (
+                  <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 25, delay: i * 0.1 }}
+                    className="size-16 rounded-xl overflow-hidden relative" style={{ border: "1.5px solid rgba(0,200,224,0.2)" }}>
+                    <ImageWithFallback src={photo} alt={`Evidence ${i + 1}`} className="w-full h-full object-cover" />
+                    <div className="absolute top-0.5 right-0.5 size-4 rounded-full flex items-center justify-center" style={{ background: "rgba(0,200,83,0.9)" }}>
+                      <CheckCircle style={{ width: 10, height: 10, color: "#fff" }} />
+                    </div>
+                  </motion.div>
+                ))}
+                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" multiple onChange={handlePhotoCapture} style={{ display: "none" }} />
+                {docPhotos.length < PHOTO_MAX && (
+                  <motion.button whileTap={{ scale: 0.92 }} onClick={handleAddPhoto}
+                    className="size-16 rounded-xl flex flex-col items-center justify-center gap-1"
+                    style={{ border: "1.5px dashed rgba(0,200,224,0.25)", background: "rgba(0,200,224,0.03)" }}>
+                    <Camera style={{ width: 16, height: 16, color: "#00C8E0" }} />
+                    <span style={{ fontSize: 8, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>
+                      {docPhotos.length === 0 ? (isAr ? "صورة" : "Photo") : `${PHOTO_MAX - docPhotos.length}`}
+                    </span>
+                  </motion.button>
+                )}
               </div>
+              <div style={{ borderRadius: 12, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <textarea value={docComment} onChange={(e) => setDocComment(e.target.value)}
+                  placeholder={isAr ? "صف ما حدث... (اختياري)" : "Describe what happened... (optional)"}
+                  maxLength={2000} rows={2}
+                  style={{ width: "100%", padding: "10px 12px", background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 12, color: "rgba(255,255,255,0.7)", fontFamily: "inherit" }} />
+              </div>
+              <div className="flex gap-2">
+                <motion.button whileTap={{ scale: 0.96 }} onClick={handleSubmitDoc}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl"
+                  style={{ background: docPhotos.length > 0 || docComment ? "linear-gradient(135deg, rgba(0,200,224,0.12), rgba(0,200,224,0.04))" : "rgba(0,200,224,0.06)",
+                    border: `1.5px solid ${docPhotos.length > 0 || docComment ? "rgba(0,200,224,0.3)" : "rgba(0,200,224,0.12)"}` }}>
+                  <Send style={{ width: 13, height: 13, color: "#00C8E0" }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{isAr ? "إرسال" : "Submit"}</span>
+                </motion.button>
+                <button onClick={handleSkipDoc}
+                  className="flex items-center justify-center px-4 py-3 rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.25)" }}>{isAr ? "تخطي" : "Skip"}</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Submitted confirmation */}
+        <AnimatePresence>
+          {phase === "documenting" && docSubmitted && (
+            <motion.div key="doc-submitted" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              className="shrink-0 mx-5 mb-3 flex items-center gap-3 px-4 py-3"
+              style={{ borderRadius: 14, background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}>
+              <CheckCircle style={{ width: 18, height: 18, color: "#00C853" }} />
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,200,83,0.9)" }}>{isAr ? "تم رفع الأدلة" : "Evidence submitted"}</p>
+                <p style={{ fontSize: 10, color: "rgba(0,200,83,0.5)" }}>{docPhotos.length} {isAr ? "صورة" : "photo(s)"}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── COMPACT CONTACT PILLS — only show during calling/pausing phases ── */}
+        {phase !== "documenting" && contacts.length > 0 && (
+          <div className="shrink-0 px-5 mb-3">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {contacts.map((c, i) => {
+                const isActive = phase === "calling" && i === currentIdx;
+                const sc = c.status === "answered" ? "#00C853" : c.status === "no_answer" ? "#FF9500" : isActive ? "#00C8E0" : "rgba(255,255,255,0.15)";
+                return (
+                  <motion.div key={c.id} layout
+                    className="flex items-center gap-2 px-3 py-2"
+                    style={{
+                      borderRadius: 20,
+                      background: isActive ? `${sc}0D` : c.status === "answered" ? "rgba(0,200,83,0.06)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${sc}30`,
+                      transition: "all 0.4s",
+                    }}
+                  >
+                    <div className="size-6 rounded-full overflow-hidden shrink-0" style={{ border: `1.5px solid ${sc}50` }}>
+                      <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: isActive ? sc : c.status === "answered" ? "#00C853" : "rgba(255,255,255,0.5)" }}>
+                      {c.name}
+                    </span>
+                    {c.status === "answered" && <CheckCircle style={{ width: 12, height: 12, color: "#00C853" }} />}
+                    {c.status === "no_answer" && <PhoneMissed style={{ width: 12, height: 12, color: "#FF9500" }} />}
+                    {isActive && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#00C8E0" }}>{callRemaining}s</span>
+                    )}
+                  </motion.div>
+                );
+              })}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+
+        {/* ── Recording banner — only when actively recording ── */}
+        <AnimatePresence>
+          {phase === "recording" && recordingEnabled && (
+            <motion.div key="rec-bar" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="shrink-0 mx-5 mb-3">
+              <div className="flex items-center gap-3 px-4 py-2.5" style={{ borderRadius: 14, background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.18)" }}>
+                <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 0.8, repeat: Infinity }}>
+                  <Mic style={{ width: 14, height: 14, color: "#FF2D55", filter: "drop-shadow(0 0 4px #FF2D55)" }} />
+                </motion.div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#FF6060" }}>
+                      {isAr ? "تسجيل" : "Recording"} {fmt(recordingSec)}
+                    </span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{fmt(REC_MAX)}</span>
+                  </div>
+                  <div style={{ height: 2, borderRadius: 99, background: "rgba(255,255,255,0.06)" }}>
+                    <motion.div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #FF2D55, #FF6080)" }}
+                      animate={{ width: `${(recordingSec / REC_MAX) * 100}%` }} transition={{ duration: 1, ease: "linear" }} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-[2px] shrink-0">
+                  {[4, 8, 6, 10, 7].map((h, i) => (
+                    <motion.div key={i} animate={{ height: [h, h + 5, h] }} transition={{ duration: 0.4, repeat: Infinity, delay: i * 0.07 }}
+                      style={{ width: 2, borderRadius: 1, background: "rgba(255,45,85,0.5)", minHeight: h }} />
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Pause countdown ── */}
+        <AnimatePresence>
+          {phase === "pausing" && (
+            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="shrink-0 mx-5 mb-3">
+              <div className="px-4 py-2.5" style={{ borderRadius: 14, background: "rgba(255,150,0,0.05)", border: "1px solid rgba(255,150,0,0.12)" }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <RefreshCw style={{ width: 11, height: 11, color: "#FF9500" }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#FF9500" }}>{isAr ? "إعادة المحاولة" : "Retrying"}</span>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF9500" }}>{pauseRemaining}s</span>
+                </div>
+                <div style={{ height: 2, borderRadius: 99, background: "rgba(255,255,255,0.05)" }}>
+                  <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#FF9500,#FF7700)", width: `${((PAUSE_SEC - pauseRemaining) / PAUSE_SEC) * 100}%`, transition: "width 1s linear" }} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Spacer to push bottom actions down */}
+        <div className="flex-1" />
 
       </div>{/* end scrollable middle */}
 
-      {/* ── Bottom actions ── */}
+      {/* ══════════════════════════════════════════════════════════════════
+          BOTTOM ACTIONS — clean, context-aware
+          ══════════════════════════════════════════════════════════════════ */}
       <div className="shrink-0 px-5 pb-8 space-y-2">
-        <button
-          onClick={() => {
-            if (tickRef.current) clearInterval(tickRef.current);
-            if (dmsTickRef.current) clearInterval(dmsTickRef.current);
-            if (gpsTrailRef.current) clearInterval(gpsTrailRef.current);
-            onEnd({
-              id: errIdRef.current, startTime: new Date(Date.now() - elapsed * 1000), triggerMethod: "hold",
-              location: { lat: 24.7136, lng: 46.6753, accuracy: 4, address: "Field Location" },
-              contacts: contactsRef.current, events: eventsRef.current,
-              cyclesCompleted: cycle, recordingSeconds: recordingSec, isPremium: false,
-            });
-          }}
-          className="w-full flex items-center justify-between px-4 py-2.5"
-          style={{ borderRadius: 13, background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.09)" }}
-        >
-          <div className="flex items-center gap-2">
-            <FileText style={{ width: 13, height: 13, color: "#00C8E0" }} />
-            <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.35)", fontFamily: "inherit" }}>View Incident Record (ERR)</span>
-          </div>
-          <ChevronRight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.3)" }} />
-        </button>
 
-        {/* SMART ESCALATION BUTTON — visible only for employees when admin hasn't answered */}
+        {/* Monitoring status — shown when connected and recording is done */}
+        {phase === "monitoring" && recordingEnabled && !isRecording && (
+          <div className="flex items-center gap-2 px-3.5 py-2" style={{ borderRadius: 12, background: "rgba(0,200,83,0.05)", border: "1px solid rgba(0,200,83,0.12)" }}>
+            <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,200,83,0.7)" }}>{isAr ? "التسجيل اكتمل — المراقبة مستمرة" : "Recording saved — Monitoring active"}</span>
+          </div>
+        )}
+
+        {/* SMART ESCALATION — employees only */}
         {mode === "employee" && phase !== "answered" && phase !== "ended" && escalationLevel !== "emergency_services" && (
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={handleManualEscalate}
+          <motion.button whileTap={{ scale: 0.97 }} onClick={handleManualEscalate}
             className="w-full flex items-center justify-center gap-2"
-            style={{ height: 50, borderRadius: 14, marginBottom: 8,
-              background: escalationLevel === "admin"
-                ? "rgba(255,150,0,0.08)" : "rgba(255,45,85,0.1)",
-              border: `1.5px solid ${escalationLevel === "admin" ? "rgba(255,150,0,0.25)" : "rgba(255,45,85,0.25)"}`,
-              color: escalationLevel === "admin" ? "#FF9500" : "#FF2D55",
-              fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}
-          >
-            <AlertTriangle style={{ width: 16, height: 16 }} />
+            style={{ height: 46, borderRadius: 14,
+              background: escalationLevel === "admin" ? "rgba(255,150,0,0.06)" : "rgba(255,45,85,0.08)",
+              border: `1px solid ${escalationLevel === "admin" ? "rgba(255,150,0,0.18)" : "rgba(255,45,85,0.18)"}`,
+              color: escalationLevel === "admin" ? "#FF9500" : "#FF2D55", fontSize: 13, fontWeight: 700 }}>
+            <AlertTriangle style={{ width: 14, height: 14 }} />
             {escalationLevel === "admin"
-              ? (isAr ? "تصعيد للمالك — الأدمن لا يستجيب" : "Escalate to Owner — Admin not responding")
-              : (isAr ? "اتصل بالطوارئ 911/997" : "Call Emergency 911/997")}
+              ? (isAr ? "تصعيد للمالك" : "Escalate to Owner")
+              : (isAr ? "اتصل 911/997" : "Call 911/997")}
           </motion.button>
         )}
 
-        {/* Escalation status indicator */}
+        {/* Auto-escalation notice */}
         {mode === "employee" && autoEscalated && (
-          <div className="flex items-center gap-2 px-3 py-2 mb-2" style={{ borderRadius: 10, background: "rgba(255,150,0,0.06)", border: "1px solid rgba(255,150,0,0.15)" }}>
-            <RefreshCw size={12} color="#FF9500" />
-            <span style={{ fontSize: 11, color: "#FF9500", fontWeight: 500 }}>
-              {isAr ? `تم التصعيد تلقائياً بعد ${ESCALATION_THRESHOLD_SEC} ثانية بدون استجابة` : `Auto-escalated after ${ESCALATION_THRESHOLD_SEC}s with no response`}
+          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 10, background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.1)" }}>
+            <RefreshCw size={10} color="#FF9500" />
+            <span style={{ fontSize: 10, color: "rgba(255,150,0,0.6)", fontWeight: 500 }}>
+              {isAr ? "تم التصعيد تلقائياً" : "Auto-escalated to Owner"}
             </span>
           </div>
         )}
 
-        {/* ── "Someone Answered" button — only during calling/pausing phases ── */}
-        {(phase === "calling" || phase === "no_answer" || phase === "pausing") && (
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => {
-              // Mark manual answer — the tick loop will detect this and transition to "answered"
-              manualAnswerRef.current = true;
-              // If in pausing/no_answer, force back to calling so tick picks it up
-              if (phase !== "calling") {
-                const r = q.current;
-                r.phase = "calling"; r.phaseTimer = 0;
-                setPhase("calling"); setPhaseTimer(0);
-              }
-            }}
-            className="w-full flex items-center justify-center gap-2"
-            style={{
-              height: 54, borderRadius: 14,
-              background: "linear-gradient(135deg, rgba(0,200,83,0.15), rgba(0,200,83,0.05))",
-              border: "1.5px solid rgba(0,200,83,0.3)",
-              color: "#00C853", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
-            }}
-          >
-            <Phone style={{ width: 16, height: 16 }} />
-            {isAr ? "شخص أجاب — متصل الآن" : "Someone Answered — Connected"}
-          </motion.button>
-        )}
+        {/* View Incident Record — subtle link */}
+        <div className="flex gap-2">
+          <button onClick={() => setShowIncidentOverlay(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5"
+            style={{ borderRadius: 12, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <FileText style={{ width: 12, height: 12, color: "rgba(255,255,255,0.2)" }} />
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.25)" }}>
+              {isAr ? "سجل الحادث" : "Incident Log"}
+            </span>
+          </button>
+          {/* Connected indicator — shows when someone picked up */}
+          {smsSent && answeredContact && (
+            <div className="flex items-center gap-1.5 px-3 py-2.5"
+              style={{ borderRadius: 12, background: "rgba(0,200,83,0.04)", border: "1px solid rgba(0,200,83,0.1)" }}>
+              <CheckCircle style={{ width: 11, height: 11, color: "#00C853" }} />
+              <span style={{ fontSize: 10, color: "rgba(0,200,83,0.6)", fontWeight: 600 }}>
+                {isAr ? "تم إرسال الموقع" : "Location sent"}
+              </span>
+            </div>
+          )}
+        </div>
 
+        {/* End Emergency — primary destructive action */}
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={() => setShowCancel(true)}
           className="w-full flex items-center justify-center gap-2"
-          style={{ height: 50, borderRadius: 14, background: "rgba(255,45,85,0.07)", border: "1.5px solid rgba(255,45,85,0.16)", color: "#FF2D55", fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}
+          style={{ height: 48, borderRadius: 14, background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.14)", color: "#FF2D55", fontSize: 14, fontWeight: 600 }}
         >
           <X style={{ width: 14, height: 14 }} />
           {isAr ? "إنهاء الطوارئ" : "End Emergency"}
         </motion.button>
 
-        {/* FIX 10: 911 disclaimer — critical for legal liability */}
-        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", textAlign: "center", lineHeight: 1.5, fontFamily: "inherit" }}>
-          Prototype only — not a replacement for 911 / 999 / 112. Always call local emergency services.
+        {/* Disclaimer */}
+        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.1)", textAlign: "center", lineHeight: 1.5 }}>
+          {isAr ? "نموذج أولي فقط — ليس بديلاً عن 911 / 997 / 112" : "Prototype only — not a replacement for 911 / 997 / 112"}
         </p>
       </div>
 
@@ -2593,78 +2696,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         )}
       </AnimatePresence>
 
-      {/* ── FIX 2: PERSONAL SOS NOTICE — Individual user responder info ── */}
-      <AnimatePresence>
-        {showPersonalSosNotice && mode === "individual" && (
-          <div>
-            <motion.div key="psos-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
-              onClick={() => setShowPersonalSosNotice(false)}
-            />
-            <motion.div key="psos-card"
-              initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="absolute bottom-6 left-4 right-4 z-50 rounded-2xl overflow-hidden"
-              style={{
-                background: "linear-gradient(135deg, #0A1220 0%, #05070E 100%)",
-                border: "1px solid rgba(255,149,0,0.2)",
-                boxShadow: "0 -8px 40px rgba(255,149,0,0.1)",
-              }}>
-              <div className="p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.25)" }}>
-                    <AlertTriangle size={18} color="#FF9500" />
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 14, fontWeight: 800, color: "#FF9500" }}>Personal SOS Mode</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>No company admin is monitoring</p>
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl" style={{ background: "rgba(255,45,85,0.05)", border: "1px solid rgba(255,45,85,0.15)" }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#FF2D55", marginBottom: 6 }}>Call Emergency Services Directly</p>
-                  <div className="flex gap-2">
-                    {["911", "999", "112"].map(num => (
-                      <a key={num} href={`tel:${num}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl"
-                        style={{ background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.25)", textDecoration: "none" }}>
-                        <Phone size={12} color="#FF2D55" />
-                        <span style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{num}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "1.5px" }}>EMERGENCY CONTACTS BEING NOTIFIED</p>
-                  {modeContacts.filter(c => c.phone !== "N/A").slice(0, 3).map((c, i) => (
-                    <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-xl"
-                      style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.08)" }}>
-                      <div className="size-7 rounded-lg flex items-center justify-center"
-                        style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
-                        <span style={{ fontSize: 9, fontWeight: 800, color: "#00C8E0" }}>{i + 1}</span>
-                      </div>
-                      <div className="flex-1">
-                        <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>{c.name}</p>
-                        <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{c.phone}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="size-1.5 rounded-full" style={{ background: "#FF9500", animation: "pulse 1.5s infinite" }} />
-                        <span style={{ fontSize: 9, color: "#FF9500" }}>Alerting...</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => setShowPersonalSosNotice(false)}
-                  className="w-full py-2.5 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>Dismiss</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Personal SOS Banner removed — was duplicating "Calling [name]" which already shows in header + glow circle + contact list */}
 
       {/* END CONFIRMATION */}
       <AnimatePresence>
@@ -2696,6 +2728,303 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                     End SOS
                   </motion.button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* DEACTIVATION PIN ENTRY */}
+      <AnimatePresence>
+        {showPinEntry && (
+          <div>
+            <motion.div key="pin-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50"
+              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
+            />
+            <motion.div key="pin-card"
+              initial={{ scale: 0.88, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.88, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              className="absolute inset-x-6 z-50"
+              style={{ top: "50%", transform: "translateY(-50%)", borderRadius: 24, background: "rgba(8,14,26,0.99)", border: "1px solid rgba(255,45,85,0.15)", padding: 24 }}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="size-14 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(255,45,85,0.08)", border: "2px solid rgba(255,45,85,0.16)" }}>
+                  <Shield style={{ width: 24, height: 24, color: "#FF2D55" }} />
+                </div>
+                <p style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
+                  {isAr ? "أدخل رمز الإلغاء" : "Enter Deactivation PIN"}
+                </p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.26)", marginTop: 8, lineHeight: 1.7, fontFamily: "inherit" }}>
+                  {isAr ? "أدخل الرمز السري لإيقاف حالة الطوارئ" : "Enter your PIN to confirm you are safe and end the SOS"}
+                </p>
+
+                {/* PIN display dots */}
+                <div className="flex gap-3 mt-5 mb-3">
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} className="size-12 rounded-xl flex items-center justify-center"
+                      style={{
+                        background: pinError ? "rgba(255,45,85,0.1)" : "rgba(255,255,255,0.04)",
+                        border: pinError ? "1.5px solid rgba(255,45,85,0.4)" : "1.5px solid rgba(255,255,255,0.1)",
+                        fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "inherit",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {pinInput[i] ? "●" : ""}
+                    </div>
+                  ))}
+                </div>
+
+                {pinError && (
+                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+                    style={{ fontSize: 12, color: "#FF2D55", fontWeight: 600, marginBottom: 8 }}>
+                    {isAr ? "رمز خاطئ — حاول مرة أخرى" : "Wrong PIN — try again"}
+                  </motion.p>
+                )}
+
+                {/* Number pad */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, width: "100%", maxWidth: 220 }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, "del"].map((n, i) => (
+                    <motion.button key={i} whileTap={{ scale: 0.92 }}
+                      onClick={() => {
+                        if (n === null) return;
+                        if (n === "del") { setPinInput(p => p.slice(0, -1)); return; }
+                        if (pinInput.length < 4) setPinInput(p => p + String(n));
+                      }}
+                      style={{
+                        height: 48, borderRadius: 12,
+                        background: n === null ? "transparent" : "rgba(255,255,255,0.04)",
+                        border: n === null ? "none" : "1px solid rgba(255,255,255,0.07)",
+                        color: n === "del" ? "#FF9500" : "#fff",
+                        fontSize: n === "del" ? 12 : 18, fontWeight: 600, fontFamily: "inherit",
+                        cursor: n === null ? "default" : "pointer",
+                      }}
+                      disabled={n === null}
+                    >
+                      {n === null ? "" : n === "del" ? "⌫" : n}
+                    </motion.button>
+                  ))}
+                </div>
+
+                <div className="flex gap-3 w-full mt-5">
+                  <button onClick={() => { setShowPinEntry(false); setPinInput(""); }} style={{ flex: 1, height: 46, borderRadius: 13, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}>
+                    {isAr ? "رجوع" : "Go Back"}
+                  </button>
+                  <motion.button whileTap={{ scale: 0.97 }} onClick={handlePinSubmit}
+                    style={{
+                      flex: 1, height: 46, borderRadius: 13,
+                      background: pinInput.length === 4 ? "rgba(0,200,83,0.12)" : "rgba(255,255,255,0.02)",
+                      border: pinInput.length === 4 ? "1.5px solid rgba(0,200,83,0.3)" : "1.5px solid rgba(255,255,255,0.05)",
+                      color: pinInput.length === 4 ? "#00C853" : "rgba(255,255,255,0.2)",
+                      fontSize: 14, fontWeight: 700, fontFamily: "inherit",
+                      transition: "all 0.2s ease",
+                    }}
+                    disabled={pinInput.length < 4}
+                  >
+                    {isAr ? "تأكيد" : "Confirm"}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* UPGRADE MODAL — shown when Free/Basic user tries Elite features */}
+      <AnimatePresence>
+        {showUpgradeModal && (
+          <div>
+            <motion.div key="up-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50"
+              style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}
+              onClick={() => setShowUpgradeModal(false)}
+            />
+            <motion.div key="up-card"
+              initial={{ scale: 0.88, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.88, opacity: 0, y: 30 }}
+              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              className="absolute inset-x-6 z-50"
+              style={{ top: "50%", transform: "translateY(-50%)", borderRadius: 24, background: "linear-gradient(180deg, rgba(8,14,26,0.99), rgba(10,10,20,0.99))", border: "1px solid rgba(0,200,224,0.15)", padding: 24 }}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="size-14 rounded-full flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.12), rgba(0,200,83,0.08))", border: "2px solid rgba(0,200,224,0.2)" }}>
+                  <Shield style={{ width: 24, height: 24, color: "#00C8E0" }} />
+                </div>
+                <p style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
+                  {isAr ? "ترقية للحماية الكاملة" : "Upgrade to Elite Shield"}
+                </p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 8, lineHeight: 1.7, fontFamily: "inherit" }}>
+                  {upgradeFeatureName}
+                  {isAr ? " — متاح في الباقة النخبوية" : " — available in Elite Shield ($14/mo)"}
+                </p>
+                <div className="mt-4 w-full space-y-2">
+                  {[
+                    isAr ? "ملف PDF جنائي كامل" : "Forensic PDF Dossier",
+                    isAr ? "مكالمات AI صوتية" : "AI Voice Calls",
+                    isAr ? "وضع التخفي المتقدم" : "Advanced Stealth Mode",
+                    isAr ? "رمز الإكراه" : "Duress Code Protection",
+                  ].map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.06)" }}>
+                      <CheckCircle style={{ width: 14, height: 14, color: "#00C8E0" }} />
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 w-full mt-5">
+                  <button onClick={() => setShowUpgradeModal(false)} style={{ flex: 1, height: 46, borderRadius: 13, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}>
+                    {isAr ? "لاحقاً" : "Later"}
+                  </button>
+                  <motion.button whileTap={{ scale: 0.97 }}
+                    onClick={() => { setShowUpgradeModal(false); onNavigateToSubscription?.(); }}
+                    style={{ flex: 1, height: 46, borderRadius: 13, background: "linear-gradient(135deg, rgba(0,200,224,0.15), rgba(0,200,83,0.08))", border: "1.5px solid rgba(0,200,224,0.3)", color: "#00C8E0", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>
+                    {isAr ? "ترقية الآن" : "Upgrade Now"}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── INCIDENT RECORD OVERLAY — shows live record WITHOUT ending SOS ── */}
+      <AnimatePresence>
+        {showIncidentOverlay && (
+          <div>
+            <motion.div key="ir-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50"
+              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
+              onClick={() => setShowIncidentOverlay(false)}
+            />
+            <motion.div key="ir-card"
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              className="absolute inset-x-0 bottom-0 z-50"
+              style={{ maxHeight: "85%", borderRadius: "24px 24px 0 0", background: "linear-gradient(180deg, rgba(10,14,28,0.99), rgba(6,8,16,0.99))", border: "1px solid rgba(0,200,224,0.12)", borderBottom: "none", overflow: "auto" }}
+            >
+              <div className="px-5 pt-5 pb-8">
+                {/* Drag handle */}
+                <div className="flex justify-center mb-4">
+                  <div style={{ width: 36, height: 4, borderRadius: 99, background: "rgba(255,255,255,0.15)" }} />
+                </div>
+
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <FileText style={{ width: 16, height: 16, color: "#00C8E0" }} />
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
+                      {isAr ? "سجل الحادث المباشر" : "Live Incident Record"}
+                    </span>
+                  </div>
+                  <button onClick={() => setShowIncidentOverlay(false)}
+                    className="size-8 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <X style={{ width: 14, height: 14, color: "rgba(255,255,255,0.5)" }} />
+                  </button>
+                </div>
+
+                {/* ERR ID + Duration */}
+                <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)" }}>
+                  <Shield style={{ width: 14, height: 14, color: "#00C8E0", flexShrink: 0 }} />
+                  <div className="flex-1">
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>
+                      {isAr ? "رقم الحادث" : "Incident ID"}
+                    </p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0", fontFamily: "monospace" }}>
+                      {errIdRef.current}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>
+                      {isAr ? "المدة" : "Duration"}
+                    </p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#FF6060", fontFamily: "monospace" }}>
+                      {String(Math.floor(elapsed / 60)).padStart(2, "0")}:{String(elapsed % 60).padStart(2, "0")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Contact Status */}
+                <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", marginBottom: 8, fontFamily: "inherit" }}>
+                  {isAr ? "حالة جهات الاتصال" : "Contact Status"}
+                </p>
+                <div className="space-y-2 mb-4">
+                  {contacts.map((c, i) => (
+                    <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl"
+                      style={{ background: c.status === "answered" ? "rgba(0,200,83,0.06)" : c.status === "no_answer" ? "rgba(255,45,85,0.06)" : "rgba(255,255,255,0.02)", border: `1px solid ${c.status === "answered" ? "rgba(0,200,83,0.15)" : c.status === "no_answer" ? "rgba(255,45,85,0.12)" : "rgba(255,255,255,0.05)"}` }}>
+                      <div className="size-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ background: c.status === "answered" ? "rgba(0,200,83,0.12)" : "rgba(255,255,255,0.05)" }}>
+                        {c.status === "answered" ? <CheckCircle style={{ width: 14, height: 14, color: "#00C853" }} /> :
+                         c.status === "no_answer" ? <PhoneMissed style={{ width: 14, height: 14, color: "#FF2D55" }} /> :
+                         <Phone style={{ width: 14, height: 14, color: "rgba(255,255,255,0.3)" }} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "inherit" }}>{c.name}</p>
+                        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>{c.phone}</p>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                        color: c.status === "answered" ? "#00C853" : c.status === "no_answer" ? "#FF2D55" : "rgba(255,255,255,0.25)" }}>
+                        {c.status === "answered" ? (isAr ? "رد" : "Answered") :
+                         c.status === "no_answer" ? (isAr ? "لم يرد" : "No Answer") :
+                         c.status === "calling" ? (isAr ? "جارٍ الاتصال..." : "Calling...") :
+                         (isAr ? "في الانتظار" : "Pending")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Event Timeline */}
+                {events.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", marginBottom: 8, fontFamily: "inherit" }}>
+                      {isAr ? "سجل الأحداث" : "Event Timeline"}
+                    </p>
+                    <div className="space-y-1.5 mb-4">
+                      {events.slice(-8).map((ev, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
+                          <div className="size-1.5 rounded-full shrink-0" style={{ background: ev.color || "#00C8E0" }} />
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", fontFamily: "inherit" }}>{ev.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* GPS + Recording Status */}
+                <div className="flex gap-2 mb-5">
+                  <div className="flex-1 px-3 py-2 rounded-xl" style={{ background: "rgba(0,200,83,0.04)", border: "1px solid rgba(0,200,83,0.08)" }}>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>GPS</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#00C853" }}>
+                      {getLastKnownPosition() ? (isAr ? "نشط" : "Active") : (isAr ? "في الانتظار..." : "Acquiring...")}
+                    </p>
+                  </div>
+                  <div className="flex-1 px-3 py-2 rounded-xl" style={{ background: "rgba(255,45,85,0.04)", border: "1px solid rgba(255,45,85,0.08)" }}>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{isAr ? "التسجيل" : "Recording"}</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: isRecording ? "#FF2D55" : "rgba(255,255,255,0.3)" }}>
+                      {isRecording ? `${recordingSec}s / 60s` : phase === "monitoring" ? (isAr ? "اكتمل" : "Done") : (isAr ? "لم يبدأ" : "Not started")}
+                    </p>
+                  </div>
+                  <div className="flex-1 px-3 py-2 rounded-xl" style={{ background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.08)" }}>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{isAr ? "الدورة" : "Cycle"}</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#FF9500" }}>{cycle}</p>
+                  </div>
+                </div>
+
+                {/* SOS Still Active indicator */}
+                <div className="flex items-center justify-center gap-2 py-3 rounded-xl" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)" }}>
+                  <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }}
+                    className="size-2 rounded-full" style={{ background: "#FF2D55" }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#FF6060", fontFamily: "inherit" }}>
+                    {isAr ? "SOS لا يزال نشطاً — لم يتم إنهاء الطوارئ" : "SOS Still Active — Emergency not ended"}
+                  </span>
+                </div>
+
+                {/* Close button */}
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowIncidentOverlay(false)}
+                  className="w-full mt-4"
+                  style={{ height: 48, borderRadius: 14, background: "rgba(0,200,224,0.08)", border: "1.5px solid rgba(0,200,224,0.2)", color: "#00C8E0", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>
+                  {isAr ? "إغلاق والعودة للمكالمة" : "Close & Return to SOS"}
+                </motion.button>
               </div>
             </motion.div>
           </div>

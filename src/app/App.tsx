@@ -4,10 +4,14 @@ import { router } from "./routes";
 import { AppErrorBoundary } from "./components/error-boundary";
 import { registerServiceWorker } from "./components/service-worker-register";
 import { SafeAreaProvider } from "./components/native-safe-area";
+import { isNativeApp } from "./components/capacitor-bridge";
 
 export default function App() {
   useEffect(() => {
-    registerServiceWorker();
+    // Skip service worker on Capacitor — it conflicts with native file serving
+    if (!isNativeApp()) {
+      registerServiceWorker();
+    }
   }, []);
 
   return (

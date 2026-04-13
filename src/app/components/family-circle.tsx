@@ -23,33 +23,30 @@ interface FamilyMember {
   sharingLocation: boolean;
 }
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const initialMembers: FamilyMember[] = [
-  {
-    id: 1, name: "Sarah", role: "Wife",
-    avatar: "https://images.unsplash.com/photo-1655249493799-9cee4fe983bb?w=200&h=200&fit=crop",
-    online: true, lastSeen: "Now", location: "Home · Al Olaya",
-    battery: 85, safetyStatus: "safe", sharingLocation: true,
-  },
-  {
-    id: 2, name: "Alex", role: "Son",
-    avatar: "https://images.unsplash.com/photo-1631905131477-eefc1360588a?w=200&h=200&fit=crop",
-    online: true, lastSeen: "Now", location: "Al Rawdah School",
-    battery: 62, safetyStatus: "safe", sharingLocation: true,
-  },
-  {
-    id: 3, name: "Mom", role: "Mother",
-    avatar: "https://images.unsplash.com/photo-1758686254563-5c5ab338c8b9?w=200&h=200&fit=crop",
-    online: false, lastSeen: "25m ago", location: "Last: King Khalid Hospital",
-    battery: 41, safetyStatus: "unknown", sharingLocation: true,
-  },
-  {
-    id: 4, name: "David", role: "Brother",
-    avatar: "https://images.unsplash.com/photo-1628619487925-e9b8fc4c6b08?w=200&h=200&fit=crop",
-    online: false, lastSeen: "1h ago", location: "Last: Al Malaz",
-    battery: 23, safetyStatus: "unknown", sharingLocation: false,
-  },
-];
+// ─── Load REAL emergency contacts from localStorage ──────────────────────────
+function loadRealMembers(): FamilyMember[] {
+  try {
+    const raw = localStorage.getItem("sosphere_emergency_contacts");
+    if (raw) {
+      const contacts: { name: string; phone: string }[] = JSON.parse(raw);
+      return contacts
+        .filter(c => c.name?.trim())
+        .map((c, i) => ({
+          id: i + 1,
+          name: c.name,
+          role: c.phone || "",
+          avatar: "", // real contacts use initials
+          online: false,
+          lastSeen: "",
+          location: "",
+          battery: 0,
+          safetyStatus: "unknown" as const,
+          sharingLocation: false,
+        }));
+    }
+  } catch (_) { /* ignore */ }
+  return [];
+}
 
 const statusConfig = {
   safe: { color: "#00C853", label: "Safe", bg: "rgba(0,200,83,0.06)" },
@@ -61,7 +58,7 @@ const statusConfig = {
 // ─── Component ─────────────────────────────────────────────────────────────────
 export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
   const t = useT(lang);
-  const [members] = useState<FamilyMember[]>(initialMembers);
+  const [members] = useState<FamilyMember[]>(loadRealMembers);
   const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showCheckAll, setShowCheckAll] = useState(false);

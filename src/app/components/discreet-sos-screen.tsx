@@ -18,6 +18,7 @@ import {
   getDiscreetModeElapsed,
   handleDiscreetTap,
   deactivateDiscreetSos,
+  subscribeToDiscreetMode,
 } from "./discreet-sos-mode";
 
 interface DiscreetSosScreenProps {
@@ -315,7 +316,7 @@ export function DiscreetSosScreenWrapper({ show = true }: DiscreetSosScreenWrapp
 
   useEffect(() => {
     // Subscribe to discreet mode state changes
-    const unsubscribe = require("./discreet-sos-mode").subscribeToDiscreetMode(
+    const unsubscribe = subscribeToDiscreetMode(
       (state: any) => {
         setIsActive(state.isActive);
       }

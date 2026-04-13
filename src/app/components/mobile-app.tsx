@@ -4,19 +4,21 @@ import { motion, AnimatePresence } from "motion/react";
 import { WelcomeOnboarding } from "./welcome-onboarding";
 import { LoginPhone } from "./login-phone";
 import { OnboardingSelect } from "./onboarding-select";
+import { RoleSelect } from "./role-select";
 import { IndividualRegister } from "./individual-register";
 import { CompanyJoin } from "./company-join";
 import type { CompanyMatchData } from "./company-join";
 import { PendingApproval } from "./pending-approval";
 import { EmployeeWelcome } from "./employee-welcome";
 import { EmployeeQuickSetup } from "./employee-quick-setup";
-import { IndividualLayout } from "./individual-layout";
+import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layout";
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
 import { EmergencyResponseRecord } from "./emergency-response-record";
 import { CheckinTimer } from "./checkin-timer";
 import { MedicalID } from "./medical-id";
 import { SubscriptionPlans } from "./subscription-plans";
+import { hasFeature } from "./subscription-service";
 import { IncidentHistory } from "./incident-history";
 import { EmergencyPacket } from "./emergency-packet";
 import { EmergencyServices } from "./emergency-services";
@@ -47,7 +49,7 @@ import { useT, type Lang } from "./dashboard-i18n";
 import { MobileEmergencyChat } from "./emergency-chat";
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { loadJSONSync } from "./api/storage-adapter";
 // FIX AUDIT-7.1 + 7.3: Consent screens
 import { TermsConsentScreen, GpsConsentScreen, hasCompletedConsent, hasCompletedGpsConsent } from "./consent-screens";
@@ -173,6 +175,7 @@ function EmergencyRecordFallback({ onBack }: { onBack: () => void }) {
 
 type Screen =
   | "welcome"
+  | "role-select"
   | "login"
   | "login-welcome"
   | "terms-consent"
@@ -205,6 +208,7 @@ type Screen =
 
 export function MobileApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
+  const screenRef = useRef<Screen>("welcome"); // Ref for back button handler (avoids stale closure)
   const [companyName, setCompanyName] = useState("");
   const [direction, setDirection] = useState<1 | -1>(1);
   const [incidentRecord, setIncidentRecord] = useState<IncidentRecord | null>(null);
@@ -215,9 +219,18 @@ export function MobileApp() {
   const [loginPhone, setLoginPhone] = useState("");
   const [loginMode, setLoginMode] = useState<"employee" | "individual" | "demo">("individual");
   const [loginRole, setLoginRole] = useState("worker");
+  const [selectedPath, setSelectedPath] = useState<"civilian" | "employee" | null>(null);
 
   // -- Profile restore loading state ---------------------------
-  const [isRestoring, setIsRestoring] = useState(true);
+  // Only show spinner if user completed ALL steps (session + consent + profile)
+  const [isRestoring, setIsRestoring] = useState(() => {
+    try {
+      const hasOAuth = window.location.hash?.includes("access_token");
+      const hasProfile = !!localStorage.getItem("sosphere_individual_profile");
+      const hasConsent = !!localStorage.getItem("sosphere_tos_consent");
+      return hasOAuth || (hasProfile && hasConsent);
+    } catch { return false; }
+  });
 
   // -- Company match data from CompanyJoin verification ---------
   const [companyMatchData, setCompanyMatchData] = useState<CompanyMatchData | null>(null);
@@ -245,6 +258,8 @@ export function MobileApp() {
 
   // -- Navigation history stack (back button support) ---------------
   const screenHistoryRef = useRef<Screen[]>([]);
+  // Ref to IndividualLayout for handling back button within tabs
+  const individualLayoutRef = useRef<IndividualLayoutHandle>(null);
 
   // -- FIX 3: SOS Dedup � prevents triple-trigger from hold + shake + fall --
   const sosInProgressRef = useRef(false);
@@ -261,9 +276,11 @@ export function MobileApp() {
     sosLastTriggerRef.current = now;
     // Safety: auto-reset after 30min to prevent permanent lockout if SOS component crashes
     if (sosSafetyTimerRef.current) clearTimeout(sosSafetyTimerRef.current);
-    sosSafetyTimerRef.current = setTimeout(() => { sosInProgressRef.current = false; }, MAX_SOS_DURATION_MS);
+    sosSafetyTimerRef.current = setTimeout(() => { sosInProgressRef.current = false; try { localStorage.removeItem("sosphere_active_sos"); } catch {} }, MAX_SOS_DURATION_MS);
     const src = customSource || (screen === "employee-dashboard" || screen === "mission-tracker" ? "employee-dashboard" : "individual-home");
     setSourceScreen(src as "individual-home" | "employee-dashboard");
+    // Persist SOS state — app will resume here if killed/restarted
+    try { localStorage.setItem("sosphere_active_sos", JSON.stringify({ active: true, source: src, timestamp: now })); } catch {}
     navigate("sos-emergency");
     return true;
   }, [screen]);
@@ -387,25 +404,85 @@ export function MobileApp() {
     return unsub;
   }, []);
 
-  // -- FIX 3: Restore saved individual profile on mount --------
+  // -- Restore session on mount: only skip to home if ALL steps were completed --------
   useEffect(() => {
-    let savedProfile: { name: string; phone: string; contacts: { name: string; phone: string }[]; registeredAt: number } | null = null;
-    let hasPhone = false;
-    try {
-      savedProfile = loadJSONSync<typeof savedProfile>("sosphere_individual_profile", null);
-      hasPhone = !!savedProfile?.phone;
-      if (savedProfile && screen === "welcome") {
-        const checkSession = async () => { const { getSession } = await import("./api/supabase-client"); const session = await getSession(); if (!session) { setIsRestoring(false); setScreen("welcome"); return; } }; checkSession();
-        setLoginName(savedProfile.name);
-        setLoginMode("individual");
-        navigate("individual-home");
+    const restoreSession = async () => {
+      try {
+        // CRITICAL: Check if SOS was active when app was killed — resume immediately
+        try {
+          const activeSos = localStorage.getItem("sosphere_active_sos");
+          if (activeSos) {
+            const sos = JSON.parse(activeSos);
+            // Only resume if SOS was triggered within the last 30 minutes
+            if (sos.active && Date.now() - sos.timestamp < 30 * 60 * 1000) {
+              const savedProfile = loadJSONSync<{ name: string } | null>("sosphere_individual_profile", null);
+              if (savedProfile?.name) setLoginName(savedProfile.name);
+              setLoginMode("individual");
+              setSourceScreen(sos.source || "individual-home");
+              sosInProgressRef.current = true;
+              setIsRestoring(false);
+              navigate("sos-emergency");
+              console.log("[SOS] RESUMED active emergency after app restart");
+              return;
+            } else {
+              // Stale SOS state — clean up
+              localStorage.removeItem("sosphere_active_sos");
+            }
+          }
+        } catch {}
+
+        const { supabase, getSession, getGoogleUserInfo } = await import("./api/supabase-client");
+
+        // Check if this is an OAuth callback (URL contains access_token hash)
+        const isOAuthCallback = window.location.hash?.includes("access_token");
+        if (isOAuthCallback) {
+          await new Promise(r => setTimeout(r, 500));
+          if (window.history?.replaceState) {
+            window.history.replaceState(null, "", window.location.pathname);
+          }
+        }
+
+        // ALL THREE conditions must be true to skip to home:
+        // 1. Active Supabase session (user is authenticated)
+        // 2. Consent screens completed (terms + GPS)
+        // 3. Profile registration completed (local profile saved)
+        const session = await getSession();
+        const consentDone = hasCompletedConsent() && hasCompletedGpsConsent();
+        const savedProfile = loadJSONSync<{ name: string; phone: string; registeredAt: number } | null>("sosphere_individual_profile", null);
+
+        if (session?.user && consentDone && savedProfile?.registeredAt) {
+          // Fully completed user — go straight to home
+          setLoginName(savedProfile.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "");
+          setLoginPhone(savedProfile.phone || "");
+          setLoginMode("individual");
+          screenHistoryRef.current = [];
+          setIsRestoring(false);
+          navigate("individual-home");
+          console.log("[Auth] Fully restored user:", savedProfile.name);
+          return;
+        }
+
+        // Not fully completed — go to welcome screen (user must go through full flow)
+        // But if there's a session, we can pre-fill some data
+        if (session?.user) {
+          const meta = session.user.user_metadata || {};
+          setLoginName(meta.full_name || meta.name || session.user.email?.split("@")[0] || "");
+          console.log("[Auth] Partial session found, sending to welcome for full flow");
+        }
+
+      } catch (e) {
+        console.warn("[SOS] Session restore failed:", e);
       }
-    } catch (e) {
-      console.warn("[SOS] Profile restore failed, using defaults:", e);
-    }
-    setIsRestoring(false);
-    console.log("[SUPABASE_READY] profile_restored: " + JSON.stringify({ hasProfile: !!savedProfile, hasPhone }));
+      setIsRestoring(false);
+    };
+
+    restoreSession();
   }, []);
+
+  // -- Google OAuth: Navigation is handled directly by handleGmailLogin() --
+  // The onAuthStateChange listener was removed to prevent race conditions
+  // where both the listener AND handleGmailLogin tried to navigate simultaneously.
+  // The native GoogleAuth.signIn() → handleGmailLogin flow is the single source of truth.
 
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
@@ -456,6 +533,10 @@ export function MobileApp() {
 
   // FIX: goBack MUST be declared before the useEffect that uses it in [deps]
   const goBack = useCallback(() => {
+    // First: if on individual-home with a sub-tab (map, family, profile), go back to home tab
+    if (screenRef.current === "individual-home" && individualLayoutRef.current?.handleBack()) {
+      return; // Handled by IndividualLayout — went back to home tab
+    }
     const history = screenHistoryRef.current;
     if (history.length > 0) {
       const prev = history[history.length - 1];
@@ -472,6 +553,7 @@ export function MobileApp() {
 
   const navigate = (to: Screen, dir: 1 | -1 = 1) => {
     setDirection(dir);
+    screenRef.current = to; // Keep ref in sync for back button handler
     if (dir === 1) {
       // Forward navigation — push current screen to history
       setScreen(prev => {
@@ -493,6 +575,11 @@ export function MobileApp() {
       try {
         const { App: CapApp } = await import("@capacitor/app");
         listenerHandle = await CapApp.addListener("backButton", () => {
+          // CRITICAL: Block back button during active SOS — safety first
+          if (screenRef.current === "sos-emergency") {
+            console.log("[SOS] Back button blocked during emergency");
+            return; // Do nothing — user must end SOS through the secure flow
+          }
           goBack();
         });
       } catch {
@@ -523,10 +610,55 @@ export function MobileApp() {
     // No navigate here — LoginPhone shows its OTP input after this callback returns.
   };
 
-  const handleGmailLogin = () => {
-    setLoginMode("individual");
-    setLoginName("Mohammed Ali");
-    navigate("login-welcome");
+  const handleGmailLogin = async () => {
+    try {
+      const { signInWithGoogle, getGoogleUserInfo } = await import("./api/supabase-client");
+
+      // Step 1: Show native account picker + authenticate with Supabase
+      const { session, error } = await signInWithGoogle();
+
+      if (error) {
+        console.error("[MobileApp] Google sign-in error:", error);
+        return;
+      }
+      if (!session) return; // User cancelled the picker
+
+      // Step 2: Token validated — extract user info
+      const info = await getGoogleUserInfo();
+      if (!info) {
+        console.error("[MobileApp] Could not get user info after Google auth");
+        return;
+      }
+
+      console.log("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
+      setLoginName(info.name || info.email.split("@")[0]);
+      setLoginMode("individual");
+
+      // Step 3: Route through the FULL validation chain
+      // Even returning users must have completed consent + registration locally.
+      // restoreSession handles the "everything already done" case on app launch.
+      // Here we always go through the consent → registration flow.
+      const consentDone = hasCompletedConsent();
+      const gpsConsentDone = hasCompletedGpsConsent();
+      const savedProfile = loadJSONSync<{ registeredAt: number } | null>("sosphere_individual_profile", null);
+
+      if (!consentDone) {
+        // Must accept terms first
+        navigate("terms-consent");
+      } else if (!gpsConsentDone) {
+        // Must accept GPS consent
+        navigate("gps-consent");
+      } else if (!savedProfile?.registeredAt) {
+        // Must complete profile registration
+        navigate("individual-register");
+      } else {
+        // ALL steps verified complete — safe to go home
+        screenHistoryRef.current = [];
+        navigate("individual-home");
+      }
+    } catch (err: any) {
+      console.error("[MobileApp] Google login error:", err?.message || err);
+    }
   };
 
   const handleEmailLogin = (_email: string, name: string) => {
@@ -543,7 +675,7 @@ export function MobileApp() {
   };
 
   const handleBack = () => navigate("login", -1);
-  const handleWelcomeComplete = () => navigate("login");
+  const handleWelcomeComplete = () => navigate("role-select");
   // FIX AUDIT-7.1 + 7.3: Route through consent screens if not yet accepted
   const handleLoginWelcomeComplete = () => {
     if (!hasCompletedConsent()) {
@@ -551,7 +683,7 @@ export function MobileApp() {
     } else if (!hasCompletedGpsConsent()) {
       navigate("gps-consent");
     } else {
-      navigate("onboarding");
+      navigate(selectedPath === "employee" ? "company-join" : "individual-register");
     }
   };
 
@@ -585,15 +717,17 @@ export function MobileApp() {
                 {/* Broadcast Island � floating broadcast alert */}
         <BroadcastIsland />
 
-        {/* Voice SOS Widget -- floating microphone for voice-activated SOS */}
-        <VoiceSOSWidget
-          onVoiceSOSTriggered={handleVoiceSOSTriggered}
-          primaryKeyword="help me"
-          secondaryKeywords={["emergency", "mayday"]}
-          confidenceThreshold={0.7}
-          cooldownMs={30000}
-          position="bottom-left"
-        />
+        {/* Voice SOS Widget -- floating microphone (hidden during onboarding/login screens) */}
+        {screen !== "welcome" && screen !== "role-select" && screen !== "login" && screen !== "login-welcome" && screen !== "terms-consent" && screen !== "gps-consent" && screen !== "onboarding" && screen !== "individual-register" && screen !== "company-join" && (
+          <VoiceSOSWidget
+            onVoiceSOSTriggered={handleVoiceSOSTriggered}
+            primaryKeyword="help me"
+            secondaryKeywords={["emergency", "mayday"]}
+            confidenceThreshold={0.7}
+            cooldownMs={30000}
+            position="bottom-left"
+          />
+        )}
 
         {/* -- SAR Alert Banner � slides down when SAR activated --- */}
         <AnimatePresence>
@@ -799,7 +933,7 @@ export function MobileApp() {
                     fontFamily: "'Outfit', sans-serif",
                     letterSpacing: "-0.3px",
                   }}>
-                    SOS ?? {shakeCountdown} ?????...
+                    SOS في {shakeCountdown} ثوانٍ...
                   </span>
                 </div>
                 <span style={{
@@ -807,7 +941,7 @@ export function MobileApp() {
                   color: "rgba(255,255,255,0.45)",
                   fontFamily: "'Outfit', sans-serif",
                 }}>
-                  ?? ?????? ?????? � ???? ????? SOS ????????
+                  تم رصد اهتزاز — جاري تفعيل SOS تلقائياً
                 </span>
               </div>
 
@@ -830,7 +964,7 @@ export function MobileApp() {
                   color: "#fff",
                   fontFamily: "'Outfit', sans-serif",
                 }}>
-                  ???? ???????
+                  إلغاء التنبيه
                 </span>
               </motion.button>
             </motion.div>
@@ -895,28 +1029,20 @@ export function MobileApp() {
           )}
         </AnimatePresence>
 
-        {/* Screen transitions */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={screen}
-            initial={{ opacity: 0, x: direction * 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: direction * -15 }}
-            transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="absolute inset-0"
-          >
+        {/* Screen transitions — plain divs for Capacitor WebView compat */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 1 }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
             {/* -- Restoring spinner � shown while profile loads from localStorage -- */}
             {isRestoring && (
               <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: "#05070E" }}>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                <div
                   className="size-8 rounded-full"
-                  style={{ border: "2px solid rgba(0,200,224,0.15)", borderTopColor: "#00C8E0" }}
+                  style={{ border: "2px solid rgba(0,200,224,0.15)", borderTopColor: "#00C8E0", animation: "spin 1s linear infinite" }}
                 />
-                <p className="mt-3" style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontFamily: "'Outfit', sans-serif" }}>
-                  {loginMode === "individual" ? "???? ??????? ???? ??????..." : "Restoring profile..."}
+                <p className="mt-3" style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                  {loginMode === "individual" ? "جاري استعادة ملفك الشخصي..." : "Restoring profile..."}
                 </p>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               </div>
             )}
 
@@ -924,10 +1050,17 @@ export function MobileApp() {
               <WelcomeOnboarding onComplete={handleWelcomeComplete} />
             )}
 
+            {screen === "role-select" && (
+              <RoleSelect
+                onSelectCivilian={() => { setSelectedPath("civilian"); navigate("login"); }}
+                onSelectEmployee={() => { setSelectedPath("employee"); navigate("login"); }}
+              />
+            )}
+
             {screen === "login" && (
               <LoginPhone
                 onSendOTP={handleSendOTP}
-                onLoginComplete={(phone)=>{ setLoginPhone(phone || ""); if(!hasCompletedConsent()){navigate("terms-consent");}else if(!hasCompletedGpsConsent()){navigate("gps-consent");}else{navigate("onboarding");}}}
+                onLoginComplete={(phone)=>{ setLoginPhone(phone || ""); if(!hasCompletedConsent()){navigate("terms-consent");}else if(!hasCompletedGpsConsent()){navigate("gps-consent");}else{ navigate(selectedPath === "employee" ? "company-join" : "individual-register"); }}}
                 onGmailLogin={handleGmailLogin}
                 onDemoAccess={handleDemoAccess}
                 onEmailLogin={handleEmailLogin}
@@ -950,7 +1083,7 @@ export function MobileApp() {
 
             {screen === "gps-consent" && (
               <GpsConsentScreen
-                onComplete={() => navigate("onboarding")}
+                onComplete={() => navigate(selectedPath === "employee" ? "company-join" : "individual-register")}
               />
             )}
 
@@ -964,12 +1097,33 @@ export function MobileApp() {
             {screen === "individual-register" && (
               <IndividualRegister
                 initialPhone={loginPhone}
-                onComplete={(data) => {
+                onComplete={async (data) => {
                   setLoginName(data.name);
                   setLoginMode("individual");
+                  // Save profile + emergency contacts locally
+                  try {
+                    localStorage.setItem("sosphere_individual_profile", JSON.stringify({
+                      name: data.name,
+                      phone: data.phone,
+                      registeredAt: Date.now(),
+                    }));
+                    if (data.contacts?.length) {
+                      localStorage.setItem("sosphere_emergency_contacts", JSON.stringify(data.contacts));
+                    }
+                  } catch (_) { /* storage full — non-critical */ }
+                  // Mark profile as completed in Supabase metadata
+                  try {
+                    const { markProfileCompleted } = await import("./api/supabase-client");
+                    await markProfileCompleted(data.name, data.phone);
+                    console.log("[Auth] Profile marked as completed");
+                  } catch (e) {
+                    console.warn("[Auth] Could not mark profile completed:", e);
+                  }
+                  // Clear history stack so back button won't return to registration
+                  screenHistoryRef.current = [];
                   navigate("individual-home");
                 }}
-                onBack={() => navigate("onboarding", -1)}
+                onBack={() => navigate("login", -1)}
               />
             )}
 
@@ -985,7 +1139,7 @@ export function MobileApp() {
                     navigate("pending-approval");
                   }
                 }}
-                onBack={() => navigate("onboarding", -1)}
+                onBack={() => navigate("login", -1)}
               />
             )}
 
@@ -1047,6 +1201,7 @@ export function MobileApp() {
 
             {screen === "individual-home" && (
               <IndividualLayout
+                ref={individualLayoutRef}
                 userName={loginName}
                 onSOSTrigger={() => { guardedSOSTrigger("hold", "individual-home"); }}
                 onRecordingChange={setRecordingEnabled}
@@ -1065,10 +1220,20 @@ export function MobileApp() {
                 onNavigateToPrivacy={(() => navigate("privacy"))}
                 onNavigateToDevices={(() => navigate("connected-devices"))}
                 onNavigateToHelp={(() => navigate("help"))}
-                onNavigateToSafeWalk={(() => { setSourceScreen("individual-home"); navigate("safe-walk"); })}
-                onLogout={() => {
+                onNavigateToSafeWalk={(() => { if (!hasFeature("walkMe")) { toast.error(lang === "ar" ? "ميزة 'رافقني' متاحة في الباقة الأساسية ($7/شهر)" : "Walk Me requires Basic plan ($7/mo)"); return; } setSourceScreen("individual-home"); navigate("safe-walk"); })}
+                onLogout={async () => {
+                  const { signOut, clearDeviceFingerprint } = await import("./api/supabase-client");
+                  await signOut();
+                  clearDeviceFingerprint();
+                  localStorage.removeItem("sosphere_individual_profile");
+                  localStorage.removeItem("sosphere_tos_consent");
+                  localStorage.removeItem("sosphere_gps_consent");
                   setUserPlan("free");
-                  navigate("login", -1);
+                  setLoginName("");
+                  setLoginPhone("");
+                  setLoginMode("individual");
+                  screenHistoryRef.current = [];
+                  navigate("welcome", -1);
                 }}
                 t={t}
               />
@@ -1089,7 +1254,7 @@ export function MobileApp() {
                 onIncidentHistory={() => { setSourceScreen("employee-dashboard"); navigate("incident-history"); }}
                 timerActive={timerActive}
                 onMissionTracker={() => { setSourceScreen("employee-dashboard"); navigate("mission-tracker"); }}
-                onSafeWalk={() => { setSourceScreen("employee-dashboard"); navigate("safe-walk"); }}
+                onSafeWalk={() => { if (!hasFeature("walkMe")) { toast.error(lang === "ar" ? "ميزة 'رافقني' متاحة في الباقة الأساسية ($7/شهر)" : "Walk Me requires Basic plan ($7/mo)"); return; } setSourceScreen("employee-dashboard"); navigate("safe-walk"); }}
                 onLogout={async () => {
                   const { signOut } = await import("./api/supabase-client");
                   await signOut();
@@ -1099,6 +1264,8 @@ export function MobileApp() {
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
+                  setLoginMode("individual");
+                  screenHistoryRef.current = [];
                   navigate("welcome", -1);
                 }}
               />
@@ -1109,6 +1276,7 @@ export function MobileApp() {
                 recordingEnabled={recordingEnabled}
                 mode={sourceScreen === "employee-dashboard" ? "employee" : "individual"}
                 isPremium={userPlan === "pro" || userPlan === "employee"}
+                onNavigateToSubscription={() => { navigate("subscription"); }}
                 userName={loginName}
                 userId={`EMP-${loginName.replace(/\s+/g, "")}`}
                 // FIX FATAL-1: Read phone from stored profile, blood type from stored medical
@@ -1118,8 +1286,10 @@ export function MobileApp() {
                 userAvatar={(() => { try { return localStorage.getItem("sosphere_employee_avatar") || undefined; } catch { return undefined; } })()}
                 userZone={companyMatchData?.zoneName || (companyName ? "Field Zone" : "Personal")}
                 onEnd={(record) => {
-                  // FIX 3: Reset SOS dedup lock when SOS ends
+                  // FIX 3: Reset SOS dedup lock AND rate limiter when SOS ends
                   sosInProgressRef.current = false;
+                  sosLastTriggerRef.current = 0; // Reset rate limiter so user can re-trigger immediately
+                  try { localStorage.removeItem("sosphere_active_sos"); } catch {}
                   if (sosSafetyTimerRef.current) { clearTimeout(sosSafetyTimerRef.current); sosSafetyTimerRef.current = null; }
                   setIncidentRecord(record);
                   // REAL DATA: Persist incident record to localStorage for history
@@ -1134,7 +1304,7 @@ export function MobileApp() {
                   } catch (_) {}
                   navigate("emergency-record");
                 }}
-                onCancel={() => { sosInProgressRef.current = false; if (sosSafetyTimerRef.current) { clearTimeout(sosSafetyTimerRef.current); sosSafetyTimerRef.current = null; } navigate(sourceScreen, -1); }}
+                onCancel={() => { sosInProgressRef.current = false; sosLastTriggerRef.current = 0; try { localStorage.removeItem("sosphere_active_sos"); } catch {} if (sosSafetyTimerRef.current) { clearTimeout(sosSafetyTimerRef.current); sosSafetyTimerRef.current = null; } navigate(sourceScreen, -1); }}
               />
             )}
 
@@ -1246,8 +1416,8 @@ export function MobileApp() {
                 onUpgrade={() => navigate("subscription")}
               />
             )}
-          </motion.div>
-        </AnimatePresence>
+          </div>
+        </div>
 
       {/* Toast notifications for mobile screens */}
       <Toaster
