@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
-import { PageTransition, motionConfig, useReducedMotion } from "./view-transitions";
 import {
   Shield, Users, MapPin, AlertTriangle,
   ChevronRight, CheckCircle2, Radio,
@@ -20,10 +19,9 @@ import {
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 // Mock data now read from Zustand store — no direct EMPLOYEES/EMERGENCIES/ZONES imports needed
-// ── PERF: Lazy-loaded heavy page components (loaded on-demand per tab) ──
-const CommandCenterPage = lazy(() => import("./command-center").then(m => ({ default: m.CommandCenterPage })));
-const IncidentReportsTab = lazy(() => import("./hub-incident-reports").then(m => ({ default: m.IncidentReportsTab })));
-const RiskMapLivePage = lazy(() => import("./risk-map-live").then(m => ({ default: m.RiskMapLivePage })));
+import { CommandCenterPage } from "./command-center";
+import { IncidentReportsTab } from "./hub-incident-reports";
+import { RiskMapLivePage } from "./risk-map-live";
 import { type PriorityOverrideLog } from "./priority-engine";
 import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
@@ -31,20 +29,18 @@ import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, 
 import { HazardAlertBanner } from "./hazard-banner";
 import { TenantBanner } from "./tenant-banner";
 import { ManualPriorityModal } from "./manual-priority-modal";
-const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({ default: m.SettingsPage })));
-const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
-const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
+import { SettingsPage } from "./dashboard-settings-page";
+import { PricingPage } from "./dashboard-pricing-page";
+import { BillingPage } from "./dashboard-billing-page";
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
 } from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
-const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => ({ default: m.AnalyticsPage })));
+import { AnalyticsPage } from "./dashboard-analytics-page";
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
-import { RescueModeOverlay, default as RescueModeOverlayComponent } from "./rescue-mode-overlay";
-import { initRescueModeController, cleanupRescueMode } from "./rescue-mode-controller";
 // (ShiftSchedulingPage, GeofencingPage, GPSCompliancePage, BroadcastPage — now merged into hubs/location tabs)
 
 // (DashboardEvacuationPage, EmployeeStatusPage — now merged into hubs via PAGE_TO_HUB redirects)
@@ -54,38 +50,30 @@ import { GlobalQuickActions } from "./global-quick-actions";
 import { GlobalSearch, useGlobalSearch } from "./global-search";
 
 // Import Unified Employees Page
-// ── PERF: UnifiedEmployeesPage lazy-loaded (1042 lines, only shown on people directory tab) ──
-const UnifiedEmployeesPage = lazy(() => import("./employees-unified-page").then(m => ({ default: m.UnifiedEmployeesPage })));
+import { UnifiedEmployeesPage } from "./employees-unified-page";
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
-const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
-const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
-const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
-// ── PERF: SOSEmergencyPopup lazy-loaded (2700 lines, only rendered during active SOS) ──
-const SOSEmergencyPopup = lazy(() => import("./sos-emergency-popup").then(m => ({ default: m.SOSEmergencyPopup })));
-import { type SOSEmployee } from "./sos-emergency-popup";
-// ── PERF: AdminCallSystem lazy-loaded (1554 lines, only rendered when no active SOS popup) ──
-const AdminCallSystem = lazy(() => import("./admin-incoming-call").then(m => ({ default: m.AdminCallSystem })));
+import { LocationZonesPage } from "./dashboard-location-page";
+import { WorkforcePage } from "./dashboard-workforce-page";
+import { CommsHubPage } from "./dashboard-comms-hub";
+import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
+import { AdminCallSystem } from "./admin-incoming-call";
 
 // ── NEW: Roles & Permissions Page ──────────────────────────────
-const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => ({ default: m.RolesPermissionsPage })));
+import { RolesPermissionsPage } from "./dashboard-roles-page";
 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
-const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
-
-// ── NEW: Integrations Hub ────────────────────────────────────────
-const IntegrationsHubPage = lazy(() => import("./integrations-hub").then(m => ({ default: m.IntegrationsHubPage })));
+import { AuditLogPage } from "./dashboard-audit-log-page";
 
 // ── NEW: CSV Field Guide ────────────────────────────────────────
-// ── PERF: CSVFieldGuide lazy-loaded (704 lines, only shown on csvGuide page) ──
-const CSVFieldGuide = lazy(() => import("./csv-field-guide").then(m => ({ default: m.CSVFieldGuide })));
+import { CSVFieldGuide } from "./csv-field-guide";
 
 // ── NEW: Notifications Panel ───────��────────────────────────────
 import { NotificationsPanel, NotificationsBellButton } from "./dashboard-notifications-panel";
 
 // ── NEW: Safety Intelligence Engine ─────────────────────────────
-const SafetyIntelligencePage = lazy(() => import("./safety-intelligence").then(m => ({ default: m.SafetyIntelligencePage })));
+import { SafetyIntelligencePage } from "./safety-intelligence";
 import { Toaster, toast } from "sonner";
 import { safeTelCall } from "./utils/safe-tel";
 import { hapticLight, playUISound } from "./haptic-feedback";
@@ -94,8 +82,7 @@ import { hapticLight, playUISound } from "./haptic-feedback";
 // (useNotifications/NotificationPermissionCard — moved to settings)
 
 // ── NEW: Round 1 Features ───────────────────────────────────────
-// ── PERF: DashboardEmergencyChat lazy-loaded (576 lines, only shown during active emergency chat) ──
-const DashboardEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ default: m.DashboardEmergencyChat })));
+import { DashboardEmergencyChat } from "./emergency-chat";
 // ── Unified Emergency Engine (replaces 3 separate imports) ──
 import { UnifiedEmergencyEngine, GuideMeButton, type AICoAdminContext, type IREContext } from "./unified-emergency-engine";
 import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
@@ -105,49 +92,45 @@ import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
 // import { AICoAdmin, type AICoAdminContext } from "./ai-co-admin";
 import { requestNotificationPermission } from "./ire-push-notification";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
-// ── PERF: PdfEmailModal lazy-loaded (678 lines, only shown when emailing lifecycle report) ──
-const PdfEmailModal = lazy(() => import("./pdf-email-modal").then(m => ({ default: m.PdfEmailModal })));
+import { PdfEmailModal } from "./pdf-email-modal";
 // FIX D: Shift Handover Modal
 import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
 
 // ── NEW: Round 2 Features ──────────────────────────────────��────
-const BuddySystemPage = lazy(() => import("./buddy-system").then(m => ({ default: m.BuddySystemPage })));
-const PreShiftChecklistPage = lazy(() => import("./pre-shift-checklist").then(m => ({ default: m.PreShiftChecklistPage })));
-const EmergencyPlaybookPage = lazy(() => import("./emergency-playbook").then(m => ({ default: m.EmergencyPlaybookPage })));
+import { BuddySystemPage } from "./buddy-system";
+import { PreShiftChecklistPage } from "./pre-shift-checklist";
+import { EmergencyPlaybookPage } from "./emergency-playbook";
 
 // ── NEW: Round 3 Features ───────────────────────────────────────
-const WeatherAlertsPage = lazy(() => import("./weather-alerts").then(m => ({ default: m.WeatherAlertsPage })));
-const JourneyManagementPage = lazy(() => import("./journey-management").then(m => ({ default: m.JourneyManagementPage })));
-const SafetyGamificationPage = lazy(() => import("./safety-gamification").then(m => ({ default: m.SafetyGamificationPage })));
-const ComplianceReportsPage = lazy(() => import("./compliance-reports").then(m => ({ default: m.ComplianceReportsPage })));
+import { WeatherAlertsPage } from "./weather-alerts";
+import { JourneyManagementPage } from "./journey-management";
+import { SafetyGamificationPage } from "./safety-gamification";
+import { ComplianceReportsPage } from "./compliance-reports";
 
 // ── NEW: Smart Admin Hints ──────────────────────────────────────
 import { AdminHintBar } from "./admin-hints";
 import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout";
-const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => ({ default: m.LeaderboardPage })));
+import { LeaderboardPage } from "./dashboard-leaderboard-page";
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
-// ── PERF: BatchEmailScheduler lazy-loaded (588 lines, only shown on scheduler tab) ──
-const BatchEmailScheduler = lazy(() => import("./batch-email-scheduler").then(m => ({ default: m.BatchEmailScheduler })));
-const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => ({ default: m.RRPAnalyticsPage })));
+import { BatchEmailScheduler } from "./batch-email-scheduler";
+import { RRPAnalyticsPage } from "./rrp-analytics-page";
 import { OfflineIndicator } from "./offline-sync";
 import { OfflineMonitoringPage } from "./dashboard-offline-page";
 import { getTrackerState, startGPSTracking } from "./offline-gps-tracker";
 
 // ── NEW: SAR Protocol Engine ────────────────────────────────────
-const SARProtocolPage = lazy(() => import("./dashboard-sar-page").then(m => ({ default: m.SARProtocolPage })));
+import { SARProtocolPage } from "./dashboard-sar-page";
 
 // ── NEW: ISO 45001 Compliance Pages ─────────────────��───────────
-const IncidentInvestigationPage = lazy(() => import("./dashboard-incident-investigation").then(m => ({ default: m.IncidentInvestigationPage })));
-const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m => ({ default: m.RiskRegisterPage })));
+import { IncidentInvestigationPage } from "./dashboard-incident-investigation";
+import { RiskRegisterPage } from "./dashboard-risk-register";
 
 // ── NEW: Mission Control ────────────────────────────────────────
-const MissionControlPage = lazy(() => import("./mission-control").then(m => ({ default: m.MissionControlPage })));
+import { MissionControlPage } from "./mission-control";
 
 // ── NEW: Incident Photo Report — Admin Broadcast Panel ──────────
-// ── PERF: AdminBroadcastPanel lazy-loaded (1199 lines, only shown when viewing incident report) ──
-const AdminBroadcastPanel = lazy(() => import("./incident-photo-report").then(m => ({ default: m.AdminBroadcastPanel })));
-import { type IncidentReportData } from "./incident-photo-report";
+import { AdminBroadcastPanel, type IncidentReportData } from "./incident-photo-report";
 import {
   storeEvidence, updateEvidenceStatus, addEvidenceAction, getAllEvidence,
   getEvidencePipelineStatus, seedMockEvidence,
@@ -165,15 +148,6 @@ import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, ch
 
 // ── NEW: Integration Readiness Checker (console: sosCheck()) ────
 import "./api/integration-checklist";
-
-// ── PERF: Suspense fallback for lazy-loaded pages ──
-function PageLoading() {
-  return (
-    <div className="flex items-center justify-center w-full min-h-[200px]">
-      <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-}
 
 // FIX 7: Collision-resistant emergency ID generator
 // Uses full timestamp (base36) + 4-char random suffix → ~2.1B unique values/second
@@ -203,7 +177,6 @@ const PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
   emailScheduler:         { hub: "reportsAnalytics",  tab: "scheduler" },
   auditLog:               { hub: "governance",        tab: "audit" },
   roles:                  { hub: "governance",        tab: "roles" },
-  integrations:           { hub: "governance",        tab: "integrations" },
   sarProtocol:            { hub: "emergencyHub",      tab: "sar" },
   playbook:               { hub: "emergencyHub",      tab: "playbook" },
   // ── Legacy page aliases (pre-hub) — redirected to their hub ──
@@ -248,91 +221,86 @@ interface CompanyDashboardProps {
 
 function getNavLiveThreat(t: (k: string) => string) {
   return [
-    { id: "emergencyHub" as DashPage,  icon: Siren,   label: t("nav.emergencyHub") },
+    { id: "emergencyHub" as DashPage,  icon: Siren,   label: "Emergency Hub" },
     { id: "riskMap" as DashPage,       icon: MapIcon,  label: t("nav.risk")   },
   ];
 }
 
 function getNavIntelligence(t: (k: string) => string) {
   return [
-    { id: "safetyIntel" as DashPage,  icon: Radar,           label: t("nav.safetyIntel") },
+    { id: "safetyIntel" as DashPage,  icon: Radar,           label: "Safety Intelligence" },
     { id: "overview" as DashPage,     icon: LayoutDashboard,  label: t("nav.overview")     },
   ];
 }
 
-function getNavOperations(t: (k: string) => string) {
+function getNavOperations(_t: (k: string) => string) {
   return [
-    { id: "operations" as DashPage,  icon: Route,  label: t("nav.operationsHub")  },
-    { id: "people" as DashPage,      icon: Users,  label: t("nav.people")  },
+    { id: "operations" as DashPage,  icon: Route,  label: "Operations Hub"  },
+    { id: "people" as DashPage,      icon: Users,  label: "People & Teams"  },
   ];
 }
 
-function getNavCompliance(t: (k: string) => string) {
+function getNavCompliance() {
   return [
-    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: t("nav.incidentRisk")     },
-    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: t("nav.reportsAnalytics") },
+    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: "Incident & Risk"     },
+    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: "Reports & Analytics" },
   ];
 }
 
-function getNavSystem(t: (k: string) => string) {
+function getNavSystem() {
   return [
-    { id: "governance" as DashPage,  icon: ScrollText, label: t("nav.governance") },
+    { id: "governance" as DashPage,  icon: ScrollText, label: "Governance" },
   ];
 }
 
 // ── Hub Tab Configurations ──────────────────────────────────────
-function getHubTabs(t: (k: string) => string): Record<string, Array<{ id: string; label: string; icon: any; color?: string }>> {
-  return {
-    emergencyHub: [
-      { id: "active", label: t("tab.liveAlerts"), icon: Siren, color: "#FF2D55" },
-      { id: "reports", label: t("tab.reports"), icon: FileText, color: "#FF9500" },
-      { id: "history", label: t("tab.history"), icon: FileWarning, color: "#00C8E0" },
-      { id: "command", label: t("tab.command"), icon: Radio, color: "#9B59B6" },
-      { id: "sar", label: t("tab.sar"), icon: Target, color: "#FF9500" },
-      { id: "playbook", label: t("tab.playbook"), icon: BookOpen, color: "#7B5EFF" },
-    ],
-    operations: [
-      { id: "missions", label: t("tab.missions"), icon: Navigation, color: "#00C8E0" },
-      { id: "journey", label: t("tab.journeys"), icon: Route, color: "#4A90D9" },
-      { id: "workforce", label: t("tab.workforce"), icon: CalendarDays, color: "#FF9500" },
-      { id: "comms", label: t("tab.commsHub"), icon: Megaphone, color: "#E67E22" },
-      { id: "offline", label: t("tab.connectivity"), icon: Signal, color: "#00C853" },
-    ],
-    people: [
-      { id: "directory", label: t("tab.directory"), icon: Users, color: "#00C8E0" },
-      { id: "buddy", label: t("tab.buddySystem"), icon: UserCheck, color: "#00C853" },
-      { id: "checklist", label: t("tab.preShift"), icon: ListChecks, color: "#FF9500" },
-      { id: "score", label: t("tab.safetyScore"), icon: Award, color: "#FFD700" },
-    ],
-    incidentRisk: [
-      { id: "investigation", label: t("tab.investigation"), icon: FileWarning, color: "#FF9500" },
-      { id: "register", label: t("tab.riskRegister"), icon: Shield, color: "#BF5AF2" },
-    ],
-    reportsAnalytics: [
-      { id: "reports", label: t("tab.reports"), icon: FileText, color: "#00C853" },
-      { id: "analytics", label: t("tab.analytics"), icon: TrendingUp, color: "#4A90D9" },
-      { id: "leaderboard", label: t("tab.leaderboard"), icon: Trophy, color: "#FFD700" },
-      { id: "scheduler", label: t("tab.scheduler"), icon: Mail, color: "#00C8E0" },
-    ],
-    governance: [
-      { id: "audit", label: t("tab.auditTrail"), icon: ScrollText, color: "#8090A5" },
-      { id: "roles", label: t("tab.rolesAccess"), icon: UserCog, color: "#9B59B6" },
-      { id: "integrations", label: t("tab.integrations"), icon: Zap, color: "#00C8E0" },
-    ],
-  };
-}
+const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: any; color?: string }>> = {
+  emergencyHub: [
+    { id: "active", label: "Live Alerts", icon: Siren, color: "#FF2D55" },
+    { id: "reports", label: "Reports", icon: FileText, color: "#FF9500" },
+    { id: "history", label: "History", icon: FileWarning, color: "#00C8E0" },
+    { id: "command", label: "Command", icon: Radio, color: "#9B59B6" },
+    { id: "sar", label: "SAR", icon: Target, color: "#FF9500" },
+    { id: "playbook", label: "Playbook", icon: BookOpen, color: "#7B5EFF" },
+  ],
+  operations: [
+    { id: "missions", label: "Missions", icon: Navigation, color: "#00C8E0" },
+    { id: "journey", label: "Journeys", icon: Route, color: "#4A90D9" },
+    { id: "workforce", label: "Workforce", icon: CalendarDays, color: "#FF9500" },
+    { id: "comms", label: "Comms Hub", icon: Megaphone, color: "#E67E22" },
+    { id: "offline", label: "Connectivity", icon: Signal, color: "#00C853" },
+  ],
+  people: [
+    { id: "directory", label: "Directory", icon: Users, color: "#00C8E0" },
+    { id: "buddy", label: "Buddy System", icon: UserCheck, color: "#00C853" },
+    { id: "checklist", label: "Pre-Shift", icon: ListChecks, color: "#FF9500" },
+    { id: "score", label: "Safety Score", icon: Award, color: "#FFD700" },
+  ],
+  incidentRisk: [
+    { id: "investigation", label: "Investigation", icon: FileWarning, color: "#FF9500" },
+    { id: "register", label: "Risk Register", icon: Shield, color: "#BF5AF2" },
+  ],
+  reportsAnalytics: [
+    { id: "reports", label: "Reports", icon: FileText, color: "#00C853" },
+    { id: "analytics", label: "Analytics", icon: TrendingUp, color: "#4A90D9" },
+    { id: "leaderboard", label: "Leaderboard", icon: Trophy, color: "#FFD700" },
+    { id: "scheduler", label: "Scheduler", icon: Mail, color: "#00C8E0" },
+  ],
+  governance: [
+    { id: "audit", label: "Audit Trail", icon: ScrollText, color: "#8090A5" },
+    { id: "roles", label: "Roles & Access", icon: UserCog, color: "#9B59B6" },
+  ],
+};
 
 // ── HubTabBar Component — Glassmorphism tab navigation ─────────
-function HubTabBar({ hubId, activeTab, onTabChange, badges, lockedTabs, t }: {
+function HubTabBar({ hubId, activeTab, onTabChange, badges, lockedTabs }: {
   hubId: string;
   activeTab: string;
   onTabChange: (tab: string) => void;
   badges?: Record<string, number>;
   lockedTabs?: Set<string>;
-  t: (k: string) => string;
 }) {
-  const hubTabs = getHubTabs(t);
-  const tabs = hubTabs[hubId];
+  const tabs = HUB_TABS[hubId];
   if (!tabs) return null;
   return (
     <div className="px-5 pt-3 pb-1">
@@ -673,7 +641,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
       : 0;
     const daysUntilDeletion = Math.max(0, 30 - daysSinceExpired);
 
-    if (import.meta.env.DEV) console.log("[SUPABASE_READY] trial_status: " + JSON.stringify({
+    console.log("[SUPABASE_READY] trial_status: " + JSON.stringify({
       daysLeft: trialDaysLeft,
       isActive: isTrialActive,
       endsAt: trialEndsAt,
@@ -689,15 +657,6 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     }, 3600000); // 1 hour
 
     return () => clearInterval(intervalId);
-  }, []);
-
-  // ── Initialize Rescue Mode Controller on mount ──────────────────
-  useEffect(() => {
-    const unsub = initRescueModeController();
-    return () => {
-      unsub?.();
-      cleanupRescueMode();
-    };
   }, []);
 
   // FIX 4: Prototype disclaimer state
@@ -723,7 +682,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
 
   const handleRiskUpdateFromInvestigation = (riskId: string, update: Record<string, any>) => {
     setPendingRiskUpdates(prev => [...prev, { riskId, update }]);
-    if (import.meta.env.DEV) console.log("[SUPABASE_READY] risk_update_bridged: " + JSON.stringify({ riskId }));
+    console.log("[SUPABASE_READY] risk_update_bridged: " + JSON.stringify({ riskId }));
   };
 
   const handleEscalateToInvestigation = (newInv: any) => {
@@ -770,8 +729,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
   const t = useT(lang);
   const dir = LANG_META[lang].dir;
   const isAr = lang === "ar";
-  const hubTabsMap = getHubTabs(t);
-  const getHubTab = (hub: string) => hubTabs[hub] || hubTabsMap[hub]?.[0]?.id || "";
+  const getHubTab = (hub: string) => hubTabs[hub] || HUB_TABS[hub]?.[0]?.id || "";
 
   // ── Initialize sidebar from webMode ───────────────────────────
   const initializedWebMode = useRef(false);
@@ -1079,7 +1037,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           description: `Zone: ${event.zone} — ${(event.data?.guardians as string[])?.length || 0} guardian(s) monitoring`,
           duration: 4000,
         });
-        if (import.meta.env.DEV) console.log("[SUPABASE_READY] safe_walk_started_received: " + event.employeeName);
+        console.log("[SUPABASE_READY] safe_walk_started_received: " + event.employeeName);
       }
 
       if (event.type === "SAFE_WALK_ENDED") {
@@ -1091,7 +1049,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           `${event.employeeName} — Safe Walk ${arrivedSafely ? "completed safely ✓" : "ended"}`,
           { duration: 4000 }
         );
-        if (import.meta.env.DEV) console.log("[SUPABASE_READY] safe_walk_ended_received: " + event.employeeName);
+        console.log("[SUPABASE_READY] safe_walk_ended_received: " + event.employeeName);
       }
 
       // ── Buddy Locate Request ──────────────────────────────────────────────────
@@ -1101,7 +1059,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           description: `Requested by ${event.employeeName} — Zone: ${event.zone}`,
           duration: 5000,
         });
-        if (import.meta.env.DEV) console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
+        console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
       }
     });
     return unsub;
@@ -1415,28 +1373,19 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     [emergencies, dismissedSosIds, employees]
   );
 
-  // FIX 1: Compute locked tabs per hub based on plan (memoized to avoid re-creating Sets every render)
+  // FIX 1: Compute locked tabs per hub based on plan
   // Emergency override: when active emergencies exist, unlock history + command
   const hasActiveEmergency = emergencies.length > 0;
-  const emergencyHubLockedTabs = useMemo(() => {
-    const s = new Set<string>();
-    if (!hasActiveEmergency && !hasFeature(companyState, "incident_history")) s.add("history");
-    if (!hasActiveEmergency && !hasFeature(companyState, "command_center")) s.add("command");
-    return s;
-  }, [hasActiveEmergency, companyState]);
+  const emergencyHubLockedTabs = new Set<string>();
+  if (!hasActiveEmergency && !hasFeature(companyState, "incident_history")) emergencyHubLockedTabs.add("history");
+  if (!hasActiveEmergency && !hasFeature(companyState, "command_center")) emergencyHubLockedTabs.add("command");
 
-  const governanceLockedTabs = useMemo(() => {
-    const s = new Set<string>();
-    if (!hasFeature(companyState, "audit_logs")) s.add("audit");
-    return s;
-  }, [companyState]);
+  const governanceLockedTabs = new Set<string>();
+  if (!hasFeature(companyState, "audit_logs")) governanceLockedTabs.add("audit");
 
-  const reportsLockedTabs = useMemo(() => {
-    const s = new Set<string>();
-    if (!hasFeature(companyState, "advanced_analytics")) s.add("analytics");
-    if (!hasFeature(companyState, "custom_reports")) s.add("reports");
-    return s;
-  }, [companyState]);
+  const reportsLockedTabs = new Set<string>();
+  if (!hasFeature(companyState, "advanced_analytics")) reportsLockedTabs.add("analytics");
+  if (!hasFeature(companyState, "custom_reports")) reportsLockedTabs.add("reports");
 
   return (
     <div dir={dir} className={`relative ${webMode ? "flex flex-row" : "flex flex-col"} h-full`} style={{ background: "#0A0E17" }}>
@@ -1453,10 +1402,6 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           },
         }}
       />
-
-      {/* ── Emergency Warp: Rescue Mode Overlay ── */}
-      <RescueModeOverlayComponent />
-
       {/* ── CRITICAL FIX 3: Session timeout warning banner ── */}
       <SessionTimeoutWarning
         secondsLeft={sessionTimeoutState.warningSecondsLeft}
@@ -1664,15 +1609,11 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentPage}
-                initial={{ opacity: 0, y: 12 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  duration: motionConfig.normal,
-                  ease: motionConfig.easeInOutCubic,
-                }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25 }}
               >
-              <Suspense fallback={<PageLoading />}>
                 {currentPage === "overview" && (
                   <PageErrorBoundary label="Overview">
                   <OverviewPage
@@ -1689,7 +1630,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                   />
                   </PageErrorBoundary>
                 )}
-                {currentPage === "riskMap" && <PlanGate feature="risk_map" companyState={companyState} onUpgrade={() => navigateTo("billing")}><div><EnterprisePageHeader page="riskMap" t={t} /><RiskMapLivePage t={t} /></div></PlanGate>}
+                {currentPage === "riskMap" && <PlanGate feature="risk_map" companyState={companyState} onUpgrade={() => navigateTo("billing")}><div><EnterprisePageHeader page="riskMap" /><RiskMapLivePage t={t} /></div></PlanGate>}
                 {/* Billing header removed — accessed via Settings sub-tab; breadcrumb provides context */}
                 {currentPage === "billing" && <div><BillingPage companyState={companyState} webMode={webMode} /><PricingPage webMode={webMode} currentStatus={toAccountStatus(companyState.company.billingStatus, trialDaysRemaining(companyState))} trialDays={trialDaysRemaining(companyState)} /></div>}
                 {currentPage === "settings" && <div><SettingsPage companyName={companyName} t={t} lang={lang} onLangChange={setLang} activeRole={activeRole} onRoleChange={setActiveRole} authState={authState} companyState={companyState} onNavigate={navigateTo} webMode={webMode} /></div>}
@@ -1698,19 +1639,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "emergencyHub" && (
                   <PageErrorBoundary label="Emergency Hub">
                   <div>
-                    <EnterprisePageHeader page="emergencyHub" activeEmergencyCount={activeEmergencyCount} t={t} />
-                    <HubTabBar hubId="emergencyHub" activeTab={getHubTab("emergencyHub")} onTabChange={(tab) => setHubTab("emergencyHub", tab)} lockedTabs={emergencyHubLockedTabs} t={t} />
+                    <EnterprisePageHeader page="emergencyHub" activeEmergencyCount={activeEmergencyCount} />
+                    <HubTabBar hubId="emergencyHub" activeTab={getHubTab("emergencyHub")} onTabChange={(tab) => setHubTab("emergencyHub", tab)} lockedTabs={emergencyHubLockedTabs} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("emergencyHub")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("emergencyHub")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("emergencyHub") === "active" && <EmergenciesPage emergencies={emergencies} onResolve={safeHandleResolve} onCreate={handleOpenCreateEmergency} t={t} webMode={webMode} onLaunchSAR={() => { setHubTab("emergencyHub", "sar"); }} />}
                         {getHubTab("emergencyHub") === "reports" && <IncidentReportsTab webMode={webMode} onEscalateToInvestigation={handleEscalateToInvestigation} />}
                         {getHubTab("emergencyHub") === "history" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ Emergency override — full access active</span></div><IncidentHistoryPage t={t} webMode={webMode} /></div> : <PlanGate feature="incident_history" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><IncidentHistoryPage t={t} webMode={webMode} /></PlanGate>)}
@@ -1727,7 +1659,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "operations" && (
                   <PageErrorBoundary label="Operations Hub">
                   <div>
-                    <EnterprisePageHeader page="operations" t={t} />
+                    <EnterprisePageHeader page="operations" />
                     {/* ── Active Safe Walks Panel ── */}
                     {activeSafeWalks.length > 0 && (
                       <div
@@ -1795,18 +1727,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                         </button>
                       </motion.div>
                     )}
-                    <HubTabBar hubId="operations" activeTab={getHubTab("operations")} onTabChange={(tab) => setHubTab("operations", tab)} t={t} />
+                    <HubTabBar hubId="operations" activeTab={getHubTab("operations")} onTabChange={(tab) => setHubTab("operations", tab)} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("operations")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("operations")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("operations") === "missions" && <MissionControlPage />}
                         {getHubTab("operations") === "journey" && <JourneyManagementPage t={t} webMode={webMode} onGuideMe={(journeyId, empName) => {
                           setDirectIreContext({ emergencyId: journeyId, employeeName: empName, zone: "Route Zone", sosType: "journey_sos", severity: "high", elapsed: 45, batteryLevel: 62, signalStrength: "fair", isJourney: true, journeyRoute: "HQ to Site Alpha", lastGPS: { lat: 25.2048, lng: 55.2708 } });
@@ -1825,18 +1748,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "people" && (
                   <PageErrorBoundary label="People & Teams">
                   <div>
-                    <HubTabBar hubId="people" activeTab={getHubTab("people")} onTabChange={(tab) => setHubTab("people", tab)} t={t} />
+                    <HubTabBar hubId="people" activeTab={getHubTab("people")} onTabChange={(tab) => setHubTab("people", tab)} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("people")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("people")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("people") === "directory" && <UnifiedEmployeesPage employees={employees} t={t} webMode={webMode} onEmployeeSelect={setSelectedEmployee} onNavigate={(page) => navigateTo(page)} />}
                         {getHubTab("people") === "buddy" && <BuddySystemPage t={t} webMode={webMode} />}
                         {getHubTab("people") === "checklist" && <PreShiftChecklistPage t={t} webMode={webMode} onNavigateToFlagged={() => { setIncidentSourceFilter("Pre-Shift Checklist"); setCurrentPage("incidentRisk" as any); setHubTab("incidentRisk" as any, "investigation"); }} />}
@@ -1851,19 +1765,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "incidentRisk" && (
                   <PageErrorBoundary label="Incident & Risk">
                   <div>
-                    <EnterprisePageHeader page="incidentRisk" t={t} />
-                    <HubTabBar hubId="incidentRisk" activeTab={getHubTab("incidentRisk")} onTabChange={(tab) => setHubTab("incidentRisk", tab)} t={t} />
+                    <EnterprisePageHeader page="incidentRisk" />
+                    <HubTabBar hubId="incidentRisk" activeTab={getHubTab("incidentRisk")} onTabChange={(tab) => setHubTab("incidentRisk", tab)} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("incidentRisk")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("incidentRisk")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("incidentRisk") === "investigation" && <IncidentInvestigationPage key={incidentSourceFilter || "default"} t={t} webMode={webMode} initialSourceFilter={incidentSourceFilter} pendingInvestigations={pendingInvestigations} onRiskUpdate={handleRiskUpdateFromInvestigation} />}
                         {getHubTab("incidentRisk") === "register" && <RiskRegisterPage t={t} webMode={webMode} pendingRiskUpdates={pendingRiskUpdates} />}
                       </motion.div>
@@ -1876,19 +1781,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "reportsAnalytics" && (
                   <PageErrorBoundary label="Reports & Analytics">
                   <div>
-                    <EnterprisePageHeader page="reportsAnalytics" t={t} />
-                    <HubTabBar hubId="reportsAnalytics" activeTab={getHubTab("reportsAnalytics")} onTabChange={(tab) => setHubTab("reportsAnalytics", tab)} lockedTabs={reportsLockedTabs} t={t} />
+                    <EnterprisePageHeader page="reportsAnalytics" />
+                    <HubTabBar hubId="reportsAnalytics" activeTab={getHubTab("reportsAnalytics")} onTabChange={(tab) => setHubTab("reportsAnalytics", tab)} lockedTabs={reportsLockedTabs} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("reportsAnalytics")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("reportsAnalytics")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("reportsAnalytics") === "reports" && <PlanGate feature="custom_reports" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><ComplianceReportsPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("reportsAnalytics") === "analytics" && <PlanGate feature="advanced_analytics" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AnalyticsPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("reportsAnalytics") === "leaderboard" && <LeaderboardPage t={t} webMode={webMode} onNavigateToTraining={() => window.open("/training", "_blank")} />}
@@ -1903,22 +1799,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "governance" && (
                   <PageErrorBoundary label="Governance">
                   <div>
-                    <EnterprisePageHeader page="governance" t={t} />
-                    <HubTabBar hubId="governance" activeTab={getHubTab("governance")} onTabChange={(tab) => setHubTab("governance", tab)} lockedTabs={governanceLockedTabs} t={t} />
+                    <EnterprisePageHeader page="governance" />
+                    <HubTabBar hubId="governance" activeTab={getHubTab("governance")} onTabChange={(tab) => setHubTab("governance", tab)} lockedTabs={governanceLockedTabs} />
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={getHubTab("governance")}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: motionConfig.normal,
-                          ease: motionConfig.easeInOutCubic,
-                        }}
-                      >
+                      <motion.div key={getHubTab("governance")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("governance") === "audit" && <PlanGate feature="audit_logs" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AuditLogPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("governance") === "roles" && <RolesPermissionsPage t={t} webMode={webMode} onNavigate={(page) => navigateTo(page)} />}
-                        {getHubTab("governance") === "integrations" && <IntegrationsHubPage t={t} />}
                       </motion.div>
                     </AnimatePresence>
                   </div>
@@ -1926,13 +1812,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 )}
 
                 {/* ══ Truly Standalone pages (not inside any hub) ══ */}
-                {currentPage === "location" && <div><EnterprisePageHeader page="location" t={t} /><LocationZonesPage t={t} webMode={webMode} /></div>}
+                {currentPage === "location" && <div><EnterprisePageHeader page="location" /><LocationZonesPage t={t} webMode={webMode} /></div>}
                 {currentPage === "csvGuide" && <CSVFieldGuide standalone onClose={() => navigateTo("people")} />}
                 {/* FIX 1: Removed EnterprisePageHeader — Site Risk Intelligence card inside page is the title */}
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}
-                {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" t={t} /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
-                {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" t={t} /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
-              </Suspense>
+                {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
+                {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
               </motion.div>
             </AnimatePresence>
           </div>
@@ -3119,34 +3004,31 @@ const PAGE_HEADER_CONFIG: Partial<Record<DashPage, {
   riskRegister: { icon: Shield, color: "#BF5AF2", description: "Zone-based risk assessment matrix, training records & certification tracking — ISO 45001 §6.1", badge: { label: "ISO 45001", color: "#BF5AF2" } },
 };
 
-// Enterprise Page Header — titles function for i18n
-function getPageTitles(t: (k: string) => string): Partial<Record<DashPage, string>> {
-  return {
-    emergencyHub: t("pg.emergencyHub"), safetyIntel: t("pg.safetyIntel"),
-    riskMap: t("pg.riskMapLive"), analytics: t("pg.analyticsInsights"),
-    employees: t("pg.employees"), location: t("pg.locationZones"),
-    workforce: t("pg.workforce"), comms: t("pg.commsSafety"),
-    roles: t("pg.rolesAccess"), auditLog: t("pg.auditTrail"),
-    billing: t("pg.plansBilling"), settings: t("pg.settings"),
-    buddySystem: t("pg.buddySystem"), checklist: t("pg.preShiftChecklist"),
-    playbook: t("pg.responsePlaybook"), weatherAlerts: t("pg.weatherAlerts"),
-    journeyMgmt: t("pg.journeyMgmt"), safetyScore: t("pg.safetyScore"),
-    complianceReports: t("pg.complianceReports"), leaderboard: t("pg.adminLeaderboard"),
-    emailScheduler: t("pg.emailScheduler"), rrpAnalytics: t("pg.responseAnalytics"),
-    offlineMonitor: t("pg.offlineSync"),
-    operations: t("pg.operationsHub"), people: t("pg.peopleTeams"),
-    incidentRisk: t("pg.incidentRisk"), reportsAnalytics: t("pg.reportsAnalytics"),
-    governance: t("pg.governance"),
-  };
-}
+// Enterprise Page Header — titles map (hoisted outside render)
+const PAGE_TITLES: Partial<Record<DashPage, string>> = {
+  emergencyHub: "Emergency Hub", safetyIntel: "Safety Intelligence",
+  riskMap: "Risk Map Live", analytics: "Analytics & Insights",
+  employees: "Employees", location: "Location & Zones",
+  workforce: "Workforce", comms: "Comms & Safety",
+  roles: "Roles & Access", auditLog: "Audit Trail",
+  billing: "Plans & Billing", settings: "Settings",
+  buddySystem: "Buddy System", checklist: "Pre-Shift Checklist",
+  playbook: "Response Playbook", weatherAlerts: "Weather Alerts",
+  journeyMgmt: "Journey Management", safetyScore: "Safety Score",
+  complianceReports: "Compliance Reports", leaderboard: "Admin Leaderboard",
+  emailScheduler: "Email Scheduler", rrpAnalytics: "Response Analytics",
+  offlineMonitor: "Offline & Sync",
+  operations: "Operations Hub", people: "People & Teams",
+  incidentRisk: "Incident & Risk", reportsAnalytics: "Reports & Analytics",
+  governance: "Governance",
+};
 
 // Enterprise Page Header Renderer — with motion entrance & ambient glow
-function EnterprisePageHeader({ page, activeEmergencyCount, t }: { page: DashPage; activeEmergencyCount?: number; t: (k: string) => string }) {
+function EnterprisePageHeader({ page, activeEmergencyCount }: { page: DashPage; activeEmergencyCount?: number }) {
   const config = PAGE_HEADER_CONFIG[page];
   if (!config) return null;
   const Icon = config.icon;
 
-  const pageTitles = getPageTitles(t);
   const dynamicBadge = config.badge;
 
   return (
@@ -3188,7 +3070,7 @@ function EnterprisePageHeader({ page, activeEmergencyCount, t }: { page: DashPag
       <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.02em" }}>
-            {pageTitles[page] || page}
+            {PAGE_TITLES[page] || page}
           </span>
           {dynamicBadge && (
             <motion.span
@@ -3342,8 +3224,8 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
   });
   const NAV_INTELLIGENCE = getNavIntelligence(t);
   const NAV_OPERATIONS = getNavOperations(t);
-  const NAV_COMPLIANCE = getNavCompliance(t);
-  const NAV_SYSTEM = getNavSystem(t).filter(item => {
+  const NAV_COMPLIANCE = getNavCompliance();
+  const NAV_SYSTEM = getNavSystem().filter(item => {
     if (!authState) return true;
     if (item.id === "governance") return hasPermission(authState, "settings:view");
     return true;

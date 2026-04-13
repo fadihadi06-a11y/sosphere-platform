@@ -99,7 +99,7 @@ export function OnboardingSelect({ onSelectIndividual, onSelectCompany }: Onboar
               <span style={{ color: "#FF9500", fontWeight: 700 }}>{isAr ? "مسؤولو الشركات:" : "Company admins:"}</span>{" "}
               {isAr ? "أنشئ مؤسستك من" : "Create your organization from the"}{" "}
               <span style={{ color: "#00C8E0", fontWeight: 600 }}>{isAr ? "لوحة التحكم" : "web dashboard"}</span>{" "}
-              {isAr ? "على" : "at"} sosphere.co/dashboard
+              {isAr ? "على" : "at"} sosphere.app/dashboard
             </p>
           </motion.div>
         </div>

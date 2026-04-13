@@ -6,9 +6,8 @@ import {
   Plus, X, Stethoscope, Weight, Ruler, Activity,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-// ISO 27001 §A.8.2.3: Use encrypted storage for protected medical data
-import { secureStore, secureRead } from "./data-residency-guard";
-import { useT, type Lang } from "./dashboard-i18n";
+// FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
+import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 
 const MEDICAL_STORAGE_KEY = "sosphere_medical_id";
 
@@ -45,13 +44,13 @@ const defaultData: MedicalData = {
 interface MedicalIDProps {
   onBack: () => void;
   userPlan: "free" | "pro" | "employee";
-  lang?: Lang;
 }
 
-export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
-  const t = useT(lang);
-  const [data, setData] = useState<MedicalData>(defaultData);
-  const [isLoading, setIsLoading] = useState(true);
+export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
+  // FIX FATAL-1: Load persisted medical data on mount
+  const [data, setData] = useState<MedicalData>(() =>
+    loadJSONSync<MedicalData>(MEDICAL_STORAGE_KEY, defaultData)
+  );
   const [editing, setEditing] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [newItem, setNewItem] = useState("");
@@ -59,30 +58,10 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
 
   const isPro = userPlan === "pro" || userPlan === "employee";
 
-  // Load encrypted medical data on mount
+  // FIX FATAL-1: Persist medical data whenever it changes
   useEffect(() => {
-    (async () => {
-      try {
-        const encrypted = await secureRead<MedicalData>(MEDICAL_STORAGE_KEY, "medical");
-        if (encrypted) {
-          setData(encrypted);
-        }
-      } catch (err) {
-        console.error("[MedicalID] Failed to load encrypted data:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-  }, []);
-
-  // Persist encrypted medical data whenever it changes
-  useEffect(() => {
-    if (!isLoading) {
-      secureStore(MEDICAL_STORAGE_KEY, data, "medical").catch(err =>
-        console.error("[MedicalID] Failed to store encrypted data:", err)
-      );
-    }
-  }, [data, isLoading]);
+    storeJSONSync(MEDICAL_STORAGE_KEY, data);
+  }, [data]);
 
   const addItemToList = (field: "conditions" | "allergies" | "medications") => {
     if (!newItem.trim()) return;
@@ -157,7 +136,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-5">
           <div className="flex items-center gap-2.5 mb-1">
             <Heart style={{ width: 18, height: 18, color: "#FF2D55" }} />
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>{t("med.title")}</h1>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>Medical ID</h1>
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", lineHeight: 1.6 }}>
             Critical health information for emergency responders
@@ -181,7 +160,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
               }}
             >
               <Droplets style={{ width: 20, height: 20, color: "#FF2D55", marginBottom: 8 }} />
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500, marginBottom: 6 }}>{t("med.bloodType")}</span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500, marginBottom: 6 }}>Blood Type</span>
               {editing ? (
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {BLOOD_TYPES.map(bt => (
@@ -203,7 +182,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
                   ))}
                 </div>
               ) : (
-                <span style={{ fontSize: 36, fontWeight: 900, color: "#FF2D55", letterSpacing: "-1px" }}>{data.bloodType || t("med.unknown")}</span>
+                <span style={{ fontSize: 36, fontWeight: 900, color: "#FF2D55", letterSpacing: "-1px" }}>{data.bloodType}</span>
               )}
             </div>
 
@@ -211,7 +190,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
             <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Ruler style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("med.height")}</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Height</span>
               </div>
               {editing ? (
                 <input
@@ -229,7 +208,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
             <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Weight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("med.weight")}</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Weight</span>
               </div>
               {editing ? (
                 <input
@@ -253,7 +232,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
         >
           <div className="flex items-center gap-2.5">
             <Activity style={{ width: 14, height: 14, color: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{t("med.organDonor")}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>Organ Donor</span>
           </div>
           <button
             onClick={() => editing && setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
@@ -279,9 +258,9 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
 
         {/* List Sections */}
         {([
-          { key: "conditions" as const, label: t("med.conditions"), icon: Stethoscope, color: "#FF9500", items: data.conditions },
-          { key: "allergies" as const, label: t("med.allergies"), icon: AlertTriangle, color: "#FF2D55", items: data.allergies },
-          { key: "medications" as const, label: t("med.medications"), icon: Pill, color: "#00C8E0", items: data.medications },
+          { key: "conditions" as const, label: "Medical Conditions", icon: Stethoscope, color: "#FF9500", items: data.conditions },
+          { key: "allergies" as const, label: "Allergies", icon: AlertTriangle, color: "#FF2D55", items: data.allergies },
+          { key: "medications" as const, label: "Medications", icon: Pill, color: "#00C8E0", items: data.medications },
         ]).map((section, si) => (
           <motion.div
             key={section.key}
@@ -312,7 +291,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
             >
               {section.items.length === 0 ? (
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.12)", textAlign: "center", padding: "8px 0" }}>
-                  {section.key === "allergies" ? t("med.noAllergies") : section.key === "medications" ? t("med.noMedications") : "No " + section.label.toLowerCase() + " added"}
+                  No {section.label.toLowerCase()} added
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -389,7 +368,7 @@ export function MedicalID({ onBack, userPlan, lang = "en" }: MedicalIDProps) {
         >
           <div className="flex items-center gap-2 mb-2.5">
             <Phone style={{ width: 13, height: 13, color: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{t("med.emergencyContact")}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Emergency Medical Contact</span>
           </div>
           <div
             className="p-4 space-y-3"

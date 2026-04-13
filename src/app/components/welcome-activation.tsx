@@ -355,7 +355,7 @@ export function WelcomeActivation() {
 
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
               {isAr ? "يمكنك أيضاً الوصول عبر المتصفح على" : "Or access via browser at"}{" "}
-              <span style={{ color: "#00C8E0" }}>sosphere.co/app</span>
+              <span style={{ color: "#00C8E0" }}>sosphere.app/app</span>
             </p>
           </motion.div>
         )}

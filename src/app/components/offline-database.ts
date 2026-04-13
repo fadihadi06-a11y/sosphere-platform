@@ -19,60 +19,8 @@
 //  7. app_cache      — Cached API responses for offline reads
 // ═══════════════════════════════════════════════════════════════
 
-// ── Client-Side Encryption for Offline Storage ──
-// Uses AES-GCM via Web Crypto API (no external dependencies)
-const CRYPTO_ALGO = "AES-GCM";
-const IV_LENGTH = 12;
-
-let _encryptionKey: CryptoKey | null = null;
-
-/** Derive a stable encryption key from a seed (e.g. user session token) */
-export async function initOfflineEncryption(seed: string): Promise<void> {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw", encoder.encode(seed), "PBKDF2", false, ["deriveKey"]
-  );
-  _encryptionKey = await crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: encoder.encode("sosphere_offline_v1"), iterations: 100000, hash: "SHA-256" },
-    keyMaterial,
-    { name: CRYPTO_ALGO, length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-}
-
-/** Encrypt a string → base64(iv + ciphertext) */
-export async function encryptData(plaintext: string): Promise<string> {
-  if (!_encryptionKey) return plaintext; // graceful degradation if not initialized
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: CRYPTO_ALGO, iv }, _encryptionKey, encoded
-  );
-  const combined = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(ciphertext), IV_LENGTH);
-  return btoa(String.fromCharCode(...combined));
-}
-
-/** Decrypt base64(iv + ciphertext) → string */
-export async function decryptData(encrypted: string): Promise<string> {
-  if (!_encryptionKey) return encrypted; // graceful degradation
-  try {
-    const raw = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
-    const iv = raw.slice(0, IV_LENGTH);
-    const ciphertext = raw.slice(IV_LENGTH);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: CRYPTO_ALGO, iv }, _encryptionKey, ciphertext
-    );
-    return new TextDecoder().decode(decrypted);
-  } catch {
-    return encrypted; // return as-is if decryption fails (might be unencrypted legacy data)
-  }
-}
-
 const DB_NAME = "sosphere_offline";
-const DB_VERSION = 3;
+const DB_VERSION = 2;
 
 // ── Store Schemas ──────────────────────────────────────────────
 
@@ -167,13 +115,6 @@ export interface CachedResponse {
   etag: string | null;
 }
 
-export interface ColdLocationRecord {
-  id: string; // GPS point ID
-  originalDataEncrypted: string; // Full original GPS data (encrypted)
-  obfuscatedAt: number;
-  expiresAt: number;
-}
-
 // ── Database Initialization ────────────────────────────────────
 
 let dbInstance: IDBDatabase | null = null;
@@ -240,22 +181,6 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("app_cache")) {
         const cacheStore = db.createObjectStore("app_cache", { keyPath: "id" });
         cacheStore.createIndex("by_expires", "expiresAt", { unique: false });
-      }
-
-      // ── Cold Location Storage (for GDPR compliance) ──
-      if (!db.objectStoreNames.contains("cold_location_storage")) {
-        const coldStore = db.createObjectStore("cold_location_storage", { keyPath: "id" });
-        coldStore.createIndex("by_expires", "expiresAt", { unique: false });
-        coldStore.createIndex("by_obfuscated_at", "obfuscatedAt", { unique: false });
-      }
-
-      // ── Emergency Buffer Store (v3) ──
-      // Failover buffer when primary Supabase is unreachable
-      if (!db.objectStoreNames.contains("emergency_buffer")) {
-        const bufferStore = db.createObjectStore("emergency_buffer", { keyPath: "id" });
-        bufferStore.createIndex("by_priority", "priority", { unique: false });
-        bufferStore.createIndex("by_type", "type", { unique: false });
-        bufferStore.createIndex("by_timestamp", "timestamp", { unique: false });
       }
     };
 
@@ -397,95 +322,6 @@ async function dbDeleteBulk(storeName: string, ids: string[]): Promise<void> {
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// FIX 1: Quota Resilient Write — Prevent Recursive Re-sync
-// ═══════════════════════════════════════════════════════════════
-// HARDENING: Prevent recursive re-sync during quota recovery
-// When GPS records are pruned to make space, the sync engine must NOT
-// attempt to re-fetch or re-write those records — that would cause a loop
-let _pruningInProgress = false;
-
-/** Check if a quota recovery prune is in progress (used by sync engine) */
-export function isPruningInProgress(): boolean {
-  return _pruningInProgress;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// FIX 2: Quota-Resilient Write with Automatic Pruning
-// ══════════════════════════════════════════════════════════════
-// MISSION-CRITICAL: Write with quota protection.
-// If IndexedDB write fails due to quota, prune oldest non-SOS records and retry.
-// SOS records are NEVER pruned — they have infinite priority.
-
-export async function quotaResilientWrite(
-  storeName: string,
-  data: any,
-  isSOS: boolean = false
-): Promise<boolean> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction(storeName, "readwrite");
-    const store = tx.objectStore(storeName);
-    return new Promise<boolean>((resolve, reject) => {
-      const req = store.add(data);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (err: any) {
-    // QuotaExceededError — storage full
-    if (err?.name === "QuotaExceededError" || err?.code === 22) {
-      // Prune oldest GPS records (lowest priority) to make space
-      try {
-        _pruningInProgress = true;
-        try {
-          const db = await openDB();
-          const tx = db.transaction("gps_trail", "readwrite");
-          const store = tx.objectStore("gps_trail");
-          const index = store.index("by_timestamp");
-          const cursor = index.openCursor(); // ascending = oldest first
-          let deleted = 0;
-          await new Promise<void>((resolve) => {
-            cursor.onsuccess = (e: any) => {
-              const c = e.target.result;
-              if (c && deleted < 100) {
-                c.delete();
-                deleted++;
-                c.continue();
-              } else {
-                resolve();
-              }
-            };
-            cursor.onerror = () => resolve();
-          });
-          // Retry the write
-          if (deleted > 0) {
-            const db2 = await openDB();
-            const tx2 = db2.transaction(storeName, "readwrite");
-            const store2 = tx2.objectStore(storeName);
-            return new Promise((resolve) => {
-              const req = store2.add(data);
-              req.onsuccess = () => resolve(true);
-              req.onerror = () => resolve(false);
-            });
-          }
-        } finally {
-          _pruningInProgress = false;
-        }
-      } catch {
-        // Final fallback: for SOS, store in localStorage as emergency backup
-        if (isSOS) {
-          try {
-            const key = `sosphere_sos_fallback_${Date.now()}`;
-            localStorage.setItem(key, JSON.stringify(data));
-            return true;
-          } catch { /* localStorage also full */ }
-        }
-      }
-    }
-    return false;
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -861,43 +697,6 @@ export async function getStorageStats(): Promise<OfflineStorageStats> {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Public API — Cold Location Storage
-// ═══════════════════════════════════════════════════════════════
-
-export async function saveColdLocationRecord(record: ColdLocationRecord): Promise<void> {
-  await dbPut("cold_location_storage", record);
-}
-
-export async function getColdLocationRecord(id: string): Promise<ColdLocationRecord | undefined> {
-  return dbGet<ColdLocationRecord>("cold_location_storage", id);
-}
-
-export async function deleteColdLocationRecord(id: string): Promise<void> {
-  await dbDelete("cold_location_storage", id);
-}
-
-export async function deleteColdLocationRecordsBulk(ids: string[]): Promise<void> {
-  await dbDeleteBulk("cold_location_storage", ids);
-}
-
-export async function getColdLocationRecordsExpiredBefore(timestamp: number): Promise<ColdLocationRecord[]> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("cold_location_storage", "readonly");
-    const store = tx.objectStore("cold_location_storage");
-    const index = store.index("by_expires");
-    const range = IDBKeyRange.upperBound(timestamp, false);
-    const req = index.getAll(range);
-    req.onsuccess = () => resolve(req.result as ColdLocationRecord[]);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function countColdLocationRecords(): Promise<number> {
-  return dbCount("cold_location_storage");
-}
-
-// ═══════════════════════════════════════════════════════════════
 // Danger Zone — Full Reset
 // ═══════════════════════════════════════════════════════════════
 
@@ -910,8 +709,6 @@ export async function resetOfflineDatabase(): Promise<void> {
     dbClear("messages"),
     dbClear("sync_log"),
     dbClear("app_cache"),
-    dbClear("cold_location_storage"),
-    dbClear("emergency_buffer"),
   ]);
 }
 

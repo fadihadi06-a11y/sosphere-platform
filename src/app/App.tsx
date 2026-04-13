@@ -16,9 +16,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <SafeAreaProvider>
-        <RouterProvider router={router} />
-      </SafeAreaProvider>
+      <RouterProvider router={router} />
     </AppErrorBoundary>
   );
 }

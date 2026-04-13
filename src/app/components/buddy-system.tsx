@@ -20,7 +20,6 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
-import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface BuddyPair {
@@ -263,7 +262,7 @@ export function BuddySystemPage({ t, webMode }: { t: (k: string) => string; webM
         },
       });
     }
-    if (import.meta.env.DEV) console.log("[SUPABASE_READY] buddy_locate_requested: " + name);
+    console.log("[SUPABASE_READY] buddy_locate_requested: " + name);
     toast.success("Locating Buddy", { description: `GPS location of ${name} shown on map` });
   }, [pairs]);
 

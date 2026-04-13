@@ -1,22 +1,9 @@
-// ═══════════════════════════════════════════════════════════════
-// SOSphere — Voice SOS Widget
-// ─────────────────────────────────────────────────────────────
-// Floating microphone button that toggles voice-activated SOS
-// States: idle, listening, triggered, unsupported
-// Privacy-first: no audio storage, client-side only
-// ═══════════════════════════════════════════════════════════════
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Mic, MicOff, Volume2 } from "lucide-react";
-import { toast } from "sonner";
-import {
-  useVoiceSOSDetection,
-  isVoiceSosSupported,
-} from "./voice-sos-trigger";
+import { Mic, MicOff } from "lucide-react";
 
-export interface VoiceSOSWidgetProps {
-  onVoiceSOSTriggered?: (keyword: string, confidence: number) => void;
+interface VoiceSOSWidgetProps {
+  onVoiceSOSTriggered: (keyword: string, confidence: number) => void;
   primaryKeyword?: string;
   secondaryKeywords?: string[];
   confidenceThreshold?: number;
@@ -32,69 +19,58 @@ export function VoiceSOSWidget({
   cooldownMs = 30000,
   position = "bottom-left",
 }: VoiceSOSWidgetProps) {
-  // ── State ────────────────────────────────────────────────────
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [triggerFlash, setTriggerFlash] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const toastIdRef = useRef<string | number | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [isSupported, setIsSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const lastTriggerRef = useRef(0);
+  const allKeywords = [primaryKeyword, ...secondaryKeywords].map(k => k.toLowerCase());
 
-  // ── Persist preference to localStorage ────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem("sosphere_voice_sos_enabled");
-    if (saved === "true") {
-      setVoiceEnabled(true);
-    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setIsSupported(!!SR);
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("sosphere_voice_sos_enabled", String(voiceEnabled));
-  }, [voiceEnabled]);
-
-  // ── Voice Recognition Hook ───────────────────────────────────
-  const {
-    isSupported,
-    isListening,
-    currentTranscript,
-    confidence,
-    startListening,
-    stopListening,
-  } = useVoiceSOSDetection({
-    enabled: voiceEnabled,
-    onKeywordDetected: (keyword, conf) => {
-      // Handle keyword detection
-      handleVoiceSOSTriggered(keyword, conf);
-    },
-    primaryKeyword,
-    secondaryKeywords,
-    confidenceThreshold,
-    cooldownMs,
-    interimResults: false, // Battery-conscious
-    maxListeningDurationMs: 300000, // 5 min auto-restart
-  });
-
-  // ── Listen for Voice SOS Triggered Event ──────────────────────
-  useEffect(() => {
-    const handleEvent = (e: any) => {
-      const { keyword, confidence: conf } = e.detail || {};
-      if (keyword) {
-        handleVoiceSOSTriggered(keyword, conf);
+  const startListening = useCallback(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event: any) => {
+      const now = Date.now();
+      if (now - lastTriggerRef.current < cooldownMs) return;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.toLowerCase().trim();
+        const confidence = event.results[i][0].confidence;
+        for (const keyword of allKeywords) {
+          if (transcript.includes(keyword) && confidence >= confidenceThreshold) {
+            lastTriggerRef.current = now;
+            onVoiceSOSTriggered(keyword, confidence);
+            return;
+          }
+        }
       }
     };
+    recognition.onerror = (event: any) => {
+      console.warn("[VoiceSOS] error:", event.error);
+      if (event.error !== "aborted") setIsListening(false);
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current) { try { recognitionRef.current.start(); } catch {} }
+    };
+    recognitionRef.current = recognition;
+    try { recognition.start(); setIsListening(true); } catch {}
+  }, [allKeywords, confidenceThreshold, cooldownMs, onVoiceSOSTriggered]);
 
-    window.addEventListener("voice-sos-triggered", handleEvent);
-    return () => window.removeEventListener("voice-sos-triggered", handleEvent);
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} recognitionRef.current = null; }
+    setIsListening(false);
   }, []);
 
-  // ── Voice SOS Triggered Handler ──────────────────────────────
-  const handleVoiceSOSTriggered = useCallback(
-    (keyword: string, conf: number) => {
-      setTriggerFlash(true);
-      setShowConfirmation(true);
+  useEffect(() => { return () => { if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} } }; }, []);
 
-      // Dismiss previous toast if any
-      if (toastIdRef.current !== null) {
-        toast.dismiss(toastIdRef.current);
-      }
+  if (!isSupported) return null;
 
       // Show confirmation toast (3 seconds)
       toastIdRef.current = toast("🚨 Voice SOS Detected — Sending alert...", {
@@ -278,35 +254,11 @@ export function VoiceSOSWidget({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Transcript Display (Debug Mode) */}
-      {import.meta.env.DEV && voiceEnabled && currentTranscript && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} fixed-bottom-safe-lg z-40 px-3 py-2 rounded-lg text-xs max-w-xs pointer-events-none`}
-          style={{
-            bottom: 'calc(max(24px, env(safe-area-inset-bottom)) + 60px)',
-            background: "rgba(100,150,200,0.15)",
-            border: "1px solid rgba(100,150,200,0.3)",
-            color: "#7DB1E0",
-            backdropFilter: "blur(8px)",
-            wordWrap: "break-word",
-          }}
-        >
-          <div className="font-medium mb-1">Transcript:</div>
-          <div>{currentTranscript}</div>
-          <div className="text-xs opacity-75 mt-1">
-            Confidence: {(confidence * 100).toFixed(0)}%
-          </div>
-        </motion.div>
+      {isListening && (
+        <motion.div className="absolute inset-0 rounded-full" style={{ border: "2px solid rgba(255,45,85,0.3)" }}
+          animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />
       )}
-
-      {/* Trigger Confirmation Toast is handled by toast() above */}
-    </>
+    </motion.button>
   );
 }
-
-// ── Export for use in app ────────────────────────────────────
-export default VoiceSOSWidget;

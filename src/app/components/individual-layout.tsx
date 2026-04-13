@@ -6,14 +6,12 @@ import { ProfileSettings } from "./profile-settings";
 import { FamilyCircle } from "./family-circle";
 import { MapScreen } from "./map-screen";
 
-function getTabs(t: (k: string) => string) {
-  return [
-    { id: "home", icon: Home, label: t("app.home") },
-    { id: "family", icon: Users, label: t("app.family") },
-    { id: "map", icon: Map, label: t("app.map") },
-    { id: "profile", icon: User, label: t("app.profile") },
-  ];
-}
+const tabs = [
+  { id: "home", icon: Home, label: "Home" },
+  { id: "family", icon: Users, label: "Family" },
+  { id: "map", icon: Map, label: "Map" },
+  { id: "profile", icon: User, label: "Profile" },
+];
 
 export interface IndividualLayoutHandle {
   /** Returns true if it handled the back (went to home tab). Returns false if already on home. */
@@ -28,7 +26,6 @@ interface IndividualLayoutProps {
   userName: string;
   userPlan: "free" | "pro" | "employee";
   companyName?: string;
-  t?: (key: string) => string;
   onNavigateToMedicalID?: () => void;
   onNavigateToSubscription?: () => void;
   onNavigateToIncidentHistory?: () => void;
@@ -96,7 +93,6 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           onLiveLocation={() => setActiveTab("map")}
           onNotifications={onNavigateToNotifications}
           onSafeWalk={onNavigateToSafeWalk}
-          t={t}
         />
       )}
       {activeTab === "family" && <FamilyCircle />}
@@ -108,7 +104,6 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           companyName={companyName}
           onNavigate={handleProfileNavigate}
           onLogout={() => onLogout?.()}
-          t={t}
         />
       )}
 

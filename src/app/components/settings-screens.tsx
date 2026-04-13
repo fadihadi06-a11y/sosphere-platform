@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight, hapticWarning, hapticSuccess } from "./haptic-feedback";
-import { useT, type Lang } from "./dashboard-i18n";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -17,31 +16,28 @@ const LANGUAGES = [
   { code: "fr", name: "French", native: "Français", flag: "🇫🇷" },
   { code: "es", name: "Spanish", native: "Español", flag: "🇪🇸" },
   { code: "de", name: "German", native: "Deutsch", flag: "🇩🇪" },
-  { code: "zh", name: "Chinese", native: "中文", flag: "🇨🇳" },
-  { code: "hi", name: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
-  { code: "pt", name: "Portuguese", native: "Português", flag: "🇧🇷" },
-  { code: "ru", name: "Russian", native: "Русский", flag: "🇷🇺" },
-  { code: "ja", name: "Japanese", native: "日本語", flag: "🇯🇵" },
-  { code: "ko", name: "Korean", native: "한국어", flag: "🇰🇷" },
   { code: "tr", name: "Turkish", native: "Türkçe", flag: "🇹🇷" },
+  { code: "ur", name: "Urdu", native: "اردو", flag: "🇵🇰" },
+  { code: "hi", name: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
+  { code: "zh", name: "Chinese", native: "中文", flag: "🇨🇳" },
+  { code: "ja", name: "Japanese", native: "日本語", flag: "🇯🇵" },
 ];
 
-export function LanguageScreen({ onBack, lang = "en", onChangeLang }: { onBack: () => void; lang?: Lang; onChangeLang?: (code: string) => void }) {
-  const t = useT(lang);
-  const [selected, setSelected] = useState(lang || "en");
+export function LanguageScreen({ onBack }: { onBack: () => void }) {
+  const [selected, setSelected] = useState("en");
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title={t("app.language")} subtitle={t("app.chooseLanguage")} onBack={onBack} />
+          <ScreenHeader title="Language" subtitle="Choose your preferred language" onBack={onBack} />
 
           <div className="px-5">
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {LANGUAGES.map((lang, i) => (
                 <button
                   key={lang.code}
-                  onClick={() => { setSelected(lang.code); onChangeLang?.(lang.code); }}
+                  onClick={() => setSelected(lang.code)}
                   className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
                   style={{ borderBottom: i < LANGUAGES.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}
                 >
@@ -66,8 +62,7 @@ export function LanguageScreen({ onBack, lang = "en", onChangeLang }: { onBack: 
 }
 
 // ── Privacy Screen ─────────────────────────────────────────────
-export function PrivacyScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
-  const t = useT(lang);
+export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const [locationHistory, setLocationHistory] = useState(true);
   const [analytics, setAnalytics] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
@@ -89,7 +84,7 @@ export function PrivacyScreen({ onBack, lang = "en" }: { onBack: () => void; lan
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title={t("app.privacy")} subtitle="Control your data and access" onBack={onBack} />
+          <ScreenHeader title="Privacy & Security" subtitle="Control your data and access" onBack={onBack} />
 
           {/* Toggles */}
           <div className="px-5 mb-5">
@@ -124,7 +119,7 @@ export function PrivacyScreen({ onBack, lang = "en" }: { onBack: () => void; lan
           {/* Data Actions */}
           <div className="px-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px", marginBottom: 8, paddingLeft: 2, textTransform: "uppercase" }}>
-              {t("app.help")}
+              Data Management
             </p>
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {actions.map((a, i) => (
@@ -154,8 +149,7 @@ export function PrivacyScreen({ onBack, lang = "en" }: { onBack: () => void; lan
 }
 
 // ── Connected Devices Screen ───────────────────────────────────
-export function ConnectedDevicesScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
-  const t = useT(lang);
+export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
   const devices = [
     { id: "1", name: "iPhone 14 Pro", type: "phone", status: "current", lastSeen: "Now", os: "iOS 18.2" },
     { id: "2", name: "Apple Watch S9", type: "watch", status: "connected", lastSeen: "Connected", os: "watchOS 11" },
@@ -187,7 +181,7 @@ export function ConnectedDevicesScreen({ onBack, lang = "en" }: { onBack: () => 
                     <div className="flex items-center gap-2">
                       <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{d.name}</p>
                       {d.status === "current" && (
-                        <span className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)", fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>{t("set.thisDevice")}</span>
+                        <span className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)", fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>THIS DEVICE</span>
                       )}
                     </div>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{d.os} • {d.lastSeen}</p>
@@ -205,7 +199,7 @@ export function ConnectedDevicesScreen({ onBack, lang = "en" }: { onBack: () => 
               <div className="flex items-start gap-3">
                 <Watch className="size-5 shrink-0 mt-0.5" style={{ color: "#AF52DE" }} />
                 <div>
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{t("set.smartwatch")}</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>Smartwatch Integration</p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 3, lineHeight: 1.5 }}>
                     Native smartwatch app is coming soon. You'll be able to trigger SOS and share location directly from your wrist.
                   </p>
@@ -220,8 +214,7 @@ export function ConnectedDevicesScreen({ onBack, lang = "en" }: { onBack: () => 
 }
 
 // ── Help & Support Screen ──────────────────────────────────────
-export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?: Lang }) {
-  const t = useT(lang);
+export function HelpScreen({ onBack }: { onBack: () => void }) {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -236,17 +229,17 @@ export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?:
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title={t("app.help")} subtitle="Get help with SOSphere" onBack={onBack} />
+          <ScreenHeader title="Help & Support" subtitle="Get help with SOSphere" onBack={onBack} />
 
           {/* Contact options */}
           <div className="px-5 mb-5">
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { icon: Mail, label: "Email Support", sub: "info@sosphere.co", color: "#00C8E0" },
+                { icon: Mail, label: "Email Support", sub: "support@sosphere.app", color: "#00C8E0" },
                 { icon: MessageCircle, label: "Live Chat", sub: "Available 24/7", color: "#00C853" },
               ].map(c => (
                 <button key={c.label} className="p-4 text-left"
-                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — info@sosphere.co" : "Connecting to live chat agent..." }); }}
+                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — support@sosphere.app" : "Connecting to live chat agent..." }); }}
                   style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
                   <c.icon className="size-5 mb-2.5" style={{ color: c.color }} />
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</p>
@@ -294,7 +287,7 @@ export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?:
               onClick={() => { hapticLight(); toast("Terms & Privacy", { description: "Opening Terms of Service & Privacy Policy..." }); }}
               style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
-              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>{t("set.termsPrivacy")}</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>Terms & Privacy Policy</span>
               <ChevronRight className="size-4 ml-auto" style={{ color: "rgba(255,255,255,0.1)" }} />
             </button>
           </div>
@@ -305,7 +298,7 @@ export function HelpScreen({ onBack, lang = "en" }: { onBack: () => void; lang?:
               <Shield style={{ width: 11, height: 11, color: "rgba(0,200,224,0.2)" }} />
               <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.08)" }}>SOSphere</span>
             </div>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>{t("set.version")} 1.0.0 • Build 2026.03</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0 • Build 2026.03</p>
           </div>
         </div>
       </div>

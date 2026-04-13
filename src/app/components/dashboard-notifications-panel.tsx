@@ -10,17 +10,10 @@ import {
   Bell, X, Siren, AlertTriangle, MapPin,
   UserCheck, Radio, Settings,
   Trash2, Volume2, VolumeX, Shield, Eye,
-  LogIn, CheckCircle2,
+  LogIn,
 } from "lucide-react";
 import { onSyncEvent, type SyncEvent } from "./shared-store";
 import { useDashboardStore } from "./stores/dashboard-store";
-import {
-  triggerCriticalAlert,
-  acknowledgeCriticalAlert,
-  getActiveAlerts,
-  onAlertEscalation,
-  type AlertPriority,
-} from "./critical-alert-engine";
 
 // ── Types ─────────────────────────────────────────────────────
 type NotifCategory =
@@ -47,7 +40,6 @@ interface Notification {
   actorName?: string;
   navigateTo?: string; // dash page to open when clicked
   emoji?: string;
-  criticalAlertId?: string; // Link to critical alert engine for SOS
 }
 
 // ── Category Config ───────────────────────────────────────────
@@ -170,18 +162,16 @@ function timeAgo(date: Date): string {
 
 // ── Notification Row ──────────────────────────────────────────
 function NotifRow({
-  notif, onRead, onNavigate, onDelete, onAcknowledgeCriticalAlert,
+  notif, onRead, onNavigate, onDelete,
 }: {
   notif: Notification;
   onRead: (id: string) => void;
   onNavigate: (page: string) => void;
   onDelete: (id: string) => void;
-  onAcknowledgeCriticalAlert?: (criticalAlertId: string) => void;
 }) {
   const cfg = NOTIF_CATEGORY[notif.category];
   const Icon = cfg.icon;
   const dotColor = SEVERITY_DOT[notif.severity];
-  const isSOSUnread = notif.category === "sos" && !notif.read && notif.criticalAlertId;
 
   return (
     <motion.div
@@ -260,29 +250,6 @@ function NotifRow({
         </div>
       </div>
 
-      {/* Acknowledge button for SOS (if critical alert exists) */}
-      {isSOSUnread && onAcknowledgeCriticalAlert && (
-        <button
-          onClick={e => {
-            e.stopPropagation();
-            onAcknowledgeCriticalAlert(notif.criticalAlertId!);
-            onRead(notif.id);
-          }}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg transition-all flex-shrink-0 self-start mt-0.5"
-          style={{
-            background: "rgba(0,200,50,0.12)",
-            border: "1px solid rgba(0,200,50,0.3)",
-            fontSize: 10,
-            fontWeight: 600,
-            color: "#00C832",
-          }}
-          title="Acknowledge this SOS alert"
-        >
-          <CheckCircle2 className="size-3" />
-          Acknowledge
-        </button>
-      )}
-
       {/* Delete on hover */}
       <button
         onClick={e => { e.stopPropagation(); onDelete(notif.id); }}
@@ -332,7 +299,6 @@ export function NotificationsPanel({
   const [filterCat, setFilterCat] = useState<NotifCategory | "all">("all");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showFilter, setShowFilter] = useState(false);
-  const [escalatedAlertId, setEscalatedAlertId] = useState<string | null>(null);
 
   // Sync with store changes (new emergencies arrive → add notification)
   useEffect(() => {
@@ -364,47 +330,12 @@ export function NotificationsPanel({
     onUnreadChange(notifs.filter(n => !n.read).length);
   }, [notifs, onUnreadChange]);
 
-  // Subscribe to critical alert escalations
-  useEffect(() => {
-    const unsubscribe = onAlertEscalation((alertId: string) => {
-      console.log(`[NotificationsPanel] Alert escalated: ${alertId}`);
-      setEscalatedAlertId(alertId);
-      // Could trigger a full-screen overlay here if needed
-    });
-
-    return unsubscribe;
-  }, []);
-
   // Live events from mobile app / shared store
   useEffect(() => {
     const unsub = onSyncEvent((event: SyncEvent) => {
       let newNotif: Notification | null = null;
 
       if (event.type === "SOS_TRIGGERED") {
-        // Trigger the critical alert engine (alarm sound, vibration, notification)
-        // This bypasses device silent/DND mode
-        const alertTitle = `🚨 CRITICAL SOS — ${event.employeeName}`;
-        const alertBody = `SOS activated in ${event.zone || "Unknown Zone"}. Immediate response required.`;
-
-        let criticalAlertId: string | undefined;
-        try {
-          criticalAlertId = triggerCriticalAlert(
-            alertTitle,
-            alertBody,
-            "critical",
-            {
-              alarmDurationMs: 30000,
-              vibrationPattern: [500, 200, 500, 200, 500], // 3 long pulses
-              volumeLevel: 1.0,
-              requireAcknowledgment: true,
-              repeatCount: -1, // Infinite until acknowledged
-              escalationDelayMs: 60000, // 60 seconds
-            }
-          );
-        } catch (e) {
-          console.error("[SOS_TRIGGERED] Failed to trigger critical alert:", e);
-        }
-
         newNotif = {
           id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           category: "sos", severity: "critical",
@@ -413,7 +344,6 @@ export function NotificationsPanel({
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "emergencyHub",
-          criticalAlertId, // Link to critical alert engine
         };
       } else if (event.type === "HAZARD_REPORT") {
         newNotif = {
@@ -493,9 +423,8 @@ export function NotificationsPanel({
 
       if (newNotif) {
         setNotifs(prev => [newNotif!, ...prev]);
-        // Note: Critical SOS alerts are handled by the critical alert engine above
-        // Non-critical alerts can still have optional sound
-        if (soundEnabled && newNotif.severity === "critical" && newNotif.category !== "sos") {
+        // Play sound
+        if (soundEnabled && newNotif.severity === "critical") {
           try {
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             const osc = ctx.createOscillator();
@@ -526,13 +455,6 @@ export function NotificationsPanel({
 
   const handleDelete = useCallback((id: string) => {
     setNotifs(prev => prev.filter(n => n.id !== id));
-  }, []);
-
-  const handleAcknowledgeCriticalAlert = useCallback((criticalAlertId: string) => {
-    // Get the current user ID from store or auth context
-    const userId = useDashboardStore(s => s.user)?.id || "admin";
-    acknowledgeCriticalAlert(criticalAlertId, userId);
-    setEscalatedAlertId(null);
   }, []);
 
   const handleMarkAllRead = () => {
@@ -735,7 +657,6 @@ export function NotificationsPanel({
                           onRead={handleRead}
                           onNavigate={(page) => { onNavigate(page); onClose(); }}
                           onDelete={handleDelete}
-                          onAcknowledgeCriticalAlert={handleAcknowledgeCriticalAlert}
                         />
                       ))}
                     </div>
@@ -759,7 +680,6 @@ export function NotificationsPanel({
                           onRead={handleRead}
                           onNavigate={(page) => { onNavigate(page); onClose(); }}
                           onDelete={handleDelete}
-                          onAcknowledgeCriticalAlert={handleAcknowledgeCriticalAlert}
                         />
                       ))}
                     </div>
