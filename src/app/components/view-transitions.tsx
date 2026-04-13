@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState, ReactNode } from "react";
 import { motion, AnimatePresence, Variants } from "motion/react";
-import { springPresets, modalVariants, backdropVariants, slideUpVariants, slideRightVariants, slideLeftVariants, slideDownVariants, scaleInVariants, popoverVariants, contentFadeVariants } from "./spring-presets";
+import { springPresets, modalVariants, backdropVariants, slideUpVariants, slideRightVariants, slideLeftVariants, slideDownVariants, scaleInVariants, popoverVariants, contentFadeVariants } from "./spring-presets-v2";
 
 // ─────────────────────────────────────────────────────────────
 // Motion Configuration — Apple-grade easing curves
@@ -414,7 +414,7 @@ export {
   scaleInVariants,
   popoverVariants,
   contentFadeVariants,
-} from "./spring-presets";
+} from "./spring-presets-v2";
 
 // ─────────────────────────────────────────────────────────────
 // Dev logging utility

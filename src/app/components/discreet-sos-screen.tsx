@@ -19,7 +19,7 @@ import {
   handleDiscreetTap,
   deactivateDiscreetSos,
   subscribeToDiscreetMode,
-} from "./discreet-sos-mode";
+} from "./discreet-sos-mode-v2";
 
 interface DiscreetSosScreenProps {
   isOpen: boolean;

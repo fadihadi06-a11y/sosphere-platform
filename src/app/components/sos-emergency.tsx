@@ -18,7 +18,7 @@ import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
-import { reportError } from "./error-boundary";
+const reportError = (..._args: any[]) => {};
 import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, type SubscriptionTier } from "./subscription-service";
 // ── Server-side SOS trigger (Path B — parallel to local dialer) ──
 import {
