@@ -4,4 +4,5 @@
     <string name="title_activity_main">SOSphere</string>
     <string name="package_name">com.sosphere.app</string>
     <string name="custom_url_scheme">com.sosphere.app</string>
+    <string name="server_client_id">380367770593-080m690rtj5aatdhmk483bu2i24198v0.apps.googleusercontent.com</string>
 </resources>

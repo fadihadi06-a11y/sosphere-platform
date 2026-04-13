@@ -1,4 +1,4 @@
-﻿import { createBrowserRouter } from "react-router";
+﻿import { createBrowserRouter, redirect } from "react-router";
 import { createElement } from "react";
 import { LandingPage } from "./components/landing-page";
 import { RouteTransitionLayout } from "./components/route-layout";
@@ -7,12 +7,23 @@ function RouteLoading() {
   return createElement("div", { style: { width: "100vw", height: "100vh", background: "#05070E" } });
 }
 
+// Detect Capacitor native app
+function isNative(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).Capacitor;
+}
+
 export const router = createBrowserRouter([
   // ── Root route with transitions enabled ──
   {
     Component: RouteTransitionLayout,
     children: [
-      { path: "/", Component: LandingPage, HydrateFallback: RouteLoading },
+      {
+        path: "/",
+        // On native app → go straight to mobile view. On web → show landing page.
+        loader: () => isNative() ? redirect("/app") : null,
+        Component: LandingPage,
+        HydrateFallback: RouteLoading,
+      },
       { path: "/app", lazy: () => import("./components/mobile-app").then(m => ({ Component: m.MobileApp })), HydrateFallback: RouteLoading },
       // ── PERF: Dashboard lazy-loaded (was synchronous — ~3900 lines + 70 sub-imports) ──
       { path: "/dashboard", lazy: () => import("./components/dashboard-web-page").then(m => ({ Component: m.DashboardWebPage })), HydrateFallback: RouteLoading },

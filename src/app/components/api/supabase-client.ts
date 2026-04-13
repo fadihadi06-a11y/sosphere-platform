@@ -91,6 +91,103 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+/**
+ * Sign in with Google using NATIVE account picker (no browser redirect).
+ * Uses @codetrix-studio/capacitor-google-auth for native Android picker,
+ * then exchanges the idToken with Supabase via signInWithIdToken().
+ *
+ * Flow: Native picker → idToken → Supabase session (zero browser involvement)
+ */
+export async function signInWithGoogle(): Promise<{ session: any | null; error: string | null }> {
+  if (!_isConfigured) {
+    return { session: null, error: "Supabase not configured." };
+  }
+
+  try {
+    const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+
+    await GoogleAuth.initialize({
+      clientId: "380367770593-080m690rtj5aatdhmk483bu2i24198v0.apps.googleusercontent.com",
+      scopes: ["profile", "email"],
+      // grantOfflineAccess: true → maps to requestServerAuthCode(clientId, true)
+      // in the native Java plugin. The 'true' parameter forces Google to show
+      // the consent/authentication screen ("Is this you?") every time,
+      // even for basic scopes like profile and email.
+      grantOfflineAccess: true,
+    });
+
+    // The native Java signIn() has been patched to internally call
+    // revokeAccess() + signOut() BEFORE launching the Google intent.
+    // This forces Google Play Services to show the full account picker
+    // and consent screen every time — no JS-side workaround needed.
+    const googleUser = await GoogleAuth.signIn();
+
+    const idToken = googleUser?.authentication?.idToken;
+    if (!idToken) {
+      console.warn("[GoogleAuth] No idToken returned:", googleUser);
+      return { session: null, error: "No idToken returned." };
+    }
+
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: "google",
+      token: idToken,
+    });
+
+    if (error) {
+      console.error("[GoogleAuth] Supabase error:", error.message);
+      return { session: null, error: error.message };
+    }
+
+    console.log("[GoogleAuth] Success:", data.user?.email);
+    return { session: data.session, error: null };
+  } catch (err: any) {
+    const msg = err?.message || err?.toString() || "Unknown error";
+
+    if (msg.includes("cancel") || msg.includes("popup_closed") || msg.includes("12501")) {
+      return { session: null, error: null };
+    }
+
+    console.error("[GoogleAuth] Error:", msg);
+    return { session: null, error: msg };
+  }
+}
+
+/**
+ * Get authenticated user info from the current Supabase session.
+ * Navigation decisions (new vs returning) are handled by the caller
+ * based on local state (consent flags, saved profile), NOT this function.
+ */
+export async function getGoogleUserInfo() {
+  const session = await getSession();
+  if (!session?.user) return null;
+
+  const user = session.user;
+  const meta = user.user_metadata || {};
+
+  return {
+    id: user.id,
+    email: meta.email || user.email || "",
+    name: meta.full_name || meta.name || "",
+    avatar: meta.avatar_url || meta.picture || "",
+    provider: user.app_metadata?.provider || "unknown",
+    isNewUser: !meta.profile_completed,
+  };
+}
+
+/**
+ * Mark Google user's profile as completed in Supabase user_metadata.
+ */
+export async function markProfileCompleted(name: string, phone?: string) {
+  const { error } = await supabase.auth.updateUser({
+    data: {
+      full_name: name,
+      phone: phone || undefined,
+      profile_completed: true,
+    },
+  });
+  return { error: error?.message || null };
+}
+
 // ── Read role + company_id from JWT claims (set by custom_access_token_hook) ──
 function decodeJWTPayload(token: string): Record<string, any> {
   try {

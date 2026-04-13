@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, MapPin, Users, Bell, ArrowRight, ChevronLeft, Globe } from "lucide-react";
+import { Shield, MapPin, Users, Bell, ArrowRight, ChevronLeft, Globe, Check } from "lucide-react";
+import { LANG_META, type Lang as AppLang } from "./dashboard-i18n";
 
 interface WelcomeOnboardingProps {
   onComplete: () => void;
@@ -90,66 +91,96 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
   };
   const goBack = () => { if(current===0)return; setDir(-1); setCurrent(c=>c-1); };
 
-  // ── Language Picker Screen ────────────────────────────────────
+  // ── Language Picker Screen — 12 languages in premium grid ──
   if (showLangPicker) {
+    const allLangs = Object.entries(LANG_META) as [AppLang, typeof LANG_META[AppLang]][];
+    const accentColors: Record<string, string> = {
+      en:"#00C8E0",ar:"#00C8E0",fr:"#7B5EFF",es:"#FF9500",de:"#FF2D55",zh:"#FF2D55",
+      hi:"#FF9500",pt:"#34C759",ru:"#7B5EFF",ja:"#FF2D55",ko:"#00C8E0",tr:"#FF9500",
+    };
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden"
-        style={{background:"#05070E",fontFamily:"'Tajawal','Outfit',sans-serif"}}>
+      <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"#05070E",fontFamily:"'Outfit',system-ui,sans-serif",zIndex:9999}}>
 
-        {/* Ambient */}
-        <div className="absolute pointer-events-none"
-          style={{top:"-20%",left:"50%",transform:"translateX(-50%)",width:"min(140vw,560px)",height:"min(140vw,560px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(0,200,224,0.07) 0%,transparent 65%)"}}/>
+        {/* Ambient glow */}
+        <div style={{position:"absolute",top:"-15%",left:"50%",transform:"translateX(-50%)",width:"min(140vw,560px)",height:"min(140vw,560px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(0,200,224,0.06) 0%,transparent 60%)",pointerEvents:"none"}}/>
 
-        {/* Logo */}
-        <motion.div initial={{opacity:0,y:-20}} animate={{opacity:1,y:0}} transition={{duration:.6}}
-          className="flex flex-col items-center mb-12">
-          <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,rgba(0,200,224,.18),rgba(0,200,224,.06))",border:"1px solid rgba(0,200,224,.25)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:14}}>
-            <Shield size={30} color="#00C8E0"/>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"max(20px,env(safe-area-inset-top)) 20px 0",position:"relative",zIndex:10}}>
+          <div style={{width:38,height:38,borderRadius:12,background:"linear-gradient(135deg,rgba(0,200,224,.18),rgba(0,200,224,.06))",border:"1px solid rgba(0,200,224,.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Shield size={18} color="#00C8E0"/>
           </div>
-          <span style={{fontSize:24,fontWeight:900,color:"#fff",letterSpacing:"-.5px"}}>SOSphere</span>
-          <div className="flex items-center gap-1.5 mt-2">
-            <Globe size={12} color="rgba(255,255,255,.3)"/>
-            <span style={{fontSize:12,color:"rgba(255,255,255,.3)",fontFamily:"'Outfit',sans-serif"}}>Choose your language</span>
+          <div>
+            <span style={{fontSize:17,fontWeight:800,color:"#fff",letterSpacing:"-.3px"}}>SOSphere</span>
+            <p style={{fontSize:10,color:"rgba(255,255,255,.25)",margin:0,marginTop:1}}>Choose your language</p>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Language Buttons */}
-        <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:.2,duration:.5}}
-          className="flex flex-col gap-4 w-full px-8" style={{maxWidth:340}}>
+        {/* Title */}
+        <div style={{textAlign:"center",padding:"28px 24px 20px"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:999,background:"rgba(0,200,224,.06)",border:"1px solid rgba(0,200,224,.12)",marginBottom:14}}>
+            <Globe size={13} color="#00C8E0"/>
+            <span style={{fontSize:11,fontWeight:700,color:"#00C8E0",letterSpacing:"1px",textTransform:"uppercase"}}>12 Languages</span>
+          </div>
+          <h2 style={{fontSize:22,fontWeight:800,color:"#fff",margin:"0 0 6px",letterSpacing:"-.5px"}}>Select Language</h2>
+          <p style={{fontSize:12,color:"rgba(255,255,255,.3)",margin:0}}>اختر لغتك المفضلة</p>
+        </div>
 
-          {/* Arabic */}
-          <motion.button whileTap={{scale:.97}} onClick={()=>selectLang("ar")}
-            className="flex items-center justify-between px-6 py-5 rounded-2xl relative overflow-hidden"
-            style={{background:"linear-gradient(135deg,rgba(0,200,224,.1),rgba(0,200,224,.04))",border:"1.5px solid rgba(0,200,224,.25)",boxShadow:"0 8px 32px rgba(0,200,224,.08)"}}>
-            <div className="flex items-center gap-4">
-              <span style={{fontSize:32}}>🇸🇦</span>
-              <div style={{textAlign:"right"}}>
-                <p style={{fontSize:20,fontWeight:800,color:"#fff",fontFamily:"'Tajawal',sans-serif",lineHeight:1.2}}>العربية</p>
-                <p style={{fontSize:12,color:"rgba(255,255,255,.35)",fontFamily:"'Outfit',sans-serif"}}>Arabic</p>
-              </div>
-            </div>
-            <ArrowRight size={18} color="rgba(0,200,224,.6)" style={{transform:"scaleX(-1)"}}/>
-          </motion.button>
+        {/* Language Grid — 3 columns */}
+        <div style={{flex:1,overflowY:"auto",padding:"0 16px 24px",WebkitOverflowScrolling:"touch"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            {allLangs.map(([code, meta]) => {
+              const accent = accentColors[code] || "#00C8E0";
+              const selected = lang === code;
+              return (
+                <button
+                  key={code}
+                  onClick={() => selectLang(code as Lang)}
+                  style={{
+                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                    gap:6,padding:"16px 8px",borderRadius:16,cursor:"pointer",
+                    background: selected
+                      ? `linear-gradient(145deg,${accent}18,${accent}08)`
+                      : "rgba(255,255,255,.02)",
+                    border: selected
+                      ? `1.5px solid ${accent}50`
+                      : "1px solid rgba(255,255,255,.06)",
+                    boxShadow: selected ? `0 4px 20px ${accent}15` : "none",
+                    transition:"all .2s",position:"relative",
+                  }}
+                >
+                  {selected && (
+                    <div style={{position:"absolute",top:6,right:6,width:16,height:16,borderRadius:"50%",background:accent,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Check size={9} color="#fff" strokeWidth={3}/>
+                    </div>
+                  )}
+                  <span style={{fontSize:28,lineHeight:1}}>{meta.flag}</span>
+                  <span style={{fontSize:13,fontWeight:700,color: selected ? "#fff" : "rgba(255,255,255,.7)",textAlign:"center",lineHeight:1.2}}>{meta.native}</span>
+                  <span style={{fontSize:9,color: selected ? `${accent}CC` : "rgba(255,255,255,.2)",fontWeight:600,letterSpacing:".3px"}}>{meta.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-          {/* English */}
-          <motion.button whileTap={{scale:.97}} onClick={()=>selectLang("en")}
-            className="flex items-center justify-between px-6 py-5 rounded-2xl relative overflow-hidden"
-            style={{background:"linear-gradient(135deg,rgba(123,94,255,.1),rgba(123,94,255,.04))",border:"1.5px solid rgba(123,94,255,.25)",boxShadow:"0 8px 32px rgba(123,94,255,.08)"}}>
-            <div className="flex items-center gap-4">
-              <span style={{fontSize:32}}>🇬🇧</span>
-              <div>
-                <p style={{fontSize:20,fontWeight:800,color:"#fff",fontFamily:"'Outfit',sans-serif",lineHeight:1.2}}>English</p>
-                <p style={{fontSize:12,color:"rgba(255,255,255,.35)",fontFamily:"'Outfit',sans-serif"}}>الإنجليزية</p>
-              </div>
-            </div>
-            <ArrowRight size={18} color="rgba(123,94,255,.6)"/>
-          </motion.button>
-        </motion.div>
-
-        <motion.p initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.5}}
-          style={{fontSize:11,color:"rgba(255,255,255,.15)",marginTop:32,textAlign:"center",fontFamily:"'Outfit',sans-serif"}}>
-          You can change this later in Settings
-        </motion.p>
+        {/* Continue Button */}
+        <div style={{padding:"12px 20px max(20px,env(safe-area-inset-bottom))",position:"relative",zIndex:10}}>
+          <button
+            onClick={() => setShowLangPicker(false)}
+            style={{
+              width:"100%",height:52,borderRadius:16,border:"none",cursor:"pointer",
+              background:"linear-gradient(135deg,#00C8E0,#00A5C0)",
+              boxShadow:"0 8px 28px rgba(0,200,224,.3)",
+              fontSize:15,fontWeight:700,color:"#fff",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+            }}
+          >
+            <span>{lang === "ar" ? "متابعة" : "Continue"}</span>
+            <ArrowRight size={16}/>
+          </button>
+          <p style={{fontSize:9,color:"rgba(255,255,255,.15)",textAlign:"center",marginTop:10}}>
+            You can change this later in Settings
+          </p>
+        </div>
       </div>
     );
   }
@@ -166,7 +197,7 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
 
       {/* Orb */}
       <AnimatePresence mode="wait">
-        <motion.div key={slide.id} initial={{opacity:0,scale:.7}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.7}} transition={{duration:.5}}
+        <motion.div key={slide.id} initial={false} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.7}} transition={{duration:.5}}
           className="absolute pointer-events-none"
           style={{top:"-18%",left:"50%",transform:"translateX(-50%)",width:"min(130vw,520px)",height:"min(130vw,520px)",borderRadius:"50%",background:`radial-gradient(circle,${slide.glow} 0%,transparent 70%)`}}/>
       </AnimatePresence>
@@ -195,7 +226,7 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
       {/* Content */}
       <div className="flex-1 flex flex-col px-5 relative z-10" style={{overflow:"hidden"}}>
         <AnimatePresence mode="wait" custom={dir}>
-          <motion.div key={slide.id} custom={dir} initial={{opacity:0,x:dir*40}} animate={{opacity:1,x:0}} exit={{opacity:0,x:dir*-30}} transition={{duration:.35,ease:[.25,.46,.45,.94]}}
+          <motion.div key={slide.id} custom={dir} initial={false} animate={{opacity:1,x:0}} exit={{opacity:0,x:dir*-30}} transition={{duration:.35,ease:[.25,.46,.45,.94]}}
             className="flex-1 flex flex-col items-center justify-center" style={{paddingBlock:"4%"}}>
 
             {/* Icon */}
@@ -211,19 +242,19 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
               </motion.div>
             </div>
 
-            <motion.p initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:.1}}
+            <motion.p initial={false} animate={{opacity:1,y:0}} transition={{delay:.1}}
               style={{fontSize:"clamp(10px,2.8vw,12px)",fontWeight:700,letterSpacing:"2px",color:slide.color,textTransform:"uppercase",marginBottom:10,textAlign:"center",fontFamily:"'Outfit',sans-serif"}}>
               {subtitle}
             </motion.p>
 
-            <motion.h1 initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.15}}
+            <motion.h1 initial={false} animate={{opacity:1,y:0}} transition={{delay:.15}}
               style={{fontSize:"clamp(34px,9.5vw,50px)",fontWeight:900,color:"#fff",letterSpacing:"-2px",lineHeight:1.05,whiteSpace:"pre-line",textAlign:"center",marginBottom:24,fontFamily: isAr ? "'Tajawal',sans-serif" : "'Outfit',sans-serif"}}>
               {title}
             </motion.h1>
 
             <div style={{width:"100%",maxWidth:300,direction: isAr ? "rtl" : "ltr"}}>
               {features.map((f,i)=>(
-                <motion.div key={f} initial={{opacity:0,x: isAr ? -10 : 10}} animate={{opacity:1,x:0}} transition={{delay:.2+i*.07}} className="flex items-center gap-3 mb-3">
+                <motion.div key={f} initial={false} animate={{opacity:1,x:0}} transition={{delay:.2+i*.07}} className="flex items-center gap-3 mb-3">
                   <div style={{width:22,height:22,borderRadius:"50%",flexShrink:0,background:`${slide.color}12`,border:`1px solid ${slide.color}28`,display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <div style={{width:6,height:6,borderRadius:"50%",background:slide.color}}/>
                   </div>
@@ -247,7 +278,7 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
 
         <div className="flex items-center gap-3">
           {current>0&&(
-            <motion.button initial={{opacity:0,x:-10}} animate={{opacity:1,x:0}} whileTap={{scale:.93}} onClick={goBack}
+            <motion.button initial={false} animate={{opacity:1,x:0}} whileTap={{scale:.93}} onClick={goBack}
               style={{width:52,height:52,borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
               <ChevronLeft size={20} color="rgba(255,255,255,.5)"/>
             </motion.button>

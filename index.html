@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#FF2D55" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -38,12 +38,52 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
     <title>SOSphere — Field Worker Safety Platform</title>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root">
+      <!-- Visible until React mounts — if you see this, JS failed to load -->
+      <div id="boot-screen" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#05070E;color:white;font-family:system-ui;flex-direction:column">
+        <div style="font-size:24px;font-weight:bold;margin-bottom:12px">SOSphere</div>
+        <div style="font-size:14px;opacity:0.6" id="boot-status">Loading...</div>
+      </div>
+    </div>
+    <script>
+      // Unregister any old service workers that may be blocking
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          registrations.forEach(function(reg) { reg.unregister(); });
+          if (registrations.length > 0) {
+            document.getElementById('boot-status').textContent = 'Cleared cache, reloading...';
+            setTimeout(function() { location.reload(); }, 500);
+          }
+        });
+      }
+      // Debug: show errors visibly on screen
+      window.onerror = function(msg, url, line) {
+        var el = document.getElementById('boot-status');
+        if (el) el.textContent = 'Error: ' + msg + ' (line ' + line + ')';
+      };
+    </script>
+    <script>
+      // Keep the SOSphere boot screen visible for 1.5 seconds
+      // BUT if this is an OAuth callback (URL has access_token), skip the delay
+      window.__bootTime = Date.now();
+      window.__isOAuthCallback = (window.location.hash && window.location.hash.indexOf('access_token') !== -1);
+      window.__delayReactMount = function(mountFn) {
+        if (window.__isOAuthCallback) { mountFn(); return; }
+        var elapsed = Date.now() - window.__bootTime;
+        var remaining = Math.max(0, 1500 - elapsed);
+        if (remaining > 0) {
+          setTimeout(mountFn, remaining);
+        } else {
+          mountFn();
+        }
+      };
+    </script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

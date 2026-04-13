@@ -340,6 +340,8 @@ export function initCapacitorBridge(): void {
   setStatusBarStyle('light').catch(err =>
     console.warn('[Capacitor] Failed to set initial status bar:', err)
   );
+
+  // Splash screen handled by index.html boot screen (no plugin needed)
 }
 
 /**

@@ -142,8 +142,8 @@ export function VoiceSOSWidget({
   const isActive = voiceEnabled && isListening;
   const positionClass =
     position === "bottom-right"
-      ? "fixed-bottom-safe-lg right-6"
-      : "fixed-bottom-safe-lg left-6";
+      ? "right-4"
+      : "left-4";
 
   // ── Icon Color Based on State ────────────────────────────────
   let iconColor = "rgba(255,255,255,0.4)"; // idle (gray)
@@ -165,8 +165,9 @@ export function VoiceSOSWidget({
         whileTap={{ scale: 0.9 }}
         className={`fixed ${positionClass} z-40 flex items-center justify-center rounded-full shadow-lg transition-all`}
         style={{
-          width: "56px",
-          height: "56px",
+          bottom: "max(80px, calc(env(safe-area-inset-bottom) + 72px))",
+          width: "48px",
+          height: "48px",
           background: triggerFlash
             ? "linear-gradient(135deg, rgba(255,34,34,0.2), rgba(255,34,34,0.1))"
             : isActive
@@ -259,8 +260,10 @@ export function VoiceSOSWidget({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} fixed-bottom-safe z-40 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap pointer-events-none`}
+            className={`fixed ${position === "bottom-right" ? "right-20" : "left-20"} z-40 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap pointer-events-none`}
+            data-mic-tooltip="true"
             style={{
+              bottom: "max(88px, calc(env(safe-area-inset-bottom) + 80px))",
               background: isActive
                 ? "rgba(76,175,80,0.2)"
                 : "rgba(200,200,200,0.1)",

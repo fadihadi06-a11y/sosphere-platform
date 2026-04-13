@@ -88,8 +88,10 @@ export function PageTransition({
   delay?: number;
 }) {
   const prefersReduced = useReducedMotion();
+  // Skip Framer Motion entirely on Capacitor native — WebView doesn't reliably trigger animations
+  const isNative = typeof window !== "undefined" && !!(window as any).Capacitor;
 
-  if (prefersReduced) {
+  if (prefersReduced || isNative) {
     return <div className={className}>{children}</div>;
   }
 

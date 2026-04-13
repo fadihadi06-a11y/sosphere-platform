@@ -40,8 +40,6 @@
 html {
   /* Ensure viewport fits cover entire screen (including notches) */
   -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
 
   /* Prevent text size adjustment on orientation change */
   -webkit-text-size-adjust: 100%;
@@ -60,14 +58,10 @@ body {
 
   /* Prevent overscroll rubber-banding (momentum scrolling) */
   overscroll-behavior: none;
-  -webkit-user-select: none;
 
   /* Ensure 100vh accounts for mobile address bar */
   min-height: 100vh;
   min-height: 100dvh;
-
-  /* Prevent long-press menu on non-interactive elements */
-  -webkit-touch-callout: none;
 
   /* Tap feedback — removed in favor of explicit handling */
   -webkit-tap-highlight-color: transparent;
@@ -183,24 +177,16 @@ button[data-fab] {
  * Touch target utility class
  * Apply to any interactive element that's smaller than 44px
  */
-.touch-target,
-[role="button"],
-button,
-a[role="button"],
-input[type="checkbox"],
-input[type="radio"],
-[role="switch"] {
-  /* Ensure minimum touch target size */
+/* Touch target sizing — ONLY apply to elements that explicitly opt in.
+   Previously this applied to ALL buttons which broke onboarding dots,
+   slide indicators, and small icon buttons. */
+.touch-target {
   min-height: 44px;
   min-width: 44px;
-
-  /* Use flexbox for centering */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
-  /* Add touch-friendly padding */
-  padding: max(8px, 44px);
+  padding: 8px;
 }
 
 /**
@@ -254,8 +240,12 @@ a[role="button"] svg {
 *::before,
 *::after {
   -webkit-tap-highlight-color: transparent;
-  -webkit-user-select: none;
-  user-select: text;
+}
+
+/* Allow text selection on input elements */
+input, textarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 /**
@@ -350,18 +340,34 @@ html {
 /**
  * Remove default input styling (iOS Safari defaults are problematic)
  */
-input,
 textarea,
-select,
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Inputs: minimal reset — preserve text visibility in Android WebView */
+input {
+  outline: none;
+  border: none;
+  font-family: inherit;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Buttons: only reset appearance, NOT background/border (inline styles handle those) */
 button {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-
-  background: transparent;
-  border: none;
   outline: none;
-
   font-family: inherit;
   font-size: inherit;
   color: inherit;
@@ -721,10 +727,8 @@ html.native-ios {
     font-size: 16px;
   }
 
-  /* Increase touch targets on smaller screens */
-  button,
-  a[role="button"],
-  [role="button"] {
+  /* Touch targets only for explicit opt-in elements */
+  .touch-target {
     min-height: 44px;
     min-width: 44px;
   }

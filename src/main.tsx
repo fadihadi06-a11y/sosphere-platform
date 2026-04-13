@@ -35,13 +35,21 @@ async function initializeApp() {
   );
 }
 
-// Start the application
-initializeApp().catch(err => {
-  console.error("[App] Failed to initialize:", err);
-  // Render app anyway — error boundary will catch issues
-  createRoot(document.getElementById("root")!).render(
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
-  );
-});
+// Start the application — delay React mount so boot screen stays visible
+const doMount = () => {
+  initializeApp().catch(err => {
+    console.error("[App] Failed to initialize:", err);
+    createRoot(document.getElementById("root")!).render(
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
+    );
+  });
+};
+
+// Use boot delay if available (set in index.html), otherwise mount immediately
+if (typeof (window as any).__delayReactMount === "function") {
+  (window as any).__delayReactMount(doMount);
+} else {
+  doMount();
+}

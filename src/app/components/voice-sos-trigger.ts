@@ -7,6 +7,8 @@
 // Privacy-first: recognition 100% client-side, NO audio storage
 // ═══════════════════════════════════════════════════════════════
 
+import { useState, useEffect, useRef, useCallback } from "react";
+
 // ── Type Definitions ─────────────────────────────────────────
 
 export interface VoiceSOSConfig {
@@ -69,8 +71,7 @@ export function useVoiceSOSDetection({
   interimResults = false,
   maxListeningDurationMs = 300000,
 }: VoiceSOSConfig) {
-  const React = require("react");
-  const { useState, useEffect, useRef, useCallback } = React;
+  // React hooks imported at module level via ESM
 
   // ── State ────────────────────────────────────────────────────
   const [isSupported, setIsSupported] = useState(false);

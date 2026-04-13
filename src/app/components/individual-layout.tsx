@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { motion } from "motion/react";
 import { Home, Users, Map, User } from "lucide-react";
 import { IndividualHome } from "./individual-home";
@@ -13,6 +13,11 @@ function getTabs(t: (k: string) => string) {
     { id: "map", icon: Map, label: t("app.map") },
     { id: "profile", icon: User, label: t("app.profile") },
   ];
+}
+
+export interface IndividualLayoutHandle {
+  /** Returns true if it handled the back (went to home tab). Returns false if already on home. */
+  handleBack: () => boolean;
 }
 
 interface IndividualLayoutProps {
@@ -39,7 +44,7 @@ interface IndividualLayoutProps {
   onLogout?: () => void;
 }
 
-export function IndividualLayout({
+export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLayoutProps>(function IndividualLayout({
   onSOSTrigger, onRecordingChange, onCheckinTimer, timerActive,
   userName, userPlan, companyName, onNavigateToMedicalID, onNavigateToSubscription,
   onNavigateToIncidentHistory, onNavigateToEmergencyPacket, onNavigateToEmergencyServices,
@@ -48,10 +53,21 @@ export function IndividualLayout({
   onNavigateToSafeWalk,
   onLogout,
   t: tProp,
-}: IndividualLayoutProps) {
+}, ref) {
   const t = tProp || ((k: string) => k);
   const tabs = getTabs(t);
   const [activeTab, setActiveTab] = useState("home");
+
+  // Expose handleBack to parent (mobile-app) for Android back button support
+  useImperativeHandle(ref, () => ({
+    handleBack: () => {
+      if (activeTab !== "home") {
+        setActiveTab("home");
+        return true; // handled — went back to home tab
+      }
+      return false; // already on home — let parent handle (exit app)
+    },
+  }), [activeTab]);
 
   const handleProfileNavigate = (screen: string) => {
     if (screen === "medical-id") onNavigateToMedicalID?.();
@@ -84,7 +100,7 @@ export function IndividualLayout({
         />
       )}
       {activeTab === "family" && <FamilyCircle />}
-      {activeTab === "map" && <MapScreen />}
+      {activeTab === "map" && <MapScreen onBack={() => setActiveTab("home")} />}
       {activeTab === "profile" && (
         <ProfileSettings
           userName={userName}
@@ -166,4 +182,4 @@ export function IndividualLayout({
       </div>
     </div>
   );
-}
+});
