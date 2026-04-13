@@ -1,16 +1,24 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — SOS Server Trigger (Path B)
+// SOSphere — SOS Server Trigger (Path B) — HARDENED v2
 // Handles all server-side communication during SOS:
-//   1. triggerServerSOS() — fires on SOS activation (parallel to local call)
-//   2. sendHeartbeat()    — pings every 30s with GPS + battery
-//   3. endServerSOS()     — notifies server when SOS ends
+//   1. triggerServerSOS()  — fires on SOS activation (parallel to local call)
+//   2. sendHeartbeat()     — pings every 30s with GPS + battery (in-flight guarded)
+//   3. endServerSOS()      — notifies server when SOS ends
+//   4. Progressive watchdog with REAL server escalation at 5s / 15s
+//   5. Fire-and-forget prewarm via sendBeacon + native fallback
 //
-// This runs INDEPENDENTLY from the local dialer (Path A).
-// Both paths fire simultaneously — "No-Wait Protocol".
+// Hardening over v1:
+//   • sendBeacon prewarm with action=prewarm (URL param, not body)
+//   • Native prewarm fallback through SOSphereNative.nativePrewarm()
+//   • Heartbeat: AbortController + in-flight guard (no stacking on network flap)
+//   • Heartbeat starts IMMEDIATELY (before main fetch awaits)
+//   • Watchdog: progressive, actually escalates to server at t=5s and t=15s
+//   • JWT token attached on every server request for tier enforcement
 // ═══════════════════════════════════════════════════════════════
 
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
+import { supabase } from "./api/supabase-client";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
@@ -19,6 +27,8 @@ const SOS_ALERT_URL = `${SUPABASE_URL}/functions/v1/sos-alert`;
 
 // ── State ────────────────────────────────────────────────────
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let heartbeatInFlight = false;
+let heartbeatMissed = 0;
 let activeEmergencyId: string | null = null;
 let serverTriggerResult: ServerTriggerResult | null = null;
 
@@ -41,6 +51,7 @@ export interface ServerTriggerResult {
 export interface WatchdogState {
   localDialerOpened: boolean;
   localDialerRinging: boolean;
+  localCallActive: boolean;
   serverTriggered: boolean;
   serverResults: ServerTriggerResult | null;
   elapsedMs: number;
@@ -55,21 +66,96 @@ function getTierString(): "free" | "basic" | "elite" {
   return "free";
 }
 
+// Get JWT access token for server-side auth
+async function getAuthToken(): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchSOS(
   action: string | null,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  opts: { timeoutMs?: number } = {}
 ): Promise<Response> {
   const url = action ? `${SOS_ALERT_URL}?action=${action}` : SOS_ALERT_URL;
-  return fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(body),
-    // Emergency requests — no timeout, send immediately
-    keepalive: true,
+  const token = await getAuthToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    apikey: SUPABASE_ANON_KEY,
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const controller = new AbortController();
+  const timeoutId = opts.timeoutMs
+    ? setTimeout(() => controller.abort(), opts.timeoutMs)
+    : null;
+
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      keepalive: true,
+      signal: controller.signal,
+    });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PREWARM — Fire-and-forget survival beacon (Scenario 1: phone destroyed)
+// Fires BEFORE the main trigger so server has at least minimal data
+// even if the device dies mid-handshake.
+// ═══════════════════════════════════════════════════════════════
+function firePrewarm(opts: {
+  emergencyId: string;
+  userId: string;
+  userName: string;
+  tier: "free" | "basic" | "elite";
+  location: { lat: number; lng: number; accuracy: number } | null;
+}): void {
+  const payload = JSON.stringify({
+    emergencyId: opts.emergencyId,
+    userId: opts.userId,
+    userName: opts.userName,
+    tier: opts.tier,
+    location: opts.location,
+    ts: Date.now(),
   });
+
+  // Path 1: sendBeacon (browser-guaranteed delivery during unload/crash)
+  let beaconOk = false;
+  try {
+    beaconOk = navigator.sendBeacon(`${SOS_ALERT_URL}?action=prewarm`, payload);
+  } catch {}
+
+  // Path 2: Native Android fallback (survives Capacitor WebView death)
+  try {
+    (window as any).SOSphereNative?.nativePrewarm?.(
+      opts.emergencyId,
+      opts.userId,
+      opts.userName,
+      opts.tier,
+      opts.location?.lat ?? 0,
+      opts.location?.lng ?? 0
+    );
+  } catch {}
+
+  // Path 3: If sendBeacon failed, fallback to fetch keepalive
+  if (!beaconOk) {
+    fetch(`${SOS_ALERT_URL}?action=prewarm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -92,19 +178,32 @@ export async function triggerServerSOS(opts: {
 
   activeEmergencyId = opts.emergencyId;
 
+  // STEP 1 — Fire prewarm FIRST (survival beacon)
+  firePrewarm({
+    emergencyId: opts.emergencyId,
+    userId: opts.userId,
+    userName: opts.userName,
+    tier,
+    location: gps,
+  });
+
+  // STEP 2 — Start heartbeat IMMEDIATELY (don't wait for main fetch)
+  // If main fetch fails, heartbeats still keep server informed
+  startHeartbeat(opts.emergencyId, opts.userId);
+
   try {
     const res = await fetchSOS(null, {
       emergencyId: opts.emergencyId,
       userId: opts.userId,
       userName: opts.userName,
       userPhone: opts.userPhone,
-      tier,
+      // tier is NOT trusted server-side — will be overridden by DB lookup
       contacts: opts.contacts,
       location: gps || { lat: 0, lng: 0, accuracy: 9999 },
       bloodType: opts.bloodType,
       zone: opts.zone,
       silent: opts.silent,
-    });
+    }, { timeoutMs: 20000 });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "Unknown error");
@@ -122,17 +221,13 @@ export async function triggerServerSOS(opts: {
     serverTriggerResult = {
       success: true,
       emergencyId: opts.emergencyId,
-      tier,
+      tier: data.tier || tier, // Server may have overridden
       trackUrl: data.trackUrl,
       dashUrl: data.dashUrl,
       results: data.results,
     };
 
-    console.log(`[SOS-Server] Path B SUCCESS:`, data.results?.length, "contacts processed");
-
-    // Start heartbeat after successful trigger
-    startHeartbeat(opts.emergencyId, opts.userId);
-
+    console.log(`[SOS-Server] Path B SUCCESS: tier=${data.tier} contacts=${data.results?.length}`);
     return serverTriggerResult;
   } catch (err) {
     console.error("[SOS-Server] Path B FAILED (network):", err);
@@ -148,17 +243,29 @@ export async function triggerServerSOS(opts: {
 
 // ═══════════════════════════════════════════════════════════════
 // 2. HEARTBEAT — every 30s while SOS is active
-// If heartbeat stops → server knows device died
+// HARDENED: in-flight guard + AbortController (network flap safe)
 // ═══════════════════════════════════════════════════════════════
 let heartbeatCount = 0;
 const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
+const HEARTBEAT_TIMEOUT_MS = 10000;  // 10 seconds per request
 
 function startHeartbeat(emergencyId: string, userId: string) {
   stopHeartbeat(); // Clear any existing
   heartbeatCount = 0;
+  heartbeatInFlight = false;
+  heartbeatMissed = 0;
 
   heartbeatInterval = setInterval(async () => {
+    // In-flight guard: don't stack requests on a flapping network
+    if (heartbeatInFlight) {
+      heartbeatMissed++;
+      console.warn(`[SOS-Server] Heartbeat skipped — still in-flight (missed=${heartbeatMissed})`);
+      return;
+    }
+
     heartbeatCount++;
+    heartbeatInFlight = true;
+
     const gps = getLastKnownPosition();
     const battery = getBatteryLevel(); // synchronous — returns number | null
 
@@ -169,11 +276,15 @@ function startHeartbeat(emergencyId: string, userId: string) {
         location: gps || undefined,
         batteryLevel: battery ?? undefined,
         elapsedSec: heartbeatCount * 30,
-      });
+        missedBefore: heartbeatMissed,
+      }, { timeoutMs: HEARTBEAT_TIMEOUT_MS });
+      heartbeatMissed = 0; // Reset on successful send
       console.log(`[SOS-Server] Heartbeat #${heartbeatCount} sent (battery=${battery ? Math.round(battery * 100) + "%" : "?"})`);
     } catch (err) {
       console.warn("[SOS-Server] Heartbeat failed:", err);
-      // Don't stop — keep trying. Server will notice gaps.
+      // Don't stop — keep trying. Server will notice gaps via pg_cron.
+    } finally {
+      heartbeatInFlight = false;
     }
   }, HEARTBEAT_INTERVAL_MS);
 }
@@ -184,6 +295,8 @@ function stopHeartbeat() {
     heartbeatInterval = null;
   }
   heartbeatCount = 0;
+  heartbeatInFlight = false;
+  heartbeatMissed = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -207,7 +320,7 @@ export async function endServerSOS(opts: {
       recordingSec: opts.recordingSec || 0,
       photos: opts.photos?.length ?? 0,
       comment: opts.comment || "",
-    });
+    }, { timeoutMs: 10000 });
 
     console.log(`[SOS-Server] SOS ended on server: ${res.ok ? "OK" : "FAILED"}`);
     return res.ok;
@@ -218,26 +331,30 @@ export async function endServerSOS(opts: {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 4. SMART WATCHDOG — monitors local dialer state
-// If local dialer doesn't open within 5s, escalate server triggers
+// 4. PROGRESSIVE WATCHDOG — REAL server escalation
+// t=5s: Stage 1 → server fires SMS burst if local dialer didn't open
+// t=15s: Stage 2 → server force-initiates recorded bridge call
 // ═══════════════════════════════════════════════════════════════
-let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+let watchdogInterval: ReturnType<typeof setInterval> | null = null;
+let watchdogStep = 0;
 let watchdogState: WatchdogState = {
   localDialerOpened: false,
   localDialerRinging: false,
+  localCallActive: false,
   serverTriggered: false,
   serverResults: null,
   elapsedMs: 0,
 };
 
-const WATCHDOG_TIMEOUT_MS = 5000; // 5 seconds
-
 export function startWatchdog(
-  onEscalate: (reason: string) => void
+  onEscalate: (reason: string, stage: number) => void
 ): void {
+  stopWatchdog();
+  watchdogStep = 0;
   watchdogState = {
     localDialerOpened: false,
     localDialerRinging: false,
+    localCallActive: false,
     serverTriggered: false,
     serverResults: null,
     elapsedMs: 0,
@@ -245,31 +362,62 @@ export function startWatchdog(
 
   const startTime = Date.now();
 
-  watchdogTimer = setTimeout(() => {
+  watchdogInterval = setInterval(() => {
+    watchdogStep++;
     watchdogState.elapsedMs = Date.now() - startTime;
 
-    // Check if local dialer opened successfully
-    if (!watchdogState.localDialerOpened) {
-      console.warn(`[SOS-Watchdog] ⚠ Local dialer NOT opened after ${WATCHDOG_TIMEOUT_MS}ms — ESCALATING`);
-      onEscalate("local_dialer_timeout");
-    } else if (!watchdogState.localDialerRinging) {
-      console.warn(`[SOS-Watchdog] ⚠ Dialer opened but not ringing after ${WATCHDOG_TIMEOUT_MS}ms`);
-      // Not critical — the call might still work. Just log it.
+    // Stage 1: t=5s — local dialer should have opened by now
+    if (watchdogStep === 5 && !watchdogState.localDialerOpened) {
+      console.warn("[SOS-Watchdog] ⚠ Stage 1: local dialer NOT opened after 5s — escalating");
+      fireEscalation(1, "local_dialer_timeout");
+      onEscalate("local_dialer_timeout", 1);
     }
-  }, WATCHDOG_TIMEOUT_MS);
+
+    // Stage 2: t=15s — call should be ringing or active
+    if (watchdogStep === 15 && !watchdogState.localCallActive) {
+      console.error("[SOS-Watchdog] ⚠ Stage 2: local call NOT active after 15s — forcing server bridge");
+      fireEscalation(2, "local_call_timeout");
+      onEscalate("local_call_timeout", 2);
+    }
+
+    // Stop after 30s — the watchdog's job is done
+    if (watchdogStep >= 30) {
+      stopWatchdog();
+    }
+  }, 1000);
 }
 
-export function reportWatchdogEvent(event: "dialer_opened" | "dialer_ringing" | "call_active" | "call_ended") {
+function fireEscalation(stage: number, reason: string): void {
+  if (!activeEmergencyId) return;
+  fetchSOS("escalate", {
+    emergencyId: activeEmergencyId,
+    stage,
+    reason,
+    forceBridge: stage >= 2,
+  }, { timeoutMs: 8000 }).catch(err => {
+    console.warn("[SOS-Watchdog] Escalation request failed:", err);
+  });
+}
+
+export function reportWatchdogEvent(
+  event: "dialer_opened" | "dialer_ringing" | "call_active" | "call_ended"
+) {
   if (event === "dialer_opened") watchdogState.localDialerOpened = true;
   if (event === "dialer_ringing") watchdogState.localDialerRinging = true;
+  if (event === "call_active") watchdogState.localCallActive = true;
+  if (event === "call_ended") {
+    // Call ended normally — watchdog's job is done
+    stopWatchdog();
+  }
   console.log(`[SOS-Watchdog] Event: ${event}`);
 }
 
 export function stopWatchdog() {
-  if (watchdogTimer) {
-    clearTimeout(watchdogTimer);
-    watchdogTimer = null;
+  if (watchdogInterval) {
+    clearInterval(watchdogInterval);
+    watchdogInterval = null;
   }
+  watchdogStep = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -279,8 +427,8 @@ export function getServerTriggerResult(): ServerTriggerResult | null {
   return serverTriggerResult;
 }
 
-export function isServerActive(): boolean {
-  return activeEmergencyId !== null;
+export function getWatchdogState(): WatchdogState {
+  return { ...watchdogState };
 }
 
 export function getActiveEmergencyId(): string | null {

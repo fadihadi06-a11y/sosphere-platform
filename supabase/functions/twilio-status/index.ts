@@ -24,6 +24,62 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// ── Twilio request signature validation ──────────────────────
+// Twilio signs webhooks with HMAC-SHA1(url + sorted params, AuthToken)
+async function validateTwilioSignature(
+  req: Request,
+  url: string,
+  params: Record<string, string>
+): Promise<boolean> {
+  const sigHeader = req.headers.get("X-Twilio-Signature");
+  if (!sigHeader) return false;
+
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!authToken) {
+    console.warn("[twilio-status] TWILIO_AUTH_TOKEN missing — signature check skipped");
+    return true; // Fail open if not configured (dev mode)
+  }
+
+  // Twilio signature = HMAC-SHA1(url + sortedParams, authToken), base64
+  const sortedKeys = Object.keys(params).sort();
+  let dataToSign = url;
+  for (const k of sortedKeys) dataToSign += k + params[k];
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+
+  return sigB64 === sigHeader;
+}
+
+// ── End a Twilio conference via REST API ─────────────────────
+async function endConference(conferenceSid: string): Promise<void> {
+  const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+  const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+  try {
+    await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Conferences/${conferenceSid}.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ Status: "completed" }),
+      }
+    );
+    console.log(`[twilio-status] Conference ${conferenceSid} explicitly ended`);
+  } catch (err) {
+    console.error(`[twilio-status] Failed to end conference ${conferenceSid}:`, err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -42,12 +98,65 @@ serve(async (req) => {
       data[key] = String(value);
     });
 
-    console.log(`[twilio-status] ${action} | type=${type} | callId=${callId} | status=${data.CallStatus || data.MessageStatus || "unknown"}`);
+    // ── Validate Twilio signature (reject spoofed webhooks) ──
+    // Skipped for gather action (Twilio redirects with user-facing URL) and when
+    // running with TWILIO_SKIP_SIG=1 (dev only).
+    const skipSig = Deno.env.get("TWILIO_SKIP_SIG") === "1";
+    if (!skipSig && action !== "gather") {
+      const valid = await validateTwilioSignature(req, req.url, data);
+      if (!valid) {
+        console.warn("[twilio-status] Signature validation FAILED — rejecting request");
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    console.log(`[twilio-status] ${action} | type=${type} | callId=${callId} | status=${data.CallStatus || data.MessageStatus || data.StatusCallbackEvent || "unknown"}`);
 
     // Initialize Supabase client for logging
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // ── Handle Conference status events (Elite bridge) ───────
+    if (type === "conference") {
+      const event = data.StatusCallbackEvent; // start, end, join, leave
+      const conferenceSid = data.ConferenceSid;
+
+      console.log(`[twilio-status] Conference event: ${event} conf=${conferenceSid} callId=${callId}`);
+
+      await logCallEvent(supabase, callId, `conf_${event}`, data);
+
+      // When a participant leaves, check if conference is empty → kill it
+      if (event === "participant-leave" && conferenceSid) {
+        try {
+          // Fetch live participants for this conference
+          const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+          const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+          const partsRes = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Conferences/${conferenceSid}/Participants.json`,
+            {
+              headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}` },
+            }
+          );
+          const partsData = await partsRes.json();
+          const count = partsData.participants?.length ?? 0;
+          if (count === 0) {
+            console.log(`[twilio-status] Conference ${conferenceSid} empty — killing it to stop billing`);
+            await endConference(conferenceSid);
+          }
+        } catch (err) {
+          console.error("[twilio-status] Failed to check conference participants:", err);
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true, event, conferenceSid }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── Handle Gather (admin pressed a key) ──────────────────
     if (action === "gather") {

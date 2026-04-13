@@ -32,13 +32,13 @@ export const router = createBrowserRouter([
       { path: "/training", lazy: () => import("./components/training-center").then(m => ({ Component: m.TrainingCenter })), HydrateFallback: RouteLoading },
       // ── DEV: Diagnostic Stress-Test Suite (dev mode only) ──
       ...(import.meta.env.DEV ? [
-        { path: "/dev/stress-test", lazy: () => import("./components/diagnostic-stress-test").then(m => ({ Component: m.DiagnosticStressTest })), HydrateFallback: RouteLoading },
+        { path: "/dev/stress-test", lazy: () => import("./components/diagnostic-stress-test-v2").then(m => ({ Component: m.DiagnosticStressTest })), HydrateFallback: RouteLoading },
       ] : []),
       // ── LEGAL: Privacy Policy and Terms of Service ──
       { path: "/privacy", lazy: () => import("./components/privacy-page").then(m => ({ Component: m.PrivacyPage })), HydrateFallback: RouteLoading },
       { path: "/terms", lazy: () => import("./components/terms-page").then(m => ({ Component: m.TermsPage })), HydrateFallback: RouteLoading },
       // ── COMPLIANCE: Hidden ISO 27001 Auditor Dashboard (requires admin PIN) ──
-      { path: "/compliance", lazy: () => import("./components/compliance-dashboard").then(m => ({ Component: m.ComplianceDashboard })), HydrateFallback: RouteLoading },
+      { path: "/compliance", lazy: () => import("./components/compliance-dashboard-v2").then(m => ({ Component: m.ComplianceDashboard })), HydrateFallback: RouteLoading },
       { path: "*", lazy: () => import("./components/not-found-page").then(m => ({ Component: m.NotFoundPage })), HydrateFallback: RouteLoading },
     ],
   },

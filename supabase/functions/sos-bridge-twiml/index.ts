@@ -1,20 +1,25 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — Elite Call Bridge TwiML (Edge Function)
+// SOSphere — Elite Call Bridge TwiML (Edge Function) — HARDENED v2
 // Handles: GET/POST /functions/v1/sos-bridge-twiml
 //
 // For Elite tier: Creates a conference bridge between the SOS user
 // and their emergency contact. Both parties are connected and
-// the call is recorded in Twilio cloud.
+// the call is recorded in Twilio cloud (evidence-grade).
 //
 // Flow:
-//   1. Twilio calls the emergency contact
-//   2. TwiML announces the SOS emergency
-//   3. Contact presses 1 to accept → joined into conference
-//   4. Server then calls the SOS user and joins them too
+//   1. Twilio calls the emergency contact (action=announce)
+//   2. TwiML announces the SOS emergency + asks for DTMF '1'
+//   3. Contact presses 1 → gather endpoint calls SOS user + joins contact (action=accept)
+//   4. SOS user receives call → TwiML joins them into conference (action=join-user)
 //   5. Both are on a recorded conference line
+//   6. Conference status callbacks ensure no "ghost" conferences
 //
-// Query params:
-//   emergencyId, caller, contactName, userPhone, trackUrl
+// Hardening over v1:
+//   • record attribute on <Conference> (not <Dial>) — real recording
+//   • maxParticipants=2, endConferenceOnExit=false with explicit-kill webhook
+//   • statusCallback covers start/end/join/leave events
+//   • Explicit kill via REST API when last participant leaves (see twilio-status.ts)
+//   • timeLimit safety valve on <Dial>
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -29,10 +34,43 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// Base URL resolver — prefer SUPABASE_URL env, fall back to request origin
+function getBaseUrl(req: Request): string {
+  const envUrl = Deno.env.get("SUPABASE_URL");
+  if (envUrl) return envUrl;
+  return new URL(req.url).origin;
+}
+
+// Build conference TwiML block (shared between join-user and accept actions)
+function buildConferenceTwiml(confName: string, emergencyId: string, baseUrl: string): string {
+  const recordingCb = `${baseUrl}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=recording`;
+  const confStatusCb = `${baseUrl}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=conference`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Connecting now. The call is being recorded for safety.</Say>
+  <Dial timeLimit="3600">
+    <Conference
+      record="record-from-start"
+      recordingStatusCallback="${recordingCb}"
+      recordingStatusCallbackEvent="completed"
+      statusCallback="${confStatusCb}"
+      statusCallbackEvent="start end join leave"
+      statusCallbackMethod="POST"
+      startConferenceOnEnter="true"
+      endConferenceOnExit="false"
+      maxParticipants="2"
+      waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
+    >${escapeXml(confName)}</Conference>
+  </Dial>
+</Response>`;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const url = new URL(req.url);
+  const baseUrl = getBaseUrl(req);
   const emergencyId = url.searchParams.get("emergencyId") || "UNKNOWN";
   const caller      = decodeURIComponent(url.searchParams.get("caller") || "Someone");
   const contactName = decodeURIComponent(url.searchParams.get("contactName") || "");
@@ -40,43 +78,38 @@ serve(async (req: Request) => {
   const trackUrl    = decodeURIComponent(url.searchParams.get("trackUrl") || "");
   const action      = url.searchParams.get("action") || "announce";
 
-  // ── ACTION: join-user — TwiML for the SOS user joining conference ──
+  // ═════════════════════════════════════════════════════════
+  // ACTION: join-user — SOS user dialed by server, joins conference
+  // ═════════════════════════════════════════════════════════
   if (action === "join-user") {
     const confName = `sos-${emergencyId}`;
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">You are being connected to your emergency contact. Stay calm.</Say>
-  <Dial>
-    <Conference
-      record="record-from-start"
-      recordingStatusCallback="${url.origin}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=recording"
-      recordingStatusCallbackEvent="completed"
-      startConferenceOnEnter="true"
-      endConferenceOnExit="false"
-      waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
-    >${escapeXml(confName)}</Conference>
-  </Dial>
-</Response>`;
+    const twiml = buildConferenceTwiml(confName, emergencyId, baseUrl)
+      .replace(
+        `<Say voice="Polly.Joanna">Connecting now. The call is being recorded for safety.</Say>`,
+        `<Say voice="Polly.Joanna">You are being connected to your emergency contact. The call is recorded. Stay calm.</Say>`
+      );
 
     return new Response(twiml, {
       headers: { ...corsHeaders, "Content-Type": "application/xml" },
     });
   }
 
-  // ── ACTION: accept — contact pressed 1, join conference + call user ──
+  // ═════════════════════════════════════════════════════════
+  // ACTION: accept — contact pressed 1, bridge both parties
+  // ═════════════════════════════════════════════════════════
   if (action === "accept") {
     const confName = `sos-${emergencyId}`;
 
-    // Also trigger a call to the SOS user to join them into the conference
-    // This is done via Twilio REST API from here
+    // Trigger a call to the SOS user to join them into the conference
     if (userPhone) {
       try {
         const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
         const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
         const twilioFrom  = Deno.env.get("TWILIO_FROM_NUMBER")!;
-        const joinTwiml   = `${url.origin}/functions/v1/sos-bridge-twiml?action=join-user&emergencyId=${encodeURIComponent(emergencyId)}`;
+        const joinTwiml   = `${baseUrl}/functions/v1/sos-bridge-twiml?action=join-user&emergencyId=${encodeURIComponent(emergencyId)}`;
+        const statusCb    = `${baseUrl}/functions/v1/twilio-status?callId=${encodeURIComponent(emergencyId)}&type=user-join`;
 
-        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`, {
+        const callRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`, {
           method: "POST",
           headers: {
             Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
@@ -86,39 +119,34 @@ serve(async (req: Request) => {
             To: userPhone.replace(/[^+\d]/g, ""),
             From: twilioFrom,
             Url: joinTwiml,
+            StatusCallback: statusCb,
+            StatusCallbackMethod: "POST",
             Timeout: "20",
           }),
         });
-        console.log(`[sos-bridge] Called user ${userPhone} to join conference ${confName}`);
+
+        if (!callRes.ok) {
+          const errText = await callRes.text().catch(() => "");
+          console.error(`[sos-bridge] Failed to call user into conference: ${callRes.status} ${errText}`);
+        } else {
+          console.log(`[sos-bridge] Called user ${userPhone} to join conference ${confName}`);
+        }
       } catch (err) {
-        console.error("[sos-bridge] Failed to call user into conference:", err);
+        console.error("[sos-bridge] Exception calling user into conference:", err);
       }
     }
 
     // Join the contact into the conference
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">Connecting you now. The call is being recorded for safety.</Say>
-  <Dial>
-    <Conference
-      record="record-from-start"
-      recordingStatusCallback="${url.origin}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=recording"
-      recordingStatusCallbackEvent="completed"
-      startConferenceOnEnter="true"
-      endConferenceOnExit="false"
-      waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"
-    >${escapeXml(confName)}</Conference>
-  </Dial>
-</Response>`;
-
+    const twiml = buildConferenceTwiml(confName, emergencyId, baseUrl);
     return new Response(twiml, {
       headers: { ...corsHeaders, "Content-Type": "application/xml" },
     });
   }
 
-  // ── DEFAULT: announce — initial TwiML for contact ──────────
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || url.origin;
-  const gatherUrl = `${url.origin}/functions/v1/sos-bridge-twiml?action=accept&emergencyId=${encodeURIComponent(emergencyId)}&userPhone=${encodeURIComponent(userPhone)}`;
+  // ═════════════════════════════════════════════════════════
+  // DEFAULT: announce — initial TwiML for contact on inbound call
+  // ═════════════════════════════════════════════════════════
+  const gatherUrl = `${baseUrl}/functions/v1/sos-bridge-twiml?action=accept&emergencyId=${encodeURIComponent(emergencyId)}&userPhone=${encodeURIComponent(userPhone)}&caller=${encodeURIComponent(caller)}`;
 
   const announcement = `Emergency Alert from SOSphere. ${escapeXml(caller)} has triggered an SOS emergency and needs immediate help. Emergency I D: ${escapeXml(emergencyId)}.`;
 
@@ -130,7 +158,8 @@ serve(async (req: Request) => {
   <Gather numDigits="1" action="${escapeXml(gatherUrl)}" method="POST" timeout="15">
     <Say voice="Polly.Joanna">Press 1 to connect with ${escapeXml(caller)} now. Press 2 to hear this message again.</Say>
   </Gather>
-  <Say voice="Polly.Joanna">No response received. An SMS with the emergency details has been sent to your phone. Goodbye.</Say>
+  <Say voice="Polly.Joanna">No response received. An SMS with the emergency details has been sent. Goodbye.</Say>
+  <Hangup/>
 </Response>`;
 
   return new Response(twiml, {
