@@ -5,7 +5,7 @@ import {
   Shield, X, Clock, MessageSquare,
   AlertTriangle, CheckCircle, RefreshCw, FileText,
   ChevronRight, Heart, PhoneCall, Video,
-  PhoneOff, Building2, Camera, Send, ImageIcon,
+  PhoneOff, Building2, Camera, Send, ImageIcon, Users,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
@@ -948,6 +948,120 @@ interface SosEmergencyProps {
   userBloodType: string;
   userZone: string;
   userAvatar?: string;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TierPipeline — visual representation of the 3-tier escalation chain
+//
+// Reflects the server-side `resolveTier()` logic deployed in v14:
+//     Tier 1: Admin (supervisor)       — initial contact
+//     Tier 2: Owner (company owner)    — auto-escalated after 60s
+//     Tier 3: Emergency Services       — manual or auto-escalated final tier
+//
+// The pipeline is a single-glance status of where the SOS currently sits
+// in the orchestration, matching what the backend is dispatching.
+// ═════════════════════════════════════════════════════════════════════
+interface TierPipelineProps {
+  level: "admin" | "owner" | "emergency_services";
+  mode: "employee" | "individual";
+  isAr: boolean;
+  escalationTimer: number;
+  thresholdSec: number;
+}
+
+function TierPipeline({ level, mode, isAr, escalationTimer, thresholdSec }: TierPipelineProps) {
+  // Individual mode does not have an admin/owner chain — hide pipeline.
+  if (mode !== "employee") return null;
+
+  const tiers: Array<{ key: "admin" | "owner" | "emergency_services"; label: string; labelEn: string }> = [
+    { key: "admin",              label: "المشرف",   labelEn: "Admin"     },
+    { key: "owner",              label: "المالك",   labelEn: "Owner"     },
+    { key: "emergency_services", label: "الطوارئ",  labelEn: "Services"  },
+  ];
+
+  const idxOf = (k: string) => tiers.findIndex(t => t.key === k);
+  const currentIdx = idxOf(level);
+
+  return (
+    <div className="shrink-0 px-5 mb-3">
+      <div className="flex items-center gap-1" style={{
+        padding: "8px 10px",
+        borderRadius: 14,
+        background: "rgba(255,255,255,0.025)",
+        border: "1px solid rgba(255,255,255,0.05)",
+      }}>
+        {tiers.map((tier, i) => {
+          const isPast    = i < currentIdx;
+          const isCurrent = i === currentIdx;
+          const isFuture  = i > currentIdx;
+
+          const color =
+            isPast    ? "#00C853" :
+            isCurrent ? (level === "emergency_services" ? "#FF2D55" : level === "owner" ? "#FF9500" : "#00C8E0") :
+                        "rgba(255,255,255,0.22)";
+
+          const progress =
+            isCurrent && level === "admin"
+              ? Math.min(1, escalationTimer / thresholdSec)
+              : isPast ? 1 : 0;
+
+          return (
+            <div key={tier.key} className="flex items-center" style={{ flex: 1, minWidth: 0 }}>
+              {/* Node */}
+              <motion.div
+                animate={isCurrent ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+                transition={{ duration: 1.4, repeat: isCurrent ? Infinity : 0 }}
+                className="shrink-0 flex items-center justify-center"
+                style={{
+                  width: 26, height: 26, borderRadius: 99,
+                  background: isCurrent ? `${color}1F` : isPast ? "rgba(0,200,83,0.12)" : "rgba(255,255,255,0.03)",
+                  border: `1.5px solid ${color}${isCurrent ? "" : isPast ? "" : "40"}`,
+                  boxShadow: isCurrent ? `0 0 12px ${color}55` : "none",
+                }}
+              >
+                {isPast ? (
+                  <CheckCircle style={{ width: 12, height: 12, color }} />
+                ) : isCurrent && level === "emergency_services" ? (
+                  <AlertTriangle style={{ width: 11, height: 11, color }} />
+                ) : (
+                  <span style={{ fontSize: 10, fontWeight: 800, color, fontFamily: "'Outfit', monospace" }}>{i + 1}</span>
+                )}
+              </motion.div>
+
+              {/* Label + connector */}
+              <div className="flex-1 flex items-center min-w-0">
+                <span style={{
+                  fontSize: 10, fontWeight: 700,
+                  color: isCurrent ? color : isPast ? "rgba(0,200,83,0.65)" : "rgba(255,255,255,0.28)",
+                  marginInline: 6,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}>
+                  {isAr ? tier.label : tier.labelEn}
+                </span>
+
+                {/* Connector line — hidden on last tier */}
+                {i < tiers.length - 1 && (
+                  <div style={{ flex: 1, height: 1.5, borderRadius: 99, background: "rgba(255,255,255,0.05)", position: "relative", minWidth: 8 }}>
+                    <motion.div
+                      animate={{ width: `${progress * 100}%` }}
+                      transition={{ duration: 0.6, ease: "easeOut" }}
+                      style={{
+                        position: "absolute", left: 0, top: 0, bottom: 0,
+                        borderRadius: 99,
+                        background: isPast ? "#00C853" : color,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, onNavigateToSubscription, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
@@ -2300,35 +2414,105 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       </AnimatePresence>
 
       {/* ══════════════════════════════════════════════════════════════════
-          HEADER — Minimal: status pill + timer
+          HEADER — status chip | telemetry rail | elapsed timer
+          Redesigned to stay balanced at all widths: the center rail only
+          holds tiny indicators (GPS / REC / NET) so the left status chip
+          and right timer sit flush at the edges and don't wrap.
           ══════════════════════════════════════════════════════════════════ */}
-      <div className="shrink-0 px-5 pt-12 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 100, background: `${statusColor}0D`, border: `1px solid ${statusColor}20` }}>
-            <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} className="size-2 rounded-full" style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}` }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, letterSpacing: "0.8px" }}>
-              {isConnected ? (isAr ? "متصل" : "CONNECTED") : phase === "pausing" ? (isAr ? "إعادة المحاولة" : "RETRYING") : (isAr ? "طوارئ نشطة" : "EMERGENCY ACTIVE")}
+      <div className="shrink-0 px-5 pt-12 pb-3">
+        <div className="flex items-center gap-3">
+          {/* LEFT — Status chip (phase-driven color, tier-aware label) */}
+          <div className="flex items-center gap-2 px-3 py-1.5" style={{
+            borderRadius: 100,
+            background: `${statusColor}12`,
+            border: `1px solid ${statusColor}30`,
+            boxShadow: `0 2px 10px ${statusColor}14`,
+          }}>
+            <motion.div
+              animate={{ opacity: [1, 0.2, 1], scale: [1, 1.25, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+              className="size-2 rounded-full"
+              style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}` }}
+            />
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: statusColor,
+              letterSpacing: "0.6px", whiteSpace: "nowrap",
+            }}>
+              {isConnected
+                ? (isAr ? "متصل" : "CONNECTED")
+                : phase === "pausing"
+                  ? (isAr ? "إعادة محاولة" : "RETRYING")
+                  : phase === "documenting"
+                    ? (isAr ? "توثيق" : "DOCUMENTING")
+                    : phase === "recording"
+                      ? (isAr ? "تسجيل" : "RECORDING")
+                      : (isAr ? "طوارئ نشطة" : "ACTIVE")}
             </span>
           </div>
-          {/* Timer + status indicators */}
-          <div className="flex items-center gap-3">
-            {/* GPS indicator dot */}
-            <div className="flex items-center gap-1">
-              <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: getLastKnownPosition() ? "#00C853" : "#FF9500" }} />
-              <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.2)" }}>GPS</span>
+
+          {/* CENTER — telemetry rail, compact and balanced */}
+          <div className="flex-1 flex items-center justify-center gap-2" style={{
+            height: 26, borderRadius: 99,
+            background: "rgba(255,255,255,0.025)",
+            border: "1px solid rgba(255,255,255,0.04)",
+          }}>
+            {/* GPS */}
+            <div className="flex items-center gap-1" title="GPS">
+              <motion.div
+                animate={{ opacity: getLastKnownPosition() ? [1, 0.35, 1] : 1 }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="size-1.5 rounded-full"
+                style={{ background: getLastKnownPosition() ? "#00C853" : "#FF9500" }}
+              />
+              <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "0.3px" }}>GPS</span>
             </div>
-            {/* Recording indicator */}
-            {isRecording && (
-              <div className="flex items-center gap-1">
-                <motion.div animate={{ opacity: [1, 0.1, 1] }} transition={{ duration: 0.8, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#FF2D55" }} />
-                <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,45,85,0.6)" }}>REC</span>
-              </div>
-            )}
-            {/* Elapsed timer */}
-            <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.35)", fontVariantNumeric: "tabular-nums" }}>{fmt(elapsed)}</span>
+            <div style={{ width: 1, height: 10, background: "rgba(255,255,255,0.06)" }} />
+            {/* REC */}
+            <div className="flex items-center gap-1" title="Recording">
+              <motion.div
+                animate={{ opacity: isRecording ? [1, 0.15, 1] : 1 }}
+                transition={{ duration: 0.8, repeat: Infinity }}
+                className="size-1.5 rounded-full"
+                style={{ background: isRecording ? "#FF2D55" : "rgba(255,255,255,0.12)" }}
+              />
+              <span style={{ fontSize: 9, fontWeight: 700, color: isRecording ? "rgba(255,45,85,0.75)" : "rgba(255,255,255,0.25)", letterSpacing: "0.3px" }}>REC</span>
+            </div>
+            <div style={{ width: 1, height: 10, background: "rgba(255,255,255,0.06)" }} />
+            {/* NET — server-trigger confirmation (today's v14 logic) */}
+            <div className="flex items-center gap-1" title="Server alert">
+              <motion.div
+                animate={{ opacity: smsSent ? 1 : [1, 0.3, 1] }}
+                transition={{ duration: 1.6, repeat: smsSent ? 0 : Infinity }}
+                className="size-1.5 rounded-full"
+                style={{ background: smsSent ? "#00C853" : "#00C8E0" }}
+              />
+              <span style={{ fontSize: 9, fontWeight: 700, color: smsSent ? "rgba(0,200,83,0.75)" : "rgba(0,200,224,0.75)", letterSpacing: "0.3px" }}>NET</span>
+            </div>
           </div>
+
+          {/* RIGHT — elapsed timer, monospace */}
+          <span style={{
+            fontSize: 15, fontWeight: 700,
+            color: "rgba(255,255,255,0.5)",
+            fontVariantNumeric: "tabular-nums",
+            fontFamily: "'Outfit', monospace",
+            minWidth: 52, textAlign: "right",
+          }}>{fmt(elapsed)}</span>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TIER PIPELINE — Admin → Owner → Emergency Services
+          Reflects server-side resolveTier() + client escalationLevel.
+          Only rendered for employee mode (individual mode has no chain).
+          ══════════════════════════════════════════════════════════════════ */}
+      <TierPipeline
+        level={escalationLevel}
+        mode={mode}
+        isAr={isAr}
+        escalationTimer={escalationTimer}
+        thresholdSec={ESCALATION_THRESHOLD_SEC}
+      />
 
       {/* ══════════════════════════════════════════════════════════════════
           SCROLLABLE CENTER — GlowCircle + phase-specific content
@@ -2446,37 +2630,136 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           )}
         </AnimatePresence>
 
-        {/* ── COMPACT CONTACT PILLS — only show during calling/pausing phases ── */}
+        {/* ── CALL QUEUE — contacts in the current tier, ordered by call position ──
+            Replaces the old scattered pills layout. Renders as a single
+            compact panel with a header row ("Calling queue · N contacts")
+            followed by a neatly aligned list where each row shows:
+              [position #] [avatar] [name + relation] [status badge / timer]
+            The active contact is highlighted with a subtle glow that matches
+            statusColor (the same phase-driven color used by the header chip).
+        */}
         {phase !== "documenting" && contacts.length > 0 && (
           <div className="shrink-0 px-5 mb-3">
-            <div className="flex flex-wrap gap-2 justify-center">
-              {contacts.map((c, i) => {
-                const isActive = phase === "calling" && i === currentIdx;
-                const sc = c.status === "answered" ? "#00C853" : c.status === "no_answer" ? "#FF9500" : isActive ? "#00C8E0" : "rgba(255,255,255,0.15)";
-                return (
-                  <motion.div key={c.id} layout
-                    className="flex items-center gap-2 px-3 py-2"
-                    style={{
-                      borderRadius: 20,
-                      background: isActive ? `${sc}0D` : c.status === "answered" ? "rgba(0,200,83,0.06)" : "rgba(255,255,255,0.03)",
-                      border: `1px solid ${sc}30`,
-                      transition: "all 0.4s",
-                    }}
-                  >
-                    <div className="size-6 rounded-full overflow-hidden shrink-0" style={{ border: `1.5px solid ${sc}50` }}>
-                      <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: isActive ? sc : c.status === "answered" ? "#00C853" : "rgba(255,255,255,0.5)" }}>
-                      {c.name}
-                    </span>
-                    {c.status === "answered" && <CheckCircle style={{ width: 12, height: 12, color: "#00C853" }} />}
-                    {c.status === "no_answer" && <PhoneMissed style={{ width: 12, height: 12, color: "#FF9500" }} />}
-                    {isActive && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#00C8E0" }}>{callRemaining}s</span>
-                    )}
-                  </motion.div>
-                );
-              })}
+            <div style={{
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              overflow: "hidden",
+            }}>
+              {/* Queue header */}
+              <div className="flex items-center justify-between px-4 py-2" style={{
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+                background: "rgba(255,255,255,0.015)",
+              }}>
+                <div className="flex items-center gap-2">
+                  <Users style={{ width: 12, height: 12, color: "rgba(255,255,255,0.4)" }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.4px" }}>
+                    {isAr ? "قائمة الاتصال" : "CALL QUEUE"}
+                  </span>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.3)" }}>
+                  {contacts.filter(c => c.status === "answered").length}
+                  <span style={{ color: "rgba(255,255,255,0.15)" }}> / </span>
+                  {contacts.length}
+                </span>
+              </div>
+
+              {/* Queue rows */}
+              <div>
+                {contacts.map((c, i) => {
+                  const isActive  = phase === "calling" && i === currentIdx;
+                  const isAnswered = c.status === "answered";
+                  const isMissed   = c.status === "no_answer";
+                  const isPending  = !isActive && !isAnswered && !isMissed;
+
+                  const sc = isAnswered ? "#00C853" : isMissed ? "#FF9500" : isActive ? statusColor : "rgba(255,255,255,0.22)";
+
+                  return (
+                    <motion.div
+                      key={c.id}
+                      layout
+                      className="flex items-center gap-3 px-4 py-2.5"
+                      style={{
+                        background: isActive ? `${sc}0F` : "transparent",
+                        borderBottom: i === contacts.length - 1 ? "none" : "1px solid rgba(255,255,255,0.03)",
+                        transition: "background 0.3s",
+                      }}
+                    >
+                      {/* Position number */}
+                      <div className="shrink-0 flex items-center justify-center" style={{
+                        width: 22, height: 22, borderRadius: 99,
+                        background: isActive ? `${sc}22` : isAnswered ? "rgba(0,200,83,0.1)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${sc}${isActive ? "55" : "22"}`,
+                      }}>
+                        {isAnswered ? (
+                          <CheckCircle style={{ width: 11, height: 11, color: sc }} />
+                        ) : isMissed ? (
+                          <PhoneMissed style={{ width: 11, height: 11, color: sc }} />
+                        ) : (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: sc, fontFamily: "'Outfit', monospace" }}>{i + 1}</span>
+                        )}
+                      </div>
+
+                      {/* Avatar */}
+                      <div className="shrink-0 rounded-full overflow-hidden" style={{
+                        width: 28, height: 28,
+                        border: `1.5px solid ${sc}${isPending ? "33" : "77"}`,
+                        opacity: isPending ? 0.55 : 1,
+                      }}>
+                        <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
+                      </div>
+
+                      {/* Name + relation */}
+                      <div className="flex-1 min-w-0">
+                        <div style={{
+                          fontSize: 13, fontWeight: 700,
+                          color: isActive ? "#fff" : isAnswered ? "#fff" : isMissed ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.55)",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}>
+                          {c.name}
+                        </div>
+                        {c.relation && (
+                          <div style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,0.28)", marginTop: 1 }}>
+                            {c.relation}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status badge */}
+                      <div className="shrink-0">
+                        {isActive && (
+                          <motion.div
+                            animate={{ opacity: [1, 0.6, 1] }}
+                            transition={{ duration: 1.2, repeat: Infinity }}
+                            className="flex items-center gap-1.5 px-2 py-1"
+                            style={{ borderRadius: 99, background: `${sc}1A`, border: `1px solid ${sc}44` }}
+                          >
+                            <Phone style={{ width: 10, height: 10, color: sc }} />
+                            <span style={{ fontSize: 11, fontWeight: 800, color: sc, fontFamily: "'Outfit', monospace" }}>
+                              {callRemaining}s
+                            </span>
+                          </motion.div>
+                        )}
+                        {isAnswered && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(0,200,83,0.7)", letterSpacing: "0.4px" }}>
+                            {isAr ? "ردّ" : "ANSWERED"}
+                          </span>
+                        )}
+                        {isMissed && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,150,0,0.7)", letterSpacing: "0.4px" }}>
+                            {isAr ? "لم يردّ" : "NO ANSWER"}
+                          </span>
+                        )}
+                        {isPending && (
+                          <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.25)", letterSpacing: "0.4px" }}>
+                            {isAr ? "بالانتظار" : "PENDING"}
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -2539,79 +2822,138 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       </div>{/* end scrollable middle */}
 
       {/* ══════════════════════════════════════════════════════════════════
-          BOTTOM ACTIONS — clean, context-aware
+          BOTTOM ACTION BAR — consolidated, context-aware
+          Layout priority (top-to-bottom):
+            1) Status strip — ONE line that communicates server state
+               (monitoring / location sent / auto-escalated / recording)
+            2) Secondary row — Incident Log + Escalate (side-by-side)
+            3) Primary row  — End Emergency (large destructive)
+            4) Disclaimer   — single subtle line
+          All reactive to today's v14 server-orchestration state
+          (smsSent ← sos-alert response, answeredContact ← Twilio status).
           ══════════════════════════════════════════════════════════════════ */}
-      <div className="shrink-0 px-5 pb-8 space-y-2">
+      <div className="shrink-0 px-5 pb-8" style={{ paddingTop: 8 }}>
 
-        {/* Monitoring status — shown when connected and recording is done */}
-        {phase === "monitoring" && recordingEnabled && !isRecording && (
-          <div className="flex items-center gap-2 px-3.5 py-2" style={{ borderRadius: 12, background: "rgba(0,200,83,0.05)", border: "1px solid rgba(0,200,83,0.12)" }}>
-            <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,200,83,0.7)" }}>{isAr ? "التسجيل اكتمل — المراقبة مستمرة" : "Recording saved — Monitoring active"}</span>
-          </div>
-        )}
+        {/* ── 1. STATUS STRIP — collapses multiple separate banners into one ── */}
+        {(() => {
+          // Pick the single most relevant status message (priority order).
+          let msg: { icon: any; color: string; text: string; pulse?: boolean } | null = null;
 
-        {/* SMART ESCALATION — employees only */}
-        {mode === "employee" && phase !== "answered" && phase !== "ended" && escalationLevel !== "emergency_services" && (
-          <motion.button whileTap={{ scale: 0.97 }} onClick={handleManualEscalate}
-            className="w-full flex items-center justify-center gap-2"
-            style={{ height: 46, borderRadius: 14,
-              background: escalationLevel === "admin" ? "rgba(255,150,0,0.06)" : "rgba(255,45,85,0.08)",
-              border: `1px solid ${escalationLevel === "admin" ? "rgba(255,150,0,0.18)" : "rgba(255,45,85,0.18)"}`,
-              color: escalationLevel === "admin" ? "#FF9500" : "#FF2D55", fontSize: 13, fontWeight: 700 }}>
-            <AlertTriangle style={{ width: 14, height: 14 }} />
-            {escalationLevel === "admin"
-              ? (isAr ? "تصعيد للمالك" : "Escalate to Owner")
-              : (isAr ? "اتصل 911/997" : "Call 911/997")}
-          </motion.button>
-        )}
+          if (smsSent && answeredContact) {
+            msg = {
+              icon: CheckCircle,
+              color: "#00C853",
+              text: isAr ? `تم إرسال الموقع · ${answeredContact.name} ردّ` : `Location sent · ${answeredContact.name} answered`,
+            };
+          } else if (smsSent) {
+            msg = {
+              icon: CheckCircle,
+              color: "rgba(0,200,224,0.85)",
+              text: isAr ? "تم تنبيه الخادم — جاري الاتصال بالتسلسل" : "Server alerted — dialing chain",
+              pulse: true,
+            };
+          } else if (phase === "monitoring" && recordingEnabled && !isRecording) {
+            msg = {
+              icon: CheckCircle,
+              color: "#00C853",
+              text: isAr ? "التسجيل اكتمل — المراقبة مستمرة" : "Recording saved — monitoring active",
+            };
+          } else if (autoEscalated) {
+            msg = {
+              icon: RefreshCw,
+              color: "#FF9500",
+              text: isAr ? "تم التصعيد تلقائياً للمالك" : "Auto-escalated to Owner",
+            };
+          }
 
-        {/* Auto-escalation notice */}
-        {mode === "employee" && autoEscalated && (
-          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 10, background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.1)" }}>
-            <RefreshCw size={10} color="#FF9500" />
-            <span style={{ fontSize: 10, color: "rgba(255,150,0,0.6)", fontWeight: 500 }}>
-              {isAr ? "تم التصعيد تلقائياً" : "Auto-escalated to Owner"}
-            </span>
-          </div>
-        )}
+          if (!msg) return null;
+          const Icon = msg.icon;
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 px-3 py-2 mb-2"
+              style={{
+                borderRadius: 12,
+                background: `${msg.color}0D`,
+                border: `1px solid ${msg.color}22`,
+              }}
+            >
+              <motion.div
+                animate={msg.pulse ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
+                transition={{ duration: 1.4, repeat: msg.pulse ? Infinity : 0 }}
+              >
+                <Icon style={{ width: 12, height: 12, color: msg.color }} />
+              </motion.div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: msg.color, letterSpacing: "-0.1px" }}>{msg.text}</span>
+            </motion.div>
+          );
+        })()}
 
-        {/* View Incident Record — subtle link */}
-        <div className="flex gap-2">
-          <button onClick={() => setShowIncidentOverlay(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5"
-            style={{ borderRadius: 12, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <FileText style={{ width: 12, height: 12, color: "rgba(255,255,255,0.2)" }} />
-            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.25)" }}>
+        {/* ── 2. SECONDARY ROW — Incident Log + Escalate (employees only) ── */}
+        <div className="flex gap-2 mb-2">
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowIncidentOverlay(true)}
+            className="flex-1 flex items-center justify-center gap-1.5"
+            style={{
+              height: 42, borderRadius: 12,
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            <FileText style={{ width: 13, height: 13, color: "rgba(255,255,255,0.45)" }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>
               {isAr ? "سجل الحادث" : "Incident Log"}
             </span>
-          </button>
-          {/* Connected indicator — shows when someone picked up */}
-          {smsSent && answeredContact && (
-            <div className="flex items-center gap-1.5 px-3 py-2.5"
-              style={{ borderRadius: 12, background: "rgba(0,200,83,0.04)", border: "1px solid rgba(0,200,83,0.1)" }}>
-              <CheckCircle style={{ width: 11, height: 11, color: "#00C853" }} />
-              <span style={{ fontSize: 10, color: "rgba(0,200,83,0.6)", fontWeight: 600 }}>
-                {isAr ? "تم إرسال الموقع" : "Location sent"}
+          </motion.button>
+
+          {mode === "employee" && phase !== "answered" && phase !== "ended" && escalationLevel !== "emergency_services" && (
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleManualEscalate}
+              className="flex-1 flex items-center justify-center gap-1.5"
+              style={{
+                height: 42, borderRadius: 12,
+                background: escalationLevel === "admin" ? "rgba(255,150,0,0.08)" : "rgba(255,45,85,0.1)",
+                border: `1px solid ${escalationLevel === "admin" ? "rgba(255,150,0,0.25)" : "rgba(255,45,85,0.28)"}`,
+              }}
+            >
+              <AlertTriangle style={{ width: 13, height: 13, color: escalationLevel === "admin" ? "#FF9500" : "#FF2D55" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: escalationLevel === "admin" ? "#FF9500" : "#FF2D55" }}>
+                {escalationLevel === "admin"
+                  ? (isAr ? "تصعيد للمالك" : "Escalate to Owner")
+                  : (isAr ? "اتصل 911/997" : "Call 911/997")}
               </span>
-            </div>
+            </motion.button>
           )}
         </div>
 
-        {/* End Emergency — primary destructive action */}
+        {/* ── 3. PRIMARY — End Emergency (large destructive, high visual weight) ── */}
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={() => setShowCancel(true)}
           className="w-full flex items-center justify-center gap-2"
-          style={{ height: 48, borderRadius: 14, background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.14)", color: "#FF2D55", fontSize: 14, fontWeight: 600 }}
+          style={{
+            height: 52, borderRadius: 16,
+            background: "linear-gradient(135deg, rgba(255,45,85,0.09), rgba(255,45,85,0.04))",
+            border: "1.5px solid rgba(255,45,85,0.22)",
+            color: "#FF2D55",
+            fontSize: 15, fontWeight: 700,
+            boxShadow: "0 6px 24px rgba(255,45,85,0.08)",
+          }}
         >
-          <X style={{ width: 14, height: 14 }} />
+          <X style={{ width: 15, height: 15 }} />
           {isAr ? "إنهاء الطوارئ" : "End Emergency"}
         </motion.button>
 
-        {/* Disclaimer */}
-        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.1)", textAlign: "center", lineHeight: 1.5 }}>
-          {isAr ? "نموذج أولي فقط — ليس بديلاً عن 911 / 997 / 112" : "Prototype only — not a replacement for 911 / 997 / 112"}
+        {/* ── 4. Disclaimer ── */}
+        <p style={{
+          fontSize: 9, color: "rgba(255,255,255,0.18)",
+          textAlign: "center", lineHeight: 1.5, marginTop: 8,
+          letterSpacing: "0.1px",
+        }}>
+          {isAr ? "نموذج أولي — ليس بديلاً عن 911 / 997 / 112" : "Prototype only — not a replacement for 911 / 997 / 112"}
         </p>
       </div>
 
