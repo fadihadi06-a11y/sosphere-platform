@@ -2081,9 +2081,18 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       ? `جاري تسجيل الأدلة · ${fmt(recordingSec)} / ${fmt(REC_MAX)}`
       : `Recording evidence · ${fmt(recordingSec)} / ${fmt(REC_MAX)}`;
     if (phase === "documenting") return isAr ? "وثّق هذه الحادثة" : "Document this incident";
-    if (phase === "monitoring")  return isAr
-      ? `المراقبة نشطة · ${answered}/${total} ردّوا`
-      : `Monitoring active · ${answered}/${total} responded`;
+    if (phase === "monitoring") {
+      // Civilian-friendly copy: tell the user exactly what happened
+      // and what the system is still doing for them. No engineering jargon.
+      if (answered > 0) {
+        return isAr
+          ? `ردّ ${answered} من ${total} — الخادم يواصل المتابعة`
+          : `${answered} of ${total} answered — server keeps following up`;
+      }
+      return isAr
+        ? `لم يردّ أحد — الخادم سيواصل المحاولة`
+        : `No one answered yet — server still trying`;
+    }
     return isAr ? "SOS نشط" : "SOS Active";
   };
 
@@ -2745,6 +2754,17 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                   <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.4px" }}>
                     {isAr ? "قائمة الاتصال" : "CALL QUEUE"}
                   </span>
+                  {/* Retry-cycle counter — user-visible proof that we stop
+                      after MAX_CYCLES instead of looping forever. */}
+                  {cycle > 0 && phase !== "monitoring" && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, color: "rgba(255,150,0,0.75)",
+                      background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.2)",
+                      padding: "2px 6px", borderRadius: 99, letterSpacing: "0.3px",
+                    }}>
+                      {isAr ? `جولة ${cycle + 1}/${MAX_CYCLES}` : `Round ${cycle + 1}/${MAX_CYCLES}`}
+                    </span>
+                  )}
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.3)" }}>
                   {contacts.filter(c => c.status === "answered").length}
@@ -2923,10 +2943,21 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5">
                     <RefreshCw style={{ width: 11, height: 11, color: "#FF9500" }} />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#FF9500" }}>{isAr ? "إعادة المحاولة" : "Retrying"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#FF9500" }}>
+                      {isAr ? `إعادة المحاولة · جولة ${cycle + 1}/${MAX_CYCLES}` : `Retrying · Round ${cycle + 1}/${MAX_CYCLES}`}
+                    </span>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#FF9500" }}>{pauseRemaining}s</span>
                 </div>
+                {/* Explain what the user is about to see: Android's native
+                    dialer will appear again when the next call fires. This
+                    prevents the "why is Contacts/Zoom popping up again?!"
+                    confusion the user reported. */}
+                <p style={{ fontSize: 10, color: "rgba(255,150,0,0.65)", marginTop: 2, lineHeight: 1.3 }}>
+                  {isAr
+                    ? "سيفتح نظام الهاتف شاشة الاتصال تلقائياً (زر جهات الاتصال من نظام أندرويد، ليس من التطبيق)."
+                    : "Android's system dialer will re-open automatically (Contacts button is from Android, not from this app)."}
+                </p>
                 <div style={{ height: 2, borderRadius: 99, background: "rgba(255,255,255,0.05)" }}>
                   <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#FF9500,#FF7700)", width: `${((PAUSE_SEC - pauseRemaining) / PAUSE_SEC) * 100}%`, transition: "width 1s linear" }} />
                 </div>
@@ -2955,11 +2986,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         className="shrink-0 px-5"
         style={{
           paddingTop: 8,
-          // Respect Android/iOS home-bar safe area AND reserve room for the
-          // Emergency Chat collapsed pill (z-50, 52px tall) that lives on top.
-          // Without this reservation the "End Emergency" button overlaps the
-          // chat toggle — creating the exact visual collision the user reported.
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px + 52px)",
+          // Reserve room for BOTH the device home-bar gesture area AND the
+          // Emergency Chat collapsed pill (z-50, ~64px tall incl. its own
+          // safe-area). 24px fallback for older Androids where CSS env()
+          // reports 0 and would otherwise clip the End Emergency button.
+          paddingBottom: "calc(env(safe-area-inset-bottom, 24px) + 16px + 64px)",
         }}
       >
 

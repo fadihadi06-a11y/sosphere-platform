@@ -126,12 +126,16 @@ export function MobileEmergencyChat({
         borderTop: "1px solid rgba(0,200,224,0.15)",
         borderRadius: "20px 20px 0 0",
         // Respect Android/iOS home-bar gesture area so the collapsed chat
-        // header (tap target) is never clipped by the device's bottom inset.
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        // header (tap target) is never clipped. The 24px fallback matters:
+        // many Android builds without CSS env() support collapse to 0 and
+        // clip the chat behind the system gesture bar.
+        paddingBottom: "env(safe-area-inset-bottom, 24px)",
+        paddingTop: 4,
         maxHeight: collapsed
-          ? `calc(52px + env(safe-area-inset-bottom, 0px))`
+          ? `calc(64px + env(safe-area-inset-bottom, 24px))`
           : "65%",
         transition: "max-height 0.3s ease",
+        boxShadow: "0 -8px 24px rgba(0,0,0,0.45)",
       }}
     >
       {/* Header (always visible) */}
