@@ -1696,7 +1696,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     startWatchdog((reason) => {
       console.warn("[SOS] Watchdog escalation:", reason);
       addEvent({ type: "sos_start", title: "Watchdog: local dialer failed", detail: reason, color: "#FF9500" });
-      toast.error(isAr ? "فشل الاتصال المحلي — السيرفر يتكفل" : "Local call failed — server handling it");
+      // Informational, not an error: watchdog only fires when we can't confirm
+      // the native dialer launched locally — but Path B (server Twilio calls)
+      // is already running in parallel, so the SOS is NOT failing. A red
+      // "Local call failed" error on a panicking user is the wrong signal.
+      toast.info(isAr ? "الخادم يواصل تنبيه جهاتك" : "Server is alerting your contacts");
     });
 
     // ── Auto-detect call answered/ended via native Android CallStateReceiver ──
@@ -2068,8 +2072,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const total    = contacts.length;
     if (phase === "starting")    return isAr ? "جاري تفعيل الطوارئ..." : "Activating Emergency...";
     if (phase === "calling")     return isAr
-      ? `يتم الاتصال بالتسلسل · ${currentIdx + 1} من ${total}`
-      : `Dialing queue · ${currentIdx + 1} of ${total}`;
+      ? `الاتصال بجهة ${currentIdx + 1} من ${total}`
+      : `Calling contact ${currentIdx + 1} of ${total}`;
     if (phase === "no_answer")   return isAr ? "لم يردّ — ننتقل للتالي" : "No answer — moving to next";
     if (phase === "pausing")     return isAr
       ? `إعادة المحاولة خلال ${pauseRemaining}ث`
@@ -3370,7 +3374,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                 </p>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 8, lineHeight: 1.7, fontFamily: "inherit" }}>
                   {upgradeFeatureName}
-                  {isAr ? " — متاح في الباقة النخبوية" : " — available in Elite Shield ($14/mo)"}
+                  {isAr ? " — متاح في الباقة النخبوية" : " — available in Elite Shield"}
                 </p>
                 <div className="mt-4 w-full space-y-2">
                   {[
