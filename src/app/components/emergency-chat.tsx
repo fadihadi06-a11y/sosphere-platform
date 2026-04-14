@@ -120,12 +120,17 @@ export function MobileEmergencyChat({
       initial={{ y: 200, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 200, opacity: 0 }}
-      className="absolute bottom-0 left-0 right-0 z-50"
+      className="fixed bottom-0 left-0 right-0 z-50"
       style={{
         background: "linear-gradient(180deg, rgba(10,18,32,0.97), #0A1220)",
         borderTop: "1px solid rgba(0,200,224,0.15)",
         borderRadius: "20px 20px 0 0",
-        maxHeight: collapsed ? 52 : "65%",
+        // Respect Android/iOS home-bar gesture area so the collapsed chat
+        // header (tap target) is never clipped by the device's bottom inset.
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        maxHeight: collapsed
+          ? `calc(52px + env(safe-area-inset-bottom, 0px))`
+          : "65%",
         transition: "max-height 0.3s ease",
       }}
     >
@@ -386,9 +391,14 @@ export function DashboardEmergencyChat({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="fixed right-4 bottom-4 z-[200] flex flex-col"
+      className="fixed right-4 z-[200] flex flex-col"
       style={{
-        width: 380,
+        // Respect device home-bar / gesture area on Android/iOS so the chat
+        // bubble is never clipped at the bottom. Also cap width so it fits
+        // on small screens (360px devices) without overflowing.
+        bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+        width: "min(380px, calc(100vw - 32px))",
+        maxHeight: "min(520px, calc(100vh - env(safe-area-inset-bottom, 0px) - 48px))",
         height: 520,
         background: "linear-gradient(180deg, #0A1220, #05070E)",
         border: "1px solid rgba(0,200,224,0.12)",

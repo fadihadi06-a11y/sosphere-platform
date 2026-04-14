@@ -181,6 +181,10 @@ export interface IncidentRecord {
 // Free=30s | Basic=60s | Elite=300s (5 min) per contact
 const CALL_SEC      = getCallDurationSec();
 const PAUSE_SEC     = 60;   // 60 seconds pause between retry cycles
+// Cap auto-redial: after MAX_CYCLES passes through the full contact list,
+// stop re-dialing and enter monitoring (server keeps the chain alive).
+// This prevents the "app keeps calling forever" problem when no one answers.
+const MAX_CYCLES    = 2;
 // Free=30s | Basic=60s | Elite=90s recording
 const REC_MAX       = getRecordingMaxSec();
 // Max photos: Free=1 | Basic=6 | Elite=unlimited
@@ -405,11 +409,43 @@ function GlowCircle({
                 transition={{ duration: 0.35, ease: "easeOut" }}
                 className="absolute inset-0"
               >
-                <ImageWithFallback
-                  src={displayContact.avatar}
-                  alt={displayContact.name}
-                  className="w-full h-full object-cover"
-                />
+                {(() => {
+                  // Hero avatar inside the GlowCircle. If no contact photo is
+                  // set, render a large initials bubble on a deterministic
+                  // gradient so the visual is never the grey broken-image box.
+                  const initials = (displayContact.name || "?")
+                    .split(/\s+/).filter(Boolean).slice(0, 2)
+                    .map(w => w[0]).join("").toUpperCase() || "?";
+                  const hue = (displayContact.name || "")
+                    .split("").reduce((a, ch) => a + ch.charCodeAt(0), 0) % 360;
+                  if (displayContact.avatar) {
+                    return (
+                      <ImageWithFallback
+                        src={displayContact.avatar}
+                        alt={displayContact.name}
+                        className="w-full h-full object-cover"
+                      />
+                    );
+                  }
+                  return (
+                    <div
+                      className="w-full h-full flex items-center justify-center"
+                      style={{
+                        background: `linear-gradient(135deg, hsl(${hue} 55% 28%), hsl(${(hue + 40) % 360} 50% 16%))`,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 64, fontWeight: 800,
+                          color: "rgba(255,255,255,0.95)",
+                          letterSpacing: "-1px",
+                          fontFamily: "'Outfit', sans-serif",
+                          textShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                        }}
+                      >{initials}</span>
+                    </div>
+                  );
+                })()}
                 <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.1) 30%, rgba(0,0,0,0.75) 100%)" }} />
 
                 {isCalling && (
@@ -1928,6 +1964,24 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         case "pausing":
           setPhaseTimer(r.phaseTimer);
           if (r.phaseTimer >= PAUSE_SEC) {
+            // FIX: Cap retry cycles so the app doesn't loop dialing forever.
+            // After MAX_CYCLES full passes with no answer, stop client-side dialing
+            // and enter monitoring — the server-side chain (v14 /sos-alert) continues.
+            if (r.cycle >= MAX_CYCLES) {
+              r.phase = "monitoring"; r.phaseTimer = 0;
+              setPhase("monitoring"); setPhaseTimer(0);
+              addEvent({
+                type: "pause_end",
+                title: isAr
+                  ? `انتهت محاولات الاتصال (${MAX_CYCLES} دورات)`
+                  : `Max redial cycles reached (${MAX_CYCLES})`,
+                detail: isAr
+                  ? "المراقبة نشطة — الخادم يواصل المحاولة"
+                  : "Monitoring active — server keeps trying",
+                color: "#FF9500",
+              });
+              break;
+            }
             r.cycle += 1; r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = 0;
             r.dialerOpenedForIdx = []; // FIX: Reset dialer tracking so calls actually dial on retry cycles
             manualAnswerRef.current = false; // FIX: Clear stale answer flag from previous cycle
@@ -2001,16 +2055,36 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const isConnected    = ["answered", "recording", "documenting", "monitoring"].includes(phase);
   const statusColor    = isConnected ? "#00C853" : phase === "pausing" ? "#FF9500" : "#FF2D55";
 
+  // Status label below the GlowCircle.
+  //
+  // IMPORTANT — de-duplication rule:
+  // The GlowCircle already renders the active contact's NAME + their call status
+  // (e.g. "Ahmed · Calling · 30s"). Repeating that name here creates the same
+  // info three times on screen. So for phases where GlowCircle owns the "who"
+  // (calling / answered / monitoring), the status line here must describe the
+  // PIPELINE state instead of re-stating the contact name.
   const statusLabel = () => {
-    if (phase === "starting")    return "Activating Emergency...";
-    if (phase === "calling")     return `Calling ${currentContact?.name}...`;
-    if (phase === "no_answer")   return "No Answer";
-    if (phase === "pausing")     return `Retrying in ${pauseRemaining}s`;
-    if (phase === "answered")    return `${answeredContact?.name} — Connected`;
-    if (phase === "recording")   return `Recording ${fmt(recordingSec)} / 1:00`;
-    if (phase === "documenting") return isAr ? "وثّق هذه الحادثة" : "Document This Incident";
-    if (phase === "monitoring")  return `Active Monitoring · ${answeredContact?.name}`;
-    return "SOS Active";
+    const answered = contacts.filter(c => c.status === "answered").length;
+    const total    = contacts.length;
+    if (phase === "starting")    return isAr ? "جاري تفعيل الطوارئ..." : "Activating Emergency...";
+    if (phase === "calling")     return isAr
+      ? `يتم الاتصال بالتسلسل · ${currentIdx + 1} من ${total}`
+      : `Dialing queue · ${currentIdx + 1} of ${total}`;
+    if (phase === "no_answer")   return isAr ? "لم يردّ — ننتقل للتالي" : "No answer — moving to next";
+    if (phase === "pausing")     return isAr
+      ? `إعادة المحاولة خلال ${pauseRemaining}ث`
+      : `Retrying in ${pauseRemaining}s`;
+    if (phase === "answered")    return isAr
+      ? `تم الرد — مشاركة الموقع`
+      : `Answered — sharing location`;
+    if (phase === "recording")   return isAr
+      ? `جاري تسجيل الأدلة · ${fmt(recordingSec)} / ${fmt(REC_MAX)}`
+      : `Recording evidence · ${fmt(recordingSec)} / ${fmt(REC_MAX)}`;
+    if (phase === "documenting") return isAr ? "وثّق هذه الحادثة" : "Document this incident";
+    if (phase === "monitoring")  return isAr
+      ? `المراقبة نشطة · ${answered}/${total} ردّوا`
+      : `Monitoring active · ${answered}/${total} responded`;
+    return isAr ? "SOS نشط" : "SOS Active";
   };
 
   // ── Documenting handlers ──
@@ -2340,7 +2414,22 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   }
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E" }}>
+    <div
+      className="flex flex-col overflow-hidden"
+      style={{
+        // Full-screen opaque overlay — guarantees nothing (Home / status bar /
+        // nav) bleeds through on any device. Covers notches via safe-area
+        // padding-top. z-index sits BELOW the Emergency Chat (z-50) and chat
+        // fullscreen (z-200) so those stay accessible during a live SOS.
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        zIndex: 40,
+        background: "#05070E",
+        paddingTop: "env(safe-area-inset-top)",
+      }}
+    >
 
       {/* Ambient background — subtle radial glow */}
       <motion.div
@@ -2700,14 +2789,44 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                         )}
                       </div>
 
-                      {/* Avatar */}
-                      <div className="shrink-0 rounded-full overflow-hidden" style={{
-                        width: 28, height: 28,
-                        border: `1.5px solid ${sc}${isPending ? "33" : "77"}`,
-                        opacity: isPending ? 0.55 : 1,
-                      }}>
-                        <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
-                      </div>
+                      {/* Avatar — real image if present, else a polished
+                          initials bubble with a deterministic gradient.
+                          Avoids the generic grey "broken image" placeholder
+                          when a contact has no photo (which is the common case). */}
+                      {(() => {
+                        const initials = (c.name || "?")
+                          .split(/\s+/).filter(Boolean).slice(0, 2)
+                          .map(w => w[0]).join("").toUpperCase() || "?";
+                        // Deterministic hue from the name so each contact keeps
+                        // the same color across re-renders.
+                        const hue = (c.name || "")
+                          .split("").reduce((a, ch) => a + ch.charCodeAt(0), 0) % 360;
+                        return (
+                          <div
+                            className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
+                            style={{
+                              width: 30, height: 30,
+                              border: `1.5px solid ${sc}${isPending ? "33" : "88"}`,
+                              opacity: isPending ? 0.6 : 1,
+                              background: c.avatar
+                                ? "transparent"
+                                : `linear-gradient(135deg, hsl(${hue} 60% 40%), hsl(${(hue + 40) % 360} 55% 28%))`,
+                              boxShadow: isActive ? `0 0 8px ${sc}44` : "none",
+                            }}
+                          >
+                            {c.avatar ? (
+                              <ImageWithFallback src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.95)",
+                                  letterSpacing: "0.3px", fontFamily: "'Outfit', sans-serif",
+                                }}
+                              >{initials}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Name + relation */}
                       <div className="flex-1 min-w-0">
@@ -2832,7 +2951,14 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           All reactive to today's v14 server-orchestration state
           (smsSent ← sos-alert response, answeredContact ← Twilio status).
           ══════════════════════════════════════════════════════════════════ */}
-      <div className="shrink-0 px-5 pb-8" style={{ paddingTop: 8 }}>
+      <div
+        className="shrink-0 px-5"
+        style={{
+          paddingTop: 8,
+          // Respect Android/iOS home-bar safe area so bottom buttons are never cut off.
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+        }}
+      >
 
         {/* ── 1. STATUS STRIP — collapses multiple separate banners into one ── */}
         {(() => {
@@ -3277,72 +3403,95 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                   </button>
                 </div>
 
-                {/* ERR ID + Duration */}
-                <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)" }}>
-                  <Shield style={{ width: 14, height: 14, color: "#00C8E0", flexShrink: 0 }} />
+                {/* Top summary — duration only (the stat the user cares about).
+                    Incident ID moved to footer as subtle reference copy. */}
+                <div className="flex items-center gap-3 mb-5 px-4 py-3 rounded-2xl" style={{ background: "rgba(255,45,85,0.04)", border: "1px solid rgba(255,45,85,0.12)" }}>
+                  <motion.div
+                    animate={{ opacity: [1, 0.45, 1] }}
+                    transition={{ duration: 1.6, repeat: Infinity }}
+                    className="size-2 rounded-full shrink-0"
+                    style={{ background: "#FF2D55", boxShadow: "0 0 6px #FF2D55" }}
+                  />
                   <div className="flex-1">
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>
-                      {isAr ? "رقم الحادث" : "Incident ID"}
+                    <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "0.8px" }}>
+                      {isAr ? "الحدث نشط" : "LIVE INCIDENT"}
                     </p>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0", fontFamily: "monospace" }}>
-                      {errIdRef.current}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>
-                      {isAr ? "المدة" : "Duration"}
-                    </p>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: "#FF6060", fontFamily: "monospace" }}>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: "'Outfit', monospace", letterSpacing: "-0.5px" }}>
                       {String(Math.floor(elapsed / 60)).padStart(2, "0")}:{String(elapsed % 60).padStart(2, "0")}
                     </p>
                   </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "0.6px" }}>
+                    {isAr ? `الدورة ${cycle}` : `CYCLE ${cycle}`}
+                  </span>
                 </div>
 
-                {/* Contact Status */}
-                <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", marginBottom: 8, fontFamily: "inherit" }}>
-                  {isAr ? "حالة جهات الاتصال" : "Contact Status"}
-                </p>
-                <div className="space-y-2 mb-4">
-                  {contacts.map((c, i) => (
-                    <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl"
-                      style={{ background: c.status === "answered" ? "rgba(0,200,83,0.06)" : c.status === "no_answer" ? "rgba(255,45,85,0.06)" : "rgba(255,255,255,0.02)", border: `1px solid ${c.status === "answered" ? "rgba(0,200,83,0.15)" : c.status === "no_answer" ? "rgba(255,45,85,0.12)" : "rgba(255,255,255,0.05)"}` }}>
-                      <div className="size-8 rounded-full flex items-center justify-center shrink-0"
-                        style={{ background: c.status === "answered" ? "rgba(0,200,83,0.12)" : "rgba(255,255,255,0.05)" }}>
-                        {c.status === "answered" ? <CheckCircle style={{ width: 14, height: 14, color: "#00C853" }} /> :
-                         c.status === "no_answer" ? <PhoneMissed style={{ width: 14, height: 14, color: "#FF2D55" }} /> :
-                         <Phone style={{ width: 14, height: 14, color: "rgba(255,255,255,0.3)" }} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "inherit" }}>{c.name}</p>
-                        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>{c.phone}</p>
-                      </div>
-                      <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-                        color: c.status === "answered" ? "#00C853" : c.status === "no_answer" ? "#FF2D55" : "rgba(255,255,255,0.25)" }}>
-                        {c.status === "answered" ? (isAr ? "رد" : "Answered") :
-                         c.status === "no_answer" ? (isAr ? "لم يرد" : "No Answer") :
-                         c.status === "calling" ? (isAr ? "جارٍ الاتصال..." : "Calling...") :
-                         (isAr ? "في الانتظار" : "Pending")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Event Timeline */}
+                {/* Event Timeline — FIRST and primary content.
+                    Each row shows HH:MM:SS timestamp so the log actually reads
+                    like a log, not a UUID wall. */}
                 {events.length > 0 && (
                   <>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", marginBottom: 8, fontFamily: "inherit" }}>
-                      {isAr ? "سجل الأحداث" : "Event Timeline"}
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.35)", marginBottom: 10, letterSpacing: "0.6px" }}>
+                      {isAr ? "الخط الزمني" : "TIMELINE"}
                     </p>
-                    <div className="space-y-1.5 mb-4">
-                      {events.slice(-8).map((ev, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                          <div className="size-1.5 rounded-full shrink-0" style={{ background: ev.color || "#00C8E0" }} />
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", fontFamily: "inherit" }}>{ev.title}</span>
-                        </div>
-                      ))}
+                    <div className="space-y-1 mb-5">
+                      {events.slice(-12).map((ev, i) => {
+                        const h = String(ev.ts.getHours()).padStart(2, "0");
+                        const m = String(ev.ts.getMinutes()).padStart(2, "0");
+                        const s = String(ev.ts.getSeconds()).padStart(2, "0");
+                        return (
+                          <div key={ev.id || i} className="flex items-start gap-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", fontFamily: "'Outfit', monospace", letterSpacing: "0.2px", paddingTop: 2, flexShrink: 0, minWidth: 56 }}>
+                              {h}:{m}:{s}
+                            </span>
+                            <div className="size-1.5 rounded-full shrink-0" style={{ background: ev.color || "#00C8E0", marginTop: 7 }} />
+                            <div className="flex-1 min-w-0">
+                              <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{ev.title}</p>
+                              {ev.detail && (
+                                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 2, lineHeight: 1.4 }}>{ev.detail}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
+
+                {/* Contact Status — secondary info. Cleaner row:
+                    single line with name + relation, phone tucked right (monospace, muted). */}
+                <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.35)", marginBottom: 10, letterSpacing: "0.6px" }}>
+                  {isAr ? "جهات الاتصال" : "CONTACTS"}
+                </p>
+                <div className="space-y-2 mb-5">
+                  {contacts.map((c, i) => {
+                    const sc = c.status === "answered" ? "#00C853"
+                             : c.status === "no_answer" ? "#FF9500"
+                             : c.status === "calling" ? "#FF2D55"
+                             : "rgba(255,255,255,0.25)";
+                    return (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl"
+                        style={{ background: `${sc}0A`, border: `1px solid ${sc}22` }}>
+                        <div className="size-7 rounded-full flex items-center justify-center shrink-0" style={{ background: `${sc}18`, border: `1px solid ${sc}40` }}>
+                          {c.status === "answered" ? <CheckCircle style={{ width: 12, height: 12, color: sc }} /> :
+                           c.status === "no_answer" ? <PhoneMissed style={{ width: 12, height: 12, color: sc }} /> :
+                           c.status === "calling" ? <Phone style={{ width: 12, height: 12, color: sc }} /> :
+                           <span style={{ fontSize: 10, fontWeight: 800, color: sc, fontFamily: "'Outfit', monospace" }}>{i + 1}</span>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {c.name}{c.relation ? <span style={{ color: "rgba(255,255,255,0.3)", fontWeight: 500 }}> · {c.relation}</span> : null}
+                          </p>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'Outfit', monospace", color: sc, letterSpacing: "0.4px" }}>
+                          {c.status === "answered" ? (isAr ? "ردّ" : "ANSWERED") :
+                           c.status === "no_answer" ? (isAr ? "لم يردّ" : "NO ANSWER") :
+                           c.status === "calling" ? (isAr ? "رنين" : "RINGING") :
+                           (isAr ? "انتظار" : "PENDING")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
 
                 {/* GPS + Recording Status */}
                 <div className="flex gap-2 mb-5">
@@ -3381,6 +3530,18 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                   style={{ height: 48, borderRadius: 14, background: "rgba(0,200,224,0.08)", border: "1.5px solid rgba(0,200,224,0.2)", color: "#00C8E0", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>
                   {isAr ? "إغلاق والعودة للمكالمة" : "Close & Return to SOS"}
                 </motion.button>
+
+                {/* Footer — Incident ID for support reference.
+                    Moved here (from the top) because it's a 36-char UUID useful
+                    to support staff only, not to the person in distress. */}
+                <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px", marginBottom: 2 }}>
+                    {isAr ? "مرجع الدعم" : "SUPPORT REFERENCE"}
+                  </p>
+                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'Outfit', monospace", wordBreak: "break-all", lineHeight: 1.4 }}>
+                    {errIdRef.current}
+                  </p>
+                </div>
               </div>
             </motion.div>
           </div>
