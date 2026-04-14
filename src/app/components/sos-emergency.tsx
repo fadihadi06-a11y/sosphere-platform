@@ -20,6 +20,7 @@ import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deact
 import { trackEventSync } from "./smart-timeline-tracker";
 const reportError = (..._args: any[]) => {};
 import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, getRecordingMode, type SubscriptionTier, type RecordingMode } from "./subscription-service";
+import { isDuressPin, isDuressFeatureAvailable } from "./duress-service";
 // ── Server-side SOS trigger (Path B — parallel to local dialer) ──
 import {
   triggerServerSOS, endServerSOS,
@@ -2311,6 +2312,49 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   }
 
   function handlePinSubmit() {
+    // ── PHASE 2: Duress PIN check — MUST run before the normal PIN check.
+    // If a duress PIN is configured and matches, we silently tag the end
+    // event as duress=true and still close the SOS UI identically to a
+    // normal deactivation so any coercer watching sees the same result.
+    // Tier-gated: duressCode is Elite-only; if the feature isn't available
+    // the duress PIN is ignored (defense-in-depth — even if a stale PIN
+    // lingers in localStorage after a tier downgrade).
+    if (isDuressFeatureAvailable() && isDuressPin(pinInput)) {
+      setShowPinEntry(false);
+      setShowDMS(false);
+      // Broadcast DURESS flag to dashboard/contacts BEFORE ending locally.
+      try {
+        emitSyncEvent({
+          type: "SOS_DURESS_TRIGGERED",
+          employeeId: userId,
+          employeeName: userName,
+          zone: userZone,
+          timestamp: Date.now(),
+          data: {
+            emergencyId: errIdRef.current,
+            phone: userPhone,
+            bloodType: userBloodType,
+            reason: "duress_pin_entered",
+          },
+        });
+      } catch {}
+      trackEventSync(errIdRef.current, "duress_triggered",
+        "Duress PIN entered — user is under coercion",
+        userName, "Employee",
+        { coercion: true });
+      addEvent({
+        type: "system",
+        title: "⚠ Duress code acknowledged",
+        detail: "Flag relayed to dashboard — UI ends normally",
+        color: "#FF2D55",
+      });
+      // Use the SAME reason text as normal end so the incident record is
+      // visually indistinguishable from a normal deactivation locally.
+      // The distinguishing duress=true signal rides on the sync event above.
+      doEnd("SOS ended by user (PIN verified)");
+      return;
+    }
+
     const storedPin = (() => { try { return localStorage.getItem("sosphere_deactivation_pin") || "1234"; } catch { return "1234"; } })();
     if (pinInput === storedPin) {
       setShowPinEntry(false);
