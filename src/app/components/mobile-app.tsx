@@ -718,10 +718,11 @@ export function MobileApp() {
         <BroadcastIsland />
 
         {/* Voice SOS Widget -- floating microphone.
-            Hidden during onboarding/login AND during an active SOS emergency:
-            a live SOS is already running, so the voice-trigger button has no
-            purpose and just adds visual clutter to a high-stress screen. */}
-        {screen !== "welcome" && screen !== "role-select" && screen !== "login" && screen !== "login-welcome" && screen !== "terms-consent" && screen !== "gps-consent" && screen !== "onboarding" && screen !== "individual-register" && screen !== "company-join" && screen !== "sos-emergency" && (
+            WHITELIST (safer than blacklist): only render on the two home
+            screens where a voice trigger actually makes sense. During an
+            active SOS (sos-emergency) or any modal / flow screen, the mic
+            is both pointless and visually intrusive. */}
+        {(screen === "individual-home" || screen === "employee-dashboard") && (
           <VoiceSOSWidget
             onVoiceSOSTriggered={handleVoiceSOSTriggered}
             primaryKeyword="help me"
