@@ -100,18 +100,53 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
 
 const STORAGE_KEY = "sosphere_subscription";
 
-/** Get current subscription tier */
-export function getSubscription(): SubscriptionInfo {
+/**
+ * Read the tier the user explicitly chose/paid for (never upgraded
+ * by a trial). Used by the subscription UI to show what the user is
+ * reverting to after a trial ends. Also used internally by
+ * getSubscription() as a fallback when no trial is active.
+ */
+export function getStoredTier(): SubscriptionTier {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (parsed.tier && TIER_CONFIG[parsed.tier as SubscriptionTier]) {
-        return TIER_CONFIG[parsed.tier as SubscriptionTier];
+        return parsed.tier as SubscriptionTier;
       }
     }
   } catch {}
-  return TIER_CONFIG.free; // Default to free
+  return "free";
+}
+
+/**
+ * Get current EFFECTIVE subscription tier. If an Elite trial is
+ * active, returns Elite regardless of the stored tier. When the
+ * trial expires, this automatically reverts — no mutation of the
+ * stored tier ever occurs. (Phase 10.)
+ */
+export function getSubscription(): SubscriptionInfo {
+  // Circular-import-safe: resolve lazily via require-style dynamic eval.
+  // trial-service has no dependency on this module, so this is a one-way
+  // read and cannot loop.
+  try {
+    // Inline lookup of the trial state key to avoid importing
+    // trial-service (keeps this module dependency-free for legacy callers).
+    const raw = localStorage.getItem("sosphere_trial_state");
+    if (raw) {
+      const t = JSON.parse(raw);
+      if (
+        t?.status === "active" &&
+        typeof t.startedAt === "number" &&
+        typeof t.durationMs === "number" &&
+        Date.now() - t.startedAt < t.durationMs &&
+        t?.tier && TIER_CONFIG[t.tier as SubscriptionTier]
+      ) {
+        return TIER_CONFIG[t.tier as SubscriptionTier];
+      }
+    }
+  } catch {}
+  return TIER_CONFIG[getStoredTier()];
 }
 
 /** Get just the tier string */
