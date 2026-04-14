@@ -2955,8 +2955,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         className="shrink-0 px-5"
         style={{
           paddingTop: 8,
-          // Respect Android/iOS home-bar safe area so bottom buttons are never cut off.
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+          // Respect Android/iOS home-bar safe area AND reserve room for the
+          // Emergency Chat collapsed pill (z-50, 52px tall) that lives on top.
+          // Without this reservation the "End Emergency" button overlaps the
+          // chat toggle — creating the exact visual collision the user reported.
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px + 52px)",
         }}
       >
 

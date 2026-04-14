@@ -30,19 +30,19 @@ function loadFamilyMembers(): { id: number; name: string; role: string; avatar: 
   return [];
 }
 
-function getQuickActions(t: (k: string) => string) {
+function getQuickActions(isAr: boolean) {
   return [
-    { id: "family", icon: Users, label: t("app.familyCircle"), color: "#00C8E0", bg: "rgba(0,200,224,0.06)" },
-    { id: "safewalk", icon: Footprints, label: t("app.safeWalk"), color: "#00C853", bg: "rgba(0,200,83,0.06)" },
-    { id: "checkin", icon: Timer, label: t("app.checkIn"), color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
-    { id: "medical", icon: HeartPulse, label: t("app.medicalId"), color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
+    { id: "family",   icon: Users,      label: isAr ? "العائلة"        : "Family Circle", color: "#00C8E0", bg: "rgba(0,200,224,0.06)" },
+    { id: "safewalk", icon: Footprints, label: isAr ? "المسار الآمن"   : "Safe Walk",     color: "#00C853", bg: "rgba(0,200,83,0.06)" },
+    { id: "checkin",  icon: Timer,      label: isAr ? "تسجيل الحضور"   : "Check-in",      color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
+    { id: "medical",  icon: HeartPulse, label: isAr ? "البطاقة الطبية" : "Medical ID",    color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
   ];
 }
 
 export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
   const t = tProp || ((k: string) => k);
   const { isAr } = useLang();
-  const quickActions = getQuickActions(t);
+  const quickActions = getQuickActions(isAr);
   const familyMembers = loadFamilyMembers();
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -140,9 +140,9 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
           transition={{ duration: 0.5 }}
           className="px-6 mb-6"
         >
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>{(() => { const h = new Date().getHours(); return h < 12 ? t("app.goodMorning") : h < 17 ? t("app.goodAfternoon") : t("app.goodEvening"); })()}</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>{(() => { const h = new Date().getHours(); if (isAr) return h < 12 ? "صباح الخير" : h < 17 ? "مساء الخير" : "مساء الخير"; return h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening"; })()}</p>
           <h1 className="text-white mt-0.5" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.5px" }}>
-            Stay Safe, <span style={{ color: "#00C8E0" }}>{userName.split(" ")[0]}</span>
+            {isAr ? "ابقَ بأمان، " : "Stay Safe, "}<span style={{ color: "#00C8E0" }}>{userName.split(" ")[0]}</span>
           </h1>
         </motion.div>
 
@@ -409,7 +409,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
               {isAr ? "جهات الطوارئ" : "Emergency Contacts"}
             </p>
             <button className="flex items-center gap-0.5" onClick={onFamilyCircle} style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>
-              {t("app.viewAll")} <ChevronRight className="size-3.5" />
+              {isAr ? "عرض الكل" : "View All"} <ChevronRight className="size-3.5" />
             </button>
           </div>
           <div
@@ -465,48 +465,6 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
           </div>
         </motion.div>
 
-        {/* ── Status: show real emergency contacts status (only if contacts exist) ── */}
-        {familyMembers.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="px-5"
-          >
-            <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
-              {isAr ? "الحالة" : "Status"}
-            </p>
-            <div className="space-y-2">
-              {familyMembers.map((member, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 px-3.5 py-3"
-                  style={{
-                    borderRadius: 14,
-                    background: "rgba(255,255,255,0.015)",
-                    border: "1px solid rgba(255,255,255,0.035)",
-                  }}
-                >
-                  <div className="relative">
-                    <div
-                      className="size-[7px] rounded-full"
-                      style={{ background: "#00C8E0", opacity: 0.4 }}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>
-                      <span style={{ fontWeight: 600, color: "#fff" }}>{member.name}</span>{" "}
-                      <span style={{ color: "rgba(255,255,255,0.3)" }}>{member.role}</span>
-                    </p>
-                  </div>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.12)", fontWeight: 400 }}>
-                    {isAr ? "جهة طوارئ" : "Emergency"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
       </div>
 
       {/* Recording Consent Modal */}
