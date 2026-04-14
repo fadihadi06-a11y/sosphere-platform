@@ -206,4 +206,10 @@ Root files:
 ## Support
 
 - **Guide:** VIEW_TRANSITIONS_GUIDE.md
-- **Examples:** TRANSITIONS_E
+- **Examples:** TRANSITIONS_EXAMPLES.tsx
+- **Technical:** TRANSITIONS_TECHNICAL_SPEC.md
+- **Architecture:** TRANSITIONS_IMPLEMENTATION_SUMMARY.md
+
+---
+
+**Keep it simple.** All transitions are already integrated. Just use the components!

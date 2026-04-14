@@ -6,12 +6,28 @@ import { ProfileSettings } from "./profile-settings";
 import { FamilyCircle } from "./family-circle";
 import { MapScreen } from "./map-screen";
 
-const tabs = [
-  { id: "home", icon: Home, label: "Home" },
-  { id: "family", icon: Users, label: "Family" },
-  { id: "map", icon: Map, label: "Map" },
-  { id: "profile", icon: User, label: "Profile" },
-];
+/**
+ * Build the tab list with translated labels.
+ *
+ * Accepts a translator `t` from the parent. The identity-fallback translator
+ * used by the component (`(k) => k`) returns the key unchanged when no real
+ * translator is provided, so we detect that case explicitly and fall back to
+ * the hard-coded English label. Calling this from inside the component (not
+ * at module scope) also means tabs re-render correctly on language change.
+ */
+function getTabs(t: (k: string) => string) {
+  const tr = (key: string, fallback: string) => {
+    const v = t(key);
+    // `t` might echo the key back (identity fallback) — detect and use English.
+    return !v || v === key ? fallback : v;
+  };
+  return [
+    { id: "home",    icon: Home,  label: tr("nav.home",    "Home")    },
+    { id: "family",  icon: Users, label: tr("nav.family",  "Family")  },
+    { id: "map",     icon: Map,   label: tr("nav.map",     "Map")     },
+    { id: "profile", icon: User,  label: tr("nav.profile", "Profile") },
+  ];
+}
 
 export interface IndividualLayoutHandle {
   /** Returns true if it handled the back (went to home tab). Returns false if already on home. */
@@ -39,6 +55,8 @@ interface IndividualLayoutProps {
   onNavigateToHelp?: () => void;
   onNavigateToSafeWalk?: () => void;
   onLogout?: () => void;
+  /** Optional translator function. Falls back to English keys if absent. */
+  t?: (key: string) => string;
 }
 
 export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLayoutProps>(function IndividualLayout({

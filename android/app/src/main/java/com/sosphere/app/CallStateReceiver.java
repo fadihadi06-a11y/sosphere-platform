@@ -62,4 +62,7 @@ public class CallStateReceiver extends BroadcastReceiver {
     }
 
     public static void reset() {
-  
+        lastState = "IDLE";
+        callAnswered = false;
+    }
+}
