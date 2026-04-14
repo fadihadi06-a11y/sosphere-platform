@@ -19,7 +19,7 @@ import { triggerOfflineSOS } from "./offline-sync";
 import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
 const reportError = (..._args: any[]) => {};
-import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, type SubscriptionTier } from "./subscription-service";
+import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, getRecordingMode, type SubscriptionTier, type RecordingMode } from "./subscription-service";
 // ── Server-side SOS trigger (Path B — parallel to local dialer) ──
 import {
   triggerServerSOS, endServerSOS,
@@ -1391,6 +1391,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const audioChunksRef   = useRef<Blob[]>([]);
   const audioDataUrlRef  = useRef<string>(""); // stores real base64 audio
 
+  // ── Recording timing mode (snapshotted at SOS start; cannot change mid-incident) ──
+  //   "after"  — default: record only after a contact answers (current behavior)
+  //   "during" — record from SOS activation onward; skip the post-call recording phase
+  //   "both"   — Elite: record from activation AND restart a fresh post-call segment
+  const recordingModeRef = useRef<RecordingMode>(getRecordingMode());
+  const duringRecordingStartedRef = useRef(false); // prevents double-start on re-renders
+
   const startRealRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1749,6 +1756,29 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       setElapsed(r.elapsed);
       setPhaseTimer(r.phaseTimer);
       if (r.isRecording)            setRecordingSec(r.recordingSec);
+
+      // ── PHASE 1 SAFETY CAP: "during" mode can record across multiple phases,
+      // so the existing per-phase cap at line ~2079 doesn't fire. Enforce the
+      // tier REC_MAX here, regardless of current phase, ONLY for during/both
+      // when the initial segment was kicked off early. "after" mode is untouched.
+      if (
+        r.isRecording &&
+        duringRecordingStartedRef.current &&
+        (recordingModeRef.current === "during" || recordingModeRef.current === "both") &&
+        r.recordingSec >= REC_MAX &&
+        r.phase !== "recording" // let the existing path handle post-call cap
+      ) {
+        r.isRecording = false; setIsRecording(false);
+        stopRealRecording();
+        duringRecordingStartedRef.current = false; // allow "both" to start segment #2 later
+        addEvent({
+          type: "recording_end",
+          title: isAr ? "اكتمل التسجيل" : "Recording complete",
+          detail: isAr ? `حد الخطة: ${REC_MAX} ثانية` : `Plan limit: ${REC_MAX}s`,
+          color: "#00C853",
+        });
+      }
+
       if (r.phase === "monitoring") {
         setMonitorSec(r.monitorSec);
         if (!r.dmsActive && r.monitorSec >= r.nextDMSAt) openDMS();
@@ -1802,6 +1832,28 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             updateContact(0, "calling");
             addEvent({ type: "call_out", title: `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
+            // ── PHASE 1: "during" / "both" mode — start recording at activation ──
+            // Safe-guarded: only starts once, only if recordingEnabled, never interferes
+            // with the post-call "after" recording path.
+            if (
+              recordingEnabled &&
+              (recordingModeRef.current === "during" || recordingModeRef.current === "both") &&
+              !duringRecordingStartedRef.current
+            ) {
+              duringRecordingStartedRef.current = true;
+              r.isRecording = true; setIsRecording(true);
+              addEvent({
+                type: "recording_start",
+                title: isAr ? "بدأ التسجيل — أثناء الحادثة" : "Recording started — during incident",
+                detail: isAr ? "تسجيل محيطي كدليل · مشفّر" : "Ambient recording as evidence · Encrypted",
+                color: "#FF2D55",
+              });
+              trackEventSync(errIdRef.current, "evidence_audio",
+                `Voice recording started early (mode=${recordingModeRef.current})`,
+                "System", "System",
+                { mode: recordingModeRef.current });
+              startRealRecording();
+            }
             // ── CRITICAL FIX 1: Real user data in SOS event ──
             // FIX AUDIT-2.2: Include errIdRef so dashboard can match cancel→create by ID
             // [SUPABASE_READY] sos_trigger: insert into sos_events + realtime broadcast
@@ -2007,16 +2059,36 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           }
           // After 15 seconds in answered state, move to recording (simulates call end)
           if (r.phaseTimer >= 15) {
-            if (recordingEnabled) {
+            const mode = recordingModeRef.current;
+            // "during" only — recording already running since activation. Skip the
+            // post-call recording phase entirely and go straight to documenting.
+            if (recordingEnabled && mode === "during") {
+              r.phase = "documenting"; r.phaseTimer = 0;
+              setPhase("documenting"); setPhaseTimer(0);
+            }
+            // "after" (default) — classic behavior: start recording now, post-call.
+            // "both" (Elite) — stop the in-progress segment and start a fresh one,
+            // so the user gets two clearly-separated evidence clips.
+            else if (recordingEnabled && (mode === "after" || mode === "both")) {
+              if (mode === "both" && duringRecordingStartedRef.current) {
+                // finalize segment #1 (during-incident) before starting segment #2 (post-call)
+                stopRealRecording();
+                addEvent({
+                  type: "recording_end",
+                  title: isAr ? "انتهى مقطع التسجيل الأول" : "First recording segment ended",
+                  detail: isAr ? "بدء تسجيل ما بعد المكالمة" : "Starting post-call segment",
+                  color: "#00C853",
+                });
+              }
               r.isRecording = true; setIsRecording(true);
               r.phase = "recording"; r.phaseTimer = 0;
               setPhase("recording"); setPhaseTimer(0);
               addEvent({ type: "recording_start", title: "Call ended — Voice recording started", detail: "Ambient recording as evidence · Encrypted", color: "#FF2D55" });
-              emitSyncEvent({ type: "SOS_RECORDING_STARTED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { maxDuration: REC_MAX } });
+              emitSyncEvent({ type: "SOS_RECORDING_STARTED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { maxDuration: REC_MAX, mode } });
               trackEventSync(errIdRef.current, "evidence_audio",
-                `Voice recording started (max ${REC_MAX}s)`,
+                `Voice recording started (max ${REC_MAX}s, mode=${mode})`,
                 "System", "System",
-                { maxDuration: REC_MAX });
+                { maxDuration: REC_MAX, mode });
               // ── START REAL MICROPHONE RECORDING ──
               startRealRecording();
             } else {

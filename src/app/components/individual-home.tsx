@@ -8,6 +8,7 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RecordingConsentModal } from "./recording-consent-modal";
 import { useLang } from "./useLang";
+import { getRecordingMode, setRecordingMode, availableRecordingModes, type RecordingMode } from "./subscription-service";
 
 // Load REAL emergency contacts from localStorage (saved during registration)
 function loadFamilyMembers(): { id: number; name: string; role: string; avatar: string; online: boolean; lastSeen: string }[] {
@@ -52,6 +53,18 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
   const [shakePermission, setShakePermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
+  const [recMode, setRecMode] = useState<RecordingMode>(() => getRecordingMode());
+  // Cycle between available modes for the current tier. Cleanly persisted.
+  const cycleRecMode = useCallback(() => {
+    const modes = availableRecordingModes();
+    const next = modes[(modes.indexOf(recMode) + 1) % modes.length];
+    setRecMode(next);
+    setRecordingMode(next);
+  }, [recMode]);
+  const recModeLabel = (m: RecordingMode): string => {
+    if (isAr) return m === "during" ? "أثناء" : m === "both" ? "الاثنين" : "بعد";
+    return m === "during" ? "During" : m === "both" ? "Both" : "After";
+  };
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -212,6 +225,25 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
                   />
                 )}
               </button>
+
+              {/* Recording timing mode — shown only when REC is enabled.
+                  Tap to cycle through the available modes for the user's tier. */}
+              {recordingEnabled && (
+                <button
+                  onClick={cycleRecMode}
+                  aria-label={isAr ? "توقيت التسجيل" : "Recording timing"}
+                  className="flex items-center gap-1.5 px-2.5 py-[5px]"
+                  style={{
+                    borderRadius: 8,
+                    background: "rgba(255,45,85,0.06)",
+                    border: "1px solid rgba(255,45,85,0.12)",
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,45,85,0.8)" }}>
+                    {recModeLabel(recMode)}
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* ── Premium SOS Button ── */}
