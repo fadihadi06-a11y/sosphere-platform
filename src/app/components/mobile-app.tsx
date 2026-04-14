@@ -15,6 +15,7 @@ import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layo
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
 import { PostEmergencyDebrief } from "./post-emergency-debrief";
+import { syncIncidentToSupabase, resyncPendingIncidents } from "./incident-sync";
 import { EmergencyResponseRecord } from "./emergency-response-record";
 import { CheckinTimer } from "./checkin-timer";
 import { MedicalID } from "./medical-id";
@@ -367,6 +368,18 @@ export function MobileApp() {
       if (shakeTimerRef.current) clearInterval(shakeTimerRef.current);
     };
   }, []);
+
+  // Phase 6 — on login, attempt to backfill any incidents that never
+  // reached the server (offline at the time). Entirely non-blocking;
+  // no-op when Supabase isn't configured. Delayed slightly so it
+  // doesn't compete with the initial login/navigation burst.
+  useEffect(() => {
+    if (!loginName) return;
+    const t = setTimeout(() => {
+      resyncPendingIncidents().catch(() => {});
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [loginName]);
 
   // -- Voice SOS Trigger Handler --------------------------------
   const handleVoiceSOSTriggered = useCallback(
@@ -1314,6 +1327,10 @@ export function MobileApp() {
                     });
                     localStorage.setItem("sosphere_incident_history", JSON.stringify(existing.slice(0, 200)));
                   } catch (_) {}
+                  // Phase 6: shadow-sync this completed incident to Supabase.
+                  // Fire-and-forget — local storage remains the UI source of
+                  // truth. No-op when Supabase isn't configured.
+                  syncIncidentToSupabase(record).catch(() => {});
                   // Phase 3: Route to the post-emergency debrief first. The
                   // debrief screen has explicit exits to both the full report
                   // (emergency-record) and back to home, so the existing
