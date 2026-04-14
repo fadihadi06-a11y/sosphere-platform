@@ -182,3 +182,53 @@ export function mapLegacyPlan(plan: "free" | "pro" | "employee"): SubscriptionTi
   if (plan === "employee") return "basic"; // Employees get basic features
   return "free";
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Recording Timing Preference
+// ═══════════════════════════════════════════════════════════════
+// User-selectable when the SOS microphone recording should run.
+//   "after"  — (default) record only AFTER a contact answers and the
+//              call hangs up. Current production behavior. No conflict
+//              with live call audio. Good for the user's post-event
+//              statement.
+//   "during" — record ambient audio CONTINUOUSLY from SOS activation
+//              onward, through every dialing / pausing / answered phase.
+//              Captures the incident itself, not just the aftermath.
+//   "both"   — Elite only. "during" behavior PLUS an extra dedicated
+//              post-call statement clip.
+//
+// NOTE: On Android 10+ the OS blocks true mid-call audio capture of
+// the call PCM stream. "during" mode captures ambient audio from the
+// mic (which the dialer may contend for). Real call-audio recording
+// requires Twilio Voice SDK (Phase 8).
+
+export type RecordingMode = "after" | "during" | "both";
+
+const RECORDING_MODE_KEY = "sosphere_recording_mode";
+
+/** Read the user's preferred recording timing. Defaults to "after". */
+export function getRecordingMode(): RecordingMode {
+  try {
+    const v = localStorage.getItem(RECORDING_MODE_KEY);
+    if (v === "during" || v === "both" || v === "after") {
+      // "both" is Elite-only — silently downgrade non-Elite users to "during".
+      if (v === "both" && getTier() !== "elite") return "during";
+      return v;
+    }
+  } catch {}
+  return "after";
+}
+
+/** Persist the user's preferred recording timing. */
+export function setRecordingMode(mode: RecordingMode): void {
+  try {
+    localStorage.setItem(RECORDING_MODE_KEY, mode);
+  } catch {}
+}
+
+/** Which modes are available for the current tier. */
+export function availableRecordingModes(): RecordingMode[] {
+  return getTier() === "elite"
+    ? ["after", "during", "both"]
+    : ["after", "during"];
+}
