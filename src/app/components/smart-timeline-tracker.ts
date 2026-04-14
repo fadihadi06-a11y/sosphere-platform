@@ -26,6 +26,7 @@ export type TimelineEventType =
   | "evidence_photo"
   | "evidence_audio"
   | "evidence_submitted"
+  | "evidence_hashed"
   | "escalation_triggered"
   | "emergency_services_called"
   | "zone_lockdown"

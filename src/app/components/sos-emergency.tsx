@@ -13,7 +13,8 @@ import { useT } from "./dashboard-i18n";
 import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor } from "./shared-store";
 import { toast } from "sonner";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
-import { storeEvidence } from "./evidence-store";
+import { storeEvidence, attachEvidenceManifest } from "./evidence-store";
+import { computeEvidenceManifest, isHashingAvailable } from "./evidence-hash";
 import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
@@ -2256,6 +2257,51 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         retentionDays: isPremium ? 365 : 30,
       });
       evidenceIdRef.current = evidenceEntry.id;
+
+      // ── Phase 5 — Chain-of-Custody SHA-256 manifest ──
+      // Fire-and-forget: hashing runs in the background so submit UX
+      // stays instant. On completion, the manifest is attached to the
+      // vault entry and an action is appended. On failure (e.g. Web
+      // Crypto unavailable or the entry has been evicted), we simply
+      // log and move on — the pre-Phase-5 flow is untouched.
+      if (isHashingAvailable()) {
+        const capturedEvidenceId = evidenceEntry.id;
+        const hashInput = {
+          photos: docPhotos.map((url, i) => ({
+            id: `PHOTO-${i}`, // index-stable id purely for manifest shape
+            dataUrl: url,
+          })),
+          audio: audioDataUrlRef.current
+            ? { dataUrl: audioDataUrlRef.current }
+            : null,
+          comment: docComment || null,
+        };
+        // Detached promise — do not await, do not block SOS flow.
+        computeEvidenceManifest(hashInput)
+          .then((manifest) => {
+            if (manifest) {
+              attachEvidenceManifest(capturedEvidenceId, manifest);
+              trackEventSync(
+                errIdRef.current,
+                "evidence_hashed",
+                `Integrity hash computed · manifest ${manifest.manifestHash.slice(0, 12)}…`,
+                userName,
+                "Employee",
+                {
+                  evidenceId: capturedEvidenceId,
+                  algorithm: manifest.algorithm,
+                  manifestHash: manifest.manifestHash,
+                  photoCount: manifest.photoHashes.length,
+                  hasAudio: !!manifest.audioHash,
+                  hasComment: !!manifest.commentHash,
+                }
+              );
+            }
+          })
+          .catch((e) => {
+            console.warn("[SOS] Evidence hashing failed (non-fatal):", e);
+          });
+      }
     } catch (err) {
       console.warn("[SOS] Evidence store failed (non-fatal):", err);
     }

@@ -1,4 +1,5 @@
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import type { EvidenceManifest } from "./evidence-hash";
 
 import { Shield } from "lucide-react";
 // =================================================================
@@ -96,6 +97,15 @@ export interface EvidenceEntry {
   // Tier info
   tier: "free" | "paid" | "enterprise";
   retentionDays: number;
+
+  /**
+   * Phase 5 — Tamper-evident SHA-256 manifest for this evidence
+   * bundle. Optional: attached asynchronously after storeEvidence()
+   * via attachEvidenceManifest() once hashing completes. Older
+   * entries (pre-Phase 5) simply omit this field; readers must
+   * tolerate its absence.
+   */
+  evidenceManifest?: EvidenceManifest;
 }
 
 // =================================================================
@@ -376,6 +386,41 @@ export function addEvidenceComment(
   });
   saveVault(vault);
   notifyChange(evidenceId, "comment_added");
+}
+
+/**
+ * Phase 5 — Attach a SHA-256 integrity manifest to an existing
+ * evidence entry. Called after storeEvidence() once async hashing
+ * finishes. Silently no-ops if the entry has been evicted or never
+ * existed; never throws so the SOS flow can't be blocked.
+ *
+ * We also log a dedicated chain-of-custody action so the manifest's
+ * arrival is visible in the dashboard's existing "recent actions"
+ * stream — no new UI code required.
+ */
+export function attachEvidenceManifest(
+  evidenceId: string,
+  manifest: EvidenceManifest
+): void {
+  try {
+    const vault = loadVault();
+    const idx = vault.findIndex(e => e.id === evidenceId);
+    if (idx === -1) return;
+    vault[idx].evidenceManifest = manifest;
+    vault[idx].actions.push({
+      id: `ACT-${Date.now()}-hash`,
+      actor: vault[idx].submittedBy,
+      role: "Field Worker",
+      action: "Evidence integrity hash computed",
+      actionType: "viewed",
+      timestamp: manifest.computedAt,
+      details: `SHA-256 manifest · ${manifest.photoHashes.length} photo hash${manifest.photoHashes.length === 1 ? "" : "es"}${manifest.audioHash ? " + audio" : ""}${manifest.commentHash ? " + comment" : ""}`,
+    });
+    saveVault(vault);
+    notifyChange(evidenceId, "hash_attached");
+  } catch (e) {
+    console.warn("[Evidence] attachEvidenceManifest failed (non-fatal):", e);
+  }
 }
 
 /** Link evidence to an investigation */
