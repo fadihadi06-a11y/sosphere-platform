@@ -14,6 +14,7 @@ import { EmployeeQuickSetup } from "./employee-quick-setup";
 import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layout";
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
+import { PostEmergencyDebrief } from "./post-emergency-debrief";
 import { EmergencyResponseRecord } from "./emergency-response-record";
 import { CheckinTimer } from "./checkin-timer";
 import { MedicalID } from "./medical-id";
@@ -189,6 +190,7 @@ type Screen =
   | "individual-home"
   | "employee-dashboard"
   | "sos-emergency"
+  | "post-emergency-debrief"
   | "emergency-record"
   | "checkin-timer"
   | "medical-id"
@@ -579,6 +581,12 @@ export function MobileApp() {
           if (screenRef.current === "sos-emergency") {
             console.log("[SOS] Back button blocked during emergency");
             return; // Do nothing — user must end SOS through the secure flow
+          }
+          // Also block on the debrief screen so back doesn't pop to the
+          // just-ended sos-emergency (which would re-mount and re-arm SOS).
+          if (screenRef.current === "post-emergency-debrief") {
+            console.log("[SOS] Back blocked on debrief — use in-screen buttons");
+            return;
           }
           goBack();
         });
@@ -1306,10 +1314,35 @@ export function MobileApp() {
                     });
                     localStorage.setItem("sosphere_incident_history", JSON.stringify(existing.slice(0, 200)));
                   } catch (_) {}
-                  navigate("emergency-record");
+                  // Phase 3: Route to the post-emergency debrief first. The
+                  // debrief screen has explicit exits to both the full report
+                  // (emergency-record) and back to home, so the existing
+                  // downstream screens remain accessible.
+                  navigate("post-emergency-debrief");
                 }}
                 onCancel={() => { sosInProgressRef.current = false; sosLastTriggerRef.current = 0; try { localStorage.removeItem("sosphere_active_sos"); } catch {} if (sosSafetyTimerRef.current) { clearTimeout(sosSafetyTimerRef.current); sosSafetyTimerRef.current = null; } navigate(sourceScreen, -1); }}
               />
+            )}
+
+            {screen === "post-emergency-debrief" && incidentRecord && (
+              <PostEmergencyDebrief
+                record={incidentRecord}
+                isAr={lang === "ar"}
+                onViewFullReport={() => navigate("emergency-record")}
+                onGoHome={() => navigate(sourceScreen, -1)}
+                onNeedMoreHelp={() => {
+                  // User reports they still need help — re-trigger SOS.
+                  // Reset the rate limiter (it was meant to prevent accidental
+                  // double-fires, not to block an explicit user request).
+                  sosLastTriggerRef.current = 0;
+                  sosInProgressRef.current = false;
+                  guardedSOSTrigger("hold", sourceScreen as "individual-home" | "employee-dashboard");
+                }}
+              />
+            )}
+
+            {screen === "post-emergency-debrief" && !incidentRecord && (
+              <EmergencyRecordFallback onBack={() => navigate(sourceScreen, -1)} />
             )}
 
             {screen === "emergency-record" && incidentRecord && (
