@@ -6,6 +6,7 @@ import {
   Heart, Star, Building2, ChevronRight, Sparkles,
 } from "lucide-react";
 import { INDIVIDUAL_PLANS } from "../constants/pricing";
+import { TrialCard } from "./trial-card";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type BillingCycle = "monthly" | "yearly";
@@ -122,6 +123,21 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
             Maximum protection for you and your loved ones
           </p>
         </motion.div>
+
+        {/* Phase 10 — Free Elite trial CTA. Self-contained; reads
+             its state from trial-service and does not depend on the
+             legacy pro/free props on this page. Shown only when the
+             user hasn't already purchased Elite. */}
+        <TrialCard
+          onRequestUpgrade={() => {
+            // Scroll the existing upgrade CTA into view — reuses the
+            // page's own primary flow instead of introducing a new one.
+            try {
+              const el = document.querySelector<HTMLElement>("[data-upgrade-cta]");
+              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+            } catch {}
+          }}
+        />
 
         {/* Billing Toggle */}
         <motion.div
@@ -307,6 +323,7 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
         {/* Upgrade Button */}
         {currentPlan === "free" && (
           <motion.button
+            data-upgrade-cta
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleUpgrade}
