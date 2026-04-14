@@ -364,4 +364,13 @@ window.motionDebug = true;  // Custom hook to slow animations
 1. **Gesture-based Transitions** — Swipe between tabs on mobile
 2. **Shared Layout Animations** — Morphing cards across pages
 3. **Page Scroll Animations** — Fade elements in as user scrolls
-4. **Keyboard Navigation** �
+4. **Keyboard Navigation** — Smooth focus indicators
+5. **Haptic Feedback** — Pair animations with haptic events (mobile)
+
+## Support
+
+For questions or issues with transitions:
+1. Check if `prefers-reduced-motion` is affecting testing
+2. Verify `AnimatePresence mode="wait"` is used
+3. Ensure `motion/react` is imported (not `framer-motion`)
+4. Check browser DevTools for performance issues

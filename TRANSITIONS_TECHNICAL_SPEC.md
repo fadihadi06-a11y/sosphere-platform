@@ -493,4 +493,28 @@ Metrics to monitor:
 ### Dev Logging
 
 ```typescript
-i
+if (import.meta.env.DEV) {
+  console.debug("[ViewTransitions] Motion config loaded");
+}
+```
+
+### Chrome DevTools
+
+1. **Performance Tab**
+   - Record page transition
+   - Look for dropped frames
+   - Check GPU utilization
+
+2. **Rendering Tab**
+   - Enable "Paint flashing"
+   - Enable "Rendering stats"
+   - Monitor FPS during animations
+
+3. **Accessibility Inspector**
+   - Verify prefers-reduced-motion support
+
+---
+
+**Last Updated:** 2024
+**Version:** 1.0
+**Author:** SOSphere Development Team

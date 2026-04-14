@@ -304,4 +304,8 @@ Then transfer the new APK to your phone.
 | Why it stopped working | Dev server dependency — app loaded from PC, not from bundled assets |
 | Fix | `npm run build` → `npx cap sync android` → `gradlew assembleDebug` |
 | Config needed | `capacitor.config.ts` with `webDir: 'dist'` and no `server.url` |
-| Firebase fix | Add release SHA-1 to Firebase Console, place `google-se
+| Firebase fix | Add release SHA-1 to Firebase Console, place `google-services.json` in `android/app/` |
+| Sentry fix | None needed — DSN baked in at build time |
+| Supabase fix | None needed — URL and anon key baked in at build time |
+| APK location | `android/app/build/outputs/apk/debug/app-debug.apk` |
+| For Play Store | Use `assembleRelease` with a signing keystore |

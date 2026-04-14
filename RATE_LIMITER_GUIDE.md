@@ -459,4 +459,17 @@ successResponse(data) + getRateLimitHeaders()
 - [ ] Import `checkRateLimit`, `markSosPriority`, `getRateLimitHeaders` from `_shared/rate-limiter.ts`
 - [ ] Import `validateRequest`, `corsHeaders`, `errorResponse`, `successResponse` from `_shared/api-guard.ts`
 - [ ] Add validation before processing
-- [ ] Check rate l
+- [ ] Check rate limit before processing
+- [ ] Include rate limit headers in all responses
+- [ ] Add logging for debugging
+- [ ] Test with health check endpoint
+- [ ] Monitor SOS priority users via `/api-health`
+
+## Future Enhancements
+
+- [ ] Persistent rate limit state (Redis/Supabase)
+- [ ] IP-based rate limiting fallback
+- [ ] Configurable tiers per endpoint
+- [ ] Metrics export (Prometheus)
+- [ ] Adaptive rate limiting based on system load
+- [ ] Geographic rate limiting

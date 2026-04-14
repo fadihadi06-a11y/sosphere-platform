@@ -9,4 +9,5 @@ if (fs.existsSync(file)) {
   content = content.replace(/jcenter\(\)/g, 'mavenCentral()');
   content = content.replace("proguard-android.txt", "proguard-android-optimize.txt");
   fs.writeFileSync(file, content);
-  console.log('[patch] Fixed capacitor-google-auth build.gradle for Gra
+  console.log('[patch] Fixed capacitor-google-auth build.gradle for Gradle 9');
+}
