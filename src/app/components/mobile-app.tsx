@@ -717,8 +717,11 @@ export function MobileApp() {
                 {/* Broadcast Island � floating broadcast alert */}
         <BroadcastIsland />
 
-        {/* Voice SOS Widget -- floating microphone (hidden during onboarding/login screens) */}
-        {screen !== "welcome" && screen !== "role-select" && screen !== "login" && screen !== "login-welcome" && screen !== "terms-consent" && screen !== "gps-consent" && screen !== "onboarding" && screen !== "individual-register" && screen !== "company-join" && (
+        {/* Voice SOS Widget -- floating microphone.
+            Hidden during onboarding/login AND during an active SOS emergency:
+            a live SOS is already running, so the voice-trigger button has no
+            purpose and just adds visual clutter to a high-stress screen. */}
+        {screen !== "welcome" && screen !== "role-select" && screen !== "login" && screen !== "login-welcome" && screen !== "terms-consent" && screen !== "gps-consent" && screen !== "onboarding" && screen !== "individual-register" && screen !== "company-join" && screen !== "sos-emergency" && (
           <VoiceSOSWidget
             onVoiceSOSTriggered={handleVoiceSOSTriggered}
             primaryKeyword="help me"
