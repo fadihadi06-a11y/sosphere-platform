@@ -52,7 +52,7 @@ export function getCompanyId() { return _companyId; }
 
 export interface SyncEvent {
   type:
-    | "SOS_TRIGGERED" | "SOS_CANCELLED"
+    | "SOS_TRIGGERED" | "SOS_CANCELLED" | "SOS_DURESS_TRIGGERED"
     | "CHECKIN" | "HAZARD_REPORT"
     | "STATUS_CHANGE" | "LOCATION_UPDATE"
     // Admin → Employee signals
@@ -313,7 +313,7 @@ export function emitSyncEvent(event: SyncEvent) {
     action: formatEventType(event.type),
     timestamp: event.timestamp,
     zone: event.zone,
-    severity: event.type === "SOS_TRIGGERED" ? "critical" : event.type === "HAZARD_REPORT" ? "high" : undefined,
+    severity: (event.type === "SOS_TRIGGERED" || event.type === "SOS_DURESS_TRIGGERED") ? "critical" : event.type === "HAZARD_REPORT" ? "high" : undefined,
     icon: getIconKey(event.type),
   });
   safeSetItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 50)));
@@ -442,6 +442,7 @@ function formatEventType(type: SyncEvent["type"]): string {
   const map: Record<SyncEvent["type"], string> = {
     SOS_TRIGGERED: "SOS Emergency Triggered",
     SOS_CANCELLED: "SOS Emergency Cancelled",
+    SOS_DURESS_TRIGGERED: "SOS Duress Signal",
     CHECKIN: "Check-in Completed",
     HAZARD_REPORT: "Hazard Reported",
     STATUS_CHANGE: "Status Changed",
@@ -470,6 +471,7 @@ function getIconKey(type: SyncEvent["type"]): string {
   const map: Record<SyncEvent["type"], string> = {
     SOS_TRIGGERED: "AlertTriangle",
     SOS_CANCELLED: "CheckCircle",
+    SOS_DURESS_TRIGGERED: "ShieldAlert",
     CHECKIN: "CheckCircle2",
     HAZARD_REPORT: "ShieldAlert",
     STATUS_CHANGE: "RefreshCw",

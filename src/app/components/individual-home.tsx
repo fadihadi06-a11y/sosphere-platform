@@ -3,12 +3,13 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Shield, Bell,
   Users, MapPin, Timer, HeartPulse,
-  ChevronRight, Smartphone, Mic, Footprints,
+  ChevronRight, Smartphone, Mic, Footprints, Lock,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RecordingConsentModal } from "./recording-consent-modal";
 import { useLang } from "./useLang";
 import { getRecordingMode, setRecordingMode, availableRecordingModes, type RecordingMode } from "./subscription-service";
+import { SecurityPinModal } from "./security-pin-modal";
 
 // Load REAL emergency contacts from localStorage (saved during registration)
 function loadFamilyMembers(): { id: number; name: string; role: string; avatar: string; online: boolean; lastSeen: string }[] {
@@ -54,6 +55,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [recMode, setRecMode] = useState<RecordingMode>(() => getRecordingMode());
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
   // Cycle between available modes for the current tier. Cleanly persisted.
   const cycleRecMode = useCallback(() => {
     const modes = availableRecordingModes();
@@ -134,17 +136,34 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
               SOSphere
             </span>
           </div>
-          <button
-            onClick={onNotifications}
-            className="relative p-2 rounded-[12px]"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
-          >
-            <Bell className="size-[17px]" style={{ color: "rgba(255,255,255,0.35)" }} />
-            <span className="absolute top-1.5 right-1.5 size-[6px] rounded-full"
-              style={{ background: "#FF2D55", boxShadow: "0 0 6px rgba(255,45,85,0.6)" }}
-            />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSecurityModal(true)}
+              aria-label={isAr ? "رموز الأمان" : "Security PINs"}
+              className="relative p-2 rounded-[12px]"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+            >
+              <Lock className="size-[17px]" style={{ color: "rgba(255,255,255,0.35)" }} />
+            </button>
+            <button
+              onClick={onNotifications}
+              className="relative p-2 rounded-[12px]"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+            >
+              <Bell className="size-[17px]" style={{ color: "rgba(255,255,255,0.35)" }} />
+              <span className="absolute top-1.5 right-1.5 size-[6px] rounded-full"
+                style={{ background: "#FF2D55", boxShadow: "0 0 6px rgba(255,45,85,0.6)" }}
+              />
+            </button>
+          </div>
         </div>
+
+        {/* ── Security PIN Modal (deactivation + duress) ── */}
+        <SecurityPinModal
+          open={showSecurityModal}
+          onClose={() => setShowSecurityModal(false)}
+          isAr={isAr}
+        />
 
         {/* ── Greeting ── */}
         <motion.div
