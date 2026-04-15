@@ -7,7 +7,7 @@ import {
   Copy, Share2, Radio,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { useT, type Lang } from "./dashboard-i18n";
+import type { Lang } from "./dashboard-i18n";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface FamilyMember {
@@ -57,7 +57,8 @@ const statusConfig = {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
-  const t = useT(lang);
+  const isAr = lang === "ar";
+  const tr = (en: string, ar: string) => (isAr ? ar : en);
   const [members] = useState<FamilyMember[]>(loadRealMembers);
   const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
   const [showInvite, setShowInvite] = useState(false);
@@ -79,7 +80,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ scrollbarWidth: "none" }}>
+    <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ scrollbarWidth: "none" }} dir={isAr ? "rtl" : "ltr"}>
       {/* Ambient */}
       <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
         style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
@@ -94,7 +95,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
         >
           <div className="flex items-center justify-between mb-1">
             <h1 className="text-white" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.5px" }}>
-              {t("fam.title")}
+              {tr("Family Circle", "دائرة العائلة")}
             </h1>
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -106,7 +107,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
             </motion.button>
           </div>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)" }}>
-            <span style={{ color: "#00C853", fontWeight: 600 }}>{onlineCount}</span> {t("fam.online")} · <span style={{ color: "#00C8E0", fontWeight: 600 }}>{safeCount}</span> {t("fam.safe")}
+            <span style={{ color: "#00C853", fontWeight: 600 }}>{onlineCount}</span> {tr("online", "متصل")} · <span style={{ color: "#00C8E0", fontWeight: 600 }}>{safeCount}</span> {tr("safe", "آمن")}
           </p>
         </motion.div>
 
@@ -128,14 +129,14 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
             }}
           >
             <Radio style={{ width: 15, height: 15, color: "#00C8E0" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>{t("fam.checkAll")}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>{tr("Check on Everyone", "الاطمئنان على الجميع")}</span>
           </motion.button>
         </motion.div>
 
         {/* ── Members List ── */}
         <div className="px-5">
           <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.6px", marginBottom: 10, textTransform: "uppercase" }}>
-            {t("fam.members")} ({members.length})
+            {tr("Members", "الأعضاء")} ({members.length})
           </p>
 
           <div className="space-y-2.5">
@@ -233,9 +234,9 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
         >
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: t("fam.safe"), value: safeCount, total: members.length, color: "#00C853" },
-              { label: t("fam.online"), value: onlineCount, total: members.length, color: "#00C8E0" },
-              { label: t("fam.shareLoc"), value: members.filter(m => m.sharingLocation).length, total: members.length, color: "#FF9500" },
+              { label: tr("Safe", "آمن"), value: safeCount, total: members.length, color: "#00C853" },
+              { label: tr("Online", "متصل"), value: onlineCount, total: members.length, color: "#00C8E0" },
+              { label: tr("Sharing", "يشارك"), value: members.filter(m => m.sharingLocation).length, total: members.length, color: "#FF9500" },
             ].map((stat) => (
               <div
                 key={stat.label}
@@ -264,7 +265,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
         >
           <div className="px-4 py-3" style={{ borderRadius: 14, background: "rgba(0,200,224,0.02)", border: "1px solid rgba(0,200,224,0.05)" }}>
             <p style={{ fontSize: 10, color: "rgba(0,200,224,0.3)", textAlign: "center", lineHeight: 1.7 }}>
-              {t("fam.notifyAuto")}
+              {tr("Family is notified automatically during emergencies", "يتم إبلاغ العائلة تلقائياً أثناء الطوارئ")}
             </p>
           </div>
         </motion.div>
@@ -338,7 +339,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                   style={{ borderRadius: 16, background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}
                 >
                   <Phone style={{ width: 18, height: 18, color: "#00C853" }} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#00C853" }}>{t("fam.call")}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#00C853" }}>{tr("Call", "اتصال")}</span>
                 </motion.button>
                 {/* Message */}
                 <motion.button
@@ -347,16 +348,16 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                   style={{ borderRadius: 16, background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.12)" }}
                 >
                   <MessageSquare style={{ width: 18, height: 18, color: "#007AFF" }} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#007AFF" }}>{t("fam.message")}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#007AFF" }}>{tr("Message", "رسالة")}</span>
                 </motion.button>
               </div>
 
               {/* Info Cards */}
               <div className="space-y-2">
                 {[
-                  { label: t("fam.safeStatus"), value: statusConfig[selectedMember.safetyStatus].label, color: statusConfig[selectedMember.safetyStatus].color },
-                  { label: t("fam.battery"), value: `${selectedMember.battery}%`, color: selectedMember.battery > 50 ? "#00C853" : selectedMember.battery > 20 ? "#FF9500" : "#FF2D55" },
-                  { label: t("fam.shareLoc"), value: selectedMember.sharingLocation ? t("fam.active") : t("fam.paused"), color: selectedMember.sharingLocation ? "#00C853" : "#FF9500" },
+                  { label: tr("Safety Status", "حالة الأمان"), value: statusConfig[selectedMember.safetyStatus].label, color: statusConfig[selectedMember.safetyStatus].color },
+                  { label: tr("Battery", "البطارية"), value: `${selectedMember.battery}%`, color: selectedMember.battery > 50 ? "#00C853" : selectedMember.battery > 20 ? "#FF9500" : "#FF2D55" },
+                  { label: tr("Location Sharing", "مشاركة الموقع"), value: selectedMember.sharingLocation ? tr("Active", "مفعّل") : tr("Paused", "متوقف"), color: selectedMember.sharingLocation ? "#00C853" : "#FF9500" },
                 ].map((info) => (
                   <div
                     key={info.label}
@@ -381,7 +382,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                 }}
               >
                 <Send style={{ width: 14, height: 14 }} />
-                {t("fam.requestCheck")}
+                {tr("Request Check-in", "طلب الاطمئنان")}
               </motion.button>
             </motion.div>
           </>
@@ -419,8 +420,8 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
 
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{t("fam.invite")}</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{t("fam.share")}</p>
+                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{tr("Invite Family", "دعوة العائلة")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{tr("Share invite code or link", "شارك رمز الدعوة أو الرابط")}</p>
                 </div>
                 <button onClick={() => setShowInvite(false)}>
                   <X style={{ width: 18, height: 18, color: "rgba(255,255,255,0.3)" }} />
@@ -430,7 +431,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               {/* Invite Code */}
               <div className="p-4 mb-4" style={{ borderRadius: 16, background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.08)" }}>
                 <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.4)", letterSpacing: "0.4px", marginBottom: 8 }}>
-                  {t("fam.inviteLink").toUpperCase()}
+                  {tr("INVITE CODE", "رمز الدعوة")}
                 </p>
                 <div className="flex items-center justify-between">
                   <p className="text-white" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "4px" }}>FML-8K3P</p>
@@ -450,14 +451,14 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                     )}
                   </motion.button>
                 </div>
-                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 6 }}>{t("fam.expireCode")}</p>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 6 }}>{tr("Code expires in 24 hours", "ينتهي الرمز خلال 24 ساعة")}</p>
               </div>
 
               {/* Share Options */}
               <div className="space-y-2 mb-4">
                 {[
-                  { icon: MessageSquare, label: t("fam.smsInvite"), detail: t("fam.sendCode"), color: "#00C853" },
-                  { icon: Share2, label: t("fam.shareLink"), detail: t("fam.shareApp"), color: "#00C8E0" },
+                  { icon: MessageSquare, label: tr("Send SMS Invite", "إرسال دعوة SMS"), detail: tr("Send code via text message", "إرسال الرمز برسالة نصية"), color: "#00C853" },
+                  { icon: Share2, label: tr("Share Link", "مشاركة الرابط"), detail: tr("Share via any app", "شارك عبر أي تطبيق"), color: "#00C8E0" },
                 ].map((opt) => {
                   const OptIcon = opt.icon;
                   return (
@@ -481,7 +482,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               </div>
 
               <p style={{ fontSize: 9, color: "rgba(255,255,255,0.1)", textAlign: "center" }}>
-                {t("fam.joinNotif")}
+                {tr("You'll be notified when family members join", "سيتم إشعارك عند انضمام أفراد العائلة")}
               </p>
             </motion.div>
           </>
@@ -521,9 +522,9 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                     >
                       <Check style={{ width: 24, height: 24, color: "#00C853" }} />
                     </motion.div>
-                    <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>{t("fam.sent")}</p>
+                    <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>{tr("Check Sent", "تم الإرسال")}</p>
                     <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 4 }}>
-                      {t("fam.checkSent")} {members.length} {t("fam.members")}
+                      {tr("Safety check sent to", "تم إرسال فحص الأمان إلى")} {members.length} {tr("members", "أعضاء")}
                     </p>
                   </>
                 ) : (
@@ -533,9 +534,9 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                     >
                       <Radio style={{ width: 22, height: 22, color: "#00C8E0" }} />
                     </div>
-                    <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>{t("fam.safetyCheck")}</p>
+                    <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>{tr("Safety Check", "فحص الأمان")}</p>
                     <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginBottom: 16, lineHeight: 1.6 }}>
-                      {t("fam.safeTxt")} {members.length} {t("fam.members_n")}
+                      {tr("Send a safety check to all", "إرسال فحص أمان لجميع")} {members.length} {tr("members", "أعضاء")}
                     </p>
                     <div className="flex gap-2 w-full">
                       <button
@@ -543,7 +544,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                         className="flex-1 py-3"
                         style={{ borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.3)" }}
                       >
-                        Cancel
+                        {tr("Cancel", "إلغاء")}
                       </button>
                       <motion.button
                         whileTap={{ scale: 0.97 }}
@@ -551,7 +552,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                         className="flex-1 py-3"
                         style={{ borderRadius: 12, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", fontSize: 13, fontWeight: 600, color: "#00C8E0" }}
                       >
-                        Send
+                        {tr("Send", "إرسال")}
                       </motion.button>
                     </div>
                   </>

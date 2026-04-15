@@ -521,6 +521,7 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
       {/* Recording Consent Modal */}
       <RecordingConsentModal
         visible={showConsentModal}
+        lang={isAr ? "ar" : "en"}
         onAccept={() => { setRecordingEnabled(true); onRecordingChange?.(true); setShowConsentModal(false); }}
         onDecline={() => { setRecordingEnabled(false); onRecordingChange?.(false); setShowConsentModal(false); }}
       />

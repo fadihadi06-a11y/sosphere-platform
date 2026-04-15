@@ -147,37 +147,40 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
               "مطلوب لإنهاء أي طوارئ نشطة. يحميك من الإلغاء غير المقصود أو القسري."
             )}
           </p>
+          <div className="relative mb-2">
+            <input
+              type={showNormal ? "text" : "password"}
+              inputMode="numeric"
+              pattern="\d*"
+              maxLength={10}
+              value={normalPin}
+              onChange={(e) => setNormalPin(e.target.value.replace(/\D/g, ""))}
+              placeholder={t("4–10 digits", "٤–١٠ أرقام")}
+              className="w-full py-2 text-sm"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 8,
+                color: "#fff",
+                letterSpacing: 2,
+                paddingInlineStart: 12,
+                paddingInlineEnd: 36,
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowNormal(!showNormal)}
+              className="absolute top-1/2 -translate-y-1/2 p-1"
+              style={{ [isAr ? "left" : "right"]: 8 } as React.CSSProperties}
+            >
+              {showNormal ? <EyeOff size={14} color="rgba(255,255,255,0.5)" /> : <Eye size={14} color="rgba(255,255,255,0.5)" />}
+            </button>
+          </div>
           <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <input
-                type={showNormal ? "text" : "password"}
-                inputMode="numeric"
-                pattern="\d*"
-                maxLength={10}
-                value={normalPin}
-                onChange={(e) => setNormalPin(e.target.value.replace(/\D/g, ""))}
-                placeholder={t("4–10 digits", "٤–١٠ أرقام")}
-                className="w-full px-3 py-2 text-sm"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 8,
-                  color: "#fff",
-                  letterSpacing: 2,
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowNormal(!showNormal)}
-                className="absolute top-1/2 -translate-y-1/2 p-1"
-                style={{ [isAr ? "left" : "right"]: 8 } as React.CSSProperties}
-              >
-                {showNormal ? <EyeOff size={14} color="rgba(255,255,255,0.5)" /> : <Eye size={14} color="rgba(255,255,255,0.5)" />}
-              </button>
-            </div>
             <button
               onClick={handleSaveNormal}
-              className="px-3 py-2 text-xs font-semibold"
+              className="flex-1 py-2 text-xs font-semibold"
               style={{
                 background: "#00C8E0",
                 color: "#0f1217",
@@ -189,7 +192,7 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
             {currentNormal && (
               <button
                 onClick={handleClearNormal}
-                className="px-3 py-2 text-xs font-semibold"
+                className="flex-1 py-2 text-xs font-semibold"
                 style={{
                   background: "rgba(255,255,255,0.05)",
                   color: "rgba(255,255,255,0.7)",
@@ -226,8 +229,8 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
               "إن أُجبرت على إنهاء الطوارئ تحت الإكراه، أدخل هذا الرمز بدلاً من رمز الإلغاء. تنتهي الواجهة بشكل طبيعي، ولكن لوحة التحكّم وجهات الاتصال تستلم إشارة إكراه صامتة."
             )}
           </p>
-          <div className="flex gap-2" style={{ opacity: eliteUnlocked ? 1 : 0.5 }}>
-            <div className="flex-1 relative">
+          <div style={{ opacity: eliteUnlocked ? 1 : 0.5 }}>
+            <div className="relative mb-2">
               <input
                 type={showDuress ? "text" : "password"}
                 inputMode="numeric"
@@ -237,13 +240,16 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
                 onChange={(e) => setDuressPinVal(e.target.value.replace(/\D/g, ""))}
                 placeholder={eliteUnlocked ? t("4–10 digits", "٤–١٠ أرقام") : t("Upgrade to Elite", "اشترك في النخبة")}
                 disabled={!eliteUnlocked}
-                className="w-full px-3 py-2 text-sm"
+                className="w-full py-2 text-sm"
                 style={{
                   background: "rgba(255,45,85,0.04)",
                   border: "1px solid rgba(255,45,85,0.15)",
                   borderRadius: 8,
                   color: "#fff",
                   letterSpacing: 2,
+                  paddingInlineStart: 12,
+                  paddingInlineEnd: 36,
+                  boxSizing: "border-box",
                 }}
               />
               <button
@@ -256,33 +262,35 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
                 {showDuress ? <EyeOff size={14} color="rgba(255,255,255,0.5)" /> : <Eye size={14} color="rgba(255,255,255,0.5)" />}
               </button>
             </div>
-            <button
-              onClick={handleSaveDuress}
-              disabled={!eliteUnlocked}
-              className="px-3 py-2 text-xs font-semibold"
-              style={{
-                background: eliteUnlocked ? "#FF2D55" : "rgba(255,45,85,0.3)",
-                color: "#fff",
-                borderRadius: 8,
-                cursor: eliteUnlocked ? "pointer" : "not-allowed",
-              }}
-            >
-              {t("Save", "حفظ")}
-            </button>
-            {currentDuress && eliteUnlocked && (
+            <div className="flex gap-2">
               <button
-                onClick={handleClearDuress}
-                className="px-3 py-2 text-xs font-semibold"
+                onClick={handleSaveDuress}
+                disabled={!eliteUnlocked}
+                className="flex-1 py-2 text-xs font-semibold"
                 style={{
-                  background: "rgba(255,255,255,0.05)",
-                  color: "rgba(255,255,255,0.7)",
+                  background: eliteUnlocked ? "#FF2D55" : "rgba(255,45,85,0.3)",
+                  color: "#fff",
                   borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  cursor: eliteUnlocked ? "pointer" : "not-allowed",
                 }}
               >
-                {t("Clear", "حذف")}
+                {t("Save", "حفظ")}
               </button>
-            )}
+              {currentDuress && eliteUnlocked && (
+                <button
+                  onClick={handleClearDuress}
+                  className="flex-1 py-2 text-xs font-semibold"
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    color: "rgba(255,255,255,0.7)",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  {t("Clear", "حذف")}
+                </button>
+              )}
+            </div>
           </div>
         </section>
 

@@ -238,18 +238,21 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             onClick={() => editing && setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
             className="relative shrink-0"
             style={{
-              width: 44, height: 26, borderRadius: 13,
+              width: 48, height: 28, borderRadius: 14,
               background: data.organDonor ? "rgba(0,200,83,0.2)" : "rgba(255,255,255,0.06)",
               border: `1.5px solid ${data.organDonor ? "rgba(0,200,83,0.3)" : "rgba(255,255,255,0.08)"}`,
               cursor: editing ? "pointer" : "default",
+              boxSizing: "border-box",
+              padding: 0,
             }}
           >
             <motion.div
-              animate={{ x: data.organDonor ? 19 : 3 }}
+              animate={{ x: data.organDonor ? 22 : 2 }}
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              className="absolute top-[2px]"
+              className="absolute"
               style={{
-                width: 18, height: 18, borderRadius: 9,
+                top: 2,
+                width: 20, height: 20, borderRadius: 10,
                 background: data.organDonor ? "#00C853" : "rgba(255,255,255,0.25)",
               }}
             />

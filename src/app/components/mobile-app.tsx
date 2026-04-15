@@ -1245,7 +1245,17 @@ export function MobileApp() {
                 onNavigateToPrivacy={(() => navigate("privacy"))}
                 onNavigateToDevices={(() => navigate("connected-devices"))}
                 onNavigateToHelp={(() => navigate("help"))}
-                onNavigateToSafeWalk={(() => { if (!hasFeature("walkMe")) { toast.error(lang === "ar" ? "ميزة 'رافقني' متاحة في الباقة الأساسية ($7/شهر)" : "Walk Me requires Basic plan ($7/mo)"); return; } setSourceScreen("individual-home"); navigate("safe-walk"); })}
+                onNavigateToSafeWalk={(() => {
+                  if (!hasFeature("walkMe")) {
+                    toast(lang === "ar"
+                      ? "ميزة 'رافقني' تتطلب الخطة الأساسية — جرّب النخبة مجاناً لمدة 7 أيام"
+                      : "Walk Me requires Basic plan — try Elite free for 7 days");
+                    setSourceScreen("individual-home");
+                    navigate("subscription");
+                    return;
+                  }
+                  setSourceScreen("individual-home"); navigate("safe-walk");
+                })}
                 onLogout={async () => {
                   const { signOut, clearDeviceFingerprint } = await import("./api/supabase-client");
                   await signOut();
@@ -1279,7 +1289,17 @@ export function MobileApp() {
                 onIncidentHistory={() => { setSourceScreen("employee-dashboard"); navigate("incident-history"); }}
                 timerActive={timerActive}
                 onMissionTracker={() => { setSourceScreen("employee-dashboard"); navigate("mission-tracker"); }}
-                onSafeWalk={() => { if (!hasFeature("walkMe")) { toast.error(lang === "ar" ? "ميزة 'رافقني' متاحة في الباقة الأساسية ($7/شهر)" : "Walk Me requires Basic plan ($7/mo)"); return; } setSourceScreen("employee-dashboard"); navigate("safe-walk"); }}
+                onSafeWalk={() => {
+                  if (!hasFeature("walkMe")) {
+                    toast(lang === "ar"
+                      ? "ميزة 'رافقني' تتطلب الخطة الأساسية — جرّب النخبة مجاناً لمدة 7 أيام"
+                      : "Walk Me requires Basic plan — try Elite free for 7 days");
+                    setSourceScreen("employee-dashboard");
+                    navigate("subscription");
+                    return;
+                  }
+                  setSourceScreen("employee-dashboard"); navigate("safe-walk");
+                }}
                 onLogout={async () => {
                   const { signOut } = await import("./api/supabase-client");
                   await signOut();
@@ -1380,6 +1400,7 @@ export function MobileApp() {
                 onSOSTrigger={() => guardedSOSTrigger("hold")}
                 onBack={() => navigate(sourceScreen, -1)}
                 onTimerStateChange={setTimerActive}
+                lang={lang === "ar" ? "ar" : "en"}
               />
             )}
 
