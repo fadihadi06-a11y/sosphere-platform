@@ -13,7 +13,7 @@ import QRCode from "qrcode";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
 import { ZONE_NAMES } from "./shared-store";
-import { getRealAuditLog } from "./audit-log-store";
+import { buildCompliancePdfData } from "./compliance-data-service";
 
 // Dynamic import for autotable — avoids crash if module load fails
 let autoTableLoaded = false;
@@ -470,34 +470,18 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 // ── Real data builder for PDF sections ──────────────────────
-function buildRealPdfData() {
-  try {
-    const auditLogs = (() => { try { return getRealAuditLog(); } catch { return []; } })();
-    const empProfile = (() => { try { return JSON.parse(localStorage.getItem("sosphere_admin_profile") || "{}"); } catch { return {}; } })();
-    const compProfile = (() => { try { return JSON.parse(localStorage.getItem("sosphere_company_profile") || "{}"); } catch { return {}; } })();
-    const risks = (() => { try { return JSON.parse(localStorage.getItem("sosphere_risks") || "[]"); } catch { return []; } })();
-
-    // Real KPI from audit log
-    const total = auditLogs.filter((e: any) => e.action?.includes("emergency")).length;
-    const resolved = auditLogs.filter((e: any) => e.action?.includes("resolved")).length;
-    const rate = total > 0 ? Math.round((resolved / total) * 100) : 100;
-
-    if (total === 0) return null; // No real data yet
-
-    return {
-      kpi: {
-        totalIncidents: total,
-        resolved,
-        avgResponseTime: "N/A (from Timeline Tracker)",
-        safetyScore: Math.min(100, 50 + rate / 2),
-        complianceRate: rate,
-        nearMisses: auditLogs.filter((e: any) => e.action?.includes("hazard")).length,
-      },
-      riskCount: risks.length,
-      companyInfo: { name: compProfile.name || "", admin: empProfile.name || "" },
-    };
-  } catch { return null; }
-}
+// P3-#11d: delegates to compliance-data-service.buildCompliancePdfData(),
+// which aggregates from Supabase tables migrated in P3-#11, P3-#11b, and
+// P3-#11c (sos_queue, risk_register, investigations, employees,
+// checkin_events). Every field is independently nullable, so the PDF
+// generator's `?? MOCK_*` fallback still kicks in per-field when a table
+// is empty, un-migrated, or the user is offline.
+//
+// The legacy localStorage-derived KPI block used incompatible field
+// names (totalIncidents/safetyScore/…) that the PDF renderer never
+// actually consumed — the merged-spread at the call site silently
+// discarded them. The new aggregator returns the exact tableRows +
+// chartBars shape that generatePDF() expects.
 
 // ═══════════════════════════════════════════════════════════════
 // PDF GENERATOR ENGINE
@@ -1653,8 +1637,8 @@ export function ComplianceReportsPage({ t, webMode, companyName: companyNameProp
           ? "Generating encrypted PDF with QR verification..."
           : "Generating PDF with QR verification...";
         toast.loading(loadingMsg, { id: "gen-pdf", duration: 8000 });
-        const _realPdfData = buildRealPdfData();
-        const result = await generatePDF(sections, companyName, pf, fmt, recs, encConfig, _realPdfData ? { kpi: { ...MOCK_KPI_DATA, ...(_realPdfData.kpi || {}) } } as any : undefined);
+        const _realPdfData = await buildCompliancePdfData();
+        const result = await generatePDF(sections, companyName, pf, fmt, recs, encConfig, (_realPdfData ?? undefined) as any);
         const actuallyEncrypted = result?.wasEncrypted ?? false;
         const encLabel = actuallyEncrypted ? " | Password Protected" : encConfig ? " | Encryption Skipped (unsupported)" : "";
         toast.success("PDF Generated Successfully", { id: "gen-pdf", description: `${sections.length} sections | ${result?.totalPages || "?"} pages | ID: ${result?.verificationId || "N/A"} | QR Verified & Watermarked${encLabel}` });
@@ -1690,7 +1674,8 @@ export function ComplianceReportsPage({ t, webMode, companyName: companyNameProp
       toast.loading(loadingMsg, { id: `dl-${report.id}`, duration: 8000 });
       try {
         const sectionIds = ALL_SECTIONS.filter(s => s.defaultChecked).map(s => s.id);
-        const result = await generatePDF(sectionIds, companyName, undefined, "detailed", undefined, encConfig);
+        const _realPdfData = await buildCompliancePdfData();
+        const result = await generatePDF(sectionIds, companyName, undefined, "detailed", undefined, encConfig, (_realPdfData ?? undefined) as any);
         const actuallyEncrypted = result?.wasEncrypted ?? false;
         const encLabel = actuallyEncrypted ? " | Encrypted" : "";
         toast.success("Report Downloaded", { id: `dl-${report.id}`, description: `${report.title} — ${report.pageCount} pages, ${report.size}${encLabel}` });
