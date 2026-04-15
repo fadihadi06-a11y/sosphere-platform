@@ -20,10 +20,22 @@
 // ═══════════════════════════════════════════════════════════════
 
 const DB_NAME = "sosphere_offline";
-// Bumped to 3 for the `pending_audio` store (SOS voice memo upload queue).
-// All onupgradeneeded handlers below are additive — older schemas are
-// upgraded in place without data loss.
-const DB_VERSION = 3;
+// Schema versions:
+//   v2 → core stores (sos_queue, checkins, gps_trail, incidents, messages,
+//        sync_log, app_cache)
+//   v3 → added `pending_audio` for SOS voice recordings
+//   v4 → CRITICAL fix: rewrite all `synced` fields from boolean to 0|1.
+//        IndexedDB spec states booleans are NOT valid index keys, so the
+//        `by_synced` index silently skipped EVERY record. getUnsyncedSOS /
+//        getUnsyncedAudio etc. were returning empty arrays regardless of
+//        what was actually queued — meaning the offline replay watcher
+//        had nothing to replay. Under-the-hood representation is now 0|1
+//        (valid IDB key), while the public surface still exposes booleans
+//        via the coerceSynced* helpers below.
+//
+// All onupgradeneeded handlers are additive — older schemas are upgraded
+// in place without data loss.
+const DB_VERSION = 4;
 
 // ── Store Schemas ──────────────────────────────────────────────
 
@@ -208,6 +220,52 @@ function openDB(): Promise<IDBDatabase> {
         audioStore.createIndex("by_emergency", "emergencyId", { unique: false });
         audioStore.createIndex("by_created", "createdAt", { unique: false });
       }
+
+      // ── v4 MIGRATION: boolean → 0|1 for `synced` ─────────────────
+      // Booleans are not valid IndexedDB keys per spec — existing
+      // records with `synced: false` were SILENTLY EXCLUDED from the
+      // by_synced index, making the offline replay queue a no-op.
+      // We open a cursor on every store that has a `synced` field and
+      // rewrite the value in place; `cursor.update()` causes IDB to
+      // re-index the record with the now-valid numeric key.
+      //
+      // Runs once, only on clients upgrading from v3 or lower. Fresh
+      // installs at v4+ never hit this path.
+      if (event.oldVersion < 4) {
+        const upgradeTx = (event.target as IDBOpenDBRequest).transaction;
+        if (upgradeTx) {
+          const storesWithSynced = [
+            "sos_queue",
+            "checkins",
+            "gps_trail",
+            "incidents",
+            "messages",
+            "pending_audio",
+          ];
+          for (const storeName of storesWithSynced) {
+            if (!db.objectStoreNames.contains(storeName)) continue;
+            try {
+              const store = upgradeTx.objectStore(storeName);
+              const cursorReq = store.openCursor();
+              cursorReq.onsuccess = () => {
+                const cursor = cursorReq.result;
+                if (!cursor) return;
+                const val = cursor.value;
+                if (typeof val?.synced === "boolean") {
+                  val.synced = val.synced ? 1 : 0;
+                  try { cursor.update(val); } catch { /* migration is best-effort */ }
+                }
+                cursor.continue();
+              };
+              // Cursor errors are swallowed — a single bad record must
+              // not abort the whole upgrade.
+              cursorReq.onerror = () => { /* ignore */ };
+            } catch {
+              // Store missing or inaccessible — skip.
+            }
+          }
+        }
+      }
     };
 
     request.onsuccess = (event) => {
@@ -232,14 +290,48 @@ function openDB(): Promise<IDBDatabase> {
   return dbInitPromise;
 }
 
+// ── Synced-Field Coercion (v4) ──────────────────────────────────
+// The `synced` field is modeled as `boolean` at every callsite for
+// readability, but IDB can't index booleans — so on disk we store
+// `0 | 1` and flip at the read/write boundary. These helpers are the
+// ONLY place this translation happens; callers never see the numeric
+// representation.
+//
+// Exported for unit testing (see __tests__/offline-database.test.ts)
+// — they are pure functions and safely callable in a Node test env
+// without a real IndexedDB implementation.
+export function coerceSyncedForIDB<T>(record: T): T {
+  const r = record as unknown as { synced?: unknown };
+  if (r && typeof r.synced === "boolean") {
+    return { ...(record as object), synced: r.synced ? 1 : 0 } as T;
+  }
+  return record;
+}
+
+export function coerceSyncedFromIDB<T>(record: T | undefined): T | undefined {
+  if (!record) return record;
+  const r = record as unknown as { synced?: unknown };
+  if (typeof r.synced === "number") {
+    return { ...(record as object), synced: r.synced === 1 } as T;
+  }
+  return record;
+}
+
+/** Coerce a query value used against the `by_synced` index. */
+export function coerceSyncedKey(value: IDBValidKey | boolean): IDBValidKey {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return value;
+}
+
 // ── Generic CRUD Operations ────────────────────────────────────
 
 async function dbPut<T>(storeName: string, record: T): Promise<void> {
   const db = await openDB();
+  const normalized = coerceSyncedForIDB(record);
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, "readwrite");
     const store = tx.objectStore(storeName);
-    const req = store.put(record);
+    const req = store.put(normalized);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
@@ -251,7 +343,7 @@ async function dbGet<T>(storeName: string, id: string): Promise<T | undefined> {
     const tx = db.transaction(storeName, "readonly");
     const store = tx.objectStore(storeName);
     const req = store.get(id);
-    req.onsuccess = () => resolve(req.result as T | undefined);
+    req.onsuccess = () => resolve(coerceSyncedFromIDB<T>(req.result as T | undefined));
     req.onerror = () => reject(req.error);
   });
 }
@@ -262,19 +354,30 @@ async function dbGetAll<T>(storeName: string): Promise<T[]> {
     const tx = db.transaction(storeName, "readonly");
     const store = tx.objectStore(storeName);
     const req = store.getAll();
-    req.onsuccess = () => resolve(req.result as T[]);
+    req.onsuccess = () => {
+      const rows = (req.result as T[]).map(r => coerceSyncedFromIDB<T>(r) as T);
+      resolve(rows);
+    };
     req.onerror = () => reject(req.error);
   });
 }
 
-async function dbGetByIndex<T>(storeName: string, indexName: string, value: IDBValidKey): Promise<T[]> {
+async function dbGetByIndex<T>(
+  storeName: string,
+  indexName: string,
+  value: IDBValidKey | boolean,
+): Promise<T[]> {
   const db = await openDB();
+  const key = coerceSyncedKey(value);
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, "readonly");
     const store = tx.objectStore(storeName);
     const index = store.index(indexName);
-    const req = index.getAll(value);
-    req.onsuccess = () => resolve(req.result as T[]);
+    const req = index.getAll(key);
+    req.onsuccess = () => {
+      const rows = (req.result as T[]).map(r => coerceSyncedFromIDB<T>(r) as T);
+      resolve(rows);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -324,10 +427,11 @@ async function dbClear(storeName: string): Promise<void> {
 
 async function dbBulkPut<T>(storeName: string, records: T[]): Promise<void> {
   const db = await openDB();
+  const normalized = records.map(r => coerceSyncedForIDB(r));
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, "readwrite");
     const store = tx.objectStore(storeName);
-    records.forEach(r => store.put(r));
+    normalized.forEach(r => store.put(r));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -463,7 +567,10 @@ export async function markGPSBatchSynced(ids: string[]): Promise<void> {
       const req = store.get(id);
       req.onsuccess = () => {
         if (req.result) {
-          req.result.synced = true;
+          // v4: store as 0|1 so the by_synced index actually indexes
+          // this record. Writing `true` would put it in the store but
+          // leave it invisible to the unsynced-query cursor.
+          req.result.synced = 1;
           store.put(req.result);
         }
       };
@@ -518,7 +625,10 @@ export async function getRecentGPSTrail(limit: number = 200): Promise<GPSPoint[]
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor || results.length >= limit) { resolve(results); return; }
-      results.push(cursor.value);
+      // Flip synced back to boolean at the boundary so callers see a
+      // consistent shape (same as dbGetAll/dbGetByIndex).
+      const row = coerceSyncedFromIDB<GPSPoint>(cursor.value) as GPSPoint;
+      results.push(row);
       cursor.continue();
     };
     req.onerror = () => reject(req.error);
