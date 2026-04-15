@@ -31,6 +31,7 @@ import { EvacuationScreen, EvacuationAlertOverlay } from "./evacuation-screen";
 import { NeighborAlertOverlay } from "./neighbor-alert-overlay";
 import { BiometricGateModal } from "./biometric-gate-modal-v2";
 import { getBiometricLockEnabled } from "./biometric-lock-settings";
+import { clearBiometricSession } from "./biometric-gate";
 import {
   LanguageScreen,
   PrivacyScreen,
@@ -250,6 +251,34 @@ export function MobileApp() {
   const [biometricUnlocked, setBiometricUnlocked] = useState<boolean>(() => {
     try { return !getBiometricLockEnabled(); } catch { return true; }
   });
+
+  // Timestamp of the last time the app went to the background. Used by the
+  // background-timeout effect to decide whether to re-lock on resume.
+  // Ref rather than state because writes happen outside React's lifecycle
+  // (native event callbacks) and we never want a re-render on background.
+  const backgroundedAtRef = useRef<number | null>(null);
+
+  /**
+   * Shared "session teardown" primitive for biometric state.
+   *
+   * Called from:
+   *   1. onLogout — multi-user device hand-off. Without this, user B
+   *      could inherit user A's verified flag on the same hardware.
+   *   2. Background-resume timeout — long idle = "new session" semantics.
+   *
+   * Two effects, intentionally coupled:
+   *   • clearBiometricSession() nukes the localStorage verified flag so
+   *     any feature that grows to read isBiometricVerified() later sees
+   *     a clean state (future-proof).
+   *   • biometricUnlocked is reset from the current flag value — if the
+   *     user still has Biometric Lock enabled, the next entry into a
+   *     logged-in screen will re-trigger the gate.
+   */
+  const resetBiometricSession = useCallback(() => {
+    try { clearBiometricSession(); } catch {}
+    try { setBiometricUnlocked(!getBiometricLockEnabled()); }
+    catch { setBiometricUnlocked(true); }
+  }, []);
 
   // -- Company match data from CompanyJoin verification ---------
   const [companyMatchData, setCompanyMatchData] = useState<CompanyMatchData | null>(null);
@@ -568,6 +597,64 @@ export function MobileApp() {
       subscription?.unsubscribe();
     };
   }, []);
+
+  // -- Background-resume biometric re-lock --------------------------
+  // Standard banking/security-app pattern: if the app has been in the
+  // background long enough to look like "the user walked away and came
+  // back" (default 5 min), require re-auth on resume. This is the
+  // semantically-correct "session ended" signal — NOT the end of the
+  // post-emergency debrief (which would be hostile UX to someone who
+  // just survived an incident).
+  //
+  // Implementation notes:
+  //   • Uses Capacitor App.addListener('appStateChange') which fires with
+  //     { isActive: boolean } on both native and web (where it degrades
+  //     to visibility events).
+  //   • We only ARM the timer on isActive=false. No work on foreground
+  //     entry unless a backgrounded-at timestamp exists — this avoids a
+  //     spurious "just launched" trip on app cold-start.
+  //   • Short background hops (notification → reply → return) under the
+  //     threshold are no-ops so we don't punish normal multitasking.
+  //   • Ref-based timestamp (not state) because we never want a re-render
+  //     when the app leaves/enters the foreground.
+  //   • No-ops entirely when biometric lock is off — cheap guard, no
+  //     listener churn.
+  useEffect(() => {
+    const BACKGROUND_LOCK_MS = 5 * 60 * 1000; // 5 minutes
+    let removeListener: (() => Promise<void>) | null = null;
+
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const handle = await App.addListener("appStateChange", (state: { isActive: boolean }) => {
+          if (!state.isActive) {
+            // Going to background — record the timestamp. Always record,
+            // even if the flag is off today, so that toggling the flag
+            // ON mid-session doesn't require a re-arm cycle.
+            backgroundedAtRef.current = Date.now();
+            return;
+          }
+          // Coming back to foreground.
+          const backgroundedAt = backgroundedAtRef.current;
+          backgroundedAtRef.current = null;
+          if (backgroundedAt == null) return;
+          const idleMs = Date.now() - backgroundedAt;
+          if (idleMs < BACKGROUND_LOCK_MS) return;
+          // Only re-lock if the user actually has the feature enabled.
+          if (!getBiometricLockEnabled()) return;
+          resetBiometricSession();
+        });
+        removeListener = () => handle.remove();
+      } catch (err) {
+        // Capacitor not available (pure web dev) — non-fatal.
+        console.info("[SOS] Background lock listener not installed:", err);
+      }
+    })();
+
+    return () => {
+      removeListener?.().catch(() => {});
+    };
+  }, [resetBiometricSession]);
 
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
@@ -1383,6 +1470,7 @@ export function MobileApp() {
                   localStorage.removeItem("sosphere_individual_profile");
                   localStorage.removeItem("sosphere_tos_consent");
                   localStorage.removeItem("sosphere_gps_consent");
+                  resetBiometricSession(); // re-arm gate for next user on this device
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
@@ -1426,6 +1514,7 @@ export function MobileApp() {
                   localStorage.removeItem("sosphere_individual_profile");
                   localStorage.removeItem("sosphere_tos_consent");
                   localStorage.removeItem("sosphere_gps_consent");
+                  resetBiometricSession(); // re-arm gate for next user on this device
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
