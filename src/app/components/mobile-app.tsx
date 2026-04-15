@@ -598,6 +598,32 @@ export function MobileApp() {
     };
   }, []);
 
+  // -- SOS offline queue replay watcher ----------------------------
+  // Re-fires any SOS events that were queued to IndexedDB but never
+  // reached the server (dead zone, captive portal, Supabase outage).
+  // Idempotent: safe to mount once for the lifetime of the app. The
+  // watcher itself handles network-state tracking + debouncing.
+  //
+  // TTL inside the service prevents re-ringing contacts about stale
+  // emergencies (default 15 min). Exhausted records remain in the DB
+  // unsynced as a forensic trail.
+  //
+  // Dynamic import to keep SOS startup cost minimal — the queue layer
+  // is only loaded when it's actually wired.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { startSOSReplayWatcher } = await import("./sos-server-trigger");
+        if (cancelled) return;
+        startSOSReplayWatcher();
+      } catch (err) {
+        console.warn("[mobile-app] SOS replay watcher setup failed:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // -- Background-resume biometric re-lock --------------------------
   // Standard banking/security-app pattern: if the app has been in the
   // background long enough to look like "the user walked away and came

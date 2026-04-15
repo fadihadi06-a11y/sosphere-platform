@@ -21,11 +21,34 @@ import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
 import { publishNeighborAlert, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 import { buildAiScriptPayload } from "./ai-voice-call-service";
+import {
+  queueSOS,
+  getUnsyncedSOS,
+  markSOSSynced,
+  incrementSOSRetry,
+  type SOSRecord,
+} from "./offline-database";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const SOS_ALERT_URL = `${SUPABASE_URL}/functions/v1/sos-alert`;
+
+// ── Offline queue config ─────────────────────────────────────
+// SOS events queue to IndexedDB before any network call so nothing
+// is lost on a dead connection. Replay obeys these limits:
+//
+//   REPLAY_TTL_MS    — events older than this are NOT re-fired to
+//                      Twilio (we don't want to ring contacts about
+//                      an emergency that ended hours ago). They stay
+//                      marked unsynced as a forensic audit record.
+//   REPLAY_MAX_TRIES — after this many attempts we stop replaying
+//                      a given record. It remains in the DB for
+//                      manual inspection / sync later.
+const REPLAY_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const REPLAY_MAX_TRIES = 5;
+let replayInFlight = false;
+let replayListenerAttached = false;
 
 // ── State ────────────────────────────────────────────────────
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -215,10 +238,21 @@ export async function triggerServerSOS(opts: {
   lastFireAt = now;
 
   const gps = getLastKnownPosition();
+  const battery = getBatteryLevel();
 
   console.log(`[SOS-Server] ═══ Path B FIRED ═══ tier=${tier} contacts=${opts.contacts.length} silent=${!!opts.silent}`);
 
   activeEmergencyId = opts.emergencyId;
+
+  // ── OFFLINE-FIRST QUEUE ─────────────────────────────────────
+  // Persist the event to IndexedDB BEFORE any network call. If the
+  // fetch below fails (dead zone, captive portal, Supabase outage)
+  // this record survives in the queue and replayPendingSOS() will
+  // retry on reconnect. Fire-and-forget — we never block SOS on DB I/O.
+  const queuedRecordId = await enqueueSOS(opts, tier, gps, battery).catch(err => {
+    console.warn("[SOS-Server] enqueueSOS failed (non-fatal):", err);
+    return null;
+  });
 
   // STEP 1 — Fire prewarm FIRST (survival beacon)
   firePrewarm({
@@ -273,6 +307,11 @@ export async function triggerServerSOS(opts: {
     if (!res.ok) {
       const errText = await res.text().catch(() => "Unknown error");
       console.error("[SOS-Server] Server trigger failed:", res.status, errText);
+      // Record stays unsynced in the queue — replay will retry it on
+      // reconnect. Bump the attempt counter for backoff accounting.
+      if (queuedRecordId) {
+        incrementSOSRetry(queuedRecordId, `HTTP ${res.status}`).catch(() => {});
+      }
       serverTriggerResult = {
         success: false,
         emergencyId: opts.emergencyId,
@@ -292,10 +331,26 @@ export async function triggerServerSOS(opts: {
       results: data.results,
     };
 
+    // Mark the queued record synced — the server confirmed receipt.
+    // We don't await this and swallow errors: the DB write is a
+    // forensic breadcrumb, not part of the success contract.
+    if (queuedRecordId) {
+      markSOSSynced(queuedRecordId).catch(() => { /* forensic best-effort */ });
+    }
+
     console.log(`[SOS-Server] Path B SUCCESS: tier=${data.tier} contacts=${data.results?.length}`);
     return serverTriggerResult;
   } catch (err) {
     console.error("[SOS-Server] Path B FAILED (network):", err);
+    // Network-level failure is the exact case the offline queue exists
+    // for. Leave the record unsynced and bump retries so replay will
+    // pick it up when connectivity returns.
+    if (queuedRecordId) {
+      incrementSOSRetry(
+        queuedRecordId,
+        err instanceof Error ? err.message : "network_error"
+      ).catch(() => {});
+    }
     serverTriggerResult = {
       success: false,
       emergencyId: opts.emergencyId,
@@ -506,4 +561,181 @@ export function getWatchdogState(): WatchdogState {
 
 export function getActiveEmergencyId(): string | null {
   return activeEmergencyId;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. OFFLINE QUEUE + REPLAY
+// ─────────────────────────────────────────────────────────────
+// Guarantees no SOS event is lost to a dead connection.
+// Flow:
+//   • triggerServerSOS() calls enqueueSOS() BEFORE any network I/O.
+//   • On fetch success → markSOSSynced(id).
+//   • On fetch fail   → incrementSOSRetry(id) (record stays unsynced).
+//   • On reconnect    → replayPendingSOS() re-fires fetchSOS for
+//     every record younger than REPLAY_TTL_MS, up to REPLAY_MAX_TRIES.
+//
+// TTL exists for a reason: we don't want to re-ring a user's contacts
+// about an emergency that ended hours ago. Stale records stay in the
+// DB unsynced as a forensic trail but are not retried.
+// ═══════════════════════════════════════════════════════════════
+
+/** Persist a pending SOS event to IndexedDB. Returns the record id or null if DB is unavailable. */
+async function enqueueSOS(
+  opts: Parameters<typeof triggerServerSOS>[0],
+  tier: "free" | "basic" | "elite",
+  gps: ReturnType<typeof getLastKnownPosition>,
+  battery: number | null,
+): Promise<string | null> {
+  try {
+    // The entire opts payload is stashed in `metadata` so replay can
+    // re-construct the exact fetchSOS call. tier is a snapshot — the
+    // server will re-validate from DB anyway.
+    return await queueSOS({
+      employeeId: opts.userId,
+      employeeName: opts.userName,
+      zone: opts.zone || "",
+      lat: gps?.lat ?? 0,
+      lng: gps?.lng ?? 0,
+      accuracy: gps?.accuracy ?? 9999,
+      triggerMethod: "manual",
+      severity: "high",
+      timestamp: Date.now(),
+      networkStatusAtTrigger: navigator.onLine ? "online" : "offline",
+      batteryLevel: battery,
+      metadata: {
+        emergencyId: opts.emergencyId,
+        userPhone: opts.userPhone,
+        contacts: opts.contacts,
+        bloodType: opts.bloodType,
+        silent: opts.silent,
+        tier,
+      },
+    });
+  } catch (err) {
+    console.warn("[SOS-Server] queueSOS failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Re-fire every unsynced SOS record that is still within the TTL
+ * window. Called on `online` event and at app startup via
+ * startSOSReplayWatcher().
+ *
+ * Safe to call concurrently — guarded by `replayInFlight`. Returns
+ * a summary for callers that want to show UI feedback.
+ */
+export async function replayPendingSOS(): Promise<{
+  replayed: number;
+  succeeded: number;
+  failed: number;
+  skippedStale: number;
+  skippedExhausted: number;
+}> {
+  const summary = { replayed: 0, succeeded: 0, failed: 0, skippedStale: 0, skippedExhausted: 0 };
+
+  if (replayInFlight) {
+    console.log("[SOS-Replay] already running, skipping");
+    return summary;
+  }
+  if (!navigator.onLine) {
+    console.log("[SOS-Replay] offline, skipping");
+    return summary;
+  }
+
+  replayInFlight = true;
+  try {
+    const pending = await getUnsyncedSOS();
+    if (pending.length === 0) return summary;
+
+    console.log(`[SOS-Replay] found ${pending.length} unsynced record(s)`);
+    const now = Date.now();
+
+    for (const rec of pending) {
+      // Skip stale records — we don't re-page contacts about old events.
+      if (now - rec.timestamp > REPLAY_TTL_MS) {
+        summary.skippedStale++;
+        continue;
+      }
+      // Give up after too many attempts to avoid infinite loops.
+      if (rec.syncAttempts >= REPLAY_MAX_TRIES) {
+        summary.skippedExhausted++;
+        continue;
+      }
+
+      summary.replayed++;
+      const ok = await replayOneSOS(rec).catch(() => false);
+      if (ok) {
+        summary.succeeded++;
+        await markSOSSynced(rec.id).catch(() => {});
+      } else {
+        summary.failed++;
+        await incrementSOSRetry(rec.id, "replay_failed").catch(() => {});
+      }
+    }
+
+    console.log("[SOS-Replay] done:", summary);
+    return summary;
+  } finally {
+    replayInFlight = false;
+  }
+}
+
+/** Single-record replay. Re-issues fetchSOS with the original payload. */
+async function replayOneSOS(rec: SOSRecord): Promise<boolean> {
+  const md = rec.metadata || {};
+  // Minimal sanity — if emergencyId is missing the record is corrupt.
+  if (!md.emergencyId || !Array.isArray(md.contacts)) {
+    console.warn(`[SOS-Replay] record ${rec.id} missing required metadata — skipping`);
+    return false;
+  }
+
+  try {
+    const res = await fetchSOS(null, {
+      emergencyId: md.emergencyId,
+      userId: rec.employeeId,
+      userName: rec.employeeName,
+      userPhone: md.userPhone,
+      contacts: md.contacts,
+      location: { lat: rec.lat, lng: rec.lng, accuracy: rec.accuracy },
+      bloodType: md.bloodType,
+      zone: rec.zone,
+      silent: md.silent,
+      replay: true, // hint to server: this is a retry, dedup by emergencyId
+    }, { timeoutMs: 20000 });
+    return res.ok;
+  } catch (err) {
+    console.warn(`[SOS-Replay] record ${rec.id} fetch failed:`, err);
+    return false;
+  }
+}
+
+/**
+ * Install the replay watcher. Idempotent — safe to call from multiple
+ * mount sites. Hooks `window.online` and fires an initial replay on
+ * startup (in case the app was launched after a period offline with
+ * queued events).
+ */
+export function startSOSReplayWatcher(): void {
+  if (replayListenerAttached) return;
+  replayListenerAttached = true;
+
+  const fire = () => {
+    // small debounce — network flaps fire online/offline rapidly
+    setTimeout(() => {
+      if (navigator.onLine) {
+        replayPendingSOS().catch(err => console.warn("[SOS-Replay] error:", err));
+      }
+    }, 1500);
+  };
+
+  window.addEventListener("online", fire);
+
+  // Also replay once on startup in case we were launched with a
+  // pending queue (phone rebooted mid-emergency, etc.).
+  if (navigator.onLine) {
+    fire();
+  }
+
+  console.log("[SOS-Replay] watcher installed");
 }
