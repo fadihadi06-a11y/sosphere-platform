@@ -502,6 +502,60 @@ export function MobileApp() {
   // where both the listener AND handleGmailLogin tried to navigate simultaneously.
   // The native GoogleAuth.signIn() → handleGmailLogin flow is the single source of truth.
 
+  // -- Voice-engine token sync (narrow, non-navigating listener) --
+  // The only job of this effect is to keep voiceCallEngine's server-auth
+  // header in sync with the Supabase session. It deliberately:
+  //   • Does NOT call navigate()/setScreen() — that's the OAuth race that
+  //     forced us to drop the old onAuthStateChange listener.
+  //   • Does NOT branch on event type beyond "do we have a token?" — both
+  //     SIGNED_IN and TOKEN_REFRESHED deliver a fresh access_token; on
+  //     SIGNED_OUT the session is null and refreshAuthToken's null-guard
+  //     handles it (no-op). Less code, fewer corners.
+  //   • Does an initial getSession() pull so a restored session hydrates
+  //     the engine on cold start (the listener alone wouldn't fire for
+  //     an already-persisted session).
+  useEffect(() => {
+    let cancelled = false;
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    (async () => {
+      try {
+        const [{ supabase, getSession }, { voiceCallEngine }] = await Promise.all([
+          import("./api/supabase-client"),
+          import("./voice-call-engine"),
+        ]);
+        if (cancelled) return;
+
+        // Hydrate on mount — matters for app-restarts with a persisted session.
+        try {
+          const session = await getSession();
+          if (!cancelled && session?.access_token) {
+            await voiceCallEngine.refreshAuthToken(session.access_token);
+          }
+        } catch (err) {
+          console.warn("[SOS] voice-engine initial token sync failed:", err);
+        }
+
+        // Subscribe — fires on SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT, USER_UPDATED, etc.
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          const token = session?.access_token;
+          if (!token) return; // SIGNED_OUT / null — leave engine as-is
+          voiceCallEngine.refreshAuthToken(token).catch((err) => {
+            console.warn("[SOS] voice-engine token refresh failed:", err);
+          });
+        });
+        subscription = data?.subscription ?? null;
+      } catch (err) {
+        console.warn("[SOS] Voice token sync setup failed (non-fatal):", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.unsubscribe();
+    };
+  }, []);
+
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
