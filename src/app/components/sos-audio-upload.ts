@@ -41,6 +41,18 @@ const STORAGE_BUCKET = "evidence";
 const REPLAY_MAX_TRIES = 5;
 const REPLAY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — audio is evidence, not ephemeral
 
+// Exponential backoff between retries of the SAME record. Without this,
+// four triggers (online + visibility + auth + startup) firing within
+// seconds of each other during a network flap could burn through
+// REPLAY_MAX_TRIES in a single boot and leave the record stuck forever.
+// Formula: min(2^attempts * 1000, 60000) — 1s, 2s, 4s, 8s, 16s (capped).
+// Kept in-memory: on restart we WANT a fresh attempt, so losing this
+// map is the right behaviour.
+const retryNotBeforeMs = new Map<string, number>();
+function nextBackoffMs(attempts: number): number {
+  return Math.min(Math.pow(2, attempts) * 1000, 60000);
+}
+
 // In-memory map of emergencyId -> uploaded public URL.
 // Lets the debrief/evidence flow reuse the live-upload result
 // instead of uploading the same dataUrl again.
@@ -206,10 +218,20 @@ export async function replayPendingAudio(): Promise<{
       if (rec.syncAttempts >= REPLAY_MAX_TRIES) {
         continue;
       }
+      // Exponential backoff — skip if this record was just retried.
+      const notBefore = retryNotBeforeMs.get(rec.id);
+      if (notBefore !== undefined && now < notBefore) {
+        continue;
+      }
 
       const ok = await retryOne(rec);
-      if (ok) summary.uploaded++;
-      else summary.failed++;
+      if (ok) {
+        summary.uploaded++;
+        retryNotBeforeMs.delete(rec.id); // success — clear cooldown
+      } else {
+        summary.failed++;
+        retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
+      }
     }
 
     console.log("[SOS-Audio] replay done:", summary);
