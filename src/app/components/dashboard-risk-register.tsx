@@ -19,6 +19,13 @@ import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { TYPOGRAPHY } from "./design-system";
 import { onSyncEvent } from "./shared-store";
+import {
+  fetchRiskRegister,
+  upsertRisk,
+  upsertRiskBatch,
+  fetchTrainingRecords,
+  upsertTrainingRecord,
+} from "./risk-register-service";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -348,25 +355,78 @@ function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[]) {
 type TabType = "risks" | "training" | "matrix";
 
 export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (k: string) => string; webMode?: boolean; pendingRiskUpdates?: { riskId: string; update: Record<string, any> }[] }) {
+  // Boot: prefer localStorage cache (instant paint), then MOCK_RISKS as
+  // a dev-only fallback. After mount we reconcile with Supabase. If the
+  // server has rows they win; if it's empty and we only have MOCK data,
+  // we seed the server with the mock so the first real edit persists
+  // somewhere durable. (P3-#11b)
   const [risks, setRisks] = useState<RiskEntry[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("sosphere_risks") || "[]") as RiskEntry[];
       if (saved.length > 0) {
-        // Restore Date objects
         return saved.map(r => ({ ...r, reviewDate: new Date(r.reviewDate) }));
       }
     } catch {}
     return MOCK_RISKS;
   });
-  const [training, setTraining] = useState(MOCK_TRAINING);
+  const [training, setTraining] = useState<TrainingRecord[]>(MOCK_TRAINING);
   const [activeTab, setActiveTab] = useState<TabType>("risks");
   const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
   const [zoneFilter, setZoneFilter] = useState("all");
+  // Guard so the initial Supabase reconciliation doesn't loop back into
+  // the "upsert on change" effect and overwrite the server's own data
+  // with an outdated snapshot we just replaced.
+  const [serverBootComplete, setServerBootComplete] = useState(false);
 
-  // Persist risk updates to localStorage
+  // Reconcile with Supabase on mount. Non-blocking — if the server is
+  // unreachable or the user isn't logged in yet, we simply keep the
+  // local data we already painted.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [serverRisks, serverTraining] = await Promise.all([
+        fetchRiskRegister(),
+        fetchTrainingRecords(),
+      ]);
+      if (cancelled) return;
+      if (serverRisks.length > 0) {
+        setRisks(serverRisks);
+      } else {
+        // Server has no risks yet. If we're showing MOCK_RISKS this is
+        // the user's first visit — seed the server so future edits stick.
+        // We detect "is mock" by id prefix; real imports use other ids.
+        const looksLikeMock = risks.length > 0 && risks.every(r => r.id.startsWith("RSK-00"));
+        if (looksLikeMock) {
+          void upsertRiskBatch(risks); // fire-and-forget
+        }
+      }
+      if (serverTraining.length > 0) {
+        setTraining(serverTraining);
+      }
+      setServerBootComplete(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist risk updates: localStorage (instant offline cache) + Supabase
+  // (durable source of truth). We skip the Supabase write until the
+  // server boot has finished so we don't trample freshly-loaded data.
   useEffect(() => {
     localStorage.setItem("sosphere_risks", JSON.stringify(risks));
-  }, [risks]);
+    if (!serverBootComplete) return;
+    void upsertRiskBatch(risks);
+  }, [risks, serverBootComplete]);
+
+  // Persist training record updates to Supabase. We upsert the full set
+  // rather than diffing because the list is small (tens of rows per
+  // company) and keeping it simple avoids drift bugs.
+  useEffect(() => {
+    if (!serverBootComplete) return;
+    for (const t of training) {
+      void upsertTrainingRecord(t);
+    }
+  }, [training, serverBootComplete]);
 
   // ── Mutation Handlers ──────────────────────────────────────────
 
