@@ -41,6 +41,12 @@ const cors = {
 };
 
 // ── Types ────────────────────────────────────────────────────
+interface AiScriptPayload {
+  text: string;
+  language: "en-US" | "ar-SA";
+  voice: string;
+}
+
 interface SOSPayload {
   emergencyId: string;
   userId: string;
@@ -51,6 +57,36 @@ interface SOSPayload {
   bloodType?: string;
   zone?: string;
   silent?: boolean;
+  /** Elite-only personalised <Say> script (client-supplied, server-validated). */
+  aiScript?: AiScriptPayload;
+}
+
+// ── AI script validation ─────────────────────────────────────
+// Server authoritative: never trust client blindly. The tier check
+// happens AFTER JWT resolution in the trigger handler; this helper
+// only enforces shape + length safety (TwiML injection defence).
+const AI_VOICE_ALLOWLIST = new Set([
+  "Polly.Joanna",
+  "Polly.Matthew",
+  "Polly.Amy",
+  "Polly.Zeina",
+]);
+const AI_LANG_ALLOWLIST = new Set(["en-US", "ar-SA"]);
+
+function sanitizeAiScript(raw: unknown): AiScriptPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const text = typeof r.text === "string" ? r.text.trim() : "";
+  const language = typeof r.language === "string" ? r.language : "";
+  const voice = typeof r.voice === "string" ? r.voice : "";
+  if (!text) return null;
+  if (text.length > 600) return null;                    // TwiML <Say> safety cap
+  if (!AI_LANG_ALLOWLIST.has(language)) return null;     // only known Polly langs
+  if (!AI_VOICE_ALLOWLIST.has(voice)) return null;       // only whitelisted voices
+  // Defence in depth: reject suspicious control chars that could
+  // escape the <Say> element. Safe punctuation is preserved.
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) return null;
+  return { text, language: language as "en-US" | "ar-SA", voice };
 }
 
 // ── Twilio Helpers ───────────────────────────────────────────
@@ -347,6 +383,9 @@ serve(async (req: Request) => {
     const payload: SOSPayload = await req.json();
     const { emergencyId, userName, userPhone, contacts, location, bloodType, zone, silent } = payload;
 
+    // Shape-validate aiScript early (tier gate applied after resolveTier below).
+    const aiScriptShape = sanitizeAiScript(payload.aiScript);
+
     // Security: payload.userId must match JWT-derived userId
     if (payload.userId && payload.userId !== authUserId) {
       console.warn(`[sos-alert] userId mismatch: payload=${payload.userId} jwt=${authUserId}`);
@@ -363,6 +402,13 @@ serve(async (req: Request) => {
 
     // ── SERVER-SIDE TIER RESOLUTION (ignore client-supplied tier) ──
     const tier = await resolveTier(authUserId, supabase);
+
+    // Apply tier gate: aiScript is Elite-only. For Basic / Free users
+    // the server falls back to the default announcement.
+    const aiScript: AiScriptPayload | null = (tier === "elite") ? aiScriptShape : null;
+    if (aiScriptShape && !aiScript) {
+      console.warn(`[sos-alert] aiScript rejected — tier=${tier} not Elite (user=${authUserId})`);
+    }
 
     const trackUrl = `${BASE_URL}/track?eid=${emergencyId}`;
     const dashUrl  = `${BASE_URL}/emergency/${emergencyId}`;
@@ -410,6 +456,9 @@ serve(async (req: Request) => {
       zone: zone || null,
       contact_count: contacts.length,
       silent_mode: !!silent,
+      // Elite-only personalised <Say> script (null for Basic/Free,
+      // in which case sos-bridge-twiml uses its built-in announcement).
+      ai_script: aiScript,
     }, { onConflict: "id", ignoreDuplicates: false });
 
     // ══════════════════════════════════════════════════════════
