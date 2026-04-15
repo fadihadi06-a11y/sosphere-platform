@@ -342,6 +342,44 @@ function buildInitialCompanyState(): CompanyState {
 const _initialCompanyState = buildInitialCompanyState();
 const _initialTrialFields = computeTrialFields(_initialCompanyState);
 
+// ─────────────────────────────────────────────────────────────
+// P2-#9: Dashboard language hydration & persistence
+// ─────────────────────────────────────────────────────────────
+// The LanguagePicker used to live in memory only — every refresh
+// reset it to "en", and Arabic/French/etc. admins had to re-select
+// their language on every session. We read the saved choice at
+// store boot and persist on every setLang() call.
+//
+// Key naming: we use `sosphere_dashboard_lang` (dashboard-scoped)
+// to keep it independent from the mobile app's own picker, so the
+// two surfaces can drift intentionally (e.g. admin browsing en on
+// desktop while keeping ar on their phone).
+const DASHBOARD_LANG_KEY = "sosphere_dashboard_lang";
+const VALID_LANGS: ReadonlyArray<string> = [
+  "en", "ar", "fr", "es", "de", "it", "tr", "ru", "zh", "ja", "ko", "hi", "pt", "nl", "pl", "sv",
+];
+
+function loadInitialLang(): Lang {
+  try {
+    const raw = typeof window !== "undefined"
+      ? window.localStorage.getItem(DASHBOARD_LANG_KEY)
+      : null;
+    if (raw && VALID_LANGS.includes(raw)) return raw as Lang;
+  } catch {}
+  return "en";
+}
+
+function persistLang(lang: Lang): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DASHBOARD_LANG_KEY, lang);
+    }
+  } catch {
+    // localStorage full / disabled / Safari private mode — silent: a
+    // failed persist is strictly less bad than a crashed dashboard.
+  }
+}
+
 const initialState: DashboardState = {
   currentPage: "overview",
   sidebarCollapsed: true, // will be set by webMode
@@ -371,7 +409,9 @@ const initialState: DashboardState = {
   */
   companyState: _initialCompanyState,
 
-  lang: "en",
+  // P2-#9: hydrated from localStorage so the admin's language choice
+  // survives refreshes. persisted on every setLang() below.
+  lang: loadInitialLang(),
   showCreateEmergency: false,
   showNotifPanel: false,
   showGlobalSearch: false,
@@ -599,7 +639,12 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     },
 
     // â”€â”€ UI State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    setLang: (lang) => set({ lang }),
+    setLang: (lang) => {
+      // P2-#9: persist first, then update state. If localStorage throws
+      // we still update the UI — the picker must never feel broken.
+      persistLang(lang);
+      set({ lang });
+    },
     setShowCreateEmergency: (show) => set({ showCreateEmergency: show }),
     setShowNotifPanel: (show) => set({ showNotifPanel: show }),
     setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
