@@ -28,6 +28,7 @@ import { EmergencyContacts } from "./emergency-contacts";
 import { NotificationsCenter } from "./notifications-center";
 import { LoginWelcome } from "./login-welcome";
 import { EvacuationScreen, EvacuationAlertOverlay } from "./evacuation-screen";
+import { NeighborAlertOverlay } from "./neighbor-alert-overlay";
 import {
   LanguageScreen,
   PrivacyScreen,
@@ -827,6 +828,15 @@ export function MobileApp() {
           employeeId={`EMP-${loginName.replace(/\s+/g, "")}`}
           employeeName={loginName}
           currentZoneId="Z-A"
+        />
+
+        {/* -- Neighbour SOS Alert Overlay ------------------- */}
+        {/* Shows when an opted-in neighbour nearby triggers SOS.        */}
+        {/* Suppressed while user is handling their own SOS so we        */}
+        {/* don't stack crises on them.                                  */}
+        <NeighborAlertOverlay
+          lang={lang === "ar" ? "ar" : "en"}
+          suppress={screen === "sos-emergency"}
         />
 
         {/* -- Incident Photo Report � triggered by Admin Unreachable -- */}
