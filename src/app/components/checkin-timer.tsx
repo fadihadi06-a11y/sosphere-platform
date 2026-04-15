@@ -180,9 +180,13 @@ interface CheckinTimerProps {
   onTimerStateChange?: (active: boolean) => void;
   userName?: string;
   userZone?: string;
+  /** Display language. Defaults to "en". "ar" renders Arabic copy & RTL. */
+  lang?: "en" | "ar";
 }
 
-export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userName = "User", userZone = "Zone A" }: CheckinTimerProps) {
+export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userName = "User", userZone = "Zone A", lang = "en" }: CheckinTimerProps) {
+  const isAr = lang === "ar";
+  const tr = (en: string, ar: string) => (isAr ? ar : en);
   const [phase, setPhase] = useState<Phase>("setup");
   const [mode, setMode] = useState<Mode>("duration");
 
@@ -511,7 +515,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
           >
             <ChevronLeft style={{ width: 20, height: 20, color: "#00C8E0" }} />
             <span style={{ fontSize: 15, color: "#00C8E0", fontWeight: 500 }}>
-              {phase === "setup" ? "الرئيسية" : ""}
+              {phase === "setup" ? tr("Home", "الرئيسية") : ""}
             </span>
           </button>
           <div className="flex-1 text-center">
@@ -572,7 +576,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                       color: mode === m ? "#FF9500" : "rgba(255,255,255,0.25)",
                       transition: "color 0.3s",
                     }}>
-                      {m === "duration" ? "المدة" : "جدول زمني"}
+                      {m === "duration" ? tr("Duration", "المدة") : tr("Schedule", "جدول زمني")}
                     </span>
                   </button>
                 ))}
@@ -603,27 +607,27 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                       items={hours}
                       selected={durationHours}
                       onChange={setDurationHours}
-                      label="ساعات"
+                      label={tr("hours", "ساعات")}
                     />
                     <div style={{ fontSize: 32, fontWeight: 800, color: "rgba(255,150,0,0.3)", marginTop: 16 }}>:</div>
                     <WheelPicker
                       items={minutes5}
                       selected={durationMinutes}
                       onChange={setDurationMinutes}
-                      label="دقائق"
+                      label={tr("minutes", "دقائق")}
                     />
                   </div>
 
                   {/* Quick presets */}
                   <div className="flex gap-2 mb-5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
                     {[
-                      { l: "30 د", h: 0, m: 6 },
-                      { l: "1 س", h: 1, m: 0 },
-                      { l: "2 س", h: 2, m: 0 },
-                      { l: "3 س", h: 3, m: 0 },
-                      { l: "4 س", h: 4, m: 0 },
-                      { l: "6 س", h: 6, m: 0 },
-                      { l: "8 س", h: 8, m: 0 },
+                      { l: tr("30m", "30 د"), h: 0, m: 6 },
+                      { l: tr("1h", "1 س"), h: 1, m: 0 },
+                      { l: tr("2h", "2 س"), h: 2, m: 0 },
+                      { l: tr("3h", "3 س"), h: 3, m: 0 },
+                      { l: tr("4h", "4 س"), h: 4, m: 0 },
+                      { l: tr("6h", "6 س"), h: 6, m: 0 },
+                      { l: tr("8h", "8 س"), h: 8, m: 0 },
                     ].map((p) => {
                       const active = durationHours === p.h && durationMinutes === p.m;
                       return (
@@ -663,7 +667,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="size-2 rounded-full" style={{ background: "#00C8E0" }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.3)", letterSpacing: "0.3px" }}>يبدأ من</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.3)", letterSpacing: "0.3px" }}>{tr("Starts from", "يبدأ من")}</span>
                       <button
                         onClick={() => {
                           setSchedStartHour(now.getHours());
@@ -672,16 +676,16 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                         className="ml-auto px-2.5 py-1"
                         style={{ borderRadius: 8, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", fontSize: 10, fontWeight: 600, color: "#00C8E0" }}
                       >
-                        الآن
+                        {tr("Now", "الآن")}
                       </button>
                     </div>
                     <div
                       className="flex items-center justify-center gap-2 py-3"
                       style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}
                     >
-                      <WheelPicker items={hours24} selected={schedStartHour} onChange={setSchedStartHour} label="ساعة" />
+                      <WheelPicker items={hours24} selected={schedStartHour} onChange={setSchedStartHour} label={tr("hour", "ساعة")} />
                       <div style={{ fontSize: 28, fontWeight: 800, color: "rgba(0,200,224,0.2)", marginTop: 16 }}>:</div>
-                      <WheelPicker items={minutes5} selected={schedStartMin} onChange={setSchedStartMin} label="دقيقة" />
+                      <WheelPicker items={minutes5} selected={schedStartMin} onChange={setSchedStartMin} label={tr("min", "دقيقة")} />
                     </div>
                   </div>
 
@@ -696,15 +700,15 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="size-2 rounded-full" style={{ background: "#FF9500" }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.3)", letterSpacing: "0.3px" }}>ينتهي في</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.3)", letterSpacing: "0.3px" }}>{tr("Ends at", "ينتهي في")}</span>
                     </div>
                     <div
                       className="flex items-center justify-center gap-2 py-3"
                       style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}
                     >
-                      <WheelPicker items={hours24} selected={schedEndHour} onChange={setSchedEndHour} label="ساعة" />
+                      <WheelPicker items={hours24} selected={schedEndHour} onChange={setSchedEndHour} label={tr("hour", "ساعة")} />
                       <div style={{ fontSize: 28, fontWeight: 800, color: "rgba(255,150,0,0.2)", marginTop: 16 }}>:</div>
-                      <WheelPicker items={minutes5} selected={schedEndMin} onChange={setSchedEndMin} label="دقيقة" />
+                      <WheelPicker items={minutes5} selected={schedEndMin} onChange={setSchedEndMin} label={tr("min", "دقيقة")} />
                     </div>
                   </div>
                 </motion.div>
@@ -723,15 +727,15 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                 }}
               >
                 <div className="flex items-center justify-between mb-2.5">
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>المدة الكاملة</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{tr("Total duration", "المدة الكاملة")}</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#FF9500" }}>
-                    {Math.floor(totalMinutes / 60) > 0 ? `${Math.floor(totalMinutes / 60)} ساعة` : ""}
-                    {totalMinutes % 60 > 0 ? ` ${totalMinutes % 60} دقيقة` : ""}
+                    {Math.floor(totalMinutes / 60) > 0 ? `${Math.floor(totalMinutes / 60)} ${tr("h", "ساعة")}` : ""}
+                    {totalMinutes % 60 > 0 ? ` ${totalMinutes % 60} ${tr("m", "دقيقة")}` : ""}
                     {totalMinutes === 0 ? "—" : ""}
                   </span>
                 </div>
                 <div className="flex items-center justify-between mb-2.5">
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>ينتهي في</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{tr("Ends at", "ينتهي في")}</span>
                   <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
                     {totalMinutes > 0 ? fmtClock(addMinutes(new Date(), totalMinutes)) : "—"}
                   </span>
@@ -739,7 +743,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <MapPin style={{ width: 11, height: 11, color: "rgba(0,200,224,0.5)" }} />
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>الموقع</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{tr("Location", "الموقع")}</span>
                   </div>
                   {/* SUPABASE_MIGRATION_POINT: replace with real GPS */}
                   {/* from employee_locations table */}
@@ -751,7 +755,10 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
               <div className="flex items-center gap-2 px-3 py-2 mb-3" style={{ borderRadius: 10, background: "rgba(255,150,0,0.03)", border: "1px solid rgba(255,150,0,0.06)" }}>
                 <Shield style={{ width: 12, height: 12, color: "rgba(255,150,0,0.4)", flexShrink: 0 }} />
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.5 }}>
-                  قبل {WARNING_MINUTES} دقائق يظهر تنبيه · عدم الاستجابة = SOS تلقائي
+                  {tr(
+                    `Alert appears ${WARNING_MINUTES} min before end · no response = auto SOS`,
+                    `قبل ${WARNING_MINUTES} دقائق يظهر تنبيه · عدم الاستجابة = SOS تلقائي`
+                  )}
                 </span>
               </div>
 
@@ -759,7 +766,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
               <div className="flex items-center justify-center gap-1.5 mb-3">
                 <div className="size-1 rounded-full" style={{ background: "rgba(0,200,224,0.3)" }} />
                 <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>
-                  وضع عرض · 1 دقيقة = 1 ثانية
+                  {tr("Demo mode · 1 minute = 1 second", "وضع عرض · 1 دقيقة = 1 ثانية")}
                 </span>
               </div>
 
@@ -784,7 +791,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                 }}
               >
                 <Shield style={{ width: 16, height: 16 }} />
-                تفعيل وضع الأمان
+                {tr("Activate safety mode", "تفعيل وضع الأمان")}
               </motion.button>
             </div>
           </motion.div>
@@ -874,7 +881,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                   >
                     <AlertTriangle style={{ width: 32, height: 32, color: "#FF2D55", filter: "drop-shadow(0 0 10px #FF2D55)", marginBottom: 6 }} />
                     <span style={{ fontSize: 18, fontWeight: 900, color: "#FF2D55", letterSpacing: "3px" }}>SOS</span>
-                    <span style={{ fontSize: 10, color: "rgba(255,45,85,0.4)", marginTop: 4 }}>جارٍ التفعيل</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,45,85,0.4)", marginTop: 4 }}>{tr("Activating", "جارٍ التفعيل")}</span>
                   </motion.div>
                 ) : (
                   <>
@@ -887,13 +894,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                       {fmtTime(displayRemaining)}
                     </p>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 2 }}>
-                      متبقي
+                      {tr("remaining", "متبقي")}
                     </p>
                     {extensions > 0 && (
                       <div className="flex items-center gap-1 mt-2 px-2.5 py-1" style={{ borderRadius: 8, background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.1)" }}>
                         <Plus style={{ width: 9, height: 9, color: "#00C8E0" }} />
                         <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.6)" }}>
-                          {extensions * EXTEND_MINUTES} دقيقة تمديد
+                          {extensions * EXTEND_MINUTES} {tr("min extended", "دقيقة تمديد")}
                         </span>
                       </div>
                     )}
@@ -924,7 +931,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                     <AlertTriangle style={{ width: 13, height: 13, color: "#FF9500", flexShrink: 0 }} />
                   </motion.div>
                   <span style={{ fontSize: 12, color: "rgba(255,150,0,0.7)", fontWeight: 600 }}>
-                    الوقت ينفد — أكّد سلامتك
+                    {tr("Time's running out — confirm you're safe", "الوقت ينفد — أكّد سلامتك")}
                   </span>
                 </motion.div>
               )}
@@ -948,7 +955,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                     }}
                   >
                     <Heart style={{ width: 15, height: 15 }} />
-                    أنا بخير
+                    {tr("I'm safe", "أنا بخير")}
                   </motion.button>
                   <div className="flex gap-2">
                     <motion.button
@@ -966,7 +973,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                       }}
                     >
                       <Plus style={{ width: 13, height: 13 }} />
-                      +{EXTEND_MINUTES} دقيقة
+                      +{EXTEND_MINUTES} {tr("min", "دقيقة")}
                     </motion.button>
                     <motion.button
                       initial={{ opacity: 0, y: 6 }}
@@ -983,7 +990,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                       }}
                     >
                       <X style={{ width: 13, height: 13 }} />
-                      إلغاء
+                      {tr("Cancel", "إلغاء")}
                     </motion.button>
                   </div>
                 </>
@@ -1000,7 +1007,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                   }}
                 >
                   <X style={{ width: 14, height: 14 }} />
-                  إلغاء المؤقت
+                  {tr("Cancel timer", "إلغاء المؤقت")}
                 </motion.button>
               ) : null}
             </div>
@@ -1034,9 +1041,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                 >
                   <AlertTriangle style={{ width: 28, height: 28, color: "#FF9500" }} />
                 </motion.div>
-                <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>هل أنت بخير؟</p>
+                <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>{tr("Are you safe?", "هل أنت بخير؟")}</p>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 6, lineHeight: 1.8 }}>
-                  الوقت المحدد على وشك الانتهاء<br />عدم الاستجابة يعني تفعيل SOS تلقائياً
+                  {isAr ? (
+                    <>الوقت المحدد على وشك الانتهاء<br />عدم الاستجابة يعني تفعيل SOS تلقائياً</>
+                  ) : (
+                    <>Your timer is about to end<br />No response means SOS activates automatically</>
+                  )}
                 </p>
 
                 {/* Countdown */}
@@ -1063,7 +1074,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                   }}
                 >
                   <Heart style={{ width: 15, height: 15 }} />
-                  أنا بخير
+                  {tr("I'm safe", "أنا بخير")}
                 </motion.button>
 
                 <div className="flex gap-2 w-full">
@@ -1077,7 +1088,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                     }}
                   >
                     <Plus style={{ width: 13, height: 13 }} />
-                    +{EXTEND_MINUTES} دقيقة
+                    +{EXTEND_MINUTES} {tr("min", "دقيقة")}
                   </motion.button>
 
                   <button onClick={() => { setShowWarningModal(false); cancelTimer(); }}
@@ -1090,7 +1101,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                     }}
                   >
                     <X style={{ width: 12, height: 12 }} />
-                    إلغاء
+                    {tr("Cancel", "إلغاء")}
                   </button>
                 </div>
               </div>
@@ -1117,20 +1128,20 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                 <div className="size-12 rounded-full flex items-center justify-center mb-3" style={{ background: "rgba(255,150,0,0.06)", border: "1.5px solid rgba(255,150,0,0.12)" }}>
                   <Timer style={{ width: 20, height: 20, color: "#FF9500" }} />
                 </div>
-                <p style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>إلغاء المؤقت؟</p>
+                <p style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>{tr("Cancel timer?", "إلغاء المؤقت؟")}</p>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.22)", marginTop: 6, lineHeight: 1.7 }}>
-                  سيتوقف Check-in Timer ولن يُفعَّل SOS
+                  {tr("Check-in Timer will stop and SOS will not trigger", "سيتوقف Check-in Timer ولن يُفعَّل SOS")}
                 </p>
                 <div className="flex gap-2.5 w-full mt-5">
                   <button onClick={() => setShowCancelConfirm(false)}
                     style={{ flex: 1, height: 44, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)", fontSize: 14, fontWeight: 600 }}
                   >
-                    تراجع
+                    {tr("Back", "تراجع")}
                   </button>
                   <motion.button whileTap={{ scale: 0.97 }} onClick={cancelTimer}
                     style={{ flex: 1, height: 44, borderRadius: 12, background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.18)", color: "#FF9500", fontSize: 14, fontWeight: 700 }}
                   >
-                    إلغاء
+                    {tr("Cancel", "إلغاء")}
                   </motion.button>
                 </div>
               </div>
