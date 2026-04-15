@@ -29,6 +29,8 @@ import { NotificationsCenter } from "./notifications-center";
 import { LoginWelcome } from "./login-welcome";
 import { EvacuationScreen, EvacuationAlertOverlay } from "./evacuation-screen";
 import { NeighborAlertOverlay } from "./neighbor-alert-overlay";
+import { BiometricGateModal } from "./biometric-gate-modal-v2";
+import { getBiometricLockEnabled } from "./biometric-lock-settings";
 import {
   LanguageScreen,
   PrivacyScreen,
@@ -236,6 +238,17 @@ export function MobileApp() {
       const hasConsent = !!localStorage.getItem("sosphere_tos_consent");
       return hasOAuth || (hasProfile && hasConsent);
     } catch { return false; }
+  });
+
+  // -- Biometric app-unlock gate -------------------------------
+  // Cold-start behaviour: if the user has opted into "Biometric Lock"
+  // via Privacy settings, we start LOCKED and the overlay blocks any
+  // logged-in screen until they verify. Sessions where the flag is
+  // off initialise as unlocked (no-op). Enabling the toggle mid-session
+  // inherits the current unlocked state — the user just authenticated
+  // to enroll, so re-locking them immediately would be hostile.
+  const [biometricUnlocked, setBiometricUnlocked] = useState<boolean>(() => {
+    try { return !getBiometricLockEnabled(); } catch { return true; }
   });
 
   // -- Company match data from CompanyJoin verification ---------
@@ -894,6 +907,46 @@ export function MobileApp() {
           lang={lang === "ar" ? "ar" : "en"}
           suppress={screen === "sos-emergency"}
         />
+
+        {/* -- Biometric App-Unlock Gate --------------------- */}
+        {/* Blocks access to logged-in screens on cold-start when the    */}
+        {/* user has opted into Biometric Lock in Privacy settings.      */}
+        {/* Key choices:                                                 */}
+        {/*   • Only rendered for logged-in screens — pre-login flows    */}
+        {/*     (welcome/login/onboarding) are intentionally unblocked   */}
+        {/*     so users can never get locked out of the front door.     */}
+        {/*   • Suppressed during sos-emergency — never stand between    */}
+        {/*     a user and their panic button. This is a lock, not a     */}
+        {/*     hostage situation.                                       */}
+        {/*   • allowPinFallback=true so a broken sensor isn't terminal. */}
+        {(() => {
+          const lockedScreens: Screen[] = [
+            "individual-home", "employee-dashboard",
+            "medical-id", "emergency-contacts", "emergency-packet",
+            "emergency-services", "notifications", "incident-history",
+            "evacuation", "mission-tracker", "safe-walk",
+            "language", "privacy", "connected-devices", "help",
+            "elite-features", "subscription",
+          ];
+          const shouldLock =
+            !biometricUnlocked &&
+            !isRestoring &&
+            lockedScreens.includes(screen);
+          return (
+            <BiometricGateModal
+              isOpen={shouldLock}
+              onVerified={() => setBiometricUnlocked(true)}
+              // No cancel handler — the user MUST unlock to proceed.
+              // Leaving onCancel undefined disables the backdrop click / X
+              // dismissal paths that would otherwise break the gate.
+              title="Unlock SOSphere"
+              description="Verify your identity to continue"
+              userId="sosphere-local"
+              userName="SOSphere User"
+              allowPinFallback={true}
+            />
+          );
+        })()}
 
         {/* -- Incident Photo Report � triggered by Admin Unreachable -- */}
         <AnimatePresence>

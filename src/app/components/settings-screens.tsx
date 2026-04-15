@@ -18,6 +18,12 @@ import {
   type AiVoiceLang,
   type AiVoiceName,
 } from "./ai-voice-call-service";
+import { unenrollBiometric, checkBiometricAvailability } from "./biometric-gate";
+import {
+  getBiometricLockEnabled,
+  setBiometricLockEnabled,
+} from "./biometric-lock-settings";
+import { BiometricGateModal } from "./biometric-gate-modal-v2";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -76,7 +82,42 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const [locationHistory, setLocationHistory] = useState(true);
   const [analytics, setAnalytics] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
-  const [biometric, setBiometric] = useState(false);
+  const [biometric, setBiometric] = useState<boolean>(() => getBiometricLockEnabled());
+  const [biometricEnrollOpen, setBiometricEnrollOpen] = useState(false);
+
+  // Toggle wiring:
+  //   • Turning ON  → open modal in enrollment mode; only persist the flag
+  //     AFTER the user completes enrollment (verified callback). Aborting
+  //     leaves the toggle off — no half-state.
+  //   • Turning OFF → unenroll on device (clears the credential id) AND
+  //     clear the flag. Non-destructive of any session-level unlock.
+  const handleBiometricToggle = async () => {
+    if (!biometric) {
+      // Pre-flight: if the device has no biometric hardware at all, fail fast
+      // with an explanatory toast instead of opening a dead-end modal.
+      const status = await checkBiometricAvailability();
+      if (status === "not_available") {
+        hapticWarning();
+        toast.error("Biometrics unavailable", { description: "This device doesn't support biometric authentication." });
+        return;
+      }
+      setBiometricEnrollOpen(true);
+    } else {
+      unenrollBiometric();
+      setBiometricLockEnabled(false);
+      setBiometric(false);
+      hapticLight();
+      toast("Biometric lock disabled");
+    }
+  };
+
+  const handleBiometricEnrolled = () => {
+    setBiometricLockEnabled(true);
+    setBiometric(true);
+    setBiometricEnrollOpen(false);
+    hapticSuccess();
+    toast.success("Biometric lock enabled");
+  };
 
   // Neighbor Alert — hydrated from localStorage via the service
   const initialNeighbor = getNeighborAlertSettings();
@@ -107,7 +148,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
     { id: "location", icon: MapPin, label: "Location History", sub: "Store location data for safety analysis", color: "#00C853", value: locationHistory, onChange: () => setLocationHistory(v => !v) },
     { id: "analytics", icon: Eye, label: "Usage Analytics", sub: "Help us improve with anonymous data", color: "#007AFF", value: analytics, onChange: () => setAnalytics(v => !v) },
     { id: "profile", icon: Shield, label: "Show Profile to Family", sub: "Allow circle members to see your status", color: "#00C8E0", value: showProfile, onChange: () => setShowProfile(v => !v) },
-    { id: "biometric", icon: Fingerprint, label: "Biometric Lock", sub: "Require face/fingerprint to open app", color: "#AF52DE", value: biometric, onChange: () => setBiometric(v => !v) },
+    { id: "biometric", icon: Fingerprint, label: "Biometric Lock", sub: "Require face/fingerprint to open app", color: "#AF52DE", value: biometric, onChange: handleBiometricToggle },
     { id: "neighbor_receive", icon: Users, label: "Receive Nearby SOS Alerts", sub: "Get notified when a neighbor triggers SOS close to you", color: "#00C8E0", value: neighborReceive, onChange: toggleNeighborReceive },
     { id: "neighbor_broadcast", icon: Radio, label: `Broadcast SOS to Neighbors${eliteUnlocked ? "" : " (Elite)"}`, sub: "Send a coarse-location alert to opted-in neighbors when you trigger SOS", color: "#FF9500", value: neighborBroadcast, onChange: toggleNeighborBroadcast },
   ];
@@ -181,6 +222,18 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* Enrollment modal — opens when user toggles Biometric Lock ON */}
+      <BiometricGateModal
+        isOpen={biometricEnrollOpen}
+        onVerified={handleBiometricEnrolled}
+        onCancel={() => setBiometricEnrollOpen(false)}
+        title="Enable Biometric Lock"
+        description="Register your face or fingerprint to unlock the app"
+        userId="sosphere-local"
+        userName="SOSphere User"
+        allowPinFallback={false}
+      />
     </div>
   );
 }
