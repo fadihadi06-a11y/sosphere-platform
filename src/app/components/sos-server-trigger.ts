@@ -130,7 +130,7 @@ async function getAuthToken(): Promise<string | null> {
 async function fetchSOS(
   action: string | null,
   body: Record<string, unknown>,
-  opts: { timeoutMs?: number } = {}
+  opts: { timeoutMs?: number; idempotencyKey?: string } = {}
 ): Promise<Response> {
   const url = action ? `${SOS_ALERT_URL}?action=${action}` : SOS_ALERT_URL;
   const token = await getAuthToken();
@@ -140,6 +140,11 @@ async function fetchSOS(
     apikey: SUPABASE_ANON_KEY,
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  // P2-#8: Stripe-style idempotency header. Safe to always send — the
+  // server short-circuits duplicate (key, action) pairs into cached
+  // responses so network retries never double-fire conferences, SMS
+  // bursts, or end broadcasts.
+  if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
 
   const controller = new AbortController();
   const timeoutId = opts.timeoutMs
@@ -335,7 +340,12 @@ export async function triggerServerSOS(opts: {
       zone: opts.zone,
       silent: opts.silent,
       ...(aiScript ? { aiScript } : {}),
-    }, { timeoutMs: 20000 });
+    }, {
+      timeoutMs: 20000,
+      // Key on emergencyId alone — any retry of the SAME emergency must
+      // land in the existing conference, never spawn a parallel bridge.
+      idempotencyKey: `trigger:${opts.emergencyId}`,
+    });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "Unknown error");
@@ -435,7 +445,12 @@ function startHeartbeat(emergencyId: string, userId: string) {
         batteryLevel: battery ?? undefined,
         elapsedSec: heartbeatCount * 30,
         missedBefore: heartbeatMissed,
-      }, { timeoutMs: HEARTBEAT_TIMEOUT_MS });
+      }, {
+        timeoutMs: HEARTBEAT_TIMEOUT_MS,
+        // Per-tick key — if this exact heartbeat retries after a network
+        // blip, server treats it as one ping, not two.
+        idempotencyKey: `hb:${emergencyId}:${heartbeatCount}`,
+      });
       heartbeatMissed = 0; // Reset on successful send
       console.log(`[SOS-Server] Heartbeat #${heartbeatCount} sent (battery=${battery ? Math.round(battery * 100) + "%" : "?"})`);
     } catch (err) {
@@ -502,7 +517,12 @@ export async function endServerSOS(opts: {
       recordingSec: opts.recordingSec || 0,
       photos: opts.photos?.length ?? 0,
       comment: opts.comment || "",
-    }, { timeoutMs: 10000 });
+    }, {
+      timeoutMs: 10000,
+      // A user mashing "End SOS" or the network retrying this call must
+      // not re-broadcast `sos_ended` to responders.
+      idempotencyKey: `end:${opts.emergencyId}`,
+    });
 
     console.log(`[SOS-Server] SOS ended on server: ${res.ok ? "OK" : "FAILED"}`);
     return res.ok;
@@ -576,7 +596,14 @@ function fireEscalation(stage: number, reason: string): void {
     stage,
     reason,
     forceBridge: stage >= 2,
-  }, { timeoutMs: 8000 }).catch(err => {
+  }, {
+    timeoutMs: 8000,
+    // Per-(emergency, stage) key: if the watchdog re-fires the same
+    // stage (e.g. because an earlier request timed out locally but
+    // actually succeeded server-side), the server returns the cached
+    // response and does NOT launch a second SMS burst or bridge call.
+  idempotencyKey: `escalate:${activeEmergencyId}:${stage}`,
+  }).catch(err => {
     console.warn("[SOS-Watchdog] Escalation request failed:", err);
   });
 }
@@ -756,7 +783,13 @@ async function replayOneSOS(rec: SOSRecord): Promise<boolean> {
       zone: rec.zone,
       silent: md.silent,
       replay: true, // hint to server: this is a retry, dedup by emergencyId
-    }, { timeoutMs: 20000 });
+    }, {
+      timeoutMs: 20000,
+      // Same key the original trigger used — the server recognises this
+      // as a retry of the EXACT emergency and returns the cached result
+      // instead of firing Twilio a second time.
+      idempotencyKey: `trigger:${md.emergencyId}`,
+    });
     return res.ok;
   } catch (err) {
     console.warn(`[SOS-Replay] record ${rec.id} fetch failed:`, err);
