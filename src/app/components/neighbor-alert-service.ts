@@ -486,10 +486,29 @@ export async function publishNeighborRetract(opts: {
 // ─────────────────────────────────────────────────────────────
 // Respond (best-effort — records an ack; never blocks the caller)
 // ─────────────────────────────────────────────────────────────
+// P1-#6: Channel naming for per-emergency response stream. The requester
+// subscribes to this channel for the lifetime of the SOS; responders
+// publish to it via respondToAlert. Separate from the geocell alert
+// channel so the requester doesn't have to listen on 9 cells just to
+// count responses, and responders don't leak their identity on a
+// broad channel.
+const responseChannelName = (requestId: string) => `neighbor:response:${requestId}`;
+
+/** P1-#6: The inbound response shape the requester-side callback receives. */
+export interface IncomingNeighborResponse {
+  requestId: string;
+  status: NeighborAlertResponse;
+  note?: string;
+  ts: string;
+}
+
 /**
- * Acknowledge an incoming alert. If Supabase is configured we write a row
- * to `neighbor_responses`; otherwise we echo to BroadcastChannel so the
- * requester device (in dev) can see it.
+ * Acknowledge an incoming alert. Two writes happen in parallel:
+ *   1. Durable row in `neighbor_responses` (audit trail, dashboard ETL)
+ *   2. P1-#6: Realtime broadcast on `neighbor:response:{requestId}` so
+ *      the requester's device can show a live count of responders on
+ *      the active-SOS screen.
+ * Both are best-effort. Never throws.
  */
 export async function respondToAlert(
   requestId: string,
@@ -498,12 +517,49 @@ export async function respondToAlert(
 ): Promise<void> {
   try {
     if (SUPABASE_CONFIG.isConfigured) {
-      await supabase.from("neighbor_responses").insert({
+      // Fire both the durable write and the realtime broadcast. We
+      // don't await the insert because a slow DB shouldn't delay the
+      // responder UI's "response recorded" toast.
+      void supabase.from("neighbor_responses").insert({
         request_id: requestId,
         status,
         note: note?.slice(0, 280) ?? null,
         responded_at: new Date().toISOString(),
+      }).then(({ error }) => {
+        if (error) console.warn("[NeighborAlert] respond DB write failed:", error.message);
       });
+
+      // P1-#6: Live broadcast to the requester. Best-effort with a
+      // tight timeout — even if this fails the DB write is the
+      // authoritative record.
+      try {
+        const ch = supabase.channel(responseChannelName(requestId), {
+          config: { broadcast: { self: false, ack: true } },
+        });
+        await new Promise<void>((resolve) => {
+          ch.subscribe((s) => {
+            if (s === "SUBSCRIBED") resolve();
+            if (s === "CLOSED" || s === "CHANNEL_ERROR" || s === "TIMED_OUT") resolve();
+          });
+          setTimeout(resolve, 2000);
+        });
+        try {
+          await ch.send({
+            type: "broadcast",
+            event: "sos_response",
+            payload: {
+              requestId,
+              status,
+              note: note?.slice(0, 280),
+              ts: new Date().toISOString(),
+            } satisfies IncomingNeighborResponse,
+          });
+        } finally {
+          try { supabase.removeChannel(ch); } catch {}
+        }
+      } catch (err) {
+        console.warn("[NeighborAlert] respond broadcast failed:", err);
+      }
       return;
     }
     const bc = new BroadcastChannel(LOCAL_FALLBACK_CHANNEL + ":responses");
@@ -511,5 +567,64 @@ export async function respondToAlert(
     bc.close();
   } catch (err) {
     console.warn("[NeighborAlert] respond failed:", err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// P1-#6: Requester-side response subscription
+// ─────────────────────────────────────────────────────────────
+export interface NeighborResponseSubscriptionHandle {
+  stop: () => void;
+}
+
+/**
+ * Subscribe to live responses for a given emergency. Call once when SOS
+ * becomes active; call stop() when the emergency ends. Returns an
+ * immediately-usable handle — there is no "subscribed" promise — because
+ * the requester UI shouldn't block on realtime handshake during an SOS.
+ *
+ * Fallback: when Supabase isn't configured, listens to the dev
+ * BroadcastChannel so the response flow is exercisable on a single box.
+ */
+export function subscribeToNeighborResponses(
+  requestId: string,
+  onResponse: (r: IncomingNeighborResponse) => void,
+): NeighborResponseSubscriptionHandle {
+  if (!requestId) return { stop: () => {} };
+
+  if (SUPABASE_CONFIG.isConfigured) {
+    const ch = supabase.channel(responseChannelName(requestId), {
+      config: { broadcast: { self: false } },
+    });
+    ch.on("broadcast", { event: "sos_response" }, (msg) => {
+      const payload = msg.payload as IncomingNeighborResponse | undefined;
+      if (!payload || payload.requestId !== requestId) return;
+      onResponse(payload);
+    });
+    ch.subscribe();
+    return {
+      stop: () => { try { supabase.removeChannel(ch); } catch {} },
+    };
+  }
+
+  // Dev fallback
+  try {
+    const bc = new BroadcastChannel(LOCAL_FALLBACK_CHANNEL + ":responses");
+    const handler = (ev: MessageEvent) => {
+      const raw = ev.data as { requestId?: string; status?: NeighborAlertResponse; note?: string; ts?: number } | undefined;
+      if (!raw || raw.requestId !== requestId || !raw.status) return;
+      onResponse({
+        requestId: raw.requestId,
+        status: raw.status,
+        note: raw.note,
+        ts: new Date(raw.ts ?? Date.now()).toISOString(),
+      });
+    };
+    bc.addEventListener("message", handler);
+    return {
+      stop: () => { bc.removeEventListener("message", handler); bc.close(); },
+    };
+  } catch {
+    return { stop: () => {} };
   }
 }

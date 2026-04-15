@@ -28,6 +28,9 @@ import {
   startWatchdog, reportWatchdogEvent, stopWatchdog,
   getServerTriggerResult, type ServerTriggerResult,
 } from "./sos-server-trigger";
+// P1-#6: Neighbor responses live panel (mounted during active SOS)
+import { NeighborResponsesPanel } from "./neighbor-responses-panel";
+import { canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 
 // ─── Haptic Feedback (vibration pattern during active SOS) ───────────────────
 let hapticIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -2852,6 +2855,27 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         <div className="text-center px-5 mb-4">
           <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", letterSpacing: "-0.2px" }}>{statusLabel()}</p>
           {cycle > 1 && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 2 }}>{isAr ? `الدورة ${cycle}` : `Cycle ${cycle}`}</p>}
+        </div>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            P1-#6 — Live neighbor responses
+            Shown while SOS is actively seeking help AND the user opted into
+            neighbor broadcast. Hidden during starting/documenting/ended so
+            we don't flash stale counts after the incident is resolved. The
+            panel itself stays invisible until the first response arrives.
+            ══════════════════════════════════════════════════════════════════ */}
+        <div className="px-5">
+          <NeighborResponsesPanel
+            emergencyId={errIdRef.current}
+            show={
+              canBroadcastNeighbors() &&
+              !!errIdRef.current &&
+              phase !== "starting" &&
+              phase !== "documenting" &&
+              phase !== "ended"
+            }
+            lang={isAr ? "ar" : "en"}
+          />
         </div>
 
         {/* ── DOCUMENTING PHASE — photos + comment ── */}
