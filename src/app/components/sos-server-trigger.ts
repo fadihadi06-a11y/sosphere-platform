@@ -19,7 +19,7 @@
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
-import { publishNeighborAlert, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
+import { publishNeighborAlert, publishNeighborRetract, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 import { buildAiScriptPayload } from "./ai-voice-call-service";
 import {
   queueSOS,
@@ -70,6 +70,18 @@ let serverTriggerResult: ServerTriggerResult | null = null;
 let sosInFlight = false;
 let lastFireAt = 0;
 const DEDUP_WINDOW_MS = 3000;
+
+// P1-#5: Track whether a neighbor broadcast actually went out for the
+// active emergency. endServerSOS() uses this to decide whether to fire
+// a retract — no point broadcasting "cancelled" if nothing was ever sent.
+// Holds the snapshot of GPS/precision at broadcast time so the retract
+// can reach the same 9-cell window even if GPS drifted during the event.
+let activeNeighborBroadcast: {
+  requestId: string;
+  lat: number;
+  lng: number;
+  precision: 4 | 5 | 6;
+} | null = null;
 
 export interface ServerTriggerResult {
   success: boolean;
@@ -267,11 +279,32 @@ export async function triggerServerSOS(opts: {
   // Fire-and-forget: never awaited, never thrown — primary SOS path
   // must not be slowed down by this secondary broadcast.
   if (canBroadcastNeighbors() && gps) {
+    // P1-#5: Capture the GPS snapshot used for the broadcast so
+    // endServerSOS can retract on the SAME 9-cell window. We use the
+    // user's current neighbor-alert precision setting — stored at the
+    // time of broadcast so a mid-incident settings change doesn't mis-target.
+    const broadcastPrecision = (() => {
+      try {
+        // Lazy import to avoid coupling this file to the settings schema —
+        // we only need the precision value.
+        const raw = localStorage.getItem("sosphere_neighbor_alert_settings");
+        if (!raw) return 5 as const;
+        const parsed = JSON.parse(raw);
+        return (parsed?.precision === 4 || parsed?.precision === 6) ? parsed.precision : 5;
+      } catch { return 5 as const; }
+    })();
+    activeNeighborBroadcast = {
+      requestId: opts.emergencyId,
+      lat: gps.lat,
+      lng: gps.lng,
+      precision: broadcastPrecision,
+    };
     publishNeighborAlert({
       requestId: opts.emergencyId,
       displayName: opts.userName?.split(/\s+/)[0],
       severity: "high",
       location: { lat: gps.lat, lng: gps.lng },
+      precision: broadcastPrecision,
     }).catch(() => { /* silent */ });
   }
 
@@ -435,6 +468,27 @@ export async function endServerSOS(opts: {
   comment?: string;
 }): Promise<boolean> {
   stopHeartbeat();
+
+  // P1-#5: Fire the neighbor retract BEFORE clearing state so we have
+  // the broadcast snapshot. Fire-and-forget — the retract is secondary
+  // to finalizing the incident and must never block endServerSOS.
+  if (activeNeighborBroadcast && activeNeighborBroadcast.requestId === opts.emergencyId) {
+    const snap = activeNeighborBroadcast;
+    // Map end-reasons to a retract reason the responder UI can display.
+    const retractReason: "safe" | "resolved" | "false_alarm" | "other" =
+      opts.reason === "false_alarm" ? "false_alarm"
+      : opts.reason === "safe"       ? "safe"
+      : opts.reason                  ? "other"
+      : "resolved";
+    publishNeighborRetract({
+      requestId: snap.requestId,
+      reason: retractReason,
+      precision: snap.precision,
+      location: { lat: snap.lat, lng: snap.lng },
+    }).catch(err => console.warn("[SOS-Server] neighbor retract failed:", err));
+    activeNeighborBroadcast = null;
+  }
+
   activeEmergencyId = null;
   serverTriggerResult = null;
   // Release dedup guards so a new emergency can be triggered immediately.

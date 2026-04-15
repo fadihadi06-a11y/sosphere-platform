@@ -23,9 +23,10 @@
 // Public API:
 //   getNeighborAlertSettings(): Settings
 //   setNeighborAlertSettings(patch): void
-//   canBroadcast(): boolean           ← Elite + opt-in
-//   startNeighborListener(onAlert): stop()
+//   canBroadcast(): boolean                      ← Elite + opt-in
+//   startNeighborListener(onAlert, onRetract?): stop()
 //   publishNeighborAlert(opts): Promise<boolean>
+//   publishNeighborRetract(opts): Promise<boolean>   ← P1-#5
 //   respondToAlert(requestId, status): Promise<void>
 //
 // Storage keys:
@@ -73,6 +74,18 @@ export interface IncomingNeighborAlert extends NeighborAlertPayload {
 }
 
 export type NeighborAlertResponse = "on_the_way" | "calling_police" | "cannot_help";
+
+// P1-#5: Retract payload. Sent on the same channel as the SOS broadcast
+// when the requester ends their own emergency (safe now, false alarm,
+// help arrived). Lets neighbor devices dismiss stale alert cards.
+export interface NeighborRetractPayload {
+  /** Same requestId that was broadcast originally — used to match. */
+  requestId: string;
+  /** ISO timestamp when the retract fired. */
+  ts: string;
+  /** Optional reason surfaced in the responder UI. */
+  reason?: "safe" | "resolved" | "false_alarm" | "other";
+}
 
 // ─────────────────────────────────────────────────────────────
 // Settings
@@ -226,9 +239,15 @@ export interface NeighborListenerHandle {
  *
  * If the user hasn't opted in (`receive === false`) this is a no-op and
  * returns a handle whose stop() is a no-op.
+ *
+ * P1-#5: Optional `onRetract` callback fires when the requester cancels
+ * their SOS. Responders should dismiss any alert card matching the
+ * requestId — stops stale "someone needs help" sheets from hanging
+ * around after the situation is resolved.
  */
 export function startNeighborListener(
-  onAlert: (alert: IncomingNeighborAlert) => void
+  onAlert: (alert: IncomingNeighborAlert) => void,
+  onRetract?: (retract: NeighborRetractPayload) => void,
 ): NeighborListenerHandle {
   const settings = getNeighborAlertSettings();
   if (!settings.receive) {
@@ -257,6 +276,18 @@ export function startNeighborListener(
           : null;
         onAlert({ ...payload, cell, distanceKm });
       });
+      // P1-#5: Retract handler. We intentionally do NOT gate this through
+      // markSeen — retracts aren't dedupable like alerts (multiple cells
+      // may receive the same retract, but the overlay's matching-by-id
+      // logic handles that). Also we don't want to miss a retract because
+      // the original alert came in on a sibling cell.
+      if (onRetract) {
+        ch.on("broadcast", { event: "sos_retract" }, (msg) => {
+          const payload = msg.payload as NeighborRetractPayload | undefined;
+          if (!payload || !payload.requestId) return;
+          onRetract(payload);
+        });
+      }
       ch.subscribe();
       return ch;
     });
@@ -274,8 +305,16 @@ export function startNeighborListener(
   try {
     const bc = new BroadcastChannel(LOCAL_FALLBACK_CHANNEL);
     const handler = (ev: MessageEvent) => {
-      const payload = ev.data as NeighborAlertPayload | undefined;
-      if (!payload || !markSeen(payload.requestId)) return;
+      const raw = ev.data as (NeighborAlertPayload & { __kind?: string }) | (NeighborRetractPayload & { __kind?: string }) | undefined;
+      if (!raw) return;
+      // P1-#5: Multiplex alert vs retract on the same local channel via
+      // a discriminator so the dev/test path matches Supabase semantics.
+      if (raw.__kind === "retract") {
+        if (onRetract) onRetract(raw as NeighborRetractPayload);
+        return;
+      }
+      const payload = raw as NeighborAlertPayload;
+      if (!markSeen(payload.requestId)) return;
       const listener = getLastKnownPosition();
       const distanceKm = listener
         ? haversineKm(listener.lat, listener.lng, payload.lat, payload.lng)
@@ -357,7 +396,9 @@ export async function publishNeighborAlert(opts: PublishOpts): Promise<boolean> 
     // Fallback for dev / offline: BroadcastChannel on this machine.
     try {
       const bc = new BroadcastChannel(LOCAL_FALLBACK_CHANNEL);
-      bc.postMessage(payload);
+      // P1-#5: Tag with a discriminator so the listener can tell
+      // alerts apart from retracts on the same local channel.
+      bc.postMessage({ ...payload, __kind: "alert" });
       bc.close();
       return true;
     } catch {
@@ -365,6 +406,79 @@ export async function publishNeighborAlert(opts: PublishOpts): Promise<boolean> 
     }
   } catch (err) {
     console.warn("[NeighborAlert] publish failed:", err);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// P1-#5: Retract publisher
+// ─────────────────────────────────────────────────────────────
+/**
+ * Broadcast a retract on the same 9-cell window the original alert went
+ * out on. We don't require `canBroadcast()` here — once the alert has
+ * been sent, users should ALWAYS be able to cancel it even if they flip
+ * the broadcast setting off mid-incident, or if their Elite expired.
+ *
+ * Silent on failure — retract is best-effort. The worst case is responder
+ * cards auto-dismiss after 2 minutes via their existing timer.
+ */
+export async function publishNeighborRetract(opts: {
+  requestId: string;
+  reason?: NeighborRetractPayload["reason"];
+  precision?: 4 | 5 | 6;
+  location?: { lat: number; lng: number } | null;
+}): Promise<boolean> {
+  try {
+    if (!opts.requestId) return false;
+
+    const settings = getNeighborAlertSettings();
+    const precision = opts.precision ?? settings.precision;
+    const pos = opts.location ?? getLastKnownPosition();
+
+    const payload: NeighborRetractPayload = {
+      requestId: opts.requestId,
+      ts: new Date().toISOString(),
+      reason: opts.reason ?? "resolved",
+    };
+
+    if (SUPABASE_CONFIG.isConfigured && pos) {
+      // Fan out the retract to the same 9-cell window an alert would
+      // have covered — the requester may have drifted one cell over
+      // between alert and retract, and some of the original cells may
+      // have neighbors with the card still up.
+      const cells = neighborhoodCells(pos.lat, pos.lng, precision);
+      await Promise.all(cells.map(async (cell) => {
+        const ch = supabase.channel(channelName(cell), {
+          config: { broadcast: { self: false, ack: true } },
+        });
+        await new Promise<void>((resolve) => {
+          ch.subscribe((status) => {
+            if (status === "SUBSCRIBED") resolve();
+            if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
+          });
+          // Retract is secondary — keep the timeout tight.
+          setTimeout(resolve, 2000);
+        });
+        try {
+          await ch.send({ type: "broadcast", event: "sos_retract", payload });
+        } finally {
+          try { supabase.removeChannel(ch); } catch {}
+        }
+      }));
+      return true;
+    }
+
+    // BroadcastChannel dev / offline fallback
+    try {
+      const bc = new BroadcastChannel(LOCAL_FALLBACK_CHANNEL);
+      bc.postMessage({ ...payload, __kind: "retract" });
+      bc.close();
+      return true;
+    } catch {
+      return false;
+    }
+  } catch (err) {
+    console.warn("[NeighborAlert] retract publish failed:", err);
     return false;
   }
 }
