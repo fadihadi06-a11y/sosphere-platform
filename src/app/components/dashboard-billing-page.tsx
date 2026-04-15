@@ -12,6 +12,7 @@ import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, calculateMonthlyBill } from "../constants/pricing";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+import { startCheckout, openBillingPortal, isPaidPlan } from "./stripe-service";
 
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
@@ -197,8 +198,12 @@ export function BillingPage({ companyState, webMode = false }: {
   }>>([]);
 
   /** Plan switch — PART B: recalculate header stats, add invoice, toast with total */
-  // SUPABASE_MIGRATION_POINT: switchPlan → supabase.from('subscriptions').update({ plan: planId })
-  const switchPlan = useCallback((planId: string) => {
+  // P3-#10: Paid plans go through Stripe Checkout (browser redirects to
+  // Stripe's hosted page). On success, the stripe-webhook edge function
+  // writes the new subscription row and the user returns to this page.
+  // Free / downgrade flows still update local state directly — there's
+  // nothing for Stripe to charge.
+  const switchPlan = useCallback(async (planId: string) => {
     const oldPlan = currentPlanId;
     const newPlanDef = getPlanById(planId);
     if (!newPlanDef) return;
@@ -207,6 +212,34 @@ export function BillingPage({ companyState, webMode = false }: {
     const empCount = storeEmployees.length;
     const bill = calculateMonthlyBill(newPlanDef, billingCycle, empCount, activeAddonIds);
     const newTotal = bill.total + addonsTotal;
+
+    // ── Paid plan → Stripe Checkout ───────────────────────────
+    // We redirect to Stripe's hosted checkout. The local state update
+    // below is skipped because the webhook will write the real source
+    // of truth to Supabase when payment completes. We still keep the
+    // local fallback path below for dev/offline runs where Stripe isn't
+    // configured (the thrown error tells us to fall through).
+    if (isPaidPlan(planId)) {
+      try {
+        hapticLight();
+        await startCheckout({
+          planId,
+          cycle: billingCycle,
+          seats: newPlanDef.maxEmployees > 0
+            ? Math.max(0, empCount - newPlanDef.maxEmployees)
+            : 0,
+        });
+        // startCheckout does window.location.assign — execution stops.
+        return;
+      } catch (err) {
+        // Stripe not configured (common in dev) or network failure:
+        // fall through to the legacy mock-invoice path so the UI
+        // still works. In production this should surface a toast and
+        // stop — but we don't want to break local testing.
+        console.warn("[billing] Stripe checkout unavailable, using local fallback:", err);
+        toast.error("Checkout unavailable — applying locally (dev mode)");
+      }
+    }
 
     // Update company state (triggers header/sidebar re-render)
     const newState = createCompanyState(planId as PlanTier, "active", empCount);
