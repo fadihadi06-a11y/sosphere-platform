@@ -46,6 +46,14 @@ export function initRealtimeChannels(companyId: string) {
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
 
+  // P3-#12 — tag Sentry with the current tenant so multi-company bug
+  // reports can be filtered in the dashboard without leaking PII. We
+  // lazy-import to keep this module free of a hard Sentry coupling:
+  // tests that stub shared-store don't need to stub Sentry too.
+  void import("./sentry-client")
+    .then((m) => m.setSentryCompany(companyId))
+    .catch(() => { /* sentry is optional */ });
+
   // P3-#11 — drain any audit events that were logged before a company
   // was bound (e.g. during login) or while the network was unavailable.
   // Fire-and-forget: we don't block the realtime setup on it.

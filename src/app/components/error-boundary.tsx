@@ -17,6 +17,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
+import { captureException } from "./sentry-client";
 
 // =================================================================
 // Types
@@ -56,17 +57,24 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
 
-    // Log to console (always)
+    // Log to console (always) — dev gets the full React stack here
+    // regardless of whether Sentry is wired.
     console.error(`[SOSphere ErrorBoundary] ${this.props.label || "Unknown"}:`, error, errorInfo);
 
-    // PRODUCTION: Send to error tracking service
-    // Sentry.captureException(error, {
-    //   extra: {
-    //     componentStack: errorInfo.componentStack,
-    //     level: this.props.level,
-    //     label: this.props.label,
-    //   },
-    // });
+    // Forward to Sentry (P3-#12). Tags let us filter the dashboard by
+    // boundary level ("app" vs "page" vs "widget"), and the extras
+    // carry the component stack so we can reproduce the failing tree.
+    // captureException itself is Sentry-off safe — it degrades to a
+    // console.warn when initSentry bailed (dev / no DSN / init failure).
+    captureException(error, {
+      tags: {
+        boundary_level: this.props.level ?? "unknown",
+        boundary_label: this.props.label ?? "unknown",
+      },
+      extra: {
+        componentStack: errorInfo.componentStack ?? "",
+      },
+    });
 
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
