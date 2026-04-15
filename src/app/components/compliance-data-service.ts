@@ -295,6 +295,104 @@ async function fetchEmployeeRosterBlock(companyId: string): Promise<{
   }
 }
 
+// ── Playbook catalog (static metadata mirrored from emergency-playbook) ──
+// We don't pull this from emergency-playbook.tsx directly to keep heavy
+// UI deps (motion, lucide-react, toast, design-system) out of the PDF
+// build path. IDs must stay in sync with MOCK_PLAYBOOKS in
+// emergency-playbook.tsx so the playbook_usage join lines up.
+const PLAYBOOK_CATALOG: { id: string; name: string; triggerType: string; stepCount: number; autoTrigger: boolean }[] = [
+  { id: "PB-001", name: "SOS Button Response",        triggerType: "SOS Button",           stepCount: 8, autoTrigger: true  },
+  { id: "PB-002", name: "Fall Detection Response",    triggerType: "Fall Detected",        stepCount: 6, autoTrigger: true  },
+  { id: "PB-003", name: "Fire / Gas Leak Protocol",   triggerType: "Environmental Hazard", stepCount: 7, autoTrigger: false },
+  { id: "PB-004", name: "Security Threat Response",   triggerType: "Security Threat",      stepCount: 6, autoTrigger: false },
+  { id: "PB-005", name: "Missed Check-in Escalation", triggerType: "Missed Check-in",      stepCount: 5, autoTrigger: true  },
+];
+
+// Rough client-side mapping from playbook triggerType to the sos_type
+// values stored on rrp_sessions, so we can compute "avg response time
+// the last time this playbook was actually exercised."
+const TRIGGER_TO_SOS_TYPE: Record<string, string[]> = {
+  "SOS Button":           ["sos_button"],
+  "Fall Detected":        ["fall_detected"],
+  "Environmental Hazard": ["h2s_gas", "evacuation"],
+  "Security Threat":      [],
+  "Missed Check-in":      ["missed_checkin"],
+};
+
+async function fetchPlaybookDataBlock(companyId: string): Promise<string[][] | null> {
+  try {
+    // Pull usage counts and last run times in one shot.
+    const [usageRes, rrpRes] = await Promise.all([
+      supabase
+        .from("playbook_usage")
+        .select("playbook_id, use_count, last_used_at")
+        .eq("company_id", companyId),
+      supabase
+        .from("rrp_sessions")
+        .select("sos_type, total_time_sec")
+        .eq("company_id", companyId)
+        .limit(500),
+    ]);
+
+    const usage = new Map<string, { count: number; lastUsedAt?: string }>();
+    if (!usageRes.error && usageRes.data) {
+      for (const row of usageRes.data as any[]) {
+        usage.set(row.playbook_id, {
+          count: typeof row.use_count === "number" ? row.use_count : Number(row.use_count) || 0,
+          lastUsedAt: row.last_used_at,
+        });
+      }
+    }
+
+    // Average response seconds keyed by sos_type.
+    const avgBySosType = new Map<string, number>();
+    if (!rrpRes.error && rrpRes.data) {
+      const bucket = new Map<string, { sum: number; n: number }>();
+      for (const row of rrpRes.data as any[]) {
+        const key = row.sos_type || "";
+        if (!key) continue;
+        const b = bucket.get(key) ?? { sum: 0, n: 0 };
+        b.sum += row.total_time_sec ?? 0;
+        b.n += 1;
+        bucket.set(key, b);
+      }
+      for (const [k, b] of bucket) {
+        if (b.n > 0) avgBySosType.set(k, Math.round(b.sum / b.n));
+      }
+    }
+
+    // If we have nothing real for any row, return null so the PDF falls
+    // back to MOCK_PLAYBOOK_DATA cleanly instead of showing a half-empty
+    // row grid.
+    if (usage.size === 0 && avgBySosType.size === 0) return null;
+
+    const rows: string[][] = PLAYBOOK_CATALOG.map((p) => {
+      const u = usage.get(p.id);
+      const sosTypes = TRIGGER_TO_SOS_TYPE[p.triggerType] ?? [];
+      let avgSec: number | null = null;
+      for (const t of sosTypes) {
+        const v = avgBySosType.get(t);
+        if (typeof v === "number") { avgSec = v; break; }
+      }
+      const avgLabel = avgSec !== null
+        ? `${Math.floor(avgSec / 60)}m ${(avgSec % 60).toString().padStart(2, "0")}s`
+        : "--";
+      return [
+        p.name,
+        p.triggerType,
+        String(p.stepCount),
+        p.autoTrigger ? "Yes" : "No",
+        String(u?.count ?? 0),
+        avgLabel,
+      ];
+    });
+    return rows;
+  } catch (err) {
+    console.warn("[compliance-data] playbookData:", err);
+    return null;
+  }
+}
+
 async function fetchJourneyLogBlock(companyId: string): Promise<string[][] | null> {
   try {
     const { data, error } = await supabase
@@ -390,12 +488,13 @@ export async function buildCompliancePdfData(): Promise<CompliancePdfData | null
   const companyId = getCompanyId();
   if (!companyId) return null;
 
-  const [incidentsBlock, employeeBlock, checkin, correctiveActions, journeyLog] = await Promise.all([
+  const [incidentsBlock, employeeBlock, checkin, correctiveActions, journeyLog, playbookData] = await Promise.all([
     fetchIncidentsBlock(companyId),
     fetchEmployeeRosterBlock(companyId),
     fetchCheckinComplianceBlock(companyId),
     fetchCorrectiveActionsBlock(companyId),
     fetchJourneyLogBlock(companyId),
+    fetchPlaybookDataBlock(companyId),
   ]);
 
   // Build a zone → incident count map so the zone risk block can
@@ -459,6 +558,6 @@ export async function buildCompliancePdfData(): Promise<CompliancePdfData | null
     employeeRoster: employeeBlock.roster,
     checkinCompliance: checkin,
     journeyLog,           // P3-#11f populated this from `journeys`
-    playbookData: null,   // no emergency_playbooks table migrated yet
+    playbookData,         // P3-#11g populated this from `playbook_usage` + rrp_sessions
   };
 }
