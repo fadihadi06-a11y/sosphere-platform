@@ -4,7 +4,17 @@
 // Auto-logs every dashboard action: who did what, when, from where.
 // Replaces MOCK_AUDIT with real persisted events.
 // ISO 27001 §A.12.4 — Event Logging
+//
+// Dual-write strategy (P3-#11):
+//   • localStorage  — immediate, works offline, drives the live UI.
+//   • Supabase      — durable, cross-device, compliance-grade.
+//                    Writes are fire-and-forget in the background;
+//                    failures fall back to a retry queue that drains
+//                    on the next successful write.
 // ═══════════════════════════════════════════════════════════════
+
+import { supabase } from "./api/supabase-client";
+import { getCompanyId } from "./shared-store";
 
 export type AuditCategory =
   | "permission_change"
@@ -145,7 +155,134 @@ export function logAuditEvent(
     }));
   } catch {}
 
+  // Fire-and-forget durable persistence. Any failure is caught, logged,
+  // and the entry is stashed for a retry on the next successful write.
+  void persistToSupabase(entry);
+
   return entry;
+}
+
+// ── Supabase persistence (durable, cross-device) ─────────────────
+
+const RETRY_QUEUE_KEY = "sosphere_audit_retry_queue";
+const MAX_RETRY_QUEUE = 100;
+
+function loadRetryQueue(): AuditEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RETRY_QUEUE_KEY) || "[]");
+    return raw.map((e: any) => ({ ...e, timestamp: new Date(e.timestamp) }));
+  } catch {
+    return [];
+  }
+}
+
+function saveRetryQueue(entries: AuditEntry[]): void {
+  try {
+    localStorage.setItem(
+      RETRY_QUEUE_KEY,
+      JSON.stringify(entries.slice(0, MAX_RETRY_QUEUE)),
+    );
+  } catch {}
+}
+
+/** Map an AuditEntry to the audit_log DB row shape. */
+function toDbRow(entry: AuditEntry, companyId: string): Record<string, any> {
+  return {
+    id: entry.id,
+    company_id: companyId,
+    actor_id: entry.actor.id,
+    actor_name: entry.actor.name,
+    actor_role: entry.actor.level,
+    category: entry.category,
+    action: entry.action,
+    detail: entry.detail ?? null,
+    target_id: entry.target?.id ?? null,
+    target_name: entry.target?.name ?? null,
+    target_role: entry.target?.level ?? null,
+    before_value: entry.before ?? null,
+    after_value: entry.after ?? null,
+    zone: entry.zone ?? null,
+    severity: entry.severity,
+    verified_2fa: entry.verified2FA ?? false,
+    device_info: entry.deviceInfo ?? null,
+    client_timestamp: entry.timestamp.toISOString(),
+  };
+}
+
+/**
+ * Write an audit entry to Supabase in the background. On failure, add it
+ * to a local retry queue that drains on the next successful write. We
+ * never await or throw from this function — compliance should be durable
+ * but must not block the UI.
+ */
+async function persistToSupabase(entry: AuditEntry): Promise<void> {
+  const companyId = getCompanyId();
+  if (!companyId) {
+    // No company context yet (e.g. pre-login events). Park in retry queue
+    // so we can flush once a company is bound.
+    enqueueForRetry(entry);
+    return;
+  }
+
+  try {
+    // Drain retry queue first — if it fails we'll re-enqueue below.
+    const queue = loadRetryQueue();
+    const batch = queue.length > 0
+      ? [...queue.map((e) => toDbRow(e, companyId)), toDbRow(entry, companyId)]
+      : [toDbRow(entry, companyId)];
+
+    const { error } = await supabase
+      .from("audit_log")
+      .upsert(batch, { onConflict: "id" });
+
+    if (error) {
+      // Supabase rejected the write — keep it local and retry next time.
+      console.warn("[audit] Supabase insert failed, queued for retry:", error.message);
+      enqueueForRetry(entry);
+      return;
+    }
+
+    // Success — clear the retry queue.
+    if (queue.length > 0) saveRetryQueue([]);
+  } catch (err) {
+    console.warn("[audit] Supabase insert exception, queued for retry:", err);
+    enqueueForRetry(entry);
+  }
+}
+
+function enqueueForRetry(entry: AuditEntry): void {
+  const q = loadRetryQueue();
+  // Dedup by id so repeated failures don't bloat the queue.
+  if (q.some((e) => e.id === entry.id)) return;
+  q.unshift(entry);
+  saveRetryQueue(q);
+}
+
+/**
+ * Manually drain the retry queue. Safe to call on app init once the user
+ * is logged in and a company id is bound — any backlogged events from
+ * earlier sessions will be flushed.
+ */
+export async function flushAuditRetryQueue(): Promise<number> {
+  const companyId = getCompanyId();
+  if (!companyId) return 0;
+  const queue = loadRetryQueue();
+  if (queue.length === 0) return 0;
+
+  try {
+    const { error } = await supabase
+      .from("audit_log")
+      .upsert(queue.map((e) => toDbRow(e, companyId)), { onConflict: "id" });
+    if (error) {
+      console.warn("[audit] flushAuditRetryQueue failed:", error.message);
+      return 0;
+    }
+    saveRetryQueue([]);
+    return queue.length;
+  } catch (err) {
+    console.warn("[audit] flushAuditRetryQueue exception:", err);
+    return 0;
+  }
 }
 
 // ── Common pre-built audit helpers ──────────────────────────────

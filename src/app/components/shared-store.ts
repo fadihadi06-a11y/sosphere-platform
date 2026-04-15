@@ -45,6 +45,17 @@ export function initRealtimeChannels(companyId: string) {
   });
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
+
+  // P3-#11 — drain any audit events that were logged before a company
+  // was bound (e.g. during login) or while the network was unavailable.
+  // Fire-and-forget: we don't block the realtime setup on it.
+  void (async () => {
+    try {
+      const mod = await import("./audit-log-store");
+      const flushed = await mod.flushAuditRetryQueue();
+      if (flushed > 0) console.log(`[audit] flushed ${flushed} queued event(s)`);
+    } catch { /* optional — never fatal */ }
+  })();
 }
 
 export function getCompanyId() { return _companyId; }
