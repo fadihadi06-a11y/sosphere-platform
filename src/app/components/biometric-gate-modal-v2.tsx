@@ -21,7 +21,28 @@ import {
   unenrollBiometric,
   type BiometricStatus,
 } from "./biometric-gate";
+import { setBiometricLockEnabled } from "./biometric-lock-settings";
 import { useReducedMotion, springPresets, modalVariants, backdropVariants, contentFadeVariants } from "./view-transitions";
+
+// ─────────────────────────────────────────────────────────────
+// P1-#4 — Lock-out recovery
+// ─────────────────────────────────────────────────────────────
+// Before this: if a user enrolled biometric, then later the hardware
+// became unavailable (OS update, sensor hardware change, native plugin
+// removed, WebAuthn list stale after browser reinstall), the app-entry
+// gate would permanently block launch. No cancel handler is wired up
+// for the root gate, so the user was trapped with no escape.
+//
+// Now: on mount we cross-check the credential flag against live
+// availability. If we were enrolled but the platform can no longer
+// produce an authenticator, we surface a "locked_out" screen. After
+// 3 consecutive failed verify attempts we also escalate to locked_out.
+//
+// The recovery path is to disable the biometric lock flag + clear the
+// stale credential, which safely releases the gate without touching
+// user data.
+// ─────────────────────────────────────────────────────────────
+const VERIFY_STRIKE_LIMIT = 3;
 
 interface BiometricGateModalProps {
   isOpen: boolean;
@@ -34,7 +55,7 @@ interface BiometricGateModalProps {
   allowPinFallback?: boolean;
 }
 
-type ModalState = "checking" | "enroll" | "enroll_waiting" | "verify" | "verify_waiting" | "verified" | "pin_fallback" | "error";
+type ModalState = "checking" | "enroll" | "enroll_waiting" | "verify" | "verify_waiting" | "verified" | "pin_fallback" | "locked_out" | "error";
 
 /**
  * Biometric Gate Modal Component
@@ -56,6 +77,9 @@ export function BiometricGateModal({
   const [pinInput, setPinInput] = useState("");
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLocked, setPinLocked] = useState(false);
+  // P1-#4: Count consecutive failed biometric verifications. Resets on
+  // successful verify or modal close. Triggers locked_out after 3 strikes.
+  const [verifyStrikes, setVerifyStrikes] = useState(0);
 
   // Initialize on mount
   useEffect(() => {
@@ -66,13 +90,25 @@ export function BiometricGateModal({
       setPinInput("");
       setPinAttempts(0);
       setPinLocked(false);
+      setVerifyStrikes(0);
       return;
     }
 
     // Check biometric availability and status
     const initializeBiometric = async () => {
+      // P1-#4: Detect lock-out. If the user was previously enrolled
+      // (credential handle stored) but the platform can no longer produce
+      // an authenticator, we'd otherwise be stuck — the gate has no cancel
+      // path when used as the app-entry lock. Surface a recovery screen.
+      const priorStatus = getBiometricStatus();
       const status = await checkBiometricAvailability();
       setBiometricStatus(status);
+
+      if (priorStatus === "enrolled" && status === "not_available") {
+        setError("Biometric hardware is no longer available on this device.");
+        setState("locked_out");
+        return;
+      }
 
       if (status === "enrolled") {
         // Already enrolled - go to verification
@@ -124,18 +160,69 @@ export function BiometricGateModal({
       const success = await verifyBiometric();
 
       if (success) {
+        setVerifyStrikes(0);
         setState("verified");
         setTimeout(() => {
           onVerified();
         }, 1000);
       } else {
-        setError("Biometric verification failed. Please try again.");
-        setState("verify");
+        // P1-#4: Count strikes. After VERIFY_STRIKE_LIMIT consecutive
+        // failures, assume the authenticator is unusable and offer the
+        // recovery screen instead of looping the user forever.
+        const strikes = verifyStrikes + 1;
+        setVerifyStrikes(strikes);
+        if (strikes >= VERIFY_STRIKE_LIMIT) {
+          setError("Biometric verification failed repeatedly.");
+          setState("locked_out");
+        } else {
+          setError(`Biometric verification failed. ${VERIFY_STRIKE_LIMIT - strikes} attempt(s) before recovery options appear.`);
+          setState("verify");
+        }
       }
     } catch (e) {
-      setError(`Verification error: ${e instanceof Error ? e.message : "Unknown error"}`);
-      setState("verify");
+      const strikes = verifyStrikes + 1;
+      setVerifyStrikes(strikes);
+      if (strikes >= VERIFY_STRIKE_LIMIT) {
+        setError(`Verification error: ${e instanceof Error ? e.message : "Unknown error"}`);
+        setState("locked_out");
+      } else {
+        setError(`Verification error: ${e instanceof Error ? e.message : "Unknown error"}`);
+        setState("verify");
+      }
     }
+  };
+
+  // P1-#4: Recovery escape hatch. Disables the biometric-lock opt-in
+  // and clears the stale credential. This is a controlled un-gate:
+  // no user data is touched — only the "gate on entry" flag is cleared.
+  // Equivalent to the user going into Settings → Privacy → turning the
+  // lock off, except they can reach it from here because they're trapped.
+  const handleDisableLockAndContinue = () => {
+    try {
+      setBiometricLockEnabled(false);
+      unenrollBiometric();
+      setBiometricStatus("not_enrolled");
+    } catch (e) {
+      console.warn("[Biometric] Failed to disable lock:", e);
+    }
+    setVerifyStrikes(0);
+    setState("verified");
+    setTimeout(() => {
+      onVerified();
+    }, 500);
+  };
+
+  const handleRetryFromLockedOut = async () => {
+    setVerifyStrikes(0);
+    setError("");
+    // Re-run availability check — maybe the user fixed their sensor
+    // permission / rebooted / plugged in a security key.
+    const status = await checkBiometricAvailability();
+    setBiometricStatus(status);
+    if (status === "enrolled") setState("verify");
+    else if (status === "not_enrolled") setState("enroll");
+    else if (allowPinFallback) setState("pin_fallback");
+    else setState("locked_out"); // still bad — stay put
   };
 
   // Handle PIN verification (fallback)
@@ -255,7 +342,7 @@ export function BiometricGateModal({
                         >
                           <CheckCircle2 className="w-8 h-8 text-green-500" />
                         </motion.div>
-                      ) : state === "error" ? (
+                      ) : state === "error" || state === "locked_out" ? (
                         <motion.div
                           key="error"
                           initial={{ scale: 0 }}
@@ -284,22 +371,26 @@ export function BiometricGateModal({
                         ? "Verified"
                         : state === "error"
                           ? "Error"
-                          : state === "pin_fallback"
-                            ? "Enter PIN"
-                            : title}
+                          : state === "locked_out"
+                            ? "Can't Verify Biometric"
+                            : state === "pin_fallback"
+                              ? "Enter PIN"
+                              : title}
                     </h2>
                     <p className="text-sm text-slate-400 mt-2">
                       {state === "verified"
                         ? "Identity confirmed. Proceeding..."
                         : state === "error"
                           ? error
-                          : state === "pin_fallback"
-                            ? "Biometrics unavailable. Use PIN instead."
-                            : state === "enroll"
-                              ? "Set up biometric authentication for this device"
-                              : state === "verify"
-                                ? "Place your finger on the reader or look at the camera"
-                                : description}
+                          : state === "locked_out"
+                            ? (error || "Biometric verification is currently unavailable.")
+                            : state === "pin_fallback"
+                              ? "Biometrics unavailable. Use PIN instead."
+                              : state === "enroll"
+                                ? "Set up biometric authentication for this device"
+                                : state === "verify"
+                                  ? "Place your finger on the reader or look at the camera"
+                                  : description}
                     </p>
                   </div>
                 </div>
@@ -473,6 +564,61 @@ export function BiometricGateModal({
                         className="w-full px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm"
                       >
                         Cancel
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {/* P1-#4: Lock-out recovery — offers safe escape hatch when
+                       biometric hardware is unavailable or repeatedly rejects. */}
+                  {state === "locked_out" && (
+                    <motion.div
+                      key="locked_out"
+                      variants={contentFadeVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}
+                      className="space-y-4"
+                    >
+                      <div className="p-4 bg-amber-900/20 border border-amber-700/30 rounded-lg flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-slate-300 space-y-2">
+                          <p>
+                            Your device can't verify your biometric right now. This
+                            can happen after a system update, a sensor change, or
+                            reinstalling the browser.
+                          </p>
+                          <p className="text-slate-400 text-xs">
+                            To regain access you can try again, use your PIN if
+                            available, or turn off Biometric Lock for this device.
+                            Turning it off won't erase any of your data.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleRetryFromLockedOut}
+                        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Fingerprint className="w-4 h-4" />
+                        Try Again
+                      </button>
+
+                      {allowPinFallback && (
+                        <button
+                          onClick={() => { setError(""); setState("pin_fallback"); }}
+                          className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors text-sm"
+                        >
+                          Use PIN Instead
+                        </button>
+                      )}
+
+                      <button
+                        onClick={handleDisableLockAndContinue}
+                        className="w-full px-4 py-3 bg-red-600/80 hover:bg-red-500 text-white font-semibold rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
+                      >
+                        <Lock className="w-4 h-4" />
+                        Turn Off Biometric Lock & Continue
                       </button>
                     </motion.div>
                   )}
