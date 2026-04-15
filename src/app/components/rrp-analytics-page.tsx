@@ -19,7 +19,7 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
-import { getRRPAnalytics, seedMockRRPData, type RRPAnalytics } from "./rrp-analytics-store";
+import { getRRPAnalytics, reconcileRRPSessions, seedMockRRPData, type RRPAnalytics } from "./rrp-analytics-store";
 import { MOCK_ADMINS as LEADERBOARD_ADMINS } from "./training-center";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -724,8 +724,19 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
   const [analytics, setAnalytics] = useState<RRPAnalytics | null>(null);
 
   useEffect(() => {
-    seedMockRRPData(); // ensure demo data exists
-    setAnalytics(getRRPAnalytics());
+    // P3-#11e: Pull authoritative session history from Supabase before
+    // computing analytics, so analytics on a freshly-installed device
+    // reflect the team's real server-side history (previously only the
+    // device's own localStorage was consulted). If the server has
+    // nothing and we also have no local sessions, seed demo data so the
+    // charts aren't empty on first run.
+    let cancelled = false;
+    void (async () => {
+      const count = await reconcileRRPSessions();
+      if (count === 0) seedMockRRPData();
+      if (!cancelled) setAnalytics(getRRPAnalytics());
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   if (!analytics) return null;
