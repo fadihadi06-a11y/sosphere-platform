@@ -1407,6 +1407,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const recordingModeRef = useRef<RecordingMode>(getRecordingMode());
   const duringRecordingStartedRef = useRef(false); // prevents double-start on re-renders
 
+  // Periodic "persist partial audio to IDB" timer — see comment in
+  // startRealRecording. Held in a ref so stopRealRecording / unmount /
+  // onstop can clear it deterministically.
+  const partialPersistIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const startRealRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1423,6 +1428,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       };
 
       recorder.onstop = () => {
+        // Final recording complete — stop the partial-persist timer
+        // first so we don't race with the live upload below.
+        if (partialPersistIntervalRef.current) {
+          clearInterval(partialPersistIntervalRef.current);
+          partialPersistIntervalRef.current = null;
+        }
+
         // Build the final Blob from collected chunks.
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
 
@@ -1441,8 +1453,18 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           // lean; the uploader is only loaded when recording actually
           // ends — never during the screen's initial render.
           import("./sos-audio-upload")
-            .then(({ uploadSOSAudio }) => uploadSOSAudio(emergencyId, blob, durationSec))
-            .then((url) => { if (url) audioPublicUrlRef.current = url; })
+            .then(async ({ uploadSOSAudio, purgePartialAudio }) => {
+              const url = await uploadSOSAudio(emergencyId, blob, durationSec);
+              if (url) {
+                audioPublicUrlRef.current = url;
+                // Drop the partial IDB record so the replay watcher
+                // doesn't re-upload and overwrite the final Storage
+                // object with a shorter/older blob.
+                await purgePartialAudio(emergencyId);
+              }
+              // If url is null, uploadSOSAudio already queued the full
+              // blob via queueOnFail — the partial (if any) was replaced.
+            })
             .catch((err) => console.warn("[SOS] live audio upload failed:", err));
         } catch (err) {
           console.warn("[SOS] live audio upload setup failed:", err);
@@ -1462,6 +1484,31 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
       recorder.start(1000); // Collect data every second
       mediaRecorderRef.current = recorder;
+
+      // Survive-force-close: persist what we've captured so far to
+      // IndexedDB every ~3 seconds while recording. Without this, a
+      // mid-recording app kill (user force-closes, Android OOM, battery
+      // death) loses everything — recorder.onstop never fires, so the
+      // in-memory chunks never reach IDB. The write is keyed on
+      // emergencyId so later writes overwrite earlier partials in place;
+      // IDB is fine at this cadence for a handful of KB per chunk.
+      if (partialPersistIntervalRef.current) {
+        clearInterval(partialPersistIntervalRef.current);
+      }
+      partialPersistIntervalRef.current = setInterval(() => {
+        const chunks = audioChunksRef.current;
+        if (!chunks || chunks.length === 0) return;
+        const emergencyId = errIdRef.current;
+        if (!emergencyId) return;
+        const durationSec = q.current.recordingSec;
+        // Dynamic import keeps the initial SOS path lean — we only
+        // pull in the uploader lazily, same as the onstop path.
+        import("./sos-audio-upload")
+          .then(({ persistPartialAudio }) =>
+            persistPartialAudio(emergencyId, chunks.slice(), mimeType, durationSec),
+          )
+          .catch(() => { /* best-effort; never block the recording */ });
+      }, 3000);
     } catch (err) {
       // Microphone permission denied or not available — continue without audio
       console.warn("[SOS] Voice recording unavailable:", err);
@@ -1470,6 +1517,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   }, []);
 
   const stopRealRecording = useCallback(() => {
+    // Always clear the partial-persist timer, even if the recorder
+    // is already inactive — defensive against any path where the
+    // recorder failed to start but the interval somehow got armed.
+    if (partialPersistIntervalRef.current) {
+      clearInterval(partialPersistIntervalRef.current);
+      partialPersistIntervalRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
