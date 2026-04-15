@@ -34,6 +34,20 @@ let heartbeatMissed = 0;
 let activeEmergencyId: string | null = null;
 let serverTriggerResult: ServerTriggerResult | null = null;
 
+// ── Dedup guard (double-tap / re-render protection) ─────────
+// Two layers:
+//   1. `sosInFlight` — hard lock while a trigger is mid-flight.
+//      A concurrent call returns immediately with the cached result.
+//   2. `lastFireAt` — soft window. Even after in-flight clears, a
+//      second call within DEDUP_WINDOW_MS is treated as a duplicate
+//      (panicked users frequently double-tap the button).
+//
+// Both are released by endServerSOS() so the user can legitimately
+// re-trigger after ending a previous emergency.
+let sosInFlight = false;
+let lastFireAt = 0;
+const DEDUP_WINDOW_MS = 3000;
+
 export interface ServerTriggerResult {
   success: boolean;
   emergencyId: string;
@@ -174,6 +188,32 @@ export async function triggerServerSOS(opts: {
   silent?: boolean;
 }): Promise<ServerTriggerResult> {
   const tier = getTierString();
+  const now = Date.now();
+
+  // ── DEDUP GUARD ─────────────────────────────────────────────
+  // Layer 1: reject concurrent fires (double-tap within same tick)
+  if (sosInFlight) {
+    console.warn("[SOS-Server] ⚠ DEDUP: trigger called while in-flight — ignored");
+    return serverTriggerResult ?? {
+      success: false,
+      emergencyId: activeEmergencyId ?? opts.emergencyId,
+      tier,
+      error: "duplicate_call_in_flight",
+    };
+  }
+  // Layer 2: reject rapid re-fires within the dedup window
+  if (activeEmergencyId && (now - lastFireAt) < DEDUP_WINDOW_MS) {
+    console.warn(`[SOS-Server] ⚠ DEDUP: re-fire ${now - lastFireAt}ms after last trigger — ignored`);
+    return serverTriggerResult ?? {
+      success: false,
+      emergencyId: activeEmergencyId,
+      tier,
+      error: "duplicate_call_within_window",
+    };
+  }
+  sosInFlight = true;
+  lastFireAt = now;
+
   const gps = getLastKnownPosition();
 
   console.log(`[SOS-Server] ═══ Path B FIRED ═══ tier=${tier} contacts=${opts.contacts.length} silent=${!!opts.silent}`);
@@ -263,6 +303,11 @@ export async function triggerServerSOS(opts: {
       error: err instanceof Error ? err.message : "Network error",
     };
     return serverTriggerResult;
+  } finally {
+    // Release the hard in-flight lock. `lastFireAt` intentionally
+    // stays set — the soft window keeps guarding against a panicked
+    // double-press until endServerSOS() clears it.
+    sosInFlight = false;
   }
 }
 
@@ -337,6 +382,9 @@ export async function endServerSOS(opts: {
   stopHeartbeat();
   activeEmergencyId = null;
   serverTriggerResult = null;
+  // Release dedup guards so a new emergency can be triggered immediately.
+  sosInFlight = false;
+  lastFireAt = 0;
 
   try {
     const res = await fetchSOS("end", {
