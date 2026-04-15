@@ -724,6 +724,22 @@ export async function replayPendingSOS(): Promise<{
     return summary;
   }
 
+  // Auth gate — the Edge Function requires a valid Bearer token for
+  // tier enforcement. Firing before the session is hydrated would 401
+  // every record and burn through REPLAY_MAX_TRIES in a single boot.
+  // If there's no session yet, bail silently; the auth-state-change
+  // trigger in startSOSReplayWatcher will re-fire the drain the moment
+  // a session exists.
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (!data?.session) {
+      console.log("[SOS-Replay] skipped — no auth session yet");
+      return summary;
+    }
+  } catch {
+    return summary;
+  }
+
   replayInFlight = true;
   try {
     const pending = await getUnsyncedSOS();
@@ -799,30 +815,66 @@ async function replayOneSOS(rec: SOSRecord): Promise<boolean> {
 
 /**
  * Install the replay watcher. Idempotent — safe to call from multiple
- * mount sites. Hooks `window.online` and fires an initial replay on
- * startup (in case the app was launched after a period offline with
- * queued events).
+ * mount sites.
+ *
+ * Wires THREE triggers (any one is enough to drain the queue):
+ *   1. `online`           — browser-reported network restore.
+ *   2. `visibilitychange` → visible — app resume from background. On
+ *      Android, toggling airplane mode OFF while the app is in the
+ *      background often causes the `online` event to fire before the
+ *      WebView repaints, so it can be missed entirely. The visibility
+ *      event is the belt-and-braces trigger the user's chaos scenario
+ *      depends on (airplane mode → force close → restart → disable
+ *      airplane mode from the quick-settings panel → app resume).
+ *   3. Startup            — immediate replay if already online at mount
+ *      (phone rebooted mid-emergency, app was launched after a period
+ *      offline, etc.).
  */
 export function startSOSReplayWatcher(): void {
   if (replayListenerAttached) return;
   replayListenerAttached = true;
 
-  const fire = () => {
+  const fire = (source: string) => {
     // small debounce — network flaps fire online/offline rapidly
     setTimeout(() => {
       if (navigator.onLine) {
+        console.log(`[SOS-Replay] trigger: ${source}`);
         replayPendingSOS().catch(err => console.warn("[SOS-Replay] error:", err));
       }
     }, 1500);
   };
 
-  window.addEventListener("online", fire);
+  // Trigger 1: browser-native online event
+  window.addEventListener("online", () => fire("online"));
 
-  // Also replay once on startup in case we were launched with a
-  // pending queue (phone rebooted mid-emergency, etc.).
-  if (navigator.onLine) {
-    fire();
+  // Trigger 2: visibility restore (covers the Android app-resume path
+  // where `online` may fire while the WebView is backgrounded and
+  // not-yet-repainted — effectively lost).
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") fire("visibility");
+    });
   }
 
-  console.log("[SOS-Replay] watcher installed");
+  // Trigger 3: auth session available. replayPendingSOS is auth-gated
+  // (the Edge Function requires a Bearer token for tier enforcement),
+  // so the moment Supabase reports a session is restored/refreshed we
+  // get a fresh chance to drain the queue. Without this, a user who
+  // starts the app offline and then signs in would have to wait for
+  // the next `online`/`visibility` event before their queued SOS
+  // records actually replay.
+  try {
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session) fire(`auth:${event.toLowerCase()}`);
+    });
+  } catch {
+    // Auth listener is best-effort; never fatal.
+  }
+
+  // Trigger 4: immediate replay if already online at mount
+  if (navigator.onLine) {
+    fire("startup");
+  }
+
+  console.log("[SOS-Replay] watcher installed (online + visibility + auth + startup)");
 }

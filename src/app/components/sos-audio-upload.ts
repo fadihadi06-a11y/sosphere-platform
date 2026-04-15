@@ -110,6 +110,13 @@ export function getAudioPublicUrl(emergencyId: string): string | null {
 /**
  * Drain the pending_audio queue. Called on `online` events and once
  * at app startup via startAudioReplayWatcher().
+ *
+ * Gated on an authenticated Supabase session: Storage uploads require
+ * a valid JWT, and firing before the session has hydrated would 401
+ * every record until its retry budget was exhausted — effectively
+ * losing evidence. If no session is available we silently skip; the
+ * auth-state-change listener in startAudioReplayWatcher will re-fire
+ * the replay the moment a session exists.
  */
 export async function replayPendingAudio(): Promise<{
   uploaded: number;
@@ -121,6 +128,19 @@ export async function replayPendingAudio(): Promise<{
   if (replayInFlight) return summary;
   if (typeof navigator !== "undefined" && !navigator.onLine) return summary;
   if (!SUPABASE_CONFIG.isConfigured) return summary;
+
+  // Auth gate — don't burn the retry budget before the session exists.
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (!data?.session) {
+      console.log("[SOS-Audio] replay skipped — no auth session yet");
+      return summary;
+    }
+  } catch {
+    // If getSession throws (network, misconfigured client), behave as
+    // if no session — skip replay, let the auth-change listener retry.
+    return summary;
+  }
 
   replayInFlight = true;
   try {
@@ -157,23 +177,64 @@ export async function replayPendingAudio(): Promise<{
 /**
  * Install network listener + trigger an initial replay.
  * Idempotent. Safe to mount once for the app's lifetime.
+ *
+ * Wires THREE triggers (any one is enough to drain the queue):
+ *   1. `online`         — browser-reported network restore.
+ *   2. `visibilitychange` → visible — user brings the app back from
+ *      background. Crucial on Android: if the user toggles airplane mode
+ *      OFF while the app is backgrounded, the `online` event often
+ *      fires before the WebView is repainted and may be missed. The
+ *      visibility event is the reliable "app is alive again" signal.
+ *   3. Startup          — immediate replay if already online.
+ *
+ * Without (2), a common SOS-recovery flow breaks:
+ *   SOS → airplane mode → force close → restart → disable airplane
+ *   (while app in background) → open app. The `online` event already
+ *   fired before the app repainted, so nothing ever triggered replay.
  */
 export function startAudioReplayWatcher(): void {
   if (replayListenerAttached) return;
   replayListenerAttached = true;
 
-  const fire = () => {
+  const fire = (source: string) => {
     setTimeout(() => {
       if (navigator.onLine) {
+        console.log(`[SOS-Audio] replay trigger: ${source}`);
         replayPendingAudio().catch(err => console.warn("[SOS-Audio] replay err:", err));
       }
     }, 2000); // slightly longer debounce than SOS replay — audio is lower priority
   };
 
-  window.addEventListener("online", fire);
-  if (typeof navigator !== "undefined" && navigator.onLine) fire();
+  // Trigger 1: online event
+  window.addEventListener("online", () => fire("online"));
 
-  console.log("[SOS-Audio] replay watcher installed");
+  // Trigger 2: visibility restore (covers Android app resume — the
+  // WebView's "online" event may have fired while backgrounded and
+  // been lost, so this is the belt-and-braces path).
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") fire("visibility");
+    });
+  }
+
+  // Trigger 3: auth session available — replay is auth-gated, so when
+  // the session first hydrates (INITIAL_SESSION) or refreshes
+  // (TOKEN_REFRESHED) we get a fresh chance to drain the queue. This
+  // closes the race where the watcher was already armed and the queue
+  // had records, but Storage uploads would 401 because the JWT wasn't
+  // loaded yet.
+  try {
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session) fire(`auth:${event.toLowerCase()}`);
+    });
+  } catch {
+    // Auth listener is best-effort; never fatal.
+  }
+
+  // Trigger 4: immediate replay if already online at mount
+  if (typeof navigator !== "undefined" && navigator.onLine) fire("startup");
+
+  console.log("[SOS-Audio] replay watcher installed (online + visibility + auth + startup)");
 }
 
 // ── Internals ──────────────────────────────────────────────────
