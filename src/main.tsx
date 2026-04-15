@@ -6,9 +6,7 @@ import "./styles/native-compat.css";
 import { initEnvShield } from "./app/components/env-shield-v2";
 import { testConnection, validateProductionEnvironment } from "./app/components/api/supabase-client";
 import { AppErrorBoundary } from "./app/components/error-boundary";
-
-// initSentry was removed; use a no-op
-const initSentry = async () => {};
+import { initSentry } from "./app/components/sentry-client";
 import { initCapacitorBridge } from "./app/components/capacitor-bridge";
 
 // MUST RUN FIRST: Initialize Environment Shield to prevent secret leakage
