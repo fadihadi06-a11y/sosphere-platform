@@ -1392,6 +1392,10 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef   = useRef<Blob[]>([]);
   const audioDataUrlRef  = useRef<string>(""); // stores real base64 audio
+  // Pre-uploaded public URL (set when uploadSOSAudio succeeds inline
+  // at recorder.onstop). storeEvidence() below prefers this over the
+  // base64 dataUrl so the audio survives even if debrief is abandoned.
+  const audioPublicUrlRef = useRef<string>("");
 
   // ── Recording timing mode (snapshotted at SOS start; cannot change mid-incident) ──
   //   "after"  — default: record only after a contact answers (current behavior)
@@ -1416,14 +1420,40 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       };
 
       recorder.onstop = () => {
-        // Convert recorded chunks to base64 dataUrl
+        // Build the final Blob from collected chunks.
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
+
+        // Path 1 (primary): fire a direct Blob upload to Supabase
+        // Storage immediately. If it fails (offline, captive portal,
+        // Storage outage), the uploader persists the Blob to IndexedDB
+        // and retries on reconnect — so the recording is never lost
+        // to a debrief that the user might abandon.
+        //
+        // We do NOT await this: the dataUrl path below runs in parallel
+        // for local preview / legacy evidence-store compatibility.
+        try {
+          const emergencyId = errIdRef.current;
+          const durationSec = q.current.recordingSec;
+          // Dynamic import keeps the SOS screen's critical-path bundle
+          // lean; the uploader is only loaded when recording actually
+          // ends — never during the screen's initial render.
+          import("./sos-audio-upload")
+            .then(({ uploadSOSAudio }) => uploadSOSAudio(emergencyId, blob, durationSec))
+            .then((url) => { if (url) audioPublicUrlRef.current = url; })
+            .catch((err) => console.warn("[SOS] live audio upload failed:", err));
+        } catch (err) {
+          console.warn("[SOS] live audio upload setup failed:", err);
+        }
+
+        // Path 2 (legacy): keep the base64 dataUrl for in-screen
+        // playback and as a fallback input into storeEvidence.
         const reader = new FileReader();
         reader.onloadend = () => {
           audioDataUrlRef.current = reader.result as string;
         };
         reader.readAsDataURL(blob);
-        // Stop microphone tracks
+
+        // Release the microphone either way.
         stream.getTracks().forEach(t => t.stop());
       };
 
@@ -2243,14 +2273,25 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         })),
         audioMemo: q.current.recordingSec > 0 ? {
           id: `AUDIO-${Date.now()}`,
-          // Use real MediaRecorder audio if available, otherwise mark as pending upload
-          dataUrl: audioDataUrlRef.current || `pending://voice-${errIdRef.current}.webm`,
+          // Preference order:
+          //   1. audioPublicUrlRef — the Blob was uploaded directly to
+          //      Supabase Storage at recorder.onstop (survives debrief
+          //      abandonment, app kill, battery death).
+          //   2. audioDataUrlRef  — in-memory base64, legacy fallback
+          //      that evidence-store will upload lazily if Supabase
+          //      is reachable at submit time.
+          //   3. pending://       — placeholder marker; the live-upload
+          //      queue in IndexedDB will retry on reconnect.
+          dataUrl:
+            audioPublicUrlRef.current
+              || audioDataUrlRef.current
+              || `pending://voice-${errIdRef.current}.webm`,
           durationSec: q.current.recordingSec,
           format: audioDataUrlRef.current
             ? (audioDataUrlRef.current.includes("audio/mp4") ? "mp4" : "webm")
             : "webm",
-          transcription: audioDataUrlRef.current
-            ? undefined  // Real audio — no transcription yet
+          transcription: (audioPublicUrlRef.current || audioDataUrlRef.current)
+            ? undefined  // Real audio captured — no transcription yet
             : "Recording captured — transcription pending upload",
         } : undefined,
         tier: isPremium ? "paid" : "free",

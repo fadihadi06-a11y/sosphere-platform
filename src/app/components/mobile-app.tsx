@@ -614,11 +614,20 @@ export function MobileApp() {
     let cancelled = false;
     (async () => {
       try {
-        const { startSOSReplayWatcher } = await import("./sos-server-trigger");
+        const [{ startSOSReplayWatcher }, { startAudioReplayWatcher }] = await Promise.all([
+          import("./sos-server-trigger"),
+          import("./sos-audio-upload"),
+        ]);
         if (cancelled) return;
+        // Watcher 1: re-fires SOS events to the Edge Function.
         startSOSReplayWatcher();
+        // Watcher 2: re-uploads any voice recordings whose live
+        // Supabase Storage upload failed at capture time (offline,
+        // captive portal, outage). Evidence is recovered even if the
+        // user abandoned the debrief flow.
+        startAudioReplayWatcher();
       } catch (err) {
-        console.warn("[mobile-app] SOS replay watcher setup failed:", err);
+        console.warn("[mobile-app] SOS replay watchers setup failed:", err);
       }
     })();
     return () => { cancelled = true; };
