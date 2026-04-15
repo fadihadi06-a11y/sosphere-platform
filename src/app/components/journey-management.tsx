@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 import { emitAdminSignal, emitSyncEvent } from "./shared-store";
+import { fetchJourneys, upsertJourneyBatch } from "./journeys-service";
 
 // ── Types ────────────────────��───────────────────────────────
 interface Waypoint {
@@ -121,7 +122,12 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
           ...j,
           startTime: new Date(j.startTime),
           estimatedEnd: new Date(j.estimatedEnd),
-          checkpoints: (j.checkpoints || []).map((c: any) => ({ ...c, time: new Date(c.time) })),
+          actualEnd: j.actualEnd ? new Date(j.actualEnd) : undefined,
+          waypoints: (j.waypoints || []).map((w: any) => ({
+            ...w,
+            eta: w.eta ? new Date(w.eta) : new Date(),
+            arrivedAt: w.arrivedAt ? new Date(w.arrivedAt) : undefined,
+          })),
         }));
       }
     } catch {}
@@ -131,10 +137,41 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
   const [filter, setFilter] = useState<"all" | "active" | "issues">("all");
   const [connectionWatchdog, setConnectionWatchdog] = useState<Record<string, { lostAt: number; minutesLost: number }>>({});
 
-  // Auto-save journeys on change
+  // P3-#11f: Reconcile journeys with Supabase on mount. Prevents the
+  // previous device-local blind spot where a journey launched on one
+  // admin's laptop was invisible to every other admin. Server wins when
+  // it has any rows (it's the authoritative source). If the server is
+  // empty and we're still on MOCK_JOURNEYS, seed the server so the next
+  // admin who opens this page sees the same demo data — this also
+  // means real admin-created journeys land durably on their first save.
+  const [serverBootComplete, setServerBootComplete] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await fetchJourneys();
+        if (cancelled) return;
+        if (remote.length > 0) {
+          setJourneys(remote as any);
+        } else {
+          // Server empty — seed with what we have so durable storage catches up.
+          void upsertJourneyBatch(journeys as any);
+        }
+      } finally {
+        if (!cancelled) setServerBootComplete(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save journeys on change — dual-write to localStorage (instant
+  // UI) and Supabase (durable). Supabase write is gated on boot-complete
+  // so we don't overwrite a reconcile that's still in flight.
   useEffect(() => {
     try { localStorage.setItem("sosphere_journeys", JSON.stringify(journeys)); } catch {}
-  }, [journeys]);
+    if (serverBootComplete) void upsertJourneyBatch(journeys as any);
+  }, [journeys, serverBootComplete]);
 
   // ── Connection Watchdog — monitors delayed/deviated journeys ──
   // Simulates detecting connection loss for workers on remote routes

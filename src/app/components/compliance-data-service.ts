@@ -295,6 +295,37 @@ async function fetchEmployeeRosterBlock(companyId: string): Promise<{
   }
 }
 
+async function fetchJourneyLogBlock(companyId: string): Promise<string[][] | null> {
+  try {
+    const { data, error } = await supabase
+      .from("journeys")
+      .select("id, employee_name, origin, destination, vehicle_type, status, distance_covered, total_distance, waypoints")
+      .eq("company_id", companyId)
+      .order("start_time", { ascending: false })
+      .limit(30);
+    if (error || !data || data.length === 0) return null;
+    return (data as any[]).map((j) => {
+      const waypoints = Array.isArray(j.waypoints) ? j.waypoints : [];
+      const missed = waypoints.filter((w: any) => w.status === "missed").length;
+      const covered = typeof j.distance_covered === "number" ? j.distance_covered : Number(j.distance_covered) || 0;
+      const total = typeof j.total_distance === "number" ? j.total_distance : Number(j.total_distance) || 0;
+      return [
+        j.id,
+        j.employee_name || "—",
+        j.origin || "—",
+        j.destination || "—",
+        j.vehicle_type || "—",
+        titleCase(j.status || "active"),
+        `${covered}/${total} km`,
+        String(missed),
+      ];
+    });
+  } catch (err) {
+    console.warn("[compliance-data] journeyLog:", err);
+    return null;
+  }
+}
+
 async function fetchCheckinComplianceBlock(companyId: string): Promise<CheckinBlock | null> {
   try {
     // Last 30 days of check-in events, grouped by employee.
@@ -359,11 +390,12 @@ export async function buildCompliancePdfData(): Promise<CompliancePdfData | null
   const companyId = getCompanyId();
   if (!companyId) return null;
 
-  const [incidentsBlock, employeeBlock, checkin, correctiveActions] = await Promise.all([
+  const [incidentsBlock, employeeBlock, checkin, correctiveActions, journeyLog] = await Promise.all([
     fetchIncidentsBlock(companyId),
     fetchEmployeeRosterBlock(companyId),
     fetchCheckinComplianceBlock(companyId),
     fetchCorrectiveActionsBlock(companyId),
+    fetchJourneyLogBlock(companyId),
   ]);
 
   // Build a zone → incident count map so the zone risk block can
@@ -426,7 +458,7 @@ export async function buildCompliancePdfData(): Promise<CompliancePdfData | null
     zoneRisk,
     employeeRoster: employeeBlock.roster,
     checkinCompliance: checkin,
-    journeyLog: null,     // no journey_management table migrated yet
+    journeyLog,           // P3-#11f populated this from `journeys`
     playbookData: null,   // no emergency_playbooks table migrated yet
   };
 }
