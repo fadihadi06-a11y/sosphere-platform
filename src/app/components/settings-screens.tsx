@@ -5,11 +5,19 @@ import {
   HelpCircle, Mail, MessageCircle, FileText, Shield,
   Eye, EyeOff, MapPin, Fingerprint, Trash2, Download,
   Bluetooth, Watch, ChevronRight, Radio, Users,
+  Sparkles, Volume2, RotateCcw, Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight, hapticWarning, hapticSuccess } from "./haptic-feedback";
 import { getNeighborAlertSettings, setNeighborAlertSettings } from "./neighbor-alert-service";
 import { hasFeature } from "./subscription-service";
+import {
+  getAiVoiceScript,
+  setAiVoiceScript,
+  resetAiVoiceScript,
+  type AiVoiceLang,
+  type AiVoiceName,
+} from "./ai-voice-call-service";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -328,6 +336,200 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.08)" }}>SOSphere</span>
             </div>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0 • Build 2026.03</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Elite Features Screen ──────────────────────────────────────
+// Houses configuration for Elite-tier-only conveniences. Currently:
+//   • AI Voice Call Script — the TwiML <Say> the server reads to
+//     emergency contacts. Bilingual, Polly-voice selectable.
+//
+// Design choices:
+//   • Auto-save on blur (or on voice/lang change) — there's no
+//     "Save" button, because the data is low-stakes (worst case the
+//     user re-opens the screen) and keeping the form hot avoids the
+//     "did it save?" uncertainty panic users feel during drills.
+//   • Non-Elite users see a locked preview with an upsell CTA.
+//   • Token cheatsheet ({name}, {location}, {time}) is inline so
+//     users don't have to memorise it.
+// ─────────────────────────────────────────────────────────────
+const VOICE_OPTIONS: { value: AiVoiceName; label: string; lang: AiVoiceLang }[] = [
+  { value: "Polly.Joanna",  label: "Joanna (English US)",   lang: "en" },
+  { value: "Polly.Matthew", label: "Matthew (English US)",  lang: "en" },
+  { value: "Polly.Amy",     label: "Amy (English UK)",      lang: "en" },
+  { value: "Polly.Zeina",   label: "Zeina (Arabic)",        lang: "ar" },
+];
+
+export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
+  const eliteUnlocked = hasFeature("aiVoiceCalls");
+  const initial = getAiVoiceScript();
+  const [scriptEn, setScriptEn] = useState(initial.en);
+  const [scriptAr, setScriptAr] = useState(initial.ar);
+  const [lang, setLang] = useState<AiVoiceLang>(initial.lang);
+  const [voice, setVoice] = useState<AiVoiceName>(initial.voice);
+
+  const persist = (patch: Parameters<typeof setAiVoiceScript>[0]) => {
+    setAiVoiceScript(patch);
+    hapticLight();
+  };
+
+  const handleReset = () => {
+    const defaults = resetAiVoiceScript();
+    setScriptEn(defaults.en);
+    setScriptAr(defaults.ar);
+    setLang(defaults.lang);
+    setVoice(defaults.voice);
+    hapticSuccess();
+    toast.success("Restored default script");
+  };
+
+  return (
+    <div className="relative flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+        <div className="pt-14 pb-8">
+          <ScreenHeader
+            title="Elite Features"
+            subtitle="Personalise your SOS experience"
+            onBack={onBack}
+          />
+
+          {/* Elite lock notice (Free / Basic users) */}
+          {!eliteUnlocked && (
+            <div className="px-5 mb-5">
+              <div className="p-4 flex items-start gap-3" style={{ borderRadius: 18, background: "rgba(255,215,0,0.04)", border: "1px solid rgba(255,215,0,0.12)" }}>
+                <Crown className="size-5 shrink-0 mt-0.5" style={{ color: "#FFD700" }} />
+                <div>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>Elite required</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, lineHeight: 1.5 }}>
+                    Personalised AI voice scripts are an Elite feature. You can preview below — changes won't be applied to live SOS calls until you upgrade.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section header */}
+          <div className="px-5 mb-2.5">
+            <div className="flex items-center gap-2">
+              <Sparkles style={{ width: 14, height: 14, color: "#AF52DE" }} />
+              <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                AI Voice Call Script
+              </p>
+            </div>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 4, lineHeight: 1.5 }}>
+              Spoken to your emergency contacts when the server places a call on your behalf. Tokens
+              <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{name}"}</code>
+              <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{location}"}</code>
+              <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{time}"}</code>
+              are filled in at call time.
+            </p>
+          </div>
+
+          {/* Language + Voice */}
+          <div className="px-5 mb-5">
+            <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
+              {/* Language selector */}
+              <div className="px-4 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                <div className="flex items-center gap-3 mb-3">
+                  <Globe style={{ width: 14, height: 14, color: "#007AFF" }} />
+                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>Default Language</p>
+                </div>
+                <div className="flex gap-2">
+                  {(["en", "ar"] as const).map(code => (
+                    <button
+                      key={code}
+                      onClick={() => { setLang(code); persist({ lang: code }); }}
+                      className="flex-1 py-2 rounded-[10px]"
+                      style={{
+                        background: lang === code ? "rgba(0,122,255,0.12)" : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${lang === code ? "rgba(0,122,255,0.3)" : "rgba(255,255,255,0.04)"}`,
+                        color: lang === code ? "#007AFF" : "rgba(255,255,255,0.5)",
+                        fontSize: 13,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {code === "en" ? "English" : "العربية"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Voice picker */}
+              <div className="px-4 py-3.5">
+                <div className="flex items-center gap-3 mb-3">
+                  <Volume2 style={{ width: 14, height: 14, color: "#AF52DE" }} />
+                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>Voice</p>
+                </div>
+                <div className="space-y-1.5">
+                  {VOICE_OPTIONS.map(v => (
+                    <button
+                      key={v.value}
+                      onClick={() => { setVoice(v.value); persist({ voice: v.value }); }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-[10px]"
+                      style={{
+                        background: voice === v.value ? "rgba(175,82,222,0.10)" : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${voice === v.value ? "rgba(175,82,222,0.25)" : "rgba(255,255,255,0.04)"}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, color: voice === v.value ? "#fff" : "rgba(255,255,255,0.55)" }}>
+                        {v.label}
+                      </span>
+                      {voice === v.value && <Check className="size-4" style={{ color: "#AF52DE" }} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* English template */}
+          <div className="px-5 mb-5">
+            <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
+              English Template
+            </p>
+            <textarea
+              value={scriptEn}
+              onChange={e => setScriptEn(e.target.value.slice(0, 600))}
+              onBlur={() => persist({ en: scriptEn })}
+              rows={5}
+              dir="ltr"
+              className="w-full p-3 text-white resize-none"
+              style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 13, lineHeight: 1.5, fontFamily: "inherit", outline: "none" }}
+            />
+            <p className="mt-1.5 text-right" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{scriptEn.length} / 600</p>
+          </div>
+
+          {/* Arabic template */}
+          <div className="px-5 mb-5">
+            <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
+              Arabic Template
+            </p>
+            <textarea
+              value={scriptAr}
+              onChange={e => setScriptAr(e.target.value.slice(0, 600))}
+              onBlur={() => persist({ ar: scriptAr })}
+              rows={5}
+              dir="rtl"
+              className="w-full p-3 text-white resize-none"
+              style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 13, lineHeight: 1.7, fontFamily: "inherit", outline: "none" }}
+            />
+            <p className="mt-1.5 text-right" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{scriptAr.length} / 600</p>
+          </div>
+
+          {/* Reset */}
+          <div className="px-5">
+            <button
+              onClick={handleReset}
+              className="w-full flex items-center justify-center gap-2 py-3"
+              style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 500 }}
+            >
+              <RotateCcw style={{ width: 14, height: 14 }} />
+              Reset to defaults
+            </button>
           </div>
         </div>
       </div>

@@ -53,6 +53,7 @@ interface IndividualLayoutProps {
   onNavigateToPrivacy?: () => void;
   onNavigateToDevices?: () => void;
   onNavigateToHelp?: () => void;
+  onNavigateToEliteFeatures?: () => void;
   onNavigateToSafeWalk?: () => void;
   onLogout?: () => void;
   /** Optional translator function. Falls back to English keys if absent. */
@@ -65,6 +66,7 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
   onNavigateToIncidentHistory, onNavigateToEmergencyPacket, onNavigateToEmergencyServices,
   onNavigateToEmergencyContacts, onNavigateToNotifications,
   onNavigateToLanguage, onNavigateToPrivacy, onNavigateToDevices, onNavigateToHelp,
+  onNavigateToEliteFeatures,
   onNavigateToSafeWalk,
   onLogout,
   t: tProp,
@@ -95,6 +97,7 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
     if (screen === "privacy") onNavigateToPrivacy?.();
     if (screen === "connected-devices") onNavigateToDevices?.();
     if (screen === "help") onNavigateToHelp?.();
+    if (screen === "elite-features") onNavigateToEliteFeatures?.();
   };
 
   return (

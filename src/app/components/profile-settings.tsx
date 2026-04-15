@@ -5,11 +5,12 @@ import {
   Globe, Moon, Lock, LogOut, HelpCircle, FileText,
   Users, Building2, Smartphone, MapPin, User,
   Star, Zap, AlertTriangle, Clock, Package, Phone,
+  Sparkles,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help";
+type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help" | "elite-features";
 
 interface ProfileSettingsProps {
   userPlan: "free" | "pro" | "employee";
@@ -72,6 +73,7 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
       items: [
         { id: "notifications", icon: Bell, label: "Notifications", sub: "Alerts, check-in reminders", color: "#FF9500", toggle: true, toggleValue: notifications },
         { id: "language", icon: Globe, label: "Language", sub: "English", color: "#007AFF", chevron: true, action: () => onNavigate("language") },
+        { id: "elite-features", icon: Sparkles, label: "Elite Features", sub: "AI voice script, personalisation", color: "#FFD700", chevron: true, action: () => onNavigate("elite-features"), badge: !isPro ? "ELITE" : undefined, badgeColor: "#FFD700" },
         { id: "appearance", icon: Moon, label: "Dark Mode", color: "#AF52DE", toggle: true, toggleValue: darkMode },
       ],
     },
