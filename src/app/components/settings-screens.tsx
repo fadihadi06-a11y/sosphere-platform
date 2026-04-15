@@ -4,10 +4,12 @@ import {
   ChevronLeft, Check, Globe, Lock, Smartphone,
   HelpCircle, Mail, MessageCircle, FileText, Shield,
   Eye, EyeOff, MapPin, Fingerprint, Trash2, Download,
-  Bluetooth, Watch, ChevronRight,
+  Bluetooth, Watch, ChevronRight, Radio, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticLight, hapticWarning, hapticSuccess } from "./haptic-feedback";
+import { getNeighborAlertSettings, setNeighborAlertSettings } from "./neighbor-alert-service";
+import { hasFeature } from "./subscription-service";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -68,11 +70,38 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const [showProfile, setShowProfile] = useState(true);
   const [biometric, setBiometric] = useState(false);
 
+  // Neighbor Alert — hydrated from localStorage via the service
+  const initialNeighbor = getNeighborAlertSettings();
+  const [neighborReceive, setNeighborReceive] = useState(initialNeighbor.receive);
+  const [neighborBroadcast, setNeighborBroadcast] = useState(initialNeighbor.broadcast);
+  const eliteUnlocked = hasFeature("aiVoiceCalls");
+
+  const toggleNeighborReceive = () => {
+    const next = !neighborReceive;
+    setNeighborReceive(next);
+    setNeighborAlertSettings({ receive: next });
+    hapticLight();
+  };
+
+  const toggleNeighborBroadcast = () => {
+    if (!eliteUnlocked) {
+      hapticWarning();
+      toast("Elite feature", { description: "Broadcasting SOS to nearby neighbors requires the Elite plan." });
+      return;
+    }
+    const next = !neighborBroadcast;
+    setNeighborBroadcast(next);
+    setNeighborAlertSettings({ broadcast: next });
+    hapticLight();
+  };
+
   const toggles = [
     { id: "location", icon: MapPin, label: "Location History", sub: "Store location data for safety analysis", color: "#00C853", value: locationHistory, onChange: () => setLocationHistory(v => !v) },
     { id: "analytics", icon: Eye, label: "Usage Analytics", sub: "Help us improve with anonymous data", color: "#007AFF", value: analytics, onChange: () => setAnalytics(v => !v) },
     { id: "profile", icon: Shield, label: "Show Profile to Family", sub: "Allow circle members to see your status", color: "#00C8E0", value: showProfile, onChange: () => setShowProfile(v => !v) },
     { id: "biometric", icon: Fingerprint, label: "Biometric Lock", sub: "Require face/fingerprint to open app", color: "#AF52DE", value: biometric, onChange: () => setBiometric(v => !v) },
+    { id: "neighbor_receive", icon: Users, label: "Receive Nearby SOS Alerts", sub: "Get notified when a neighbor triggers SOS close to you", color: "#00C8E0", value: neighborReceive, onChange: toggleNeighborReceive },
+    { id: "neighbor_broadcast", icon: Radio, label: `Broadcast SOS to Neighbors${eliteUnlocked ? "" : " (Elite)"}`, sub: "Send a coarse-location alert to opted-in neighbors when you trigger SOS", color: "#FF9500", value: neighborBroadcast, onChange: toggleNeighborBroadcast },
   ];
 
   const actions = [

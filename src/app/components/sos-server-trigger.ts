@@ -19,6 +19,7 @@
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
+import { publishNeighborAlert, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
@@ -186,6 +187,18 @@ export async function triggerServerSOS(opts: {
     tier,
     location: gps,
   });
+
+  // STEP 1b — Fire neighbor alert (Elite + opt-in only).
+  // Fire-and-forget: never awaited, never thrown — primary SOS path
+  // must not be slowed down by this secondary broadcast.
+  if (canBroadcastNeighbors() && gps) {
+    publishNeighborAlert({
+      requestId: opts.emergencyId,
+      displayName: opts.userName?.split(/\s+/)[0],
+      severity: "high",
+      location: { lat: gps.lat, lng: gps.lng },
+    }).catch(() => { /* silent */ });
+  }
 
   // STEP 2 — Start heartbeat IMMEDIATELY (don't wait for main fetch)
   // If main fetch fails, heartbeats still keep server informed
