@@ -77,9 +77,37 @@ class VoiceCallEngine {
   }
 
   private _eagerInit(): void {
-    this.setProvider("hybrid").catch((err) => {
+    // [PHASE 8] Auto-configure Hybrid with Supabase creds from Vite env.
+    // Without these the HybridProvider silently degrades to LocalWebRTC
+    // (demo mode) because Twilio edge-function calls throw on empty URL.
+    // Pulling from env at construction time keeps sos-emergency.tsx and
+    // admin-incoming-call.tsx oblivious to backend wiring.
+    const supabaseUrl = (typeof import.meta !== "undefined" &&
+      (import.meta as any).env?.VITE_SUPABASE_URL) || "";
+    const supabaseAnonKey = (typeof import.meta !== "undefined" &&
+      (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || "";
+
+    const config: ProviderConfig = (supabaseUrl && supabaseAnonKey)
+      ? { supabaseUrl, supabaseAnonKey }
+      : {};
+
+    this.setProvider("hybrid", config).catch((err) => {
       console.warn("[VoiceCallEngine] Eager init failed (non-fatal):", err);
     });
+  }
+
+  /**
+   * Refresh the Supabase access token used by Twilio edge-function calls.
+   * Call this after login/refresh so PSTN calls authenticate against the
+   * server with the signed-in user (used for tier enforcement).
+   */
+  async refreshAuthToken(accessToken: string | null | undefined): Promise<void> {
+    if (!accessToken) return;
+    const next: ProviderConfig = {
+      ...this.providerConfig,
+      supabaseAccessToken: accessToken,
+    };
+    await this.setProvider(this.providerType, next);
   }
 
   // ══════════════════════════════════════════════════════════
