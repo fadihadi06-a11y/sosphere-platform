@@ -50,6 +50,15 @@ const REPLAY_MAX_TRIES = 5;
 let replayInFlight = false;
 let replayListenerAttached = false;
 
+// Exponential backoff for per-record retries. Guards against four
+// triggers (online + visibility + auth + startup) firing within seconds
+// during a network flap and burning REPLAY_MAX_TRIES in a single boot.
+// Formula: min(2^attempts * 1000, 60000).
+const retryNotBeforeMs = new Map<string, number>();
+function nextBackoffMs(attempts: number): number {
+  return Math.min(Math.pow(2, attempts) * 1000, 60000);
+}
+
 // ── State ────────────────────────────────────────────────────
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let heartbeatInFlight = false;
@@ -759,14 +768,22 @@ export async function replayPendingSOS(): Promise<{
         summary.skippedExhausted++;
         continue;
       }
+      // Exponential backoff — skip if this record was retried too
+      // recently during a network flap.
+      const notBefore = retryNotBeforeMs.get(rec.id);
+      if (notBefore !== undefined && now < notBefore) {
+        continue;
+      }
 
       summary.replayed++;
       const ok = await replayOneSOS(rec).catch(() => false);
       if (ok) {
         summary.succeeded++;
+        retryNotBeforeMs.delete(rec.id);
         await markSOSSynced(rec.id).catch(() => {});
       } else {
         summary.failed++;
+        retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
         await incrementSOSRetry(rec.id, "replay_failed").catch(() => {});
       }
     }
