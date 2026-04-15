@@ -451,23 +451,25 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     return unsub;
   }, []);
 
-  // Merge: real entries (Supabase + local) shown first; mock only fills gaps when no real data
+  // Real entries only. Mock data is shown ONLY as an empty-state demo
+  // when there's nothing real yet — never interleaved with real events,
+  // because that would let a fabricated row pass a compliance audit.
+  // (P3-#11: replaced gap-filling merge with strict real-only view.)
+  const DEV_DEMO_AUDIT = (import.meta as any).env?.DEV === true;
   const allEntries = useMemo(() => {
     if (realEntries.length > 0) {
-      // Have real data — only show mock for categories with zero real entries
-      const realCats = new Set(realEntries.map(r => r.category));
-      const mockGap = MOCK_AUDIT.filter(m => !realCats.has(m.category)).slice(0, 5);
-      const realIds = new Set(realEntries.map(r => r.id));
-      const mockFiltered = mockGap.filter(m => !realIds.has(m.id));
-      return [...realEntries, ...mockFiltered].sort((a, b) =>
+      return [...realEntries].sort((a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
     }
-    // No real data yet — show mock as demo
-    return [...MOCK_AUDIT].sort((a, b) =>
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  }, [realEntries]);
+    if (DEV_DEMO_AUDIT) {
+      // Dev-only empty-state demo. Production builds show an empty state.
+      return [...MOCK_AUDIT].sort((a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+    }
+    return [];
+  }, [realEntries, DEV_DEMO_AUDIT]);
 
   const filtered = useMemo(() => {
     return allEntries.filter(entry => {
