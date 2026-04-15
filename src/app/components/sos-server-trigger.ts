@@ -28,6 +28,7 @@ import {
   incrementSOSRetry,
   type SOSRecord,
 } from "./offline-database";
+import { parseRateLimit, waitForRetry, logRateLimit } from "./rate-limit-client";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
@@ -161,13 +162,36 @@ async function fetchSOS(
     : null;
 
   try {
-    return await fetch(url, {
+    const doFetch = () => fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       keepalive: true,
       signal: controller.signal,
     });
+
+    let res = await doFetch();
+
+    // 429 defence-in-depth. The server puts SOS endpoints on the
+    // priority lane (never rejected), so in theory we never hit this
+    // branch for `trigger` / `heartbeat` / `escalate` / `end`. We
+    // keep the branch anyway because:
+    //   • the priority lane is a server invariant, not a client one
+    //     — if it ever breaks silently, we want the retry to mask
+    //     single hiccups instead of dropping an emergency.
+    //   • non-SOS callers of fetchSOS (none today, but the helper is
+    //     shared-shaped) would inherit the correct behaviour.
+    // One retry only; looping on a 429 would defeat the rate limit.
+    if (res.status === 429) {
+      const info = parseRateLimit(res);
+      logRateLimit(`sos-alert?action=${action ?? "root"}`, info);
+      // Read+discard body so the connection can be reused.
+      try { await res.clone().text(); } catch {}
+      const ok = await waitForRetry(info);
+      if (ok) res = await doFetch();
+    }
+
+    return res;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
