@@ -23,6 +23,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,62 @@ function getBaseUrl(req: Request): string {
   const envUrl = Deno.env.get("SUPABASE_URL");
   if (envUrl) return envUrl;
   return new URL(req.url).origin;
+}
+
+// ─────────────────────────────────────────────────────────────
+// AI Script loader — pulls Elite-personalised <Say> payload.
+// Returns null if:
+//   • The row has no ai_script (Basic/Free user, or Elite without config)
+//   • The session id is unknown
+//   • Supabase creds are missing in env (local/dev)
+//   • Any runtime error — bridge must never break on DB flakiness.
+// The sos-alert function has already validated shape + tier gate,
+// so we trust the DB row but we still cap length + escape at render.
+// ─────────────────────────────────────────────────────────────
+interface StoredAiScript {
+  text: string;
+  language: "en-US" | "ar-SA";
+  voice: string;
+}
+
+const AI_VOICE_ALLOWLIST = new Set([
+  "Polly.Joanna", "Polly.Matthew", "Polly.Amy", "Polly.Zeina",
+]);
+const AI_LANG_ALLOWLIST = new Set(["en-US", "ar-SA"]);
+
+async function loadAiScript(emergencyId: string): Promise<StoredAiScript | null> {
+  try {
+    const url = Deno.env.get("SUPABASE_URL");
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !key || !emergencyId || emergencyId === "UNKNOWN") return null;
+    const supabase = createClient(url, key);
+    const { data, error } = await supabase
+      .from("sos_sessions")
+      .select("ai_script")
+      .eq("id", emergencyId)
+      .maybeSingle();
+    if (error || !data?.ai_script) return null;
+    const s = data.ai_script as Record<string, unknown>;
+    const text = typeof s.text === "string" ? s.text.trim().slice(0, 600) : "";
+    const language = typeof s.language === "string" ? s.language : "";
+    const voice = typeof s.voice === "string" ? s.voice : "";
+    if (!text || !AI_LANG_ALLOWLIST.has(language) || !AI_VOICE_ALLOWLIST.has(voice)) {
+      return null;
+    }
+    return { text, language: language as "en-US" | "ar-SA", voice };
+  } catch (err) {
+    console.warn("[sos-bridge] loadAiScript failed:", err);
+    return null;
+  }
+}
+
+// Build a <Say> tag — honours optional Elite override, falls back to
+// the built-in Joanna English default.
+function sayTag(defaultText: string, ai: StoredAiScript | null): string {
+  if (ai) {
+    return `<Say voice="${escapeXml(ai.voice)}" language="${escapeXml(ai.language)}">${escapeXml(ai.text)}</Say>`;
+  }
+  return `<Say voice="Polly.Joanna">${escapeXml(defaultText)}</Say>`;
 }
 
 // Build conference TwiML block (shared between join-user and accept actions)
@@ -78,11 +135,17 @@ serve(async (req: Request) => {
   const trackUrl    = decodeURIComponent(url.searchParams.get("trackUrl") || "");
   const action      = url.searchParams.get("action") || "announce";
 
+  // Load the Elite <Say> override once per request — null for
+  // non-Elite and non-customised emergencies.
+  const ai = await loadAiScript(emergencyId);
+
   // ═════════════════════════════════════════════════════════
   // ACTION: join-user — SOS user dialed by server, joins conference
   // ═════════════════════════════════════════════════════════
   if (action === "join-user") {
     const confName = `sos-${emergencyId}`;
+    // Note: the user-facing leg is always the default English reassurance
+    // (Elite script targets the CONTACT's ear, not the user's own leg).
     const twiml = buildConferenceTwiml(confName, emergencyId, baseUrl)
       .replace(
         `<Say voice="Polly.Joanna">Connecting now. The call is being recorded for safety.</Say>`,
@@ -145,16 +208,27 @@ serve(async (req: Request) => {
 
   // ═════════════════════════════════════════════════════════
   // DEFAULT: announce — initial TwiML for contact on inbound call
+  //
+  // Elite personalisation splices here: the first two <Say> tags
+  // carry the user's configured message (already interpolated +
+  // validated server-side). The Gather prompt and fallback lines
+  // stay in the default voice — they are mechanical controls, not
+  // personal content, so we don't confuse the listener by
+  // switching languages mid-call.
   // ═════════════════════════════════════════════════════════
   const gatherUrl = `${baseUrl}/functions/v1/sos-bridge-twiml?action=accept&emergencyId=${encodeURIComponent(emergencyId)}&userPhone=${encodeURIComponent(userPhone)}&caller=${encodeURIComponent(caller)}`;
 
-  const announcement = `Emergency Alert from SOSphere. ${escapeXml(caller)} has triggered an SOS emergency and needs immediate help. Emergency I D: ${escapeXml(emergencyId)}.`;
+  const defaultAnnouncement =
+    `Emergency Alert from SOSphere. ${caller} has triggered an SOS emergency and needs immediate help. Emergency I D: ${emergencyId}.`;
+
+  // Elite users get their own script; everyone else gets the default.
+  const announceTag = sayTag(defaultAnnouncement, ai);
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">${announcement}</Say>
+  ${announceTag}
   <Pause length="1"/>
-  <Say voice="Polly.Joanna">${announcement}</Say>
+  ${announceTag}
   <Gather numDigits="1" action="${escapeXml(gatherUrl)}" method="POST" timeout="15">
     <Say voice="Polly.Joanna">Press 1 to connect with ${escapeXml(caller)} now. Press 2 to hear this message again.</Say>
   </Gather>
