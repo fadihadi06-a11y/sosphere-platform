@@ -20,6 +20,7 @@ import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
 import { publishNeighborAlert, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
+import { buildAiScriptPayload } from "./ai-voice-call-service";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
@@ -205,6 +206,16 @@ export async function triggerServerSOS(opts: {
   startHeartbeat(opts.emergencyId, opts.userId);
 
   try {
+    // Build AI voice script payload (Elite only — returns null otherwise,
+    // in which case the server's default TwiML <Say> script is used).
+    const aiScript = buildAiScriptPayload({
+      name: opts.userName,
+      location: gps
+        ? `${gps.address || "GPS"} (${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)})`
+        : undefined,
+      time: new Date(),
+    });
+
     const res = await fetchSOS(null, {
       emergencyId: opts.emergencyId,
       userId: opts.userId,
@@ -216,6 +227,7 @@ export async function triggerServerSOS(opts: {
       bloodType: opts.bloodType,
       zone: opts.zone,
       silent: opts.silent,
+      ...(aiScript ? { aiScript } : {}),
     }, { timeoutMs: 20000 });
 
     if (!res.ok) {
