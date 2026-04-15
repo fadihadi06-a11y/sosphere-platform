@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -33,6 +37,30 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Rate limit (auth tier — email blast is abuse-prone) ──
+    // Invitations go to arbitrary addresses, so a compromised account
+    // could blast onboarding spam to a list of targets. Auth tier
+    // (10/min) means at most 500 emails per minute (batch × requests)
+    // from a single user — within legitimate HR onboarding range but
+    // far below spam territory.
+    const rl = checkRateLimit(user.id, "auth", false);
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "Rate limit exceeded",
+          retryAfterSeconds: Math.ceil(rl.retryAfterMs / 1000),
+        }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            ...getRateLimitHeaders(rl),
+            "Content-Type": "application/json",
+          },
+        },
+      );
     }
 
     // ── Validate RESEND_API_KEY ──
@@ -120,7 +148,7 @@ serve(async (req) => {
       total: batch.length,
       errors: results.errors,
     }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
     });
 
   } catch (error) {

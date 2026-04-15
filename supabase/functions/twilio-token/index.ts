@@ -13,6 +13,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
 
 // CORS headers for browser requests
 const corsHeaders = {
@@ -20,6 +25,29 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const SUPA_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPA_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+// JWT gate — without this, anyone with the anon key could mint a
+// 1-hour Twilio voice token and burn through the account's voice
+// minutes. The token itself is identity-bound (Twilio signs with
+// our secret), but identity is client-supplied, so the only
+// defense against abuse is requiring a real user session here.
+async function authenticate(req: Request): Promise<string | null> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  if (!SUPA_URL || !SUPA_KEY) return null;
+  const jwt = authHeader.replace("Bearer ", "");
+  try {
+    const supabase = createClient(SUPA_URL, SUPA_KEY);
+    const { data: { user }, error } = await supabase.auth.getUser(jwt);
+    if (error || !user) return null;
+    return user.id;
+  } catch {
+    return null;
+  }
+}
 
 // Twilio JWT generation (manual — no npm dependency needed)
 function base64url(data: Uint8Array): string {
@@ -93,6 +121,38 @@ serve(async (req) => {
   }
 
   try {
+    // ── Auth gate (SECURITY-CRITICAL) ────────────────────────
+    const userId = await authenticate(req);
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized", detail: "Valid Bearer token required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Rate limit (auth tier — token minting is costly by proxy) ──
+    // We use the auth tier (10/min) rather than api (60/min) because
+    // a legitimate client refreshes the token ~once per hour. Anyone
+    // hitting this endpoint more than a few times a minute is trying
+    // to brute-force identities.
+    const rl = checkRateLimit(userId, "auth", false);
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "Rate limit exceeded",
+          retryAfterSeconds: Math.ceil(rl.retryAfterMs / 1000),
+        }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            ...getRateLimitHeaders(rl),
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
     const { identity } = await req.json();
 
     if (!identity) {
@@ -132,11 +192,14 @@ serve(async (req) => {
       3600, // 1 hour
     );
 
-    console.log(`[twilio-token] Token generated for identity: ${identity}`);
+    console.log(`[twilio-token] Token generated for identity: ${identity} (user=${userId})`);
 
     return new Response(
       JSON.stringify({ token, expiresAt, identity }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 200,
+        headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
+      },
     );
   } catch (err) {
     console.error("[twilio-token] Error:", err);

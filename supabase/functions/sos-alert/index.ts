@@ -26,6 +26,13 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  markSosPriority,
+  clearSosPriority,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
+import { clientIp } from "../_shared/api-guard.ts";
 
 const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -221,6 +228,14 @@ serve(async (req: Request) => {
   const action = url.searchParams.get("action") || "trigger";
   const supabase = createClient(SUPA_URL, SUPA_KEY);
 
+  // ─── Rate-limit key resolution ─────────────────────────────
+  // Prefer userId from JWT for authenticated actions; fall back to
+  // client IP so unauthenticated hot paths (prewarm via sendBeacon)
+  // are still bucketed. Every action on this endpoint is treated as
+  // SOS-priority — the limiter records the hit for observability but
+  // NEVER blocks, because a blocked SOS trigger is a life-safety bug.
+  const ip = clientIp(req);
+
   try {
     // ═════════════════════════════════════════════════════════
     // ACTION: PREWARM — fire-and-forget survival beacon
@@ -232,6 +247,12 @@ serve(async (req: Request) => {
       if (!pw.emergencyId || !pw.userId) {
         return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: cors });
       }
+
+      // SOS priority lane: record + observe, never block. The limiter
+      // returns allowed:true unconditionally for isSosRequest=true —
+      // we still want the headers so operators can see burst load.
+      const rl = checkRateLimit(pw.userId || `ip:${ip}`, "sos", true);
+      markSosPriority(pw.userId);
 
       // Idempotent upsert: if prewarm or trigger already created the row, no-op
       await supabase.from("sos_sessions").upsert({
@@ -251,7 +272,7 @@ serve(async (req: Request) => {
 
       console.log(`[sos-alert] PREWARM received: ${pw.emergencyId} user=${pw.userId} tier=${pw.tier}`);
       return new Response(JSON.stringify({ ok: true, prewarmed: true }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: { ...cors, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
       });
     }
 
@@ -260,6 +281,12 @@ serve(async (req: Request) => {
     // ═════════════════════════════════════════════════════════
     if (action === "heartbeat") {
       const hb = await req.json();
+
+      // SOS priority lane — heartbeats during an active emergency
+      // are life-critical and never blocked. Keep the user marked so
+      // concurrent audio-upload replays inherit the priority.
+      const hbRl = checkRateLimit(hb.userId || `ip:${ip}`, "sos", true);
+      if (hb.userId) markSosPriority(hb.userId);
 
       await supabase.from("sos_sessions").update({
         last_heartbeat: new Date().toISOString(),
@@ -289,7 +316,7 @@ serve(async (req: Request) => {
       }
 
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: { ...cors, ...getRateLimitHeaders(hbRl), "Content-Type": "application/json" },
       });
     }
 
@@ -301,6 +328,11 @@ serve(async (req: Request) => {
     if (action === "escalate") {
       const { emergencyId, stage, reason, forceBridge } = await req.json();
       const idemKey = req.headers.get("Idempotency-Key") || `escalate:${emergencyId}:${stage}`;
+
+      // SOS priority — escalation is always allowed. Key by
+      // emergencyId since escalate may be triggered by a watchdog
+      // that does not carry a userId.
+      const escRl = checkRateLimit(`eid:${emergencyId}`, "sos", true);
 
       // Fetch session to get contacts + user info
       const { data: session } = await supabase
@@ -351,7 +383,7 @@ serve(async (req: Request) => {
 
       console.log(`[sos-alert] ESCALATE stage=${stage} reason=${reason} emergencyId=${emergencyId}`);
       return new Response(JSON.stringify({ ok: true, stage, forceBridge: !!forceBridge }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: { ...cors, ...getRateLimitHeaders(escRl), "Content-Type": "application/json" },
       });
     }
 
@@ -362,20 +394,29 @@ serve(async (req: Request) => {
       const { emergencyId, reason, recordingSec, photos, comment } = await req.json();
       const idemKey = req.headers.get("Idempotency-Key") || `end:${emergencyId}`;
 
+      // SOS priority — end is part of the emergency flow and must
+      // never be blocked. It's also our signal to CLEAR the user's
+      // SOS priority boost so non-emergency traffic goes back to
+      // normal limits. We fetch user_id from the row (payload may
+      // omit it) and clear priority after the status update.
+      const endRl = checkRateLimit(`eid:${emergencyId}`, "sos", true);
+
       // P2-#8: If this session is already ended, short-circuit. A user
       // mashing "End SOS", a network retry, or the offline replay worker
       // all land here; we must NOT re-broadcast sos_ended (which would
       // dismiss responders twice and muddy audit logs).
       const { data: current } = await supabase
         .from("sos_sessions")
-        .select("status, ended_at")
+        .select("status, ended_at, user_id")
         .eq("id", emergencyId)
         .maybeSingle();
 
       if (current?.status === "ended" && current?.ended_at) {
         console.log(`[sos-alert] END idempotent hit — ${emergencyId} already ended (key=${idemKey})`);
+        // Still safe to clear priority — idempotent.
+        if (current.user_id) clearSosPriority(current.user_id);
         return new Response(JSON.stringify({ ok: true, cached: true }), {
-          headers: { ...cors, "Content-Type": "application/json" },
+          headers: { ...cors, ...getRateLimitHeaders(endRl), "Content-Type": "application/json" },
         });
       }
 
@@ -388,6 +429,10 @@ serve(async (req: Request) => {
         comment: comment || null,
       }).eq("id", emergencyId);
 
+      // Emergency ended — drop the user's SOS priority boost so any
+      // non-emergency requests that follow go through normal limits.
+      if (current?.user_id) clearSosPriority(current.user_id);
+
       try {
         const ch = supabase.channel(`sos-${emergencyId}`);
         await ch.send({
@@ -399,7 +444,7 @@ serve(async (req: Request) => {
       } catch {}
 
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: { ...cors, ...getRateLimitHeaders(endRl), "Content-Type": "application/json" },
       });
     }
 
@@ -416,6 +461,14 @@ serve(async (req: Request) => {
       });
     }
     const authUserId = auth.userId;
+
+    // ── SOS priority lane: record + mark, NEVER block. ──
+    // The rate limiter treats isSosRequest=true as unconditional
+    // allow. We still want the headers (for observability) and the
+    // priority mark (so follow-up heartbeat/escalate/audio-upload
+    // requests inherit the high-priority multiplier).
+    const triggerRl = checkRateLimit(authUserId, "sos", true);
+    markSosPriority(authUserId);
 
     const payload: SOSPayload = await req.json();
     const { emergencyId, userName, userPhone, contacts, location, bloodType, zone, silent } = payload;
@@ -470,7 +523,7 @@ serve(async (req: Request) => {
         results: existing.server_results,
         trackUrl,
         dashUrl,
-      }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }), { headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" } });
     }
 
     // ── Upsert session (prewarm may have already created a partial row) ──
@@ -639,7 +692,7 @@ serve(async (req: Request) => {
       dashUrl,
     }), {
       status: 200,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("[sos-alert] Unhandled error:", err);

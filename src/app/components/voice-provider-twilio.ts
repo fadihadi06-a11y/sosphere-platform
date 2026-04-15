@@ -27,6 +27,12 @@ import type {
   TwilioTokenResponse,
   TwilioCallResponse,
 } from "./voice-call-types";
+import {
+  parseRateLimit,
+  waitForRetry,
+  logRateLimit,
+  RateLimitExceededError,
+} from "./rate-limit-client";
 
 // ─────────────────────────────────────────────────────────────
 // Helper: Call Supabase Edge Function
@@ -53,11 +59,30 @@ async function callEdgeFunction<TReq, TRes>(
     headers["Authorization"] = `Bearer ${supabaseAccessToken}`;
   }
 
-  const response = await fetch(url, {
+  const doFetch = () => fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   });
+
+  let response = await doFetch();
+
+  // Rate-limit handling. `twilio-sms` and `twilio-call` put actual
+  // SOS flows on the priority lane server-side, but `twilio-token`
+  // (auth tier, 10/min) and non-emergency broadcasts can legitimately
+  // receive a 429. Wait out the server-issued `Retry-After` and try
+  // once more; if still 429, surface as a typed error so callers can
+  // decide between failing the call UI and scheduling a later retry.
+  if (response.status === 429) {
+    const info = parseRateLimit(response);
+    logRateLimit(functionName, info);
+    try { await response.clone().text(); } catch {}
+    const waited = await waitForRetry(info);
+    if (waited) response = await doFetch();
+    if (response.status === 429) {
+      throw new RateLimitExceededError(functionName, parseRateLimit(response));
+    }
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");

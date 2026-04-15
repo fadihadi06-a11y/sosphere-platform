@@ -1,17 +1,30 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — Twilio PSTN Call (Edge Function)
+// SOSphere — Twilio PSTN Call (Edge Function) — HARDENED
+// ─────────────────────────────────────────────────────────────
 // Calls admin's REAL phone number when browser call unanswered.
+// Level 3 of the escalation chain. Cost: ~$0.013/min — a 3-min
+// call is ~$0.04. An unprotected endpoint is a direct path to
+// uncapped Twilio bill when an attacker has the anon key.
 //
-// This is Level 3 of the escalation chain.
-// Cost: ~$0.013/min (US) — a 3-min SOS call costs ~$0.04
+// Hardening (parity with twilio-sms):
+//   • JWT gate — anon key alone is no longer sufficient.
+//   • Rate limit (api tier, SOS priority lane on emergency calls).
+//   • X-RateLimit-* headers on every response.
 //
 // Required Supabase Secrets:
 //   TWILIO_ACCOUNT_SID
 //   TWILIO_AUTH_TOKEN
-//   SOSPHERE_BASE_URL  (e.g. https://sosphere-platform.vercel.app)
+//   SOSPHERE_BASE_URL
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  markSosPriority,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,12 +32,39 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const SUPA_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPA_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+async function authenticate(req: Request): Promise<string | null> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  if (!SUPA_URL || !SUPA_KEY) return null;
+  const jwt = authHeader.replace("Bearer ", "");
+  try {
+    const supabase = createClient(SUPA_URL, SUPA_KEY);
+    const { data: { user }, error } = await supabase.auth.getUser(jwt);
+    if (error || !user) return null;
+    return user.id;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    // ── Auth gate (SECURITY-CRITICAL) ────────────────────────
+    const userId = await authenticate(req);
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized", detail: "Valid Bearer token required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const {
       to,           // Admin's phone: "+966XXXXXXXXX"
       from,         // Twilio number: "+1XXXXXXXXXX"
@@ -40,6 +80,15 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // ── Rate limit ──────────────────────────────────────────
+    // Every twilio-call invocation carries a callId (the emergencyId)
+    // so it is by definition part of an active emergency. Mark the
+    // user as SOS priority and check with isSosRequest=true — the
+    // call is never blocked by the limiter, we just emit the headers
+    // and keep the counter accurate for observability.
+    markSosPriority(userId);
+    const rl = checkRateLimit(userId, "api", true);
 
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
@@ -101,11 +150,14 @@ serve(async (req) => {
       console.error("[twilio-call] Twilio API error:", result);
       return new Response(
         JSON.stringify({ error: "Twilio call failed", detail: result.message || result }),
-        { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: response.status,
+          headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
+        },
       );
     }
 
-    console.log(`[twilio-call] Call initiated: ${result.sid} → ${to} (callId: ${callId})`);
+    console.log(`[twilio-call] Call initiated: ${result.sid} → ${to} (callId: ${callId}, user=${userId})`);
 
     return new Response(
       JSON.stringify({
@@ -115,7 +167,10 @@ serve(async (req) => {
         from: result.from,
         callId,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 200,
+        headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
+      },
     );
   } catch (err) {
     console.error("[twilio-call] Error:", err);
