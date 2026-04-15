@@ -108,6 +108,51 @@ export function getAudioPublicUrl(emergencyId: string): string | null {
 }
 
 /**
+ * Persist the in-progress recording to IndexedDB so a mid-recording
+ * force-close (user kills the app, Android low-memory kill, battery
+ * death) doesn't lose evidence. Callers should invoke this periodically
+ * (e.g. every 2-3s) while MediaRecorder is collecting chunks.
+ *
+ * Writes `AUD-{emergencyId}` with upsert semantics — a later call for
+ * the same emergency overwrites the earlier partial. On successful
+ * live upload the caller should invoke purgePartialAudio() to drop the
+ * record so replay doesn't overwrite the final Storage object with a
+ * stale partial blob.
+ *
+ * Non-throwing: any IDB error is swallowed so the SOS flow isn't
+ * slowed down by a storage hiccup.
+ */
+export async function persistPartialAudio(
+  emergencyId: string,
+  chunks: Blob[],
+  mimeType: string,
+  durationSec: number,
+): Promise<void> {
+  if (!emergencyId || chunks.length === 0) return;
+  try {
+    const blob = new Blob(chunks, { type: mimeType });
+    if (blob.size === 0) return;
+    await queuePendingAudio({ emergencyId, blob, mimeType, durationSec });
+  } catch (err) {
+    // Never fatal to the recording flow.
+    console.warn("[SOS-Audio] partial persist failed:", err);
+  }
+}
+
+/**
+ * Called after a successful live upload to remove the partial record
+ * so the replay watcher doesn't re-upload it and clobber the final
+ * Storage object with a shorter/older blob.
+ */
+export async function purgePartialAudio(emergencyId: string): Promise<void> {
+  try {
+    await deletePendingAudio(`AUD-${emergencyId}`);
+  } catch {
+    // If the record doesn't exist we're already in the desired state.
+  }
+}
+
+/**
  * Drain the pending_audio queue. Called on `online` events and once
  * at app startup via startAudioReplayWatcher().
  *
