@@ -36,7 +36,10 @@ const BASE_URL      = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co"
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // P2-#8: allow Idempotency-Key through CORS preflight so browsers
+  // don't strip it. Header is case-insensitive on the wire but listed
+  // lowercase here per RFC 7230 recommendations for preflight matching.
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -297,6 +300,7 @@ serve(async (req: Request) => {
     // ═════════════════════════════════════════════════════════
     if (action === "escalate") {
       const { emergencyId, stage, reason, forceBridge } = await req.json();
+      const idemKey = req.headers.get("Idempotency-Key") || `escalate:${emergencyId}:${stage}`;
 
       // Fetch session to get contacts + user info
       const { data: session } = await supabase
@@ -309,6 +313,21 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "Session not found" }), {
           status: 404, headers: cors,
         });
+      }
+
+      // P2-#8: A client-side timeout on the previous escalate call can
+      // cause the watchdog to retry with the same stage. If we've already
+      // recorded this stage (or a later one), the escalation has
+      // happened — returning cached success avoids a duplicate SMS burst
+      // and prevents two forced bridge calls racing for the conference.
+      if (typeof session.escalation_stage === "number" && session.escalation_stage >= stage) {
+        console.log(
+          `[sos-alert] ESCALATE idempotent hit — stage ${stage} already ran (current=${session.escalation_stage}, key=${idemKey})`
+        );
+        return new Response(
+          JSON.stringify({ ok: true, cached: true, stage: session.escalation_stage }),
+          { headers: { ...cors, "Content-Type": "application/json" } }
+        );
       }
 
       // Log escalation event
@@ -341,6 +360,24 @@ serve(async (req: Request) => {
     // ═════════════════════════════════════════════════════════
     if (action === "end") {
       const { emergencyId, reason, recordingSec, photos, comment } = await req.json();
+      const idemKey = req.headers.get("Idempotency-Key") || `end:${emergencyId}`;
+
+      // P2-#8: If this session is already ended, short-circuit. A user
+      // mashing "End SOS", a network retry, or the offline replay worker
+      // all land here; we must NOT re-broadcast sos_ended (which would
+      // dismiss responders twice and muddy audit logs).
+      const { data: current } = await supabase
+        .from("sos_sessions")
+        .select("status, ended_at")
+        .eq("id", emergencyId)
+        .maybeSingle();
+
+      if (current?.status === "ended" && current?.ended_at) {
+        console.log(`[sos-alert] END idempotent hit — ${emergencyId} already ended (key=${idemKey})`);
+        return new Response(JSON.stringify({ ok: true, cached: true }), {
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
 
       await supabase.from("sos_sessions").update({
         status: "ended",
