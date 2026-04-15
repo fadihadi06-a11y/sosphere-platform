@@ -30,6 +30,8 @@ import { hapticSuccess, playUISound } from "./haptic-feedback";
 import { getAdminRating, getIREHistory, type AdminRating } from "./ire-performance-store";
 import { MultiplayerDrill } from "./multiplayer-drill";
 import { CertificationPanel } from "./certification-system";
+import { supabase } from "./api/supabase-client";
+import { getCompanyId } from "./shared-store";
 
 // ═══════════════════════════════════════════════════════════════
 // Scenario Definitions — ALL 18 Emergency Types
@@ -1239,8 +1241,65 @@ function scoreToTier(score: number): "PLATINUM" | "GOLD" | "SILVER" | "BRONZE" |
   return "ROOKIE";
 }
 
-// Build real leaderboard from localStorage (audit log + drill progress)
-export function getRealLeaderboard(): typeof FALLBACK_ADMINS {
+// ─── Leaderboard row shape ───────────────────────────────────
+// Exported so consumers can type their local state without having to
+// dereference `typeof FALLBACK_ADMINS[number]` (which is brittle once
+// anything in the fallback changes).
+export interface LeaderboardAdmin {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  avgScore: number;
+  totalIncidents: number;
+  streak: number;
+  tier: "PLATINUM" | "GOLD" | "SILVER" | "BRONZE" | "ROOKIE";
+  drillsCompleted: number;
+  avgResponseTime: number;
+  trend: "improving" | "stable" | "declining";
+}
+
+// ── Row-building helper ──────────────────────────────────────
+// Shared by both the sync localStorage path and the async Supabase
+// path so the score formula stays in a single place. Changing the
+// formula here updates both surfaces simultaneously.
+function buildAdminRow(args: {
+  name: string;
+  idx: number;
+  incidents: number;
+  responseTimes: number[];
+  drills: number;
+}): LeaderboardAdmin {
+  const avgRT = args.responseTimes.length > 0
+    ? Math.round(args.responseTimes.reduce((a, b) => a + b, 0) / args.responseTimes.length)
+    : 0;
+  // Score: incidents×2 + drills×5 − (avgRT > 120 ? 10 : 0), capped 0-100
+  const score = Math.min(
+    100,
+    Math.max(0, args.incidents * 2 + args.drills * 5 - (avgRT > 120 ? 10 : 0)),
+  );
+  const initials = args.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+  return {
+    id: String(args.idx + 1),
+    name: args.name,
+    role: args.idx === 0 ? "Main Admin" : `Zone Admin ${String.fromCharCode(65 + args.idx)}`,
+    avatar: initials || "??",
+    avgScore: score,
+    totalIncidents: args.incidents,
+    streak: args.drills > 5 ? 3 : args.drills > 2 ? 1 : 0,
+    tier: scoreToTier(score),
+    drillsCompleted: args.drills,
+    avgResponseTime: avgRT,
+    trend: "stable",
+  };
+}
+
+// Build real leaderboard from localStorage (audit log + drill progress).
+// This is the SYNC fallback used on first render before Supabase data
+// arrives. Once the server fetch completes (see fetchLeaderboardFromServer
+// below), the async result takes over and the page shows team-wide
+// stats rather than device-local ones.
+export function getRealLeaderboard(): LeaderboardAdmin[] {
   try {
     const auditRaw = localStorage.getItem("sosphere_audit_log");
     const drillRaw = localStorage.getItem("sosphere_drill_progress_global");
@@ -1252,7 +1311,7 @@ export function getRealLeaderboard(): typeof FALLBACK_ADMINS {
     // Group audit events by admin name
     const adminMap: Record<string, { incidents: number; responseTimes: number[] }> = {};
     for (const entry of auditLogs) {
-      const name = entry.adminName || entry.user || "Unknown";
+      const name = entry.adminName || entry.user || entry.actor?.name || "Unknown";
       if (!adminMap[name]) adminMap[name] = { incidents: 0, responseTimes: [] };
       if (entry.action?.includes("emergency") || entry.action?.includes("resolved")) {
         adminMap[name].incidents++;
@@ -1272,30 +1331,108 @@ export function getRealLeaderboard(): typeof FALLBACK_ADMINS {
     const allNames = Array.from(new Set([...Object.keys(adminMap), ...Object.keys(drillCounts)]));
     if (allNames.length === 0) return FALLBACK_ADMINS;
 
-    return allNames.map((name, idx) => {
-      const stats = adminMap[name] || { incidents: 0, responseTimes: [] };
-      const avgRT = stats.responseTimes.length > 0
-        ? Math.round(stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length)
-        : 0;
-      const drills = drillCounts[name] || 0;
-      // Score: incidents×2 + drills×5 − (avgRT > 120 ? 10 : 0), capped 0-100
-      const score = Math.min(100, Math.max(0, stats.incidents * 2 + drills * 5 - (avgRT > 120 ? 10 : 0)));
-      const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
-      return {
-        id: String(idx + 1),
+    return allNames.map((name, idx) =>
+      buildAdminRow({
         name,
-        role: idx === 0 ? "Main Admin" : `Zone Admin ${String.fromCharCode(65 + idx)}`,
-        avatar: initials || "??",
-        avgScore: score,
-        totalIncidents: stats.incidents,
-        streak: drills > 5 ? 3 : drills > 2 ? 1 : 0,
-        tier: scoreToTier(score),
-        drillsCompleted: drills,
-        avgResponseTime: avgRT,
-        trend: ("stable" as const),
-      };
-    });
+        idx,
+        incidents: adminMap[name]?.incidents ?? 0,
+        responseTimes: adminMap[name]?.responseTimes ?? [],
+        drills: drillCounts[name] || 0,
+      }),
+    );
   } catch { return FALLBACK_ADMINS; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Server-backed leaderboard (P3-#11h)
+// ─────────────────────────────────────────────────────────────
+// Pulls authoritative admin activity from Supabase so the leaderboard
+// reflects the entire team, not just what happened to be written on
+// this device. Source:
+//
+//   • audit_log   → incident counts (category='emergency') keyed by
+//                   actor_name. This is the canonical record of
+//                   every admin-initiated emergency action.
+//
+// Response-time dimension is intentionally omitted here because
+// audit_log has no response_time column and rrp_sessions does not
+// carry actor attribution (its employee_name is the SOS trigger, not
+// the responding admin). When an admin-actor column lands on
+// rrp_sessions in a future slice, this function gains a second
+// Promise.all leg and the score formula automatically picks up the
+// new response-time signal via buildAdminRow.
+//
+// Drill completion is still sourced from localStorage for now — there
+// is no server-side drill_progress table yet. When that ships, this
+// function becomes the single join point and the localStorage branch
+// can be removed.
+//
+// Returns `null` when there is no company context, no server data, or
+// on RLS / network failure. The caller is expected to fall back to the
+// sync `getRealLeaderboard()` in that case (which in turn falls back
+// to FALLBACK_ADMINS when no local data exists either).
+// ═══════════════════════════════════════════════════════════════
+export async function fetchLeaderboardFromServer(): Promise<LeaderboardAdmin[] | null> {
+  const companyId = getCompanyId();
+  if (!companyId) return null;
+
+  try {
+    const { data: auditRows, error: auditErr } = await supabase
+      .from("audit_log")
+      .select("actor_id, actor_name, action, category")
+      .eq("company_id", companyId)
+      .eq("category", "emergency");
+
+    if (auditErr) {
+      console.warn("[leaderboard] audit fetch:", auditErr.message);
+      return null;
+    }
+
+    // Aggregate per-admin incident counts keyed by actor_name. We key
+    // by name (not id) because drill counts and FALLBACK_ADMINS are
+    // also name-indexed — ids are not shared between the client-side
+    // admin roster and audit rows.
+    const adminMap: Record<string, { incidents: number; responseTimes: number[] }> = {};
+    for (const row of (auditRows ?? []) as any[]) {
+      const name: string = row.actor_name || row.actor_id || "System";
+      // Skip system-generated rows — they would dominate the board
+      // with non-human actors (auto-escalations, scheduled sweeps, …).
+      if (!name || name.toLowerCase().startsWith("system")) continue;
+      if (!adminMap[name]) adminMap[name] = { incidents: 0, responseTimes: [] };
+      if (typeof row.action === "string" && /emergency|resolved|escalat/i.test(row.action)) {
+        adminMap[name].incidents++;
+      }
+    }
+
+    // Drill counts — still device-local until a drill_progress table lands.
+    const drillCounts: Record<string, number> = {};
+    try {
+      const drillRaw = localStorage.getItem("sosphere_drill_progress_global");
+      const drillProgress: Record<string, any> = drillRaw ? JSON.parse(drillRaw) : {};
+      for (const [key, val] of Object.entries(drillProgress)) {
+        const adminName = (val as any).adminName || key.split(":")[0] || "Unknown";
+        if ((val as any).completed) {
+          drillCounts[adminName] = (drillCounts[adminName] || 0) + 1;
+        }
+      }
+    } catch {}
+
+    const names = Array.from(new Set([...Object.keys(adminMap), ...Object.keys(drillCounts)]));
+    if (names.length === 0) return null;
+
+    return names.map((name, idx) =>
+      buildAdminRow({
+        name,
+        idx,
+        incidents: adminMap[name]?.incidents ?? 0,
+        responseTimes: adminMap[name]?.responseTimes ?? [],
+        drills: drillCounts[name] || 0,
+      }),
+    );
+  } catch (err) {
+    console.warn("[leaderboard] server fetch exception:", err);
+    return null;
+  }
 }
 
 // Fallback static leaderboard (only used when no real data exists yet)
@@ -1328,8 +1465,24 @@ export function AdminLeaderboardContent({
   drillProgress?: Record<string, DrillProgress>;
   scenarios?: DrillScenario[];
 }) {
+  // Server-backed leaderboard (P3-#11h). On mount we try the Supabase
+  // aggregator; if it returns rows they take precedence over the sync
+  // localStorage build, so the podium reflects the whole team rather
+  // than just what this device happened to record. If the fetch fails
+  // or returns null (no company, empty data, RLS denial) we silently
+  // stay on the sync path — the UI never goes blank.
+  const [serverAdmins, setServerAdmins] = useState<LeaderboardAdmin[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchLeaderboardFromServer();
+      if (!cancelled && rows) setServerAdmins(rows);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Merge "You" into the real leaderboard (falls back to static if no data)
-  const allAdmins = [...getRealLeaderboard()];
+  const allAdmins: LeaderboardAdmin[] = [...(serverAdmins ?? getRealLeaderboard())];
   // Insert current admin ("You") based on their actual rating
   if (adminRating) {
     const yourEntry = {
