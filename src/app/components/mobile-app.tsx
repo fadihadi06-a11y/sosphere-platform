@@ -34,6 +34,7 @@ import {
   PrivacyScreen,
   ConnectedDevicesScreen,
   HelpScreen,
+  EliteFeaturesScreen,
 } from "./settings-screens";
 import type { IncidentRecord } from "./sos-emergency";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
@@ -207,6 +208,7 @@ type Screen =
   | "privacy"
   | "connected-devices"
   | "help"
+  | "elite-features"
   | "mission-tracker"
   | "safe-walk";
 
@@ -1255,6 +1257,7 @@ export function MobileApp() {
                 onNavigateToPrivacy={(() => navigate("privacy"))}
                 onNavigateToDevices={(() => navigate("connected-devices"))}
                 onNavigateToHelp={(() => navigate("help"))}
+                onNavigateToEliteFeatures={(() => navigate("elite-features"))}
                 onNavigateToSafeWalk={(() => {
                   if (!hasFeature("walkMe")) {
                     toast(lang === "ar"
@@ -1483,6 +1486,10 @@ export function MobileApp() {
 
             {screen === "help" && (
               <HelpScreen onBack={() => navigate(sourceScreen, -1)} />
+            )}
+
+            {screen === "elite-features" && (
+              <EliteFeaturesScreen onBack={() => navigate(sourceScreen, -1)} />
             )}
 
             {screen === "mission-tracker" && (
