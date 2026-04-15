@@ -30,6 +30,10 @@ import {
   ChainOfCustody, EvidenceComments, EvidenceQuickActions,
 } from "./evidence-pipeline-panel";
 import { getTimelineEntries, getTimelineForReport, type TimelineEntry } from "./smart-timeline-tracker";
+import {
+  fetchInvestigations,
+  upsertInvestigationBatch,
+} from "./investigations-service";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -626,20 +630,69 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string | null>(initialSourceFilter || null);
 
-  // ── Persist ALL user investigations to localStorage ──
+  // P3-#11c: once-only server boot guard (see risk-register pattern).
+  // Gates the Supabase write effect until we've reconciled with the
+  // server so we don't trample server state with a stale client copy.
+  const [serverBootComplete, setServerBootComplete] = useState(false);
+
+  // Reconcile with Supabase on mount. Server wins if it has rows; if
+  // it's empty and we only have unmodified mocks we don't push, because
+  // MOCK_INVESTIGATIONS are demo content, not user data. Real manual
+  // investigations the user created locally DO get pushed up, so work
+  // done offline is preserved.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const server = await fetchInvestigations();
+      if (cancelled) return;
+      if (server.length > 0) {
+        setInvestigations((prev) => {
+          // Keep any locally-created investigations that the server
+          // hasn't seen yet (e.g. created offline), merged with the
+          // server truth. Server rows win on id collision.
+          const serverIds = new Set(server.map((s) => s.id));
+          const localOnly = prev.filter(
+            (p) =>
+              !serverIds.has(p.id) &&
+              !MOCK_INVESTIGATIONS.some((m) => m.id === p.id),
+          );
+          return [...server, ...localOnly];
+        });
+      } else {
+        // Server empty — push any locally-created (non-mock) investigations.
+        setInvestigations((prev) => {
+          const userCreated = prev.filter(
+            (p) => !MOCK_INVESTIGATIONS.some((m) => m.id === p.id),
+          );
+          if (userCreated.length > 0) void upsertInvestigationBatch(userCreated);
+          return prev;
+        });
+      }
+      setServerBootComplete(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Persist ALL user investigations to localStorage + Supabase ──
   // Saves real + manually-created investigations; excludes unmodified mock ones
   useEffect(() => {
     const realOrModified = investigations.filter(inv => {
       const mock = MOCK_INVESTIGATIONS.find(m => m.id === inv.id);
       // Keep if: not a mock, OR mock was modified (status/findings changed)
-      return !mock || mock.status !== inv.status || mock.findings !== inv.findings;
+      return !mock || mock.status !== inv.status;
     });
     if (realOrModified.length > 0) {
       try {
         localStorage.setItem("sosphere_investigations", JSON.stringify(realOrModified));
       } catch { /* storage full */ }
+      if (serverBootComplete) {
+        void upsertInvestigationBatch(realOrModified);
+      }
     }
-  }, [investigations]);
+  }, [investigations, serverBootComplete]);
 
   // ── Listen for new emergencies that need investigation ──
   useEffect(() => {
