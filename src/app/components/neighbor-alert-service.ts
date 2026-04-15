@@ -232,6 +232,27 @@ export interface NeighborListenerHandle {
   cells: string[];
 }
 
+// ─────────────────────────────────────────────────────────────
+// P2-#7: GPS drift re-subscription
+// ─────────────────────────────────────────────────────────────
+// Before: cells were snapshotted once at mount and frozen for the
+// lifetime of the listener. A user walking or driving would quickly
+// exit their initial 9-cell window and go silent — no nearby SOS
+// alerts would reach them even while they remained a plausible
+// responder. The stationary assumption is wrong for a field app.
+//
+// Now: a lightweight poll checks GPS every RECHECK_INTERVAL_MS. If
+// the 9-cell set has changed, we diff: tear down channels we no
+// longer need, subscribe to channels we didn't have before. Channels
+// still in the overlap are left alone — no reconnect churn.
+//
+// Why polling, not GPS event subscription: the tracker doesn't
+// currently expose a pub/sub hook, and adding one is a cross-cutting
+// change. 30s polling is cheap (one getLastKnownPosition read) and
+// sufficient — you can't change a 5km cell faster than about 9
+// minutes at walking pace, so 30s is ~20× safety margin.
+const RECHECK_INTERVAL_MS = 30_000;
+
 /**
  * Subscribe to neighbor alerts for the current GPS cell and its neighbors.
  * Returns a handle; call `stop()` to unsubscribe. Safe to call multiple
@@ -244,6 +265,10 @@ export interface NeighborListenerHandle {
  * their SOS. Responders should dismiss any alert card matching the
  * requestId — stops stale "someone needs help" sheets from hanging
  * around after the situation is resolved.
+ *
+ * P2-#7: The listener auto-resubscribes when the user moves into a
+ * new geohash cell window. The returned handle's `cells` property
+ * reflects the INITIAL snapshot only; use the network for ground truth.
  */
 export function startNeighborListener(
   onAlert: (alert: IncomingNeighborAlert) => void,
@@ -257,13 +282,18 @@ export function startNeighborListener(
   const pos = getLastKnownPosition();
   // If we have no location we still listen on a broad fallback so that
   // BroadcastChannel-based tests work even without GPS.
-  const cells = pos
+  const initialCells = pos
     ? neighborhoodCells(pos.lat, pos.lng, settings.precision)
     : [];
 
   // ── Supabase Realtime path ──
-  if (SUPABASE_CONFIG.isConfigured && cells.length > 0) {
-    const channels = cells.map((cell) => {
+  if (SUPABASE_CONFIG.isConfigured && initialCells.length > 0) {
+    // P2-#7: Map of cell→channel so we can diff-subscribe on GPS drift
+    // without reconnecting channels that stay in the window.
+    const cellChannels = new Map<string, ReturnType<typeof supabase.channel>>();
+
+    const subscribeCell = (cell: string) => {
+      if (cellChannels.has(cell)) return;
       const ch = supabase.channel(channelName(cell), {
         config: { broadcast: { self: false } },
       });
@@ -289,15 +319,48 @@ export function startNeighborListener(
         });
       }
       ch.subscribe();
-      return ch;
-    });
+      cellChannels.set(cell, ch);
+    };
+
+    const unsubscribeCell = (cell: string) => {
+      const ch = cellChannels.get(cell);
+      if (!ch) return;
+      try { supabase.removeChannel(ch); } catch {}
+      cellChannels.delete(cell);
+    };
+
+    // Initial subscription
+    for (const cell of initialCells) subscribeCell(cell);
+
+    // P2-#7: Re-check GPS periodically and diff the cell set. We read
+    // the user's latest precision setting each tick so a mid-session
+    // settings change takes effect without restart. Errors are swallowed
+    // — a drift check must never throw into the app.
+    const recheckTimer = setInterval(() => {
+      try {
+        const s = getNeighborAlertSettings();
+        if (!s.receive) return; // user toggled off — next stop() call handles teardown
+        const p = getLastKnownPosition();
+        if (!p) return;
+        const desired = new Set(neighborhoodCells(p.lat, p.lng, s.precision));
+        const current = new Set(cellChannels.keys());
+        // Early exit if nothing changed
+        if (desired.size === current.size && [...desired].every((c) => current.has(c))) return;
+        // Subscribe to new cells
+        for (const c of desired) if (!current.has(c)) subscribeCell(c);
+        // Drop cells we no longer overlap
+        for (const c of current) if (!desired.has(c)) unsubscribeCell(c);
+      } catch (err) {
+        console.warn("[NeighborAlert] GPS recheck failed:", err);
+      }
+    }, RECHECK_INTERVAL_MS);
+
     return {
       stop: () => {
-        for (const ch of channels) {
-          try { supabase.removeChannel(ch); } catch {}
-        }
+        clearInterval(recheckTimer);
+        for (const [cell] of cellChannels) unsubscribeCell(cell);
       },
-      cells,
+      cells: initialCells,
     };
   }
 
