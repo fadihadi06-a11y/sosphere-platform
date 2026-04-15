@@ -1,0 +1,107 @@
+// ═══════════════════════════════════════════════════════════════
+// SOSphere — Stripe Customer Portal Session (P3-#10)
+// Handles: POST /functions/v1/stripe-portal
+//
+// Creates a one-off Stripe Billing Portal session so the user can
+// manage their subscription (change plan, update card, cancel,
+// download invoices) on Stripe's hosted UI. We never handle card
+// data ourselves — PCI compliance stays Stripe's problem.
+//
+// Request:  (no body required)
+// Response: { url: string }
+//
+// Env vars: STRIPE_SECRET_KEY, SOSPHERE_BASE_URL
+// ═══════════════════════════════════════════════════════════════
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") || "";
+const BASE_URL = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: cors,
+    });
+  }
+  if (!STRIPE_SECRET) {
+    return new Response(JSON.stringify({ error: "Stripe not configured" }), {
+      status: 500,
+      headers: cors,
+    });
+  }
+
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: cors,
+    });
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const jwt = authHeader.replace("Bearer ", "");
+  const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
+  if (userErr || !userData?.user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: cors,
+    });
+  }
+  const userId = userData.user.id;
+
+  // Look up the stripe customer id we stashed during checkout. If the
+  // user has never subscribed there's nothing to manage — tell them.
+  const { data: row } = await supabase
+    .from("subscriptions")
+    .select("stripe_customer_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!row?.stripe_customer_id) {
+    return new Response(
+      JSON.stringify({ error: "No Stripe customer on file — subscribe first" }),
+      { status: 404, headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  }
+
+  const { returnUrl } = await req.json().catch(() => ({}));
+  const form = new URLSearchParams({
+    customer: row.stripe_customer_id as string,
+    return_url: returnUrl || `${BASE_URL}/billing`,
+  });
+
+  const res = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${STRIPE_SECRET}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    console.error("[stripe-portal] Stripe error:", data?.error?.message);
+    return new Response(JSON.stringify({ error: data?.error?.message || "Stripe error" }), {
+      status: 502,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ url: data.url }), {
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+});
