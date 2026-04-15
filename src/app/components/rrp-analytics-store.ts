@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { getCompanyId } from "./shared-store";
 
 const STORAGE_KEY = "sosphere_rrp_analytics";
 
@@ -74,27 +75,96 @@ export function recordRRPSession(session: Omit<RRPSession, "id" | "timestamp">):
   if (sessions.length > 200) sessions.splice(0, sessions.length - 200);
   saveSessions(sessions);
 
-  // Background: save to Supabase
+  // Background: save to Supabase. Requires company_id (RLS-scoped).
+  // If we can't resolve one (e.g. pre-login drill), we keep the local
+  // copy and rely on a future reconcile to flush when the admin signs in.
   if (SUPABASE_CONFIG.isConfigured) {
-    supabase.from("rrp_sessions").insert({
-      id: record.id,
-      emergency_id: record.emergencyId,
-      employee_name: record.employeeName,
-      zone: record.zone,
-      sos_type: record.sosType,
-      severity: record.severity,
-      threat_level: record.threatLevel,
-      total_time_sec: record.totalTimeSec,
-      actions_total: record.actionsTotal,
-      actions_completed: record.actionsCompleted,
-      per_action_times: record.perActionTimes,
-      auto_escalated: record.autoEscalated,
-      opened_ire: record.openedIRE,
-      created_at: record.timestamp,
-    }).then(() => {}).catch((e: any) => console.warn("[RRP] Supabase save failed:", e));
+    const companyId = getCompanyId();
+    if (companyId) {
+      supabase.from("rrp_sessions").insert({
+        id: record.id,
+        company_id: companyId,
+        emergency_id: record.emergencyId || null,
+        employee_name: record.employeeName,
+        zone: record.zone,
+        sos_type: record.sosType,
+        severity: record.severity,
+        threat_level: record.threatLevel,
+        total_time_sec: record.totalTimeSec,
+        actions_total: record.actionsTotal,
+        actions_completed: record.actionsCompleted,
+        per_action_times: record.perActionTimes,
+        auto_escalated: record.autoEscalated,
+        opened_ire: record.openedIRE,
+        created_at: record.timestamp,
+      }).then(() => {}).catch((e: any) => console.warn("[RRP] Supabase save failed:", e));
+    }
   }
 
   return record;
+}
+
+// ── Server reconciliation ─────────────────────────────────────
+// Pull the authoritative history from Supabase and merge it with the
+// device's localStorage copy. Safe to call on every page-mount: merge
+// is id-keyed so repeated calls don't duplicate rows. Server wins on
+// conflict (it's the source of truth once a row has been persisted).
+//
+// Returns the post-merge session count so the caller can decide whether
+// to seed demo data (if both server and local are empty).
+export async function reconcileRRPSessions(): Promise<number> {
+  if (!SUPABASE_CONFIG.isConfigured) return loadSessions().length;
+  const companyId = getCompanyId();
+  if (!companyId) return loadSessions().length;
+
+  try {
+    const { data, error } = await supabase
+      .from("rrp_sessions")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error || !data) {
+      console.warn("[RRP] server fetch failed:", error?.message);
+      return loadSessions().length;
+    }
+
+    const remote: RRPSession[] = data.map((row: any) => ({
+      id: row.id,
+      emergencyId: row.emergency_id ?? "",
+      employeeName: row.employee_name ?? "",
+      zone: row.zone ?? "",
+      sosType: row.sos_type ?? "",
+      severity: row.severity ?? "",
+      threatLevel: row.threat_level ?? "",
+      totalTimeSec: row.total_time_sec ?? 0,
+      actionsTotal: row.actions_total ?? 0,
+      actionsCompleted: row.actions_completed ?? 0,
+      perActionTimes: Array.isArray(row.per_action_times) ? row.per_action_times : [],
+      autoEscalated: !!row.auto_escalated,
+      openedIRE: !!row.opened_ire,
+      timestamp: row.created_at ?? new Date().toISOString(),
+    }));
+
+    // Merge: server is authoritative for overlapping ids; keep any
+    // local-only rows (they'll get a chance to flush on next write or
+    // via the initRealtimeChannels hook in shared-store).
+    const local = loadSessions();
+    const byId = new Map<string, RRPSession>();
+    for (const s of local) byId.set(s.id, s);
+    for (const s of remote) byId.set(s.id, s);
+
+    // Sort chronologically (oldest first to match the streak-calc loop).
+    const merged = Array.from(byId.values()).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    // Enforce the 200-row cap to keep localStorage bounded.
+    const capped = merged.length > 200 ? merged.slice(merged.length - 200) : merged;
+    saveSessions(capped);
+
+    return capped.length;
+  } catch (err) {
+    console.warn("[RRP] reconcile exception:", err);
+    return loadSessions().length;
+  }
 }
 
 // ── Get Analytics ─────────────────────────────────────────────
