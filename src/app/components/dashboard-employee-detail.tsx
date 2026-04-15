@@ -2,7 +2,7 @@
 // SOSphere — Employee Detail Drawer
 // Shows full employee profile, app activity, and location history
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X, User, MapPin, Clock, Phone, Shield, Activity,
@@ -14,6 +14,7 @@ import type { Employee } from "./dashboard-types";
 import { toast } from "sonner";
 import { hapticLight } from "./haptic-feedback";
 import { getRealAuditLog } from "./audit-log-store";
+import { fetchTrainingRecords, type TrainingRecord } from "./risk-register-service";
 
 interface EmployeeDetailProps {
   employee: Employee | null;
@@ -55,6 +56,27 @@ const MOCK_SHIFTS = [
 
 export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: EmployeeDetailProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "activity" | "incidents" | "schedule">("overview");
+  // Certifications pulled from the shared training_records table (P3-#11i).
+  // We fetch the whole list once on mount and filter client-side by
+  // employee name — the roster per company is small and employee_id
+  // linkage isn't guaranteed on older CSV-imported rows, so name match
+  // is the safer join key today.
+  const [realCerts, setRealCerts] = useState<TrainingRecord[] | null>(null);
+  useEffect(() => {
+    if (!employee) return;
+    let cancelled = false;
+    void (async () => {
+      const all = await fetchTrainingRecords();
+      if (cancelled) return;
+      const mine = all.filter(
+        (t) => t.employeeName.toLowerCase() === employee.name.toLowerCase(),
+      );
+      setRealCerts(mine);
+    })();
+    return () => { cancelled = true; };
+    // employee.name is the only field we key off, re-fetch when the
+    // selected employee changes rather than on any identity shift.
+  }, [employee?.name]);
 
   if (!employee) return null;
 
@@ -300,11 +322,21 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                   ))}
                 </div>
 
-                {/* Certifications */}
+                {/* Certifications — P3-#11i: real training_records when present */}
                 <div className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>Certifications</p>
                   <div className="space-y-2">
-                    {MOCK_CERTIFICATIONS.map((cert, i) => {
+                    {(realCerts && realCerts.length > 0
+                      ? realCerts.map((t) => ({
+                          name: t.certification,
+                          expiry: t.expiryDate.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+                          // Map "expiring_soon" → "expiring" so the color
+                          // + label logic below stays identical for both
+                          // the server-backed and mock paths.
+                          status: t.status === "expiring_soon" ? "expiring" : t.status,
+                        }))
+                      : MOCK_CERTIFICATIONS
+                    ).map((cert, i) => {
                       const c = cert.status === "valid" ? "#00C853" : cert.status === "expiring" ? "#FF9500" : "#FF2D55";
                       return (
                         <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl"
