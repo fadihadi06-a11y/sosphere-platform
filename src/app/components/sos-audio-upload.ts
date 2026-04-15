@@ -1,0 +1,221 @@
+// ═══════════════════════════════════════════════════════════════
+// SOSphere — SOS Voice Recording Upload Pipeline
+// ─────────────────────────────────────────────────────────────
+// Problem this solves:
+//   Before this module, audio captured during an SOS was held only
+//   in memory (audioDataUrlRef). It was uploaded to Supabase Storage
+//   *lazily* — inside storeEvidence(), which only runs when the user
+//   completes the post-emergency debrief. If the user closed the app,
+//   the battery died, or the browser crashed between SOS-end and
+//   debrief-submit, the recording was lost forever.
+//
+// Design:
+//   • uploadSOSAudio(emergencyId, blob)
+//       The moment recorder.onstop fires, we kick off a direct
+//       upload of the Blob (no base64 round-trip, no dataUrl hop).
+//       Returns the public URL on success.
+//
+//   • Failure paths ALL route through queuePendingAudio(), which
+//     persists the Blob natively to IndexedDB. The app is now free
+//     to crash — the recording survives.
+//
+//   • replayPendingAudio() drains the queue on reconnect or startup.
+//     Idempotent, debounced, retry-capped.
+//
+//   • getAudioPublicUrl(emergencyId) lets the debrief screen / evidence
+//     store prefer a pre-uploaded URL over the in-memory dataUrl when
+//     building the EvidenceEntry.
+// ═══════════════════════════════════════════════════════════════
+
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import {
+  queuePendingAudio,
+  getUnsyncedAudio,
+  markAudioSynced,
+  incrementAudioRetry,
+  deletePendingAudio,
+  type PendingAudioRecord,
+} from "./offline-database";
+
+const STORAGE_BUCKET = "evidence";
+const REPLAY_MAX_TRIES = 5;
+const REPLAY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — audio is evidence, not ephemeral
+
+// In-memory map of emergencyId -> uploaded public URL.
+// Lets the debrief/evidence flow reuse the live-upload result
+// instead of uploading the same dataUrl again.
+const uploadedUrls = new Map<string, string>();
+
+let replayInFlight = false;
+let replayListenerAttached = false;
+
+// ── Public API ─────────────────────────────────────────────────
+
+/**
+ * Called from recorder.onstop the moment the SOS recording finishes.
+ * Attempts a direct Blob upload; on any failure persists the Blob to
+ * IndexedDB so replay can retry later.
+ *
+ * Returns the public URL on success, or null on failure. Never throws —
+ * caller can treat null as "keep the in-memory dataUrl for now".
+ */
+export async function uploadSOSAudio(
+  emergencyId: string,
+  blob: Blob,
+  durationSec: number,
+): Promise<string | null> {
+  if (!emergencyId || !blob || blob.size === 0) {
+    return null;
+  }
+
+  const mimeType = blob.type || "audio/webm";
+  const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+  const path = `sos/${emergencyId}/recording.${ext}`;
+
+  // If Supabase isn't configured at all, queue and bail — replay on
+  // first successful init.
+  if (!SUPABASE_CONFIG.isConfigured) {
+    await queueOnFail(emergencyId, blob, mimeType, durationSec, "supabase_not_configured");
+    return null;
+  }
+
+  // If we're offline, skip the network attempt and queue directly.
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    await queueOnFail(emergencyId, blob, mimeType, durationSec, "offline_at_capture");
+    return null;
+  }
+
+  try {
+    const url = await doUpload(path, blob, mimeType);
+    if (url) {
+      uploadedUrls.set(emergencyId, url);
+      console.log(`[SOS-Audio] uploaded emergency=${emergencyId} size=${blob.size}B`);
+      return url;
+    }
+    await queueOnFail(emergencyId, blob, mimeType, durationSec, "upload_returned_null");
+    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[SOS-Audio] upload failed emergency=${emergencyId}: ${msg}`);
+    await queueOnFail(emergencyId, blob, mimeType, durationSec, msg);
+    return null;
+  }
+}
+
+/** Returns a pre-uploaded public URL for this emergency if available. */
+export function getAudioPublicUrl(emergencyId: string): string | null {
+  return uploadedUrls.get(emergencyId) ?? null;
+}
+
+/**
+ * Drain the pending_audio queue. Called on `online` events and once
+ * at app startup via startAudioReplayWatcher().
+ */
+export async function replayPendingAudio(): Promise<{
+  uploaded: number;
+  failed: number;
+  purged: number;
+}> {
+  const summary = { uploaded: 0, failed: 0, purged: 0 };
+
+  if (replayInFlight) return summary;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return summary;
+  if (!SUPABASE_CONFIG.isConfigured) return summary;
+
+  replayInFlight = true;
+  try {
+    const pending = await getUnsyncedAudio();
+    if (pending.length === 0) return summary;
+
+    console.log(`[SOS-Audio] replaying ${pending.length} pending upload(s)`);
+    const now = Date.now();
+
+    for (const rec of pending) {
+      // Purge audio older than the retention window — the incident
+      // is long over and the Blob is just taking up storage.
+      if (now - rec.createdAt > REPLAY_TTL_MS) {
+        await deletePendingAudio(rec.id).catch(() => {});
+        summary.purged++;
+        continue;
+      }
+      if (rec.syncAttempts >= REPLAY_MAX_TRIES) {
+        continue;
+      }
+
+      const ok = await retryOne(rec);
+      if (ok) summary.uploaded++;
+      else summary.failed++;
+    }
+
+    console.log("[SOS-Audio] replay done:", summary);
+    return summary;
+  } finally {
+    replayInFlight = false;
+  }
+}
+
+/**
+ * Install network listener + trigger an initial replay.
+ * Idempotent. Safe to mount once for the app's lifetime.
+ */
+export function startAudioReplayWatcher(): void {
+  if (replayListenerAttached) return;
+  replayListenerAttached = true;
+
+  const fire = () => {
+    setTimeout(() => {
+      if (navigator.onLine) {
+        replayPendingAudio().catch(err => console.warn("[SOS-Audio] replay err:", err));
+      }
+    }, 2000); // slightly longer debounce than SOS replay — audio is lower priority
+  };
+
+  window.addEventListener("online", fire);
+  if (typeof navigator !== "undefined" && navigator.onLine) fire();
+
+  console.log("[SOS-Audio] replay watcher installed");
+}
+
+// ── Internals ──────────────────────────────────────────────────
+
+async function doUpload(path: string, blob: Blob, mimeType: string): Promise<string | null> {
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(path, blob, { upsert: true, contentType: mimeType });
+  if (error) throw error;
+  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  return data?.publicUrl ?? null;
+}
+
+async function queueOnFail(
+  emergencyId: string,
+  blob: Blob,
+  mimeType: string,
+  durationSec: number,
+  _reason: string,
+): Promise<void> {
+  try {
+    await queuePendingAudio({ emergencyId, blob, mimeType, durationSec });
+  } catch (err) {
+    console.warn("[SOS-Audio] queue-on-fail failed (data lost):", err);
+  }
+}
+
+async function retryOne(rec: PendingAudioRecord): Promise<boolean> {
+  const ext = rec.mimeType.includes("mp4") ? "mp4" : "webm";
+  const path = `sos/${rec.emergencyId}/recording.${ext}`;
+  try {
+    const url = await doUpload(path, rec.blob, rec.mimeType);
+    if (!url) {
+      await incrementAudioRetry(rec.id, "replay_returned_null").catch(() => {});
+      return false;
+    }
+    await markAudioSynced(rec.id, url).catch(() => {});
+    uploadedUrls.set(rec.emergencyId, url);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await incrementAudioRetry(rec.id, msg).catch(() => {});
+    return false;
+  }
+}

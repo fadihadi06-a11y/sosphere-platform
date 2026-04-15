@@ -20,7 +20,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 const DB_NAME = "sosphere_offline";
-const DB_VERSION = 2;
+// Bumped to 3 for the `pending_audio` store (SOS voice memo upload queue).
+// All onupgradeneeded handlers below are additive — older schemas are
+// upgraded in place without data loss.
+const DB_VERSION = 3;
 
 // ── Store Schemas ──────────────────────────────────────────────
 
@@ -115,6 +118,19 @@ export interface CachedResponse {
   etag: string | null;
 }
 
+export interface PendingAudioRecord {
+  id: string;              // AUD-{emergencyId}
+  emergencyId: string;
+  blob: Blob;              // raw recorded audio — IDB stores Blobs natively
+  mimeType: string;
+  durationSec: number;
+  createdAt: number;
+  synced: boolean;
+  syncAttempts: number;
+  lastError: string | null;
+  publicUrl: string | null; // set once Storage upload succeeds
+}
+
 // ── Database Initialization ────────────────────────────────────
 
 let dbInstance: IDBDatabase | null = null;
@@ -181,6 +197,16 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("app_cache")) {
         const cacheStore = db.createObjectStore("app_cache", { keyPath: "id" });
         cacheStore.createIndex("by_expires", "expiresAt", { unique: false });
+      }
+
+      // ── Pending Audio Store (v3) ──
+      // Holds SOS voice recordings that couldn't be uploaded at
+      // capture time. Replayed when the network comes back.
+      if (!db.objectStoreNames.contains("pending_audio")) {
+        const audioStore = db.createObjectStore("pending_audio", { keyPath: "id" });
+        audioStore.createIndex("by_synced", "synced", { unique: false });
+        audioStore.createIndex("by_emergency", "emergencyId", { unique: false });
+        audioStore.createIndex("by_created", "createdAt", { unique: false });
       }
     };
 
@@ -697,6 +723,63 @@ export async function getStorageStats(): Promise<OfflineStorageStats> {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Public API — Pending Audio (SOS voice recording upload queue)
+// ───────────────────────────────────────────────────────────────
+// Blobs are stored natively in IndexedDB — no base64 round-trip.
+// Records are created by sos-audio-upload.ts when a live upload
+// fails, and drained by its replayPendingAudio() on reconnect.
+// ═══════════════════════════════════════════════════════════════
+
+export async function queuePendingAudio(data: {
+  emergencyId: string;
+  blob: Blob;
+  mimeType: string;
+  durationSec: number;
+}): Promise<string> {
+  const id = `AUD-${data.emergencyId}`;
+  const record: PendingAudioRecord = {
+    id,
+    emergencyId: data.emergencyId,
+    blob: data.blob,
+    mimeType: data.mimeType,
+    durationSec: data.durationSec,
+    createdAt: Date.now(),
+    synced: false,
+    syncAttempts: 0,
+    lastError: null,
+    publicUrl: null,
+  };
+  await dbPut("pending_audio", record);
+  return id;
+}
+
+export async function getUnsyncedAudio(): Promise<PendingAudioRecord[]> {
+  return dbGetByIndex<PendingAudioRecord>("pending_audio", "by_synced", false);
+}
+
+export async function markAudioSynced(id: string, publicUrl: string): Promise<void> {
+  const record = await dbGet<PendingAudioRecord>("pending_audio", id);
+  if (record) {
+    record.synced = true;
+    record.publicUrl = publicUrl;
+    await dbPut("pending_audio", record);
+  }
+}
+
+export async function incrementAudioRetry(id: string, error: string): Promise<void> {
+  const record = await dbGet<PendingAudioRecord>("pending_audio", id);
+  if (record) {
+    record.syncAttempts += 1;
+    record.lastError = error;
+    await dbPut("pending_audio", record);
+  }
+}
+
+export async function deletePendingAudio(id: string): Promise<void> {
+  await dbDelete("pending_audio", id);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Danger Zone — Full Reset
 // ═══════════════════════════════════════════════════════════════
 
@@ -709,6 +792,7 @@ export async function resetOfflineDatabase(): Promise<void> {
     dbClear("messages"),
     dbClear("sync_log"),
     dbClear("app_cache"),
+    dbClear("pending_audio"),
   ]);
 }
 
