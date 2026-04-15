@@ -6,7 +6,7 @@
 // Each playbook is a step-by-step rescue guide
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   BookOpen, ChevronRight, ChevronDown, Shield, AlertTriangle,
@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight, hapticHeavy } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
+import { fetchPlaybookUsage, incrementPlaybookUse } from "./playbook-usage-service";
 
 // ── Types ─────────────────────────────────────────────────────
 interface PlaybookStep {
@@ -196,6 +197,32 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
   const [newTrigger, setNewTrigger] = useState("Manual Trigger");
   const [newAutoTrigger, setNewAutoTrigger] = useState(false);
 
+  // P3-#11g: Reconcile usage counts from Supabase on mount. Playbook
+  // *definitions* stay client-side (icon components + localized
+  // strings don't belong in the DB), but useCount / lastUsed are
+  // per-company dynamic data and used to be wiped on every reload.
+  // Merging server values in once at mount means the "28 runs" badge
+  // now reflects the whole team's history instead of this browser's.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const usage = await fetchPlaybookUsage();
+      if (cancelled || usage.size === 0) return;
+      setPlaybooks((prev) =>
+        prev.map((pb) => {
+          const u = usage.get(pb.id);
+          if (!u) return pb;
+          return {
+            ...pb,
+            useCount: Math.max(pb.useCount, u.useCount),
+            lastUsed: u.lastUsedAt ?? pb.lastUsed,
+          };
+        }),
+      );
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const filtered = playbooks.filter(p =>
     filter === "all" ? true : filter === "auto" ? p.autoTrigger : !p.autoTrigger
   );
@@ -212,6 +239,14 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
     toast.success(`Running: ${pb.name}`, {
       description: `${pb.steps.length} steps initiated — follow the protocol sequence`,
     });
+    // P3-#11g: Optimistically bump the counter locally, then fire-and-forget
+    // the atomic DB increment. RPC is race-safe so concurrent runs by two
+    // admins both count.
+    const now = new Date();
+    setPlaybooks(prev => prev.map(p =>
+      p.id === pb.id ? { ...p, useCount: p.useCount + 1, lastUsed: now } : p,
+    ));
+    void incrementPlaybookUse(pb.id);
   }, []);
 
   const handleCompleteStep = useCallback((playbookId: string, stepId: string, action: string) => {
