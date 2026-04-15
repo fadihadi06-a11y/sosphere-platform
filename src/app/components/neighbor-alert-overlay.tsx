@@ -50,13 +50,33 @@ export function NeighborAlertOverlay({ lang = "en", suppress = false }: Neighbor
 
   // Subscribe to the geocell listener once on mount.
   useEffect(() => {
-    const handle = startNeighborListener((incoming) => {
-      // Drop anything the user triggered themselves (defensive — the
-      // broadcast config already has self:false, but a device with
-      // both opt-in flags could theoretically echo).
-      setAlert(incoming);
-    });
+    const handle = startNeighborListener(
+      (incoming) => {
+        // Drop anything the user triggered themselves (defensive — the
+        // broadcast config already has self:false, but a device with
+        // both opt-in flags could theoretically echo).
+        setAlert(incoming);
+      },
+      (retract) => {
+        // P1-#5: Requester ended their emergency. Only dismiss if the
+        // currently-displayed alert matches — we do this inside a
+        // functional setState so React gives us the latest alert value
+        // even if the effect captured a stale closure.
+        setAlert((current) => {
+          if (!current || current.requestId !== retract.requestId) return current;
+          const reasonLabel =
+            retract.reason === "false_alarm"
+              ? tr("Requester marked as false alarm", "تم تحديدها كإنذار كاذب")
+              : retract.reason === "safe"
+              ? tr("Requester reported safe", "المُبلّغ في أمان")
+              : tr("Requester ended the alert", "تم إنهاء النداء");
+          toast(reasonLabel);
+          return null;
+        });
+      },
+    );
     return () => handle.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-dismiss and housekeeping when alert changes or suppress toggles.
