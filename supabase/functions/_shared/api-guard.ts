@@ -15,12 +15,41 @@
 // safe to use on the SOS hot path.
 // ═══════════════════════════════════════════════════════════════
 
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+export const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export function getCorsOrigin(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+// The exported `corsHeaders` is kept for backwards compat with callers
+// that don't have a Request in scope when they build headers. It uses
+// the first allow-listed origin as a safe default. Callers WITH access
+// to the Request MUST prefer `buildCorsHeaders(req)` for per-request
+// origin reflection so same-origin browsers can read responses.
 export const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
+  "Vary": "Origin",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, idempotency-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+export function buildCorsHeaders(req: Request): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": getCorsOrigin(req),
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, idempotency-key",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
 export interface ValidationOptions {
   allowLargeBody?: boolean;      // if false, caps body at 1MB

@@ -98,6 +98,18 @@ interface StripeSubscription {
   metadata?: Record<string, string>;
 }
 
+// B-H4: reject unmapped price IDs instead of silent downgrade — signal
+// to the caller that the plan could not be resolved so the webhook
+// handler can return a 400 rather than silently flipping the user to
+// "starter" (which previously let an unknown premium priceId land a
+// paying user on a free-tier row).
+class UnmappedPriceError extends Error {
+  constructor(public priceId: string | undefined) {
+    super(`Unmapped Stripe price id: ${priceId ?? "(missing)"}`);
+    this.name = "UnmappedPriceError";
+  }
+}
+
 async function upsertSubscription(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -105,11 +117,17 @@ async function upsertSubscription(
   planIdOverride?: string,
 ): Promise<void> {
   const priceId = sub.items?.data?.[0]?.price?.id;
-  // Best-effort plan id recovery: Checkout session metadata carries it;
-  // otherwise we fall back to a price-id lookup table the admin sets via
-  // env (e.g. STRIPE_PRICE_GROWTH_MONTHLY -> "growth"). A missing plan
-  // just means the UI label is less specific — not a blocker.
+  // Plan id recovery: prefer explicit override (Checkout session metadata),
+  // then subscription metadata, then env-mapped price lookup.
   const planId = planIdOverride || sub.metadata?.planId || lookupPlanByPriceEnv(priceId);
+
+  // B-H4: reject unmapped price IDs instead of silent downgrade
+  if (!planId) {
+    console.warn(
+      `[stripe-webhook] unmapped price id=${priceId ?? "(none)"} — refusing to default to 'starter' (user=${userId})`
+    );
+    throw new UnmappedPriceError(priceId);
+  }
 
   await supabase.from("subscriptions").upsert(
     {
@@ -117,7 +135,7 @@ async function upsertSubscription(
       stripe_customer_id: sub.customer,
       stripe_subscription_id: sub.id,
       stripe_price_id: priceId,
-      tier: planId || "starter",
+      tier: planId,
       status: sub.status,
       current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
       cancel_at_period_end: sub.cancel_at_period_end,
@@ -175,19 +193,29 @@ serve(async (req: Request) => {
   }
 
   const supabase = createClient(SUPA_URL, SUPA_KEY);
+  const evtId = event?.id || "(unknown)";
+  const evtType = event?.type || "(unknown)";
 
+  // B-H3: differentiate recoverable vs idempotent errors
+  // - Recoverable (DB/Supabase/network failures) → 500 so Stripe retries.
+  // - Idempotent (duplicate event, unmapped customer that resolves later
+  //   via a different event ordering) → 200 so Stripe stops retrying.
+  // - Config/validation errors (unmapped priceId, bad JSON) → 400.
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const userId = session.client_reference_id;
         const subId = session.subscription;
-        if (!userId || !subId) break;
+        if (!userId || !subId) {
+          console.log(`[stripe-webhook] ${evtType} id=${evtId} — missing userId/subId, skipping`);
+          break;
+        }
 
         // Hydrate full subscription object — the session only has the id.
         const sub = await stripeGet(`/subscriptions/${subId}`);
         await upsertSubscription(supabase, userId, sub, session.metadata?.planId);
-        console.log(`[stripe-webhook] checkout.session.completed user=${userId} sub=${subId}`);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${userId} sub=${subId}`);
         break;
       }
 
@@ -196,25 +224,36 @@ serve(async (req: Request) => {
         const sub = event.data.object;
         // Resolve userId from our own table via the customer id — we
         // wrote it during checkout.session.completed.
-        const { data: row } = await supabase
+        const { data: row, error: selErr } = await supabase
           .from("subscriptions")
           .select("user_id")
           .eq("stripe_customer_id", sub.customer)
           .maybeSingle();
+        if (selErr) {
+          // B-H3: DB read failure is recoverable — let Stripe retry.
+          console.error(`[stripe-webhook] ${evtType} id=${evtId} DB select failed:`, selErr);
+          return new Response(JSON.stringify({ error: "db_read_failed" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
         if (!row?.user_id) {
+          // B-H3: idempotent — no mapped user yet (ordering). 200 so
+          // Stripe stops retrying; checkout.session.completed will
+          // establish the mapping on its own retry cycle.
           console.warn(
-            `[stripe-webhook] no user mapped to customer ${sub.customer} — skipping ${event.type}`,
+            `[stripe-webhook] ${evtType} id=${evtId} no user mapped to customer ${sub.customer} — skipping`,
           );
           break;
         }
         await upsertSubscription(supabase, row.user_id, sub);
-        console.log(`[stripe-webhook] ${event.type} user=${row.user_id}`);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${row.user_id}`);
         break;
       }
 
       case "customer.subscription.deleted": {
         const sub = event.data.object;
-        await supabase
+        const { error: updErr } = await supabase
           .from("subscriptions")
           .update({
             status: "canceled",
@@ -222,7 +261,14 @@ serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           })
           .eq("stripe_subscription_id", sub.id);
-        console.log(`[stripe-webhook] subscription deleted sub=${sub.id}`);
+        if (updErr) {
+          console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
+          return new Response(JSON.stringify({ error: "db_update_failed" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${sub.id}`);
         break;
       }
 
@@ -230,26 +276,47 @@ serve(async (req: Request) => {
         const inv = event.data.object;
         // Flip status to past_due so the app can nudge the user.
         if (inv.subscription) {
-          await supabase
+          const { error: updErr } = await supabase
             .from("subscriptions")
             .update({ status: "past_due", updated_at: new Date().toISOString() })
             .eq("stripe_subscription_id", inv.subscription);
+          if (updErr) {
+            console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
+            return new Response(JSON.stringify({ error: "db_update_failed" }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
-        console.log(`[stripe-webhook] payment_failed sub=${inv.subscription}`);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription}`);
         break;
       }
 
       default:
-        // No-op for events we don't handle — Stripe retries on 5xx only.
+        // B-H3: no-op for events we don't handle — log and return 200.
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} ignored (not handled)`);
         break;
     }
   } catch (err) {
-    console.error("[stripe-webhook] handler error:", err);
-    // Return 200 so Stripe doesn't retry indefinitely on a bug in our
-    // handler. The event is logged and can be replayed manually.
+    // B-H3: differentiate recoverable vs idempotent errors
+    if (err instanceof UnmappedPriceError) {
+      // B-H4: reject unmapped price IDs — bad config, Stripe retrying
+      // won't help. 400 surfaces the issue in the Stripe dashboard.
+      console.error(`[stripe-webhook] ${evtType} id=${evtId} unmapped price:`, err.message);
+      return new Response(JSON.stringify({ error: "unmapped_price", priceId: err.priceId }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    // Recoverable network / runtime / Supabase errors — let Stripe retry.
+    console.error(`[stripe-webhook] ${evtType} id=${evtId} handler error (recoverable):`, err);
+    return new Response(JSON.stringify({ error: "internal_error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  return new Response(JSON.stringify({ received: true }), {
+  return new Response(JSON.stringify({ received: true, id: evtId, type: evtType }), {
     headers: { "Content-Type": "application/json" },
   });
 });

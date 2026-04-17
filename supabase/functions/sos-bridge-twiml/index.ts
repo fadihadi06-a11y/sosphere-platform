@@ -25,11 +25,23 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+function getCorsOrigin(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+function buildCorsHeaders(req: Request): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": getCorsOrigin(req),
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -124,6 +136,8 @@ function buildConferenceTwiml(confName: string, emergencyId: string, baseUrl: st
 }
 
 serve(async (req: Request) => {
+  // B-M1: origin allowlist via ALLOWED_ORIGINS env
+  const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const url = new URL(req.url);

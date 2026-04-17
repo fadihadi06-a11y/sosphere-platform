@@ -28,31 +28,49 @@ CREATE TABLE IF NOT EXISTS evidence (
   included_in_pdf BOOLEAN DEFAULT FALSE,
   tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'paid', 'enterprise')),
   retention_days INTEGER DEFAULT 7,
+  -- B-C2: tenant-scoped RLS on evidence requires a company_id column
+  company_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- B-C2: ensure column exists on pre-existing deployments
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS company_id UUID;
 
 -- 2. Enable Row Level Security
 ALTER TABLE evidence ENABLE ROW LEVEL SECURITY;
 
 -- 3. RLS Policies
--- Allow authenticated users to read all evidence (same company)
+-- B-C2: tenant-scoped RLS on evidence
 CREATE POLICY "Users can read evidence"
   ON evidence FOR SELECT
   TO authenticated
-  USING (true);
+  USING (
+    company_id IN (SELECT company_id FROM employees WHERE user_id = auth.uid())
+    OR company_id IN (SELECT id FROM companies WHERE owner_id = auth.uid())
+  );
 
--- Allow authenticated users to insert evidence
+-- B-C2: tenant-scoped RLS on evidence
 CREATE POLICY "Users can insert evidence"
   ON evidence FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    company_id IN (SELECT company_id FROM employees WHERE user_id = auth.uid())
+    OR company_id IN (SELECT id FROM companies WHERE owner_id = auth.uid())
+  );
 
--- Allow authenticated users to update evidence
+-- B-C2: tenant-scoped RLS on evidence
 CREATE POLICY "Users can update evidence"
   ON evidence FOR UPDATE
   TO authenticated
-  USING (true);
+  USING (
+    company_id IN (SELECT company_id FROM employees WHERE user_id = auth.uid())
+    OR company_id IN (SELECT id FROM companies WHERE owner_id = auth.uid())
+  )
+  WITH CHECK (
+    company_id IN (SELECT company_id FROM employees WHERE user_id = auth.uid())
+    OR company_id IN (SELECT id FROM companies WHERE owner_id = auth.uid())
+  );
 
 -- 4. Create Storage Bucket for evidence files (photos + audio)
 INSERT INTO storage.buckets (id, name, public)
@@ -65,10 +83,11 @@ CREATE POLICY "Authenticated users can upload evidence files"
   TO authenticated
   WITH CHECK (bucket_id = 'evidence');
 
+-- B-C1: require authentication for evidence bucket reads
 CREATE POLICY "Anyone can view evidence files"
   ON storage.objects FOR SELECT
-  TO public
-  USING (bucket_id = 'evidence');
+  TO authenticated
+  USING (bucket_id = 'evidence' AND auth.uid() IS NOT NULL);
 
 -- 6. Index for fast queries
 CREATE INDEX IF NOT EXISTS idx_evidence_emergency_id ON evidence(emergency_id);
