@@ -377,6 +377,13 @@ export class LocalWebRTCProvider implements VoiceProvider {
   // ── Helpers ────────────────────────────────────────────────
 
   private async acquireMicrophone(): Promise<MediaStream | null> {
+    // E-C3: mediaDevices is absent on insecure contexts / old WebViews.
+    // Distinct failure state so UI can show "upgrade your browser"
+    // instead of misleading "permission denied".
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      this.events?.onStateChange("failed", "This browser does not support voice calls. Please update Chrome / system WebView.");
+      return null;
+    }
     try {
       return await navigator.mediaDevices.getUserMedia({
         audio: {

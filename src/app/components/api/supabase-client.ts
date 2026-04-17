@@ -88,7 +88,12 @@ export async function getSession() {
 }
 
 export async function signOut() {
-  await supabase.auth.signOut();
+  // S-H5: delegate to completeLogout() so local caches, localStorage
+  // keys, permission cache, and singleton services are all torn down
+  // alongside the Supabase-side session revocation. Callers never
+  // need to do manual cleanup anymore.
+  const { completeLogout } = await import("./complete-logout");
+  await completeLogout();
 }
 
 /**

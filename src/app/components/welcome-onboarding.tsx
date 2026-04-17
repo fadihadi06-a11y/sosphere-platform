@@ -86,7 +86,21 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
 
   const goNext = () => {
     console.log("[SUPABASE_READY] onboarding_slide_viewed", { slide: current+1, lang });
-    if (isLast) { console.log("[SUPABASE_READY] onboarding_completed"); onComplete(); return; }
+    if (isLast) {
+      console.log("[SUPABASE_READY] onboarding_completed");
+      // S-H4: also persist to profiles.onboarding_completed on the
+      // server (fire-and-forget, best-effort). Prevents a user from
+      // bypassing required startup flows by clearing localStorage.
+      void (async () => {
+        try {
+          const { markOnboardingComplete } = await import("./api/onboarding-server");
+          await markOnboardingComplete();
+        } catch { /* silent */ }
+      })();
+      try { localStorage.setItem("sosphere_onboarding_completed", "1"); } catch { /* ignore */ }
+      onComplete();
+      return;
+    }
     setDir(1); setCurrent(c=>c+1);
   };
   const goBack = () => { if(current===0)return; setDir(-1); setCurrent(c=>c-1); };

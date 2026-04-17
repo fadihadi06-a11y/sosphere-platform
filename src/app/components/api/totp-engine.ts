@@ -139,11 +139,16 @@ export async function verifyTOTP(secret: string, code: string): Promise<boolean>
 
 // ── Supabase Integration ────────────────────────────────────
 
-/** Save TOTP secret to Supabase (encrypted at rest) */
+/** Save TOTP secret to Supabase (encrypted at rest).
+ * S-H3: we no longer fall back to localStorage when Supabase is
+ * not configured. Storing a TOTP shared secret as plaintext in
+ * localStorage makes it readable by any extension / other tab /
+ * XSS payload — defeating the entire point of 2FA. If Supabase
+ * is not configured, 2FA setup FAILS CLOSED. */
 export async function saveTOTPSecret(userId: string, secret: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) {
-    localStorage.setItem(`sosphere_totp_${userId}`, secret);
-    return true;
+    console.error("[TOTP] S-H3: refusing to save secret — Supabase not configured. 2FA unavailable offline.");
+    return false;
   }
   try {
     await supabase.from("user_2fa").upsert({
@@ -159,11 +164,13 @@ export async function saveTOTPSecret(userId: string, secret: string): Promise<bo
   }
 }
 
-/** Check if user has 2FA enabled */
+/** Check if user has 2FA enabled.
+ * S-H3: no localStorage fallback — without Supabase we cannot
+ * tell if 2FA is enabled, so we return false (= not protected).
+ * Any caller gating a sensitive action on this MUST also call
+ * verifyPermissionServer() from api/server-permission.ts. */
 export async function is2FAEnabled(userId: string): Promise<boolean> {
-  if (!SUPABASE_CONFIG.isConfigured) {
-    return !!localStorage.getItem(`sosphere_totp_${userId}`);
-  }
+  if (!SUPABASE_CONFIG.isConfigured) return false;
   try {
     const { data } = await supabase
       .from("user_2fa")
@@ -176,11 +183,13 @@ export async function is2FAEnabled(userId: string): Promise<boolean> {
   }
 }
 
-/** Get TOTP secret for verification */
+/** Get TOTP secret for verification.
+ * S-H3: no localStorage fallback — verification requires a
+ * server-side lookup. Returns null if Supabase is not configured
+ * (which means verifyUser2FA() below will also return false, so
+ * the user will not be falsely authenticated). */
 export async function getTOTPSecret(userId: string): Promise<string | null> {
-  if (!SUPABASE_CONFIG.isConfigured) {
-    return localStorage.getItem(`sosphere_totp_${userId}`);
-  }
+  if (!SUPABASE_CONFIG.isConfigured) return null;
   try {
     const { data } = await supabase
       .from("user_2fa")
@@ -200,11 +209,14 @@ export async function verifyUser2FA(userId: string, code: string): Promise<boole
   return verifyTOTP(secret, code);
 }
 
-/** Disable 2FA for a user */
+/** Disable 2FA for a user.
+ * S-H3: still sweep any legacy `sosphere_totp_<uid>` localStorage
+ * entry from a pre-fix build so it cannot leak across logins. */
 export async function disable2FA(userId: string): Promise<boolean> {
+  try { localStorage.removeItem(`sosphere_totp_${userId}`); } catch { /* ignore */ }
   if (!SUPABASE_CONFIG.isConfigured) {
-    localStorage.removeItem(`sosphere_totp_${userId}`);
-    return true;
+    console.warn("[TOTP] S-H3: Supabase not configured — cannot persist 2FA disable server-side.");
+    return false;
   }
   try {
     await supabase.from("user_2fa").update({ enabled: false }).eq("user_id", userId);

@@ -772,7 +772,7 @@ export function DashboardWebPage() {
               >{k}</button>
             ))}
           </div>
-          <button onClick={async () => { await supabase.auth.signOut(); clearDashboardSession(); setStep("form"); setPinInput(""); }}
+          <button onClick={async () => { const { completeLogout } = await import("./api/complete-logout"); await completeLogout(); setStep("form"); setPinInput(""); }}
             style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
             Sign in with different account
           </button>
@@ -790,9 +790,14 @@ export function DashboardWebPage() {
           webMode={true}
           onSOSTrigger={() => {}}
           onLogout={async () => {
-            await supabase.auth.signOut();
-            clearDashboardSession();
-            localStorage.removeItem("sosphere_dashboard_pin");
+            // S-H5: completeLogout handles dashboard session + all
+            // other sosphere_* keys + supabase.auth.signOut() + event.
+            const { completeLogout } = await import("./api/complete-logout");
+            await completeLogout();
+            // Dashboard PIN is a user-chosen admin PIN; completeLogout
+            // also sweeps it via the prefix scan, but be explicit here
+            // so intent is obvious to future readers.
+            try { localStorage.removeItem("sosphere_dashboard_pin"); } catch { /* ignore */ }
             if (mountedRef.current) { setStep("form"); setEmailOtp(""); setEmail(""); }
           }}
         />

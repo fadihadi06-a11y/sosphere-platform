@@ -105,19 +105,31 @@ export async function initFCM(userId?: string): Promise<string | null> {
 
 /**
  * Save FCM token to Supabase for server-side push targeting.
+ * S-M3: refuses to save with a missing userId. Previously we
+ * fell back to "anonymous", which pooled unrelated devices
+ * under the same key and allowed a malicious/buggy caller to
+ * register a token to nobody in particular. An anonymous row
+ * also bypasses per-user RLS on push_tokens.
+ *
+ * Callers that don't yet have a userId should defer this call
+ * until after sign-in completes.
  */
 async function saveFCMToken(token: string, userId?: string): Promise<void> {
+  if (!userId || typeof userId !== "string" || userId.length < 8) {
+    console.warn("[FCM] S-M3: refusing to save token without a valid userId");
+    return;
+  }
   try {
     await supabase.from("push_tokens").upsert(
       {
         token,
-        user_id: userId || "anonymous",
+        user_id: userId,
         platform: detectPlatform(),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "token" },
     );
-    console.log("[FCM] Token saved to Supabase");
+    console.log("[FCM] Token saved to Supabase for user", userId);
   } catch (e) {
     console.warn("[FCM] Failed to save token:", e);
   }

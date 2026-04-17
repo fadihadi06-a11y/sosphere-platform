@@ -157,10 +157,17 @@ export function getTrackerState(): GPSTrackerState {
   return { ...trackerState };
 }
 
+// ── E-C4: position-staleness threshold ──────────────────────────
+// Anything older than this is STALE — SOS still sends it (better
+// than nothing) but tags location_stale=true so dispatch knows it's
+// a last-known fix, not live GPS. 5 min matches dead-reckoning drift.
+export const POSITION_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
 // ── FIX FATAL-1: Expose last known position for SOS to consume ──
 // SOS was using hardcoded coords. Now it can call this to get real GPS.
+// E-C4: also returns timestamp so callers can compute staleness.
 export function getLastKnownPosition(): {
-  lat: number; lng: number; accuracy: number; address: string;
+  lat: number; lng: number; accuracy: number; address: string; timestamp: number;
 } | null {
   if (trackerState.lastPosition) {
     return {
@@ -168,18 +175,34 @@ export function getLastKnownPosition(): {
       lng: trackerState.lastPosition.lng,
       accuracy: trackerState.lastPosition.accuracy,
       address: `GPS ${trackerState.lastPosition.lat.toFixed(5)}, ${trackerState.lastPosition.lng.toFixed(5)}`,
+      timestamp: trackerState.lastPosition.timestamp,
     };
   }
-  // Fallback: check if we have a recorded position from before state init
   if (lastRecordedPosition) {
     return {
       lat: lastRecordedPosition.lat,
       lng: lastRecordedPosition.lng,
       accuracy: 9999,
       address: `Last recorded ${lastRecordedPosition.lat.toFixed(5)}, ${lastRecordedPosition.lng.toFixed(5)}`,
+      timestamp: lastRecordedPosition.timestamp,
     };
   }
   return null;
+}
+
+// ── E-C4: position age / staleness helpers ──────────────────────
+/** Age of last-known position in ms. Null = no fix yet. */
+export function getPositionAgeMs(): number | null {
+  const pos = trackerState.lastPosition ?? lastRecordedPosition;
+  if (!pos || typeof pos.timestamp !== "number") return null;
+  return Date.now() - pos.timestamp;
+}
+
+/** True if position is older than POSITION_STALE_THRESHOLD_MS (or missing). */
+export function isPositionStale(): boolean {
+  const age = getPositionAgeMs();
+  if (age === null) return true;
+  return age > POSITION_STALE_THRESHOLD_MS;
 }
 
 // ── FIX FATAL-2: Expose battery level for SOS battery-critical detection ──
@@ -217,6 +240,16 @@ async function checkBattery(): Promise<void> {
       const battery = await (navigator as any).getBattery();
       _batteryObj = battery;
       const level = battery.level;
+      // E-H1: battery hysteresis. Use the config threshold as the
+      // ENTER point (e.g. 0.20 = enter low-battery mode at 20%), and
+      // a 5-percentage-point gap as the EXIT point (e.g. 0.25 = exit
+      // low-battery mode only after climbing back to 25%). Without
+      // this, a battery hovering at 19.5%-20.5% flaps isLowBattery
+      // every levelchange event, causing the tracking interval to
+      // bounce between save-mode and normal-mode — the exact
+      // opposite of what battery saving is trying to achieve.
+      const HYSTERESIS_GAP = 0.05;
+      const BATTERY_LOW_EXIT = config.batterySaveThreshold + HYSTERESIS_GAP;
       const isLow = level < config.batterySaveThreshold;
       updateState({
         batteryLevel: level,
@@ -227,15 +260,23 @@ async function checkBattery(): Promise<void> {
       // Listen for battery changes (single handler, stored for cleanup)
       _batteryHandler = () => {
         const newLevel = battery.level;
-        const newIsLow = newLevel < config.batterySaveThreshold;
+        // E-H1: apply hysteresis to the state transition.
+        //   • If currently LOW  → exit only when newLevel ≥ EXIT point
+        //   • If currently HIGH → enter only when newLevel <  ENTER point
+        const currentlyLow = trackerState.isLowBattery;
+        const newIsLow = currentlyLow
+          ? newLevel < BATTERY_LOW_EXIT
+          : newLevel < config.batterySaveThreshold;
         updateState({
           batteryLevel: newLevel,
           isLowBattery: newIsLow,
           currentInterval: newIsLow ? config.batterySaveIntervalMs : config.intervalMs,
         });
 
-        // Adjust tracking interval dynamically
-        if (trackerState.isTracking && intervalId) {
+        // Only adjust the tracking interval when the state ACTUALLY
+        // flipped. Clearing and recreating setInterval on every 1%
+        // battery change is pointless churn.
+        if (trackerState.isTracking && intervalId && currentlyLow !== newIsLow) {
           clearInterval(intervalId);
           intervalId = setInterval(recordCurrentPosition, newIsLow ? config.batterySaveIntervalMs : config.intervalMs);
         }

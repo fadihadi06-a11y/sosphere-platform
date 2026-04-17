@@ -137,6 +137,12 @@ export function IncidentPhotoReport({
 
   // ── Audio Recording Functions ─────────────────────────────────
   const startRecording = useCallback(async () => {
+    // E-C3: some WebViews / insecure contexts null out mediaDevices.
+    // Fail soft (no record) instead of crashing the incident form.
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      console.warn("[IncidentPhoto] E-C3: mediaDevices unavailable — audio memo disabled");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
