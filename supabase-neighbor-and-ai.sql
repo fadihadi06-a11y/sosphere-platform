@@ -32,10 +32,11 @@ ALTER TABLE neighbor_responses ENABLE ROW LEVEL SECURITY;
 -- can read (dashboard needs to see who responded). Stricter policies
 -- can be layered on later if a responder identity schema is added.
 DROP POLICY IF EXISTS "Responders can insert their own response" ON neighbor_responses;
+-- B-C3: responder_id must match authenticated user
 CREATE POLICY "Responders can insert their own response"
   ON neighbor_responses FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (responder_id = auth.uid());
 
 DROP POLICY IF EXISTS "Authenticated can read neighbor_responses" ON neighbor_responses;
 CREATE POLICY "Authenticated can read neighbor_responses"

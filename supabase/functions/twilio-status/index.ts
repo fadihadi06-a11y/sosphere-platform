@@ -18,11 +18,23 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+function getCorsOrigin(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+function buildCorsHeaders(req: Request): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": getCorsOrigin(req),
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
 // ── Twilio request signature validation ──────────────────────
 // Twilio signs webhooks with HMAC-SHA1(url + sorted params, AuthToken)
@@ -36,8 +48,11 @@ async function validateTwilioSignature(
 
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   if (!authToken) {
-    console.warn("[twilio-status] TWILIO_AUTH_TOKEN missing — signature check skipped");
-    return true; // Fail open if not configured (dev mode)
+    // B-H2: signature verification is mandatory (no skip flag).
+    // If token is unset we fail closed — a misconfigured deploy must
+    // not be exploitable as an unsigned-webhook bypass.
+    console.error("[twilio-status] TWILIO_AUTH_TOKEN missing — rejecting request (fail closed)");
+    return false;
   }
 
   // Twilio signature = HMAC-SHA1(url + sortedParams, authToken), base64
@@ -81,6 +96,8 @@ async function endConference(conferenceSid: string): Promise<void> {
 }
 
 serve(async (req) => {
+  // B-M1: origin allowlist via ALLOWED_ORIGINS env
+  const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -99,10 +116,9 @@ serve(async (req) => {
     });
 
     // ── Validate Twilio signature (reject spoofed webhooks) ──
-    // Skipped for gather action (Twilio redirects with user-facing URL) and when
-    // running with TWILIO_SKIP_SIG=1 (dev only).
-    const skipSig = Deno.env.get("TWILIO_SKIP_SIG") === "1";
-    if (!skipSig && action !== "gather") {
+    // B-H2: signature verification is mandatory (no skip flag)
+    // Only gather action is exempt (Twilio redirects with user-facing URL that cannot be signed).
+    if (action !== "gather") {
       const valid = await validateTwilioSignature(req, req.url, data);
       if (!valid) {
         console.warn("[twilio-status] Signature validation FAILED — rejecting request");

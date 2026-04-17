@@ -41,14 +41,159 @@ const SUPA_URL      = Deno.env.get("SUPABASE_URL")!;
 const SUPA_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const BASE_URL      = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  // P2-#8: allow Idempotency-Key through CORS preflight so browsers
-  // don't strip it. Header is case-insensitive on the wire but listed
-  // lowercase here per RFC 7230 recommendations for preflight matching.
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+// Default country code applied when a contact phone is in national format
+// (e.g. Iraqi mobile `07xx…` or a bare local number). Twilio rejects
+// anything that isn't strict E.164, so if we ship raw national-format
+// strings every SMS / call silently fails with 21211. The secret is
+// optional; omit it and we refuse to normalize — the call result then
+// carries an explicit `invalid_number` error so clients can surface it
+// instead of getting a misleading 200 from the fanout.
+//
+// Format: ISO-3166 alpha-2 country code (e.g. "IQ" for Iraq, "SA" for
+// Saudi Arabia). We keep the mapping small — users outside these are
+// expected to store contacts in full E.164 form.
+const DEFAULT_COUNTRY = (Deno.env.get("SOSPHERE_DEFAULT_COUNTRY") || "IQ").toUpperCase();
+
+// ISO-3166 alpha-2 → international dialling prefix (without the `+`).
+// Additive: new markets land by appending a row.
+const COUNTRY_DIAL: Record<string, string> = {
+  IQ: "964", // Iraq
+  SA: "966", // Saudi Arabia
+  AE: "971", // UAE
+  KW: "965", // Kuwait
+  QA: "974", // Qatar
+  BH: "973", // Bahrain
+  OM: "968", // Oman
+  JO: "962", // Jordan
+  LB: "961", // Lebanon
+  EG: "20",  // Egypt
+  TR: "90",  // Türkiye
+  GB: "44",  // United Kingdom
+  US: "1",   // USA
 };
+
+/**
+ * Normalize a phone number to E.164 (the format Twilio requires).
+ *
+ * Rules, applied in order:
+ *   1. `+XXXXXXXXXX`  → passes through unchanged (already E.164).
+ *   2. `00XXXXXXXXX`  → `+XXXXXXXXX` (common European / GCC dialling).
+ *   3. `0XXXXXXXXX`   → strip the trunk zero, prefix with the default
+ *                       country's dial code (e.g. IQ `07728…` → `+9647728…`).
+ *   4. bare digits    → prefix with the default country's dial code.
+ *   5. anything else  → `null` (unrecoverable; caller emits an error).
+ *
+ * Returns `null` when:
+ *   • the cleaned string is empty after stripping non-digit/non-plus chars
+ *   • the default country is unknown to `COUNTRY_DIAL` and the input is
+ *     not already in international form
+ *   • the resulting number is shorter than 8 digits (obviously invalid —
+ *     prevents dialling emergency short-codes accidentally)
+ */
+function normalizeE164(phone: string): string | null {
+  if (!phone) return null;
+
+  // Strip whitespace, dashes, parens — keep `+` and digits only.
+  const cleaned = phone.replace(/[^+\d]/g, "");
+  if (!cleaned) return null;
+
+  let normalized: string;
+
+  if (cleaned.startsWith("+")) {
+    normalized = cleaned;
+  } else if (cleaned.startsWith("00")) {
+    normalized = "+" + cleaned.slice(2);
+  } else {
+    const dial = COUNTRY_DIAL[DEFAULT_COUNTRY];
+    if (!dial) return null;
+    normalized = cleaned.startsWith("0")
+      ? "+" + dial + cleaned.slice(1)
+      : "+" + dial + cleaned;
+  }
+
+  // E.164 allows 8-15 digits after the `+`. Anything below 8 is either a
+  // short-code (911, 997) or a typo — both wrong for contact dispatch.
+  const digits = normalized.slice(1);
+  if (digits.length < 8 || digits.length > 15 || !/^\d+$/.test(digits)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+// B-M1: origin allowlist via ALLOWED_ORIGINS env
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+function getCorsOrigin(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+function buildCors(req: Request): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": getCorsOrigin(req),
+    "Vary": "Origin",
+    // P2-#8: allow Idempotency-Key through CORS preflight so browsers
+    // don't strip it. Header is case-insensitive on the wire but listed
+    // lowercase here per RFC 7230 recommendations for preflight matching.
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// B-C4/B-H1: request-scoped idempotency cache helpers.
+// Checks idempotency_cache table (see 20260417_idempotency_cache.sql).
+// If a prior response exists for the same (function_name, key),
+// returns it so we never double-execute side effects. On miss, caller
+// executes the action, then calls `storeIdempotency` with the result.
+// ─────────────────────────────────────────────────────────────
+async function lookupIdempotency(
+  supabase: any,
+  functionName: string,
+  key: string,
+): Promise<{ status: number; body: unknown } | null> {
+  if (!key) return null;
+  try {
+    const { data } = await supabase
+      .from("idempotency_cache")
+      .select("response_body, response_status, expires_at")
+      .eq("function_name", functionName)
+      .eq("idempotency_key", key)
+      .maybeSingle();
+    if (!data) return null;
+    // Expiry-aware — expired rows are ignored (pg_cron / app can prune).
+    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
+    return { status: data.response_status ?? 200, body: data.response_body };
+  } catch (err) {
+    console.warn("[sos-alert] idempotency lookup failed:", err);
+    return null;
+  }
+}
+
+async function storeIdempotency(
+  supabase: any,
+  functionName: string,
+  key: string,
+  status: number,
+  body: unknown,
+): Promise<void> {
+  if (!key) return;
+  try {
+    await supabase.from("idempotency_cache").upsert(
+      {
+        function_name: functionName,
+        idempotency_key: key,
+        response_body: body,
+        response_status: status,
+      },
+      { onConflict: "function_name,idempotency_key" },
+    );
+  } catch (err) {
+    console.warn("[sos-alert] idempotency store failed:", err);
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────
 interface AiScriptPayload {
@@ -219,6 +364,8 @@ async function resolveTier(userId: string, supabase: any): Promise<"free" | "bas
 // Main handler
 // ═══════════════════════════════════════════════════════════════
 serve(async (req: Request) => {
+  // B-M1: origin allowlist via ALLOWED_ORIGINS env
+  const cors = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: cors });
@@ -327,12 +474,30 @@ serve(async (req: Request) => {
     // ═════════════════════════════════════════════════════════
     if (action === "escalate") {
       const { emergencyId, stage, reason, forceBridge } = await req.json();
-      const idemKey = req.headers.get("Idempotency-Key") || `escalate:${emergencyId}:${stage}`;
+      // B-C4/B-H1: persist Idempotency-Key in idempotency_cache table.
+      // If the client does not supply one we fall back to the legacy
+      // composite key (warning: this is a best-effort fallback only;
+      // clients SHOULD send Idempotency-Key for at-most-once semantics).
+      const headerIdem = req.headers.get("Idempotency-Key");
+      if (!headerIdem) {
+        console.warn(`[sos-alert] ESCALATE missing Idempotency-Key — falling back to composite key (eid=${emergencyId}, stage=${stage})`);
+      }
+      const idemKey = headerIdem || `escalate:${emergencyId}:${stage}`;
 
       // SOS priority — escalation is always allowed. Key by
       // emergencyId since escalate may be triggered by a watchdog
       // that does not carry a userId.
       const escRl = checkRateLimit(`eid:${emergencyId}`, "sos", true);
+
+      // B-C4/B-H1: cache hit short-circuit — serve previous response.
+      const cached = await lookupIdempotency(supabase, "sos-alert:escalate", idemKey);
+      if (cached) {
+        console.log(`[sos-alert] ESCALATE idempotency cache hit key=${idemKey}`);
+        return new Response(JSON.stringify(cached.body), {
+          status: cached.status,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
 
       // Fetch session to get contacts + user info
       const { data: session } = await supabase
@@ -353,11 +518,14 @@ serve(async (req: Request) => {
       // happened — returning cached success avoids a duplicate SMS burst
       // and prevents two forced bridge calls racing for the conference.
       if (typeof session.escalation_stage === "number" && session.escalation_stage >= stage) {
+        const body = { ok: true, cached: true, stage: session.escalation_stage };
         console.log(
           `[sos-alert] ESCALATE idempotent hit — stage ${stage} already ran (current=${session.escalation_stage}, key=${idemKey})`
         );
+        // B-C4/B-H1: persist so future retries hit the cache before DB work.
+        await storeIdempotency(supabase, "sos-alert:escalate", idemKey, 200, body);
         return new Response(
-          JSON.stringify({ ok: true, cached: true, stage: session.escalation_stage }),
+          JSON.stringify(body),
           { headers: { ...cors, "Content-Type": "application/json" } }
         );
       }
@@ -382,7 +550,10 @@ serve(async (req: Request) => {
       } catch {}
 
       console.log(`[sos-alert] ESCALATE stage=${stage} reason=${reason} emergencyId=${emergencyId}`);
-      return new Response(JSON.stringify({ ok: true, stage, forceBridge: !!forceBridge }), {
+      const body = { ok: true, stage, forceBridge: !!forceBridge };
+      // B-C4/B-H1: store response for subsequent retries with same key.
+      await storeIdempotency(supabase, "sos-alert:escalate", idemKey, 200, body);
+      return new Response(JSON.stringify(body), {
         headers: { ...cors, ...getRateLimitHeaders(escRl), "Content-Type": "application/json" },
       });
     }
@@ -452,6 +623,27 @@ serve(async (req: Request) => {
     // ACTION: TRIGGER — main SOS activation (default)
     // ═════════════════════════════════════════════════════════
 
+    // B-C4/B-H1: request-scoped idempotency via Idempotency-Key header.
+    // If the key has a stored response, return it verbatim — prevents
+    // duplicate SMS bursts when a network retry arrives mid-fanout.
+    // Missing key: we still have the atomic DB claim below as a
+    // secondary safeguard, but we log a warning because at-most-once
+    // semantics degrade without the header.
+    const triggerIdemKey = req.headers.get("Idempotency-Key");
+    if (!triggerIdemKey) {
+      console.warn("[sos-alert] TRIGGER missing Idempotency-Key — falling back to atomic DB claim only");
+    }
+    if (triggerIdemKey) {
+      const cachedTrigger = await lookupIdempotency(supabase, "sos-alert:trigger", triggerIdemKey);
+      if (cachedTrigger) {
+        console.log(`[sos-alert] TRIGGER idempotency cache hit key=${triggerIdemKey}`);
+        return new Response(JSON.stringify(cachedTrigger.body), {
+          status: cachedTrigger.status,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // ── Auth: extract userId from JWT (SECURITY-CRITICAL) ──
     const auth = await authenticate(req, supabase);
     if (!auth.userId) {
@@ -506,27 +698,26 @@ serve(async (req: Request) => {
 
     console.log(`[sos-alert] ═══ SOS TRIGGERED ═══ id=${emergencyId} tier=${tier} contacts=${contacts.length} silent=${!!silent}`);
 
-    // ── Idempotency: if this emergencyId was already fully triggered, return cached ──
-    const { data: existing } = await supabase
-      .from("sos_sessions")
-      .select("id, status, server_triggered_at, server_results, tier")
-      .eq("id", emergencyId)
-      .maybeSingle();
+    // B-C4/B-H1: atomic claim of the "server trigger" slot. We used to
+    // read-then-write, which let two concurrent trigger requests both
+    // observe `server_triggered_at = NULL` and each run the full fanout
+    // — duplicate SMS bursts and double conference calls.
+    //
+    // New pattern:
+    //   1. UPSERT the row with ON CONFLICT DO NOTHING (insert only).
+    //      This creates a fresh session when the client triggered
+    //      without prewarm. If a row already exists (prewarm or retry)
+    //      the INSERT is skipped.
+    //   2. UPDATE ... WHERE server_triggered_at IS NULL RETURNING *
+    //      atomically claims the trigger. Postgres guarantees only one
+    //      concurrent caller wins; the loser sees 0 rows returned and
+    //      must fall back to the cached result row.
+    const nowIso = new Date().toISOString();
 
-    if (existing?.server_triggered_at && existing?.server_results) {
-      console.log(`[sos-alert] Idempotent hit — returning cached results for ${emergencyId}`);
-      return new Response(JSON.stringify({
-        success: true,
-        cached: true,
-        emergencyId,
-        tier: existing.tier,
-        results: existing.server_results,
-        trackUrl,
-        dashUrl,
-      }), { headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" } });
-    }
-
-    // ── Upsert session (prewarm may have already created a partial row) ──
+    // Step 1: insert-if-missing. We deliberately do NOT set
+    // server_triggered_at here — the conditional UPDATE below is what
+    // claims triggering. Using ignoreDuplicates:true makes this safe
+    // when prewarm already created the row.
     await supabase.from("sos_sessions").upsert({
       id: emergencyId,
       user_id: authUserId,
@@ -534,8 +725,8 @@ serve(async (req: Request) => {
       user_phone: userPhone,
       tier,
       status: "active",
-      started_at: new Date().toISOString(),
-      last_heartbeat: new Date().toISOString(),
+      started_at: nowIso,
+      last_heartbeat: nowIso,
       lat: location.lat,
       lng: location.lng,
       last_lat: location.lat,
@@ -549,7 +740,58 @@ serve(async (req: Request) => {
       // Elite-only personalised <Say> script (null for Basic/Free,
       // in which case sos-bridge-twiml uses its built-in announcement).
       ai_script: aiScript,
-    }, { onConflict: "id", ignoreDuplicates: false });
+    }, { onConflict: "id", ignoreDuplicates: true });
+
+    // Step 2: atomic conditional UPDATE — only one caller wins the claim.
+    // `select()` on an UPDATE returns the updated rows, filtered by the
+    // WHERE clause. If zero rows come back, another invocation already
+    // ran the fanout and we must return its cached result.
+    const { data: claimed } = await supabase
+      .from("sos_sessions")
+      .update({
+        user_id: authUserId,
+        user_name: userName,
+        user_phone: userPhone,
+        tier,
+        status: "active",
+        last_heartbeat: nowIso,
+        lat: location.lat,
+        lng: location.lng,
+        last_lat: location.lat,
+        last_lng: location.lng,
+        accuracy: location.accuracy,
+        address: location.address || null,
+        blood_type: bloodType || null,
+        zone: zone || null,
+        contact_count: contacts.length,
+        silent_mode: !!silent,
+        ai_script: aiScript,
+        server_triggered_at: nowIso,
+      })
+      .eq("id", emergencyId)
+      .is("server_triggered_at", null)
+      .select("id, tier, server_triggered_at");
+
+    // B-C4/B-H1: zero rows claimed → another trigger beat us to it.
+    // Fetch the cached result row and return it. This replaces the
+    // old read-then-write race.
+    if (!claimed || claimed.length === 0) {
+      const { data: existing } = await supabase
+        .from("sos_sessions")
+        .select("id, status, server_triggered_at, server_results, tier")
+        .eq("id", emergencyId)
+        .maybeSingle();
+      console.log(`[sos-alert] Idempotent hit (atomic) — returning cached results for ${emergencyId}`);
+      return new Response(JSON.stringify({
+        success: true,
+        cached: true,
+        emergencyId,
+        tier: existing?.tier,
+        results: existing?.server_results || [],
+        trackUrl,
+        dashUrl,
+      }), { headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" } });
+    }
 
     // ══════════════════════════════════════════════════════════
     // PARALLEL FANOUT — all contacts simultaneously (5-8× faster)
@@ -557,7 +799,24 @@ serve(async (req: Request) => {
     // Call awaits (may take 15-30s to connect)
     // ══════════════════════════════════════════════════════════
     const fanoutResults = await Promise.all(contacts.map(async (c, idx) => {
-      const cleanPhone = c.phone.replace(/[^+\d]/g, "");
+      // E.164 normalization is STRICT: Twilio rejects anything else with
+      // 21211 ("Invalid 'To' phone number"). A national-format string
+      // like `07728569514` would silently burn the whole SOS — so we
+      // reject early with a typed error the client can surface. Shape
+      // matches the success path below so UI can iterate uniformly.
+      const cleanPhone = normalizeE164(c.phone);
+      if (!cleanPhone) {
+        console.warn(`[sos-alert] invalid phone for contact '${c.name}': raw='${c.phone}' default_country=${DEFAULT_COUNTRY}`);
+        return {
+          contactName: c.name,
+          phone: c.phone, // echo the raw input so UI can highlight it
+          callSid: null,
+          smsSid: null,
+          method: "invalid_number",
+          error: "invalid_number",
+          message: `Contact phone '${c.phone}' is not a valid E.164 number. Save it in international form (e.g. +964…) or set SOSPHERE_DEFAULT_COUNTRY.`,
+        };
+      }
       const isPrimaryContact = idx === 0; // First contact = Path A target
 
       // ── SMS (fires first, in parallel) ──
@@ -656,9 +915,10 @@ serve(async (req: Request) => {
     }));
 
     // ── Log results to sos_sessions ──
+    // B-C4/B-H1: server_triggered_at was set atomically in the claim
+    // step above. Here we only persist the fanout results.
     await supabase.from("sos_sessions").update({
       server_results: fanoutResults,
-      server_triggered_at: new Date().toISOString(),
     }).eq("id", emergencyId);
 
     // ── Broadcast SOS to dashboard via Realtime ──
@@ -683,14 +943,19 @@ serve(async (req: Request) => {
       console.warn("[sos-alert] Realtime broadcast failed:", e);
     }
 
-    return new Response(JSON.stringify({
+    const triggerBody = {
       success: true,
       emergencyId,
       tier,
       results: fanoutResults,
       trackUrl,
       dashUrl,
-    }), {
+    };
+    // B-C4/B-H1: persist response for Idempotency-Key retries.
+    if (triggerIdemKey) {
+      await storeIdempotency(supabase, "sos-alert:trigger", triggerIdemKey, 200, triggerBody);
+    }
+    return new Response(JSON.stringify(triggerBody), {
       status: 200,
       headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
     });
