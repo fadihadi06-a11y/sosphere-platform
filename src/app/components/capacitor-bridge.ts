@@ -72,46 +72,71 @@ export interface PermissionResult {
 export async function requestNativePermissions(
   permission: PermissionType
 ): Promise<PermissionResult> {
-  // Web context: no-op, return granted
-  if (!isNativeApp()) {
-    return {
-      permission,
-      granted: true, // Browser APIs have implicit permission
-    };
+  // O-H5: actual permission requests via Capacitor plugins (best-effort;
+  // if plugin missing, return accurate error rather than a false "granted").
+  if (permission === 'location') {
+    try {
+      const mod: any = await import('@capacitor/geolocation').catch(() => null);
+      if (mod?.Geolocation?.requestPermissions) {
+        const res = await mod.Geolocation.requestPermissions();
+        return {
+          permission,
+          granted: res?.location === 'granted' || res?.coarseLocation === 'granted',
+        };
+      }
+    } catch (e) { /* fall through to web branch */ }
   }
 
-  const platform = getNativePlatform();
+  if (permission === 'notifications') {
+    try {
+      const mod: any = await import('@capacitor/push-notifications').catch(() => null);
+      if (mod?.PushNotifications?.requestPermissions) {
+        const res = await mod.PushNotifications.requestPermissions();
+        return { permission, granted: res?.receive === 'granted' };
+      }
+    } catch {}
+    // Web fallback: actual Notification.requestPermission.
+    try {
+      if (typeof Notification !== 'undefined') {
+        const res = await Notification.requestPermission();
+        return { permission, granted: res === 'granted' };
+      }
+    } catch {}
+  }
 
-  try {
-    // TODO: Install @capacitor/camera, @capacitor/geolocation, @capacitor/device
-    // This is a stub that should be replaced with actual plugin calls
+  if (permission === 'camera') {
+    try {
+      const mod: any = await import('@capacitor/camera').catch(() => null);
+      if (mod?.Camera?.requestPermissions) {
+        const res = await mod.Camera.requestPermissions();
+        return {
+          permission,
+          granted: res?.camera === 'granted' || res?.photos === 'granted',
+        };
+      }
+    } catch {}
+  }
 
-    const capacitor = (window as any).Capacitor;
-    if (!capacitor) {
-      return { permission, granted: false, error: 'Capacitor not available' };
+  if (permission === 'microphone') {
+    // No Capacitor mic plugin in this stack — fall back to getUserMedia.
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately stop tracks — this was just a permission probe.
+        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        return { permission, granted: true };
+      }
+    } catch {
+      return { permission, granted: false, error: 'denied_or_unavailable' };
     }
-
-    // Placeholder implementation
-    console.info(`[Capacitor] Requesting ${permission} permission on ${platform}`);
-
-    // In production, this would invoke the appropriate plugin:
-    // - Camera: capacitor.plugins.Camera.checkPermissions()
-    // - Geolocation: capacitor.plugins.Geolocation.requestPermissions()
-    // - Microphone: requires custom implementation
-
-    return {
-      permission,
-      granted: true,
-      error: undefined,
-    };
-  } catch (err) {
-    console.error(`[Capacitor] Permission request failed for ${permission}:`, err);
-    return {
-      permission,
-      granted: false,
-      error: String(err),
-    };
   }
+
+  // Default: plugin unavailable — do NOT return granted:true unconditionally.
+  return {
+    permission,
+    granted: false,
+    error: 'plugin_unavailable',
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

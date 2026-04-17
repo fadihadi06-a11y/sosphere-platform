@@ -100,6 +100,27 @@ let _batteryHandler: (() => void) | null = null;
 let stateListeners: StateListener[] = [];
 let deadReckoningIntervalId: ReturnType<typeof setInterval> | null = null;
 
+// E-C4: position staleness watchdog — detects silent watchPosition hangs
+const POSITION_STALENESS_THRESHOLD_MS = 45000;
+let _lastPositionAt = 0;
+let _stalenessIntervalId: ReturnType<typeof setInterval> | null = null;
+function _startStalenessWatchdog() {
+  if (_stalenessIntervalId) return;
+  _stalenessIntervalId = setInterval(() => {
+    if (_lastPositionAt > 0 && Date.now() - _lastPositionAt > POSITION_STALENESS_THRESHOLD_MS) {
+      console.warn("[GPS] position stale >", POSITION_STALENESS_THRESHOLD_MS, "ms — restarting watch");
+      try { stopGPSTracking(); } catch {}
+      setTimeout(() => { try { startGPSTracking(); } catch {} }, 500);
+    }
+  }, 15000);
+}
+function _stopStalenessWatchdog() {
+  if (_stalenessIntervalId) {
+    clearInterval(_stalenessIntervalId);
+    _stalenessIntervalId = null;
+  }
+}
+
 // ── Haversine Distance (meters) ────────────────────────────────
 
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -166,15 +187,32 @@ export function getBatteryLevel(): number | null {
   return trackerState.batteryLevel;
 }
 
+// E-H5: fallback to Capacitor Device plugin when the web Battery API is
+// unavailable. The synchronous getBatteryLevel() remains for back-compat
+// callers; this async variant returns the best effort current value.
+export async function getBatteryLevelAsync(): Promise<number | null> {
+  if (trackerState.batteryLevel != null) return trackerState.batteryLevel;
+  try {
+    const mod: any = await import("@capacitor/device").catch(() => null);
+    if (mod?.Device?.getBatteryInfo) {
+      const info = await mod.Device.getBatteryInfo();
+      if (typeof info?.batteryLevel === "number") return info.batteryLevel;
+    }
+  } catch {}
+  return null;
+}
+
 // ── Battery Monitoring ─────────────────────────────────────────
 
 async function checkBattery(): Promise<void> {
   try {
     if ("getBattery" in navigator) {
-      // Clean up previous listener to prevent memory leak
+      // O-H3: release old listener before attaching a new one
       if (_batteryObj && _batteryHandler) {
-        _batteryObj.removeEventListener("levelchange", _batteryHandler);
+        try { _batteryObj.removeEventListener("levelchange", _batteryHandler); } catch {}
       }
+      _batteryObj = null;
+      _batteryHandler = null;
 
       const battery = await (navigator as any).getBattery();
       _batteryObj = battery;
@@ -212,6 +250,8 @@ async function checkBattery(): Promise<void> {
 // ── Record Position ────────────────────────────────────────────
 
 async function processPosition(position: GeolocationPosition): Promise<void> {
+  // E-C4: mark a fresh position event so the staleness watchdog stays quiet
+  _lastPositionAt = Date.now();
   const { latitude: lat, longitude: lng, accuracy, altitude, speed, heading } = position.coords;
   const timestamp = position.timestamp;
 
@@ -482,6 +522,9 @@ export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolea
     lastError: null,
   });
 
+  // E-C4: start the staleness watchdog so we recover from silent hangs
+  _startStalenessWatchdog();
+
   // Flush GPS buffer on app close/background
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", () => flushGPSSync());
@@ -506,11 +549,15 @@ export function stopGPSTracking(): void {
   }
   stopDeadReckoning();
 
-  // Clean up battery listener to prevent memory leak
+  // E-C4: stop staleness watchdog when we stop tracking
+  _stopStalenessWatchdog();
+
+  // O-H3: release previous battery listener to prevent memory leak and null both refs.
   if (_batteryObj && _batteryHandler) {
-    _batteryObj.removeEventListener("levelchange", _batteryHandler);
-    _batteryHandler = null;
+    try { _batteryObj.removeEventListener("levelchange", _batteryHandler); } catch {}
   }
+  _batteryObj = null;
+  _batteryHandler = null;
 
   updateState({
     isTracking: false,

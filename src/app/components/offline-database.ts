@@ -20,6 +20,51 @@
 // ═══════════════════════════════════════════════════════════════
 
 const DB_NAME = "sosphere_offline";
+
+// E-H7: bound IndexedDB growth — prune GPS older than 24h and cap rows
+const GPS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const GPS_MAX_ROWS = 5000;
+
+/**
+ * E-H7: Prune old GPS trail rows (older than 24h). Best-effort, never
+ * throws. Also logs a warning if IndexedDB usage exceeds 80% of the quota.
+ */
+export async function pruneGPSTrail(): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction("gps_trail", "readwrite");
+    const store = tx.objectStore("gps_trail");
+    const cutoff = Date.now() - GPS_MAX_AGE_MS;
+    // Adapt to the actual schema: prefer by_timestamp index; fall back to store scan.
+    let idx: IDBIndex | IDBObjectStore;
+    try { idx = store.index("by_timestamp"); } catch { idx = store; }
+    const req = (idx as any).openCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      if ((cur.value?.timestamp || 0) < cutoff) {
+        try { cur.delete(); } catch {}
+      }
+      cur.continue();
+    };
+    req.onerror = () => { /* ignore — best-effort prune */ };
+  } catch (e) {
+    console.warn("[OfflineDB] pruneGPSTrail failed", e);
+  }
+
+  // E-H7: quota warning (do not hard-fail on quota errors).
+  try {
+    if (typeof navigator !== "undefined" && (navigator as any).storage?.estimate) {
+      const est = await (navigator as any).storage.estimate();
+      if (est?.usage && est?.quota && est.usage / est.quota > 0.8) {
+        console.warn(
+          "[OfflineDB] storage usage >80% of quota:",
+          Math.round((est.usage / est.quota) * 100) + "%"
+        );
+      }
+    }
+  } catch { /* ignore */ }
+}
 // Schema versions:
 //   v2 → core stores (sos_queue, checkins, gps_trail, incidents, messages,
 //        sync_log, app_cache)
@@ -242,26 +287,54 @@ function openDB(): Promise<IDBDatabase> {
             "messages",
             "pending_audio",
           ];
+          // O-C4: telemetry for partial-migration failures
+          const failed: Array<{ store: string; id: any; err: string }> = [];
+          let remaining = storesWithSynced.length;
+          const onStoreDone = () => {
+            remaining--;
+            if (remaining <= 0 && failed.length > 0) {
+              console.error("[OfflineDB] v4 migration partial failure:", failed);
+              try {
+                localStorage.setItem(
+                  "sosphere_db_migration_errors",
+                  JSON.stringify({ version: 4, at: Date.now(), failed })
+                );
+              } catch {}
+            }
+          };
           for (const storeName of storesWithSynced) {
-            if (!db.objectStoreNames.contains(storeName)) continue;
+            if (!db.objectStoreNames.contains(storeName)) {
+              onStoreDone();
+              continue;
+            }
             try {
               const store = upgradeTx.objectStore(storeName);
               const cursorReq = store.openCursor();
               cursorReq.onsuccess = () => {
                 const cursor = cursorReq.result;
-                if (!cursor) return;
+                if (!cursor) { onStoreDone(); return; }
                 const val = cursor.value;
                 if (typeof val?.synced === "boolean") {
                   val.synced = val.synced ? 1 : 0;
-                  try { cursor.update(val); } catch { /* migration is best-effort */ }
+                  try {
+                    cursor.update(val);
+                  } catch (e) {
+                    // O-C4: record each failed id for later inspection.
+                    failed.push({ store: storeName, id: val?.id, err: String(e) });
+                  }
                 }
                 cursor.continue();
               };
               // Cursor errors are swallowed — a single bad record must
-              // not abort the whole upgrade.
-              cursorReq.onerror = () => { /* ignore */ };
-            } catch {
-              // Store missing or inaccessible — skip.
+              // not abort the whole upgrade, but we do log them.
+              cursorReq.onerror = () => {
+                failed.push({ store: storeName, id: null, err: String(cursorReq.error) });
+                onStoreDone();
+              };
+            } catch (e) {
+              // Store missing or inaccessible — skip but log.
+              failed.push({ store: storeName, id: null, err: String(e) });
+              onStoreDone();
             }
           }
         }
@@ -276,6 +349,9 @@ function openDB(): Promise<IDBDatabase> {
         dbInstance = null;
         dbInitPromise = null;
       };
+
+      // E-H7: fire-and-forget GPS prune + quota check on every open
+      void pruneGPSTrail().catch(() => {});
 
       resolve(dbInstance);
     };
