@@ -11,8 +11,12 @@ import type { Role, Permission } from "../mobile-auth";
 
 const AUTH_KEY = "sosphere_dashboard_auth";
 
-// Session version — bump this to invalidate all existing sessions after code changes
-const SESSION_VERSION = 3; // Bumped for role-based auth
+// Session version — bump this to invalidate all existing sessions after code changes.
+// D-M6: bumped to 4 to invalidate pre-TTL-tightening sessions. Any session
+// signed on SESSION_VERSION ≤ 3 is refused by isSessionExpired() and the
+// user is forced through a fresh login (which now issues SESSION_VERSION=4
+// with the 8h TTL and the server-authoritative onboarding/role wiring).
+const SESSION_VERSION = 4;
 
 export interface DashboardSession {
   name: string;
@@ -61,8 +65,13 @@ export function getDashboardSession(): DashboardSession | null {
   }
 }
 
-// FIX 9: Session TTL — 24 hours. Prevents stale sessions from persisting indefinitely.
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+// D-M9: Session TTL tightened from 24h to 8h. Aligns with typical
+// enterprise dashboard session policies and matches the window in
+// which a lost / stolen admin laptop is likely to be reported. A
+// user with legitimate all-day access can re-authenticate at the
+// start of their next shift — low friction, much smaller window
+// of exposure for a stolen JWT.
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 /** Check if session is expired */
 export function isSessionExpired(session: DashboardSession): boolean {

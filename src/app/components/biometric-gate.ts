@@ -215,7 +215,18 @@ export async function verifyBiometric(): Promise<boolean> {
   if (native) {
     try {
       const { success } = await native.authenticate({ reason: "Verify your identity" });
-      if (success) _verifiedThisSession = true;
+      if (success) {
+        _verifiedThisSession = true;
+        // S-H2: record server-side audit breadcrumb. Fire-and-forget —
+        // a failed server write must NOT prevent the user's verified
+        // state from being accepted locally.
+        void (async () => {
+          try {
+            const { recordBiometricVerification } = await import("./api/biometric-server");
+            await recordBiometricVerification("fingerprint");
+          } catch { /* silent */ }
+        })();
+      }
       return success;
     } catch {
       return false;
@@ -241,6 +252,15 @@ export async function verifyBiometric(): Promise<boolean> {
     // For server-side replay protection you would round-trip the challenge
     // through a backend — SOSphere keeps this local-only by design.
     _verifiedThisSession = true;
+    // S-H2: record server-side audit breadcrumb. Fire-and-forget —
+    // a failed server write must NOT prevent the user's verified
+    // state from being accepted locally.
+    void (async () => {
+      try {
+        const { recordBiometricVerification } = await import("./api/biometric-server");
+        await recordBiometricVerification("webauthn");
+      } catch { /* silent */ }
+    })();
     return true;
   } catch (e) {
     console.warn("[Biometric] Verification failed:", e);

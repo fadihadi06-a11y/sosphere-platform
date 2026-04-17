@@ -1413,6 +1413,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const partialPersistIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startRealRecording = useCallback(async () => {
+    // E-C3: guard against older WebViews / MDM-locked devices where
+    // navigator.mediaDevices is undefined. SOS must continue even if
+    // audio capture fails — dialer + server paths are independent.
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      console.warn("[SOS-Emergency] E-C3: mediaDevices unavailable — continuing without audio evidence");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")

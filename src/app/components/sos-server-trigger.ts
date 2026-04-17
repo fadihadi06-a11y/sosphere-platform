@@ -17,7 +17,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
-import { getLastKnownPosition, getBatteryLevel } from "./offline-gps-tracker";
+import { getLastKnownPosition, getBatteryLevel, getPositionAgeMs, isPositionStale } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
 import { publishNeighborAlert, publishNeighborRetract, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 import { buildAiScriptPayload } from "./ai-voice-call-service";
@@ -58,6 +58,48 @@ let replayListenerAttached = false;
 const retryNotBeforeMs = new Map<string, number>();
 function nextBackoffMs(attempts: number): number {
   return Math.min(Math.pow(2, attempts) * 1000, 60000);
+}
+
+// ── P2-1 Phase 2 hardening helpers ───────────────────────────
+// E-H8: client-side E.164 sanity check. Server still re-validates,
+// but stripping obviously-invalid numbers BEFORE Twilio prevents an
+// SMS/call attempt silently failing with a 21211 error that the
+// victim never sees. Accepts +<country><subscriber> with 8-15 digits.
+function isValidE164Phone(p: string | undefined | null): boolean {
+  if (!p) return false;
+  const s = String(p).replace(/[\s\-().]/g, "");
+  return /^\+?[1-9]\d{7,14}$/.test(s);
+}
+
+// E-M4: tier-bounded emergency-contact cap. Free = 1, Basic = 3,
+// Elite effectively unbounded (hard 999 cap). Matches subscription
+// UI copy and stops a Free user from accidentally queuing 20
+// contacts offline and having them all dialed once the queue drains.
+const MAX_CONTACTS_BY_TIER: Record<string, number> = {
+  free: 1,
+  basic: 3,
+  elite: 999,
+};
+
+// E-C5: replay queue pacing. Each attempt is a real Twilio dial
+// that costs money if dedup fails server-side. REPLAY_REQUEST_GAP_MS
+// gives the server a breath between requests; if the server 429s,
+// REPLAY_COOLDOWN_429_MS pauses the whole drain so the next
+// online/visibility event doesn't re-hammer immediately.
+const REPLAY_REQUEST_GAP_MS = 500;
+const REPLAY_COOLDOWN_429_MS = 60_000;
+let replayCooldownUntil = 0;
+
+// E-C1 / E-H2: escalation state machine. firedEscalations tracks
+// which stages (1, 2, ...) have already fired for the active
+// emergency. Once in the set, we never re-fire the same stage.
+// The mutex serialises the fetch so two watchdog ticks landing on
+// the same integer second can't double-submit before the first
+// response completes.
+const firedEscalations = new Set<number>();
+let escalationMutex: Promise<unknown> = Promise.resolve();
+function resetEscalationState(): void {
+  firedEscalations.clear();
 }
 
 // ── State ────────────────────────────────────────────────────
@@ -259,9 +301,49 @@ export async function triggerServerSOS(opts: {
   bloodType?: string;
   zone?: string;
   silent?: boolean;
+  // E-C6: per-SOS opt-out for neighbor broadcast. Default true
+  // (broadcasts if user has the feature), but caller can explicitly
+  // disable for domestic-violence / stalker scenarios where alerting
+  // a 9-cell radius is dangerous. Also honored by the neighbor-alert
+  // service-level opt-out in settings.
+  allowNeighborBroadcast?: boolean;
 }): Promise<ServerTriggerResult> {
   const tier = getTierString();
   const now = Date.now();
+
+  // ── E-H8: validate contact phones BEFORE Twilio ─────────────
+  // Strip invalid E.164 numbers so Twilio doesn't silently fail on a
+  // 21211 error the victim never learns about. If NO valid contacts
+  // remain, we still fire the SOS (server-side contacts may be richer,
+  // and the local dialer Path A is independent) but we log loudly.
+  const validatedContacts = (opts.contacts || []).filter(c => {
+    const ok = isValidE164Phone(c?.phone);
+    if (!ok) {
+      console.warn(
+        `[SOS-Server] E-H8: dropping invalid contact phone: name="${c?.name}" phone="${c?.phone}"`,
+      );
+    }
+    return ok;
+  });
+  if (validatedContacts.length === 0 && (opts.contacts || []).length > 0) {
+    console.error(
+      "[SOS-Server] E-H8: ALL emergency contacts failed E.164 validation — " +
+      "server-side contacts / local dialer remain the only channels",
+    );
+  }
+
+  // ── E-M4: tier-bounded contact cap ──────────────────────────
+  // Cap BEFORE sending to server so we don't pay for Twilio attempts
+  // the user's subscription doesn't cover. Server will also enforce
+  // this from the authoritative tier (defence in depth).
+  const tierCap = MAX_CONTACTS_BY_TIER[tier] ?? MAX_CONTACTS_BY_TIER.free;
+  const cappedContacts = validatedContacts.slice(0, tierCap);
+  if (cappedContacts.length < validatedContacts.length) {
+    console.warn(
+      `[SOS-Server] E-M4: contacts capped by tier "${tier}" — ` +
+      `kept ${cappedContacts.length}/${validatedContacts.length}`,
+    );
+  }
 
   // ── DEDUP GUARD ─────────────────────────────────────────────
   // Layer 1: reject concurrent fires (double-tap within same tick)
@@ -316,7 +398,14 @@ export async function triggerServerSOS(opts: {
   // STEP 1b — Fire neighbor alert (Elite + opt-in only).
   // Fire-and-forget: never awaited, never thrown — primary SOS path
   // must not be slowed down by this secondary broadcast.
-  if (canBroadcastNeighbors() && gps) {
+  // E-C6: per-SOS opt-out. allowNeighborBroadcast === false suppresses
+  // the 9-cell broadcast for this specific emergency (e.g. DV mode).
+  // Default undefined === allowed; only explicit false blocks.
+  const neighborBroadcastAllowed = opts.allowNeighborBroadcast !== false;
+  if (!neighborBroadcastAllowed) {
+    console.log("[SOS-Server] E-C6: neighbor broadcast suppressed for this SOS");
+  }
+  if (canBroadcastNeighbors() && gps && neighborBroadcastAllowed) {
     // P1-#5: Capture the GPS snapshot used for the broadcast so
     // endServerSOS can retract on the SAME 9-cell window. We use the
     // user's current neighbor-alert precision setting — stored at the
@@ -367,8 +456,23 @@ export async function triggerServerSOS(opts: {
       userName: opts.userName,
       userPhone: opts.userPhone,
       // tier is NOT trusted server-side — will be overridden by DB lookup
-      contacts: opts.contacts,
-      location: gps || { lat: 0, lng: 0, accuracy: 9999 },
+      contacts: cappedContacts,
+      // E-C2: NEVER send (0,0) silently. location_available=false tells
+      // the server / responders that GPS was unavailable at trigger time
+      // so they can dispatch based on last-known-position / IP geolocation
+      // instead of actioning a coordinate pair at null island.
+      // E-C4: attach age + stale flag so dispatcher knows whether
+      // this is LIVE GPS or a last-known stale fix.
+      location: gps
+        ? {
+            lat: gps.lat,
+            lng: gps.lng,
+            accuracy: gps.accuracy,
+            location_available: true,
+            location_age_ms: getPositionAgeMs(),
+            location_stale: isPositionStale(),
+          }
+        : { lat: 0, lng: 0, accuracy: 9999, location_available: false, location_stale: true },
       bloodType: opts.bloodType,
       zone: opts.zone,
       silent: opts.silent,
@@ -542,6 +646,10 @@ export async function endServerSOS(opts: {
   // Release dedup guards so a new emergency can be triggered immediately.
   sosInFlight = false;
   lastFireAt = 0;
+  // E-C1 / E-H2: reset escalation state so the NEXT emergency starts
+  // with a clean slate. Without this, fired stages from a previous
+  // incident would prevent legitimate escalations on a fresh SOS.
+  resetEscalationState();
 
   try {
     const res = await fetchSOS("end", {
@@ -624,20 +732,40 @@ export function startWatchdog(
 
 function fireEscalation(stage: number, reason: string): void {
   if (!activeEmergencyId) return;
-  fetchSOS("escalate", {
-    emergencyId: activeEmergencyId,
-    stage,
-    reason,
-    forceBridge: stage >= 2,
-  }, {
-    timeoutMs: 8000,
-    // Per-(emergency, stage) key: if the watchdog re-fires the same
-    // stage (e.g. because an earlier request timed out locally but
-    // actually succeeded server-side), the server returns the cached
-    // response and does NOT launch a second SMS burst or bridge call.
-  idempotencyKey: `escalate:${activeEmergencyId}:${stage}`,
-  }).catch(err => {
-    console.warn("[SOS-Watchdog] Escalation request failed:", err);
+  // E-C1 / E-H2: single-shot client-side guard. If this stage has
+  // already been fired for the current emergency, we do nothing —
+  // server-side idempotency would dedup anyway but we save a round
+  // trip and avoid adding noise to the audit log.
+  if (firedEscalations.has(stage)) {
+    console.log(`[SOS-Watchdog] Stage ${stage} already fired — skipping`);
+    return;
+  }
+  firedEscalations.add(stage);
+
+  const emergencyId = activeEmergencyId;
+  // Serialise via mutex so two watchdog ticks on the same integer
+  // second can't double-submit before the first response completes.
+  escalationMutex = escalationMutex.then(async () => {
+    try {
+      await fetchSOS("escalate", {
+        emergencyId,
+        stage,
+        reason,
+        forceBridge: stage >= 2,
+      }, {
+        timeoutMs: 8000,
+        // Per-(emergency, stage) key — server-side idempotency defence
+        // in depth. Same key = cached response, no second SMS burst
+        // or bridge call.
+        idempotencyKey: `escalate:${emergencyId}:${stage}`,
+      });
+    } catch (err) {
+      // On FAILURE, remove from fired-set so a retry CAN happen.
+      // Without this, a single network blip would lock out the
+      // stage for the whole emergency.
+      firedEscalations.delete(stage);
+      console.warn("[SOS-Watchdog] Escalation request failed:", err);
+    }
   });
 }
 
@@ -775,6 +903,14 @@ export async function replayPendingSOS(): Promise<{
 
   replayInFlight = true;
   try {
+    // E-C5: global 429 cooldown. If a recent replay was rate-limited,
+    // don't even read the queue — let the server breathe.
+    if (Date.now() < replayCooldownUntil) {
+      const waitMs = replayCooldownUntil - Date.now();
+      console.log(`[SOS-Replay] in 429 cooldown for ${waitMs}ms — skipping drain`);
+      return summary;
+    }
+
     const pending = await getUnsyncedSOS();
     if (pending.length === 0) return summary;
 
@@ -800,8 +936,21 @@ export async function replayPendingSOS(): Promise<{
       }
 
       summary.replayed++;
-      const ok = await replayOneSOS(rec).catch(() => false);
-      if (ok) {
+      const result = await replayOneSOS(rec).catch(() => ({ ok: false, status: 0 }));
+      // E-C5: if we got a 429 we globally pause the drain. Individual
+      // record backoff alone isn't enough — a backlog of 10 records
+      // would retry in rapid succession and hammer the server on flap.
+      if (!result.ok && result.status === 429) {
+        replayCooldownUntil = Date.now() + REPLAY_COOLDOWN_429_MS;
+        console.warn(
+          `[SOS-Replay] 429 rate-limited — cooling down for ${REPLAY_COOLDOWN_429_MS}ms`,
+        );
+        summary.failed++;
+        retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
+        await incrementSOSRetry(rec.id, "replay_429").catch(() => {});
+        break; // stop processing further records this round
+      }
+      if (result.ok) {
         summary.succeeded++;
         retryNotBeforeMs.delete(rec.id);
         await markSOSSynced(rec.id).catch(() => {});
@@ -809,6 +958,11 @@ export async function replayPendingSOS(): Promise<{
         summary.failed++;
         retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
         await incrementSOSRetry(rec.id, "replay_failed").catch(() => {});
+      }
+      // E-C5: inter-request gap. Small pause so we never machine-gun
+      // the Edge Function even if the queue is deep.
+      if (REPLAY_REQUEST_GAP_MS > 0) {
+        await new Promise(r => setTimeout(r, REPLAY_REQUEST_GAP_MS));
       }
     }
 
@@ -819,23 +973,36 @@ export async function replayPendingSOS(): Promise<{
   }
 }
 
-/** Single-record replay. Re-issues fetchSOS with the original payload. */
-async function replayOneSOS(rec: SOSRecord): Promise<boolean> {
+/**
+ * Single-record replay. Re-issues fetchSOS with the original payload.
+ * E-C5: returns {ok, status} so the caller can distinguish a 429
+ * (trigger global cooldown) from a 5xx (per-record backoff).
+ */
+async function replayOneSOS(rec: SOSRecord): Promise<{ ok: boolean; status: number }> {
   const md = rec.metadata || {};
   // Minimal sanity — if emergencyId is missing the record is corrupt.
   if (!md.emergencyId || !Array.isArray(md.contacts)) {
     console.warn(`[SOS-Replay] record ${rec.id} missing required metadata — skipping`);
-    return false;
+    return { ok: false, status: 0 };
   }
 
   try {
+    // E-C2: preserve location_available semantics on replay. If the
+    // original trigger had no GPS (0,0 with accuracy 9999) we replay
+    // with location_available=false so responders still know.
+    const hasLocation = !(rec.lat === 0 && rec.lng === 0 && rec.accuracy === 9999);
     const res = await fetchSOS(null, {
       emergencyId: md.emergencyId,
       userId: rec.employeeId,
       userName: rec.employeeName,
       userPhone: md.userPhone,
       contacts: md.contacts,
-      location: { lat: rec.lat, lng: rec.lng, accuracy: rec.accuracy },
+      location: {
+        lat: rec.lat,
+        lng: rec.lng,
+        accuracy: rec.accuracy,
+        location_available: hasLocation,
+      },
       bloodType: md.bloodType,
       zone: rec.zone,
       silent: md.silent,
@@ -847,10 +1014,10 @@ async function replayOneSOS(rec: SOSRecord): Promise<boolean> {
       // instead of firing Twilio a second time.
       idempotencyKey: `trigger:${md.emergencyId}`,
     });
-    return res.ok;
+    return { ok: res.ok, status: res.status };
   } catch (err) {
     console.warn(`[SOS-Replay] record ${rec.id} fetch failed:`, err);
-    return false;
+    return { ok: false, status: 0 };
   }
 }
 
