@@ -37,7 +37,7 @@ export default defineConfig({
     minify: "esbuild",
     // ── CSS code splitting ──
     cssCodeSplit: true,
-    // ── Source maps off in production for smaller bundles ──
-    sourcemap: false,
+    // O-H6: hidden source maps for Sentry upload, not shipped to browsers
+    sourcemap: "hidden",
   },
 });

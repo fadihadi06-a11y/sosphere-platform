@@ -31,16 +31,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx eslint src/app/ --max-warnings 850
+      # O-M1: intermediate cap of 300 warnings (long-term goal <100)
+      - run: npx eslint src/app/ --max-warnings 300
 
   # ── Job 3: Build ───────────────────────────────────────
   build:
     name: Vite Build
     runs-on: ubuntu-latest
     needs: [lint]
-    env:
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,4 +46,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # O-M4: write secrets to .env in a single masked step instead of
+      # exposing them as step-level env vars (reduces surface for log leakage)
+      - name: Create .env (secrets)
+        run: |
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
+        shell: bash
       - run: npx vite build
