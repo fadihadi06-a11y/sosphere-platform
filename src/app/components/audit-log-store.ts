@@ -244,6 +244,44 @@ function toDbRow(entry: AuditEntry, companyId: string): Record<string, any> {
 }
 
 /**
+ * D-H6: resolve the authoritative actor_id for an audit row.
+ * Client-side entries use the localStorage admin profile (for
+ * zero-latency UI) but the DB row must carry the server-verified
+ * auth.uid() — the one that cannot be forged by editing localStorage.
+ *
+ * If we can't reach auth.getUser() (offline, session expiring), we
+ * fall through to the client-derived id so compliance still gets a
+ * breadcrumb. Any mismatch is a signal worth alerting on and could
+ * be surfaced as a future audit.
+ */
+async function verifiedServerActorId(): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply verified actor_id + server client_timestamp to a DB row
+ * before upsert. Leaves other fields intact.
+ */
+function applyServerActor(row: Record<string, any>, serverActorId: string | null): Record<string, any> {
+  if (!serverActorId) return row;
+  // If the client-derived actor_id differs from the server one, keep the
+  // server value in actor_id and record the client claim in device_info
+  // so investigators can spot tampering attempts.
+  if (row.actor_id && row.actor_id !== serverActorId) {
+    const deviceInfo = row.device_info ? String(row.device_info) : "";
+    const mismatchTag = "[actor_mismatch:" + String(row.actor_id).slice(0, 8) + "]";
+    row.device_info = deviceInfo ? deviceInfo + " " + mismatchTag : mismatchTag;
+  }
+  row.actor_id = serverActorId;
+  return row;
+}
+
+/**
  * Write an audit entry to Supabase in the background. On failure, add it
  * to a local retry queue that drains on the next successful write. We
  * never await or throw from this function — compliance should be durable
@@ -259,11 +297,19 @@ async function persistToSupabase(entry: AuditEntry): Promise<void> {
   }
 
   try {
+    // D-H6: resolve the authoritative actor id once per batch. A single
+    // auth.getUser() per upsert keeps the overhead negligible; the
+    // Supabase client caches the response aggressively.
+    const serverActorId = await verifiedServerActorId();
+
     // Drain retry queue first — if it fails we'll re-enqueue below.
     const queue = loadRetryQueue();
     const batch = queue.length > 0
-      ? [...queue.map((e) => toDbRow(e, companyId)), toDbRow(entry, companyId)]
-      : [toDbRow(entry, companyId)];
+      ? [
+          ...queue.map((e) => applyServerActor(toDbRow(e, companyId), serverActorId)),
+          applyServerActor(toDbRow(entry, companyId), serverActorId),
+        ]
+      : [applyServerActor(toDbRow(entry, companyId), serverActorId)];
 
     const { error } = await supabase
       .from("audit_log")
