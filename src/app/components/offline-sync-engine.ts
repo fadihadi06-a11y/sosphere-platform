@@ -35,6 +35,34 @@ import {
 
 export type SyncCategory = "sos" | "checkins" | "incidents" | "messages" | "gps";
 
+// O-H2: optimistic concurrency — callers can tag items with an expected
+// version and observe a `needs_manual_merge` flag if the server rejects
+// the write. Actual server-side eq check lives in per-table service files.
+export interface VersionedSyncItem {
+  id: string;
+  /** Optimistic-lock version the caller expects to be current server-side. */
+  version?: number;
+  /**
+   * Set by the sync engine when a 409 / optimistic-lock failure comes
+   * back from the server. The engine stops retrying once this is true —
+   * a human or merge-UI step is required.
+   */
+  needs_manual_merge?: boolean;
+}
+
+/**
+ * O-H2: Did the server response indicate an optimistic-lock conflict?
+ * True for HTTP 409, Postgres serialization errors, or explicit "optimistic
+ * lock failed" messages. Kept permissive — server shapes vary per table.
+ */
+function isOptimisticConflict(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  if (/\b409\b/.test(msg)) return true;
+  if (/optimistic\s+lock/i.test(msg)) return true;
+  if (/conflict/i.test(msg)) return true;
+  return false;
+}
+
 export interface SyncProgress {
   isRunning: boolean;
   currentCategory: SyncCategory | null;
@@ -73,7 +101,8 @@ const DEFAULT_CONFIG: SyncEngineConfig = {
   gpsBatchSize: 100,
   batchDelayMs: 200,
   autoSyncOnReconnect: true,
-  simulatedLatencyMs: 150, // for demo — remove in production
+  // O-M2: only simulate latency in dev builds
+  simulatedLatencyMs: (typeof import.meta !== "undefined" && (import.meta as any).env?.DEV) ? 150 : 0,
 };
 
 // ── State ──────────────────────────────────────────────────────
@@ -153,8 +182,16 @@ async function simulateNetworkSend(data: any, category: string): Promise<boolean
   if (SUPABASE_CONFIG.isConfigured) {
     const { error } = await supabase.from(category).insert(data);
     if (error) {
+      // O-H2: surface optimistic-lock conflicts distinctly so the caller
+      // can stop retrying and flag the record for manual merge.
+      const msg = `[Supabase] ${category}: ${error.message}`;
+      if (/\b409\b/.test(error.message || "") || /optimistic\s+lock/i.test(error.message || "") || /conflict/i.test(error.message || "")) {
+        const e = new Error(msg);
+        (e as any).isConflict = true;
+        throw e;
+      }
       // Supabase error — will be retried via exponential backoff
-      throw new Error(`[Supabase] ${category}: ${error.message}`);
+      throw new Error(msg);
     }
     return true;
   }
@@ -209,6 +246,11 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      // O-H2: optimistic-lock conflicts must not be retried — stop and
+      // surface the error so the caller can flag `needs_manual_merge`.
+      if ((err as any)?.isConflict || isOptimisticConflict(err)) {
+        throw lastError;
+      }
       if (attempt < maxRetries) {
         const delay = getRetryDelay(attempt);
         onRetry?.(attempt + 1, lastError);
@@ -239,6 +281,11 @@ async function syncSOSAlerts(): Promise<void> {
       updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
       continue;
     }
+    // O-H2: skip records already flagged for manual merge by a prior conflict
+    if ((sos as any).needs_manual_merge) {
+      updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
+      continue;
+    }
 
     try {
       await retryWithBackoff(
@@ -249,6 +296,15 @@ async function syncSOSAlerts(): Promise<void> {
       await markSOSSynced(sos.id);
       updateCategory("sos", { synced: currentProgress.categories.sos.synced + 1 });
     } catch (err) {
+      // O-H2: on optimistic-lock conflict, mark for manual merge and stop retrying this record.
+      if (isOptimisticConflict(err) || (err as any)?.isConflict) {
+        (sos as any).needs_manual_merge = true;
+        await incrementSOSRetry(sos.id, `needs_manual_merge: ${String(err)}`);
+        updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
+        currentProgress.errors.push(`SOS ${sos.id} needs_manual_merge`);
+        emitProgress();
+        continue;
+      }
       await incrementSOSRetry(sos.id, String(err));
       updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
       currentProgress.errors.push(`SOS ${sos.id}: ${err}`);
