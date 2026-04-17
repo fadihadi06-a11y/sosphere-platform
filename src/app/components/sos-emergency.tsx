@@ -2462,7 +2462,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     doEnd("SOS ended by user");
   }
 
-  function handlePinSubmit() {
+  async function handlePinSubmit() {
     // ── PHASE 2: Duress PIN check — MUST run before the normal PIN check.
     // If a duress PIN is configured and matches, we silently tag the end
     // event as duress=true and still close the SOS UI identically to a
@@ -2470,7 +2470,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // Tier-gated: duressCode is Elite-only; if the feature isn't available
     // the duress PIN is ignored (defense-in-depth — even if a stale PIN
     // lingers in localStorage after a tier downgrade).
-    if (isDuressFeatureAvailable() && isDuressPin(pinInput)) {
+    // E-M1: isDuressPin is async now (hashes + constant-time compare).
+    const duressMatch = isDuressFeatureAvailable() && await isDuressPin(pinInput);
+    if (duressMatch) {
       setShowPinEntry(false);
       setShowDMS(false);
       // Broadcast DURESS flag to dashboard/contacts BEFORE ending locally.
