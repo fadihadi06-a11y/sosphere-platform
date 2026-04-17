@@ -42,14 +42,15 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
 
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
-  const handleSaveNormal = () => {
+  const handleSaveNormal = async () => {
     setError(null);
     setSuccess(null);
     if (!/^\d{4,10}$/.test(normalPin)) {
       setError(t("Deactivation PIN must be 4–10 digits", "رمز الإلغاء يجب أن يكون 4–10 أرقام"));
       return;
     }
-    const ok = setDeactivationPin(normalPin);
+    // E-M1: setDeactivationPin is async now (hashes the PIN).
+    const ok = await setDeactivationPin(normalPin);
     if (!ok) {
       setError(t("PIN conflicts with duress PIN — pick a different one", "الرمز مطابق لرمز الإكراه — اختر رمزاً مختلفاً"));
       return;
@@ -58,7 +59,7 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
     setNormalPin("");
   };
 
-  const handleSaveDuress = () => {
+  const handleSaveDuress = async () => {
     setError(null);
     setSuccess(null);
     if (!eliteUnlocked) {
@@ -69,7 +70,8 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
       setError(t("Duress PIN must be 4–10 digits", "رمز الإكراه يجب أن يكون 4–10 أرقام"));
       return;
     }
-    const ok = setDuressPin(duressPinVal);
+    // E-M1: setDuressPin is async now (hashes the PIN).
+    const ok = await setDuressPin(duressPinVal);
     if (!ok) {
       setError(t(
         "Duress PIN must differ from deactivation PIN",
@@ -82,13 +84,17 @@ export function SecurityPinModal({ open, onClose, isAr = false }: Props) {
   };
 
   const handleClearNormal = () => {
-    setDeactivationPin(null);
+    // E-M1: setDeactivationPin is async. Fire-and-forget is safe here —
+    // the local clear is idempotent and UI success message is independent.
+    void setDeactivationPin(null);
     setSuccess(t("Deactivation PIN removed", "تم حذف رمز الإلغاء"));
     setError(null);
   };
 
   const handleClearDuress = () => {
-    setDuressPin(null);
+    // E-M1: setDuressPin is async. Fire-and-forget is safe — the local
+    // clear is idempotent.
+    void setDuressPin(null);
     setSuccess(t("Duress PIN removed", "تم حذف رمز الإكراه"));
     setError(null);
   };

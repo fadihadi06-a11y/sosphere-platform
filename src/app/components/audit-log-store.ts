@@ -67,6 +67,40 @@ export interface AuditEntry {
 // ── Storage ──────────────────────────────────────────────────────
 
 const AUDIT_KEY = "sosphere_audit_log";
+
+// S-M2: classify UA into a stable label (browser + platform + form-factor)
+// instead of storing raw navigator.userAgent on every audit row. The raw
+// UA string:
+//   • leaks minor browser versions → passive fingerprint across rows
+//   • changes frequently on Chrome auto-update → noisy analytics
+//   • exceeds the 80-char slice limit for modern Chrome UAs anyway
+// The classified label is analytics-friendly and carries zero PII.
+function classifyUserAgent(): string | undefined {
+  try {
+    if (typeof navigator === "undefined") return undefined;
+    const ua = (navigator.userAgent || "").toLowerCase();
+    if (!ua) return undefined;
+
+    let browser = "unknown";
+    if (ua.includes("edg/")) browser = "edge";
+    else if (ua.includes("opr/") || ua.includes("opera")) browser = "opera";
+    else if (ua.includes("firefox/")) browser = "firefox";
+    else if (ua.includes("chrome/")) browser = "chrome";
+    else if (ua.includes("safari/")) browser = "safari";
+
+    let platform = "desktop";
+    if (ua.includes("android")) platform = "android";
+    else if (ua.includes("iphone") || ua.includes("ipad")) platform = "ios";
+    else if (ua.includes("mac os")) platform = "macos";
+    else if (ua.includes("windows")) platform = "windows";
+    else if (ua.includes("linux")) platform = "linux";
+
+    const isMobile = /mobile|android|iphone|ipad/.test(ua);
+    return `${browser}/${platform}${isMobile ? "/mobile" : ""}`;
+  } catch {
+    return undefined;
+  }
+}
 const AUDIT_EVENT_KEY = "sosphere_audit_event";
 const MAX_ENTRIES = 500; // Keep last 500 entries
 
@@ -138,7 +172,7 @@ export function logAuditEvent(
     after: options?.after,
     severity: options?.severity ?? "info",
     verified2FA: options?.verified2FA,
-    deviceInfo: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
+    deviceInfo: classifyUserAgent(),
   };
 
   const log = loadAuditLog();
