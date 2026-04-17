@@ -242,6 +242,13 @@ self.addEventListener('fetch', (event) => {
   // Skip API calls (they should use IndexedDB queue)
   if (event.request.url.includes('/api/')) return;
 
+  // O-H1: exclude auth/RPC/mutation from cache — never serve stale auth state
+  const NON_CACHEABLE = [/\\/auth\\//, /\\/rest\\/v1\\/rpc\\/verify_permission/, /\\/rest\\/v1\\/rpc\\/.*/, /\\/functions\\/v1\\//];
+  if (NON_CACHEABLE.some(function (r) { return r.test(event.request.url); }) || event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {

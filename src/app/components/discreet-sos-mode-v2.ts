@@ -46,6 +46,13 @@ let discreetState: DiscreetSosState = {
   tapTracker: [],
 };
 
+// E-H3: warn responders 5 minutes before timeout and emit a heartbeat every 2 min
+const DISCREET_TIMEOUT_MS = 60 * 60 * 1000;
+const WARN_BEFORE_MS = 5 * 60 * 1000;
+const HEARTBEAT_MS = 2 * 60 * 1000;
+let _discreetWarnTimer: ReturnType<typeof setTimeout> | null = null;
+let _discreetHbInterval: ReturnType<typeof setInterval> | null = null;
+
 // ── State Listeners ────────────────────────────────────────────
 
 type DiscreetStateListener = (state: DiscreetSosState) => void;
@@ -114,6 +121,13 @@ async function streamGPSLocation(): Promise<void> {
 // ── Audio Recording Setup ──────────────────────────────────────
 
 async function startAudioRecording(): Promise<void> {
+  // E-C3: guard against older WebViews / denied permission — do not crash SOS
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+    console.warn("[DiscreetSOS] mediaDevices unavailable — continuing without audio evidence");
+    updateState({ stream: null } as any);
+    return; // keep rest of discreet mode running
+  }
+
   try {
     // Request microphone permission (graceful handling if denied)
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -157,11 +171,13 @@ async function startAudioRecording(): Promise<void> {
     updateState({ mediaRecorder: recorder });
     devLog("Audio recording started");
   } catch (err: any) {
-    if (err.name === "NotAllowedError") {
-      devWarn("Audio permission denied by user");
-    } else {
-      devWarn("Audio recording init error:", err);
-    }
+    // E-C3: continue discreet mode even when mic is denied / missing
+    const name = err?.name || "";
+    if (name === "NotAllowedError") console.warn("[DiscreetSOS] microphone permission denied");
+    else if (name === "NotFoundError" || name === "DevicesNotFoundError") console.warn("[DiscreetSOS] no microphone hardware");
+    else console.warn("[DiscreetSOS] getUserMedia failed:", err);
+    updateState({ stream: null } as any);
+    // DO NOT throw — continue discreet mode without audio
   }
 }
 
@@ -378,7 +394,35 @@ export async function activateDiscreetSos(mode: "blackout" | "low-battery"): Pro
   const autoTimeoutId = setTimeout(() => {
     devLog("Auto-timeout: deactivating discreet SOS after 60 minutes");
     deactivateDiscreetSos();
-  }, 60 * 60 * 1000);
+  }, DISCREET_TIMEOUT_MS);
+
+  // E-H3: warn responders 5 minutes before timeout
+  _discreetWarnTimer = setTimeout(() => {
+    try {
+      emitSyncEvent({
+        type: "DISCREET_SOS_WARNING",
+        employeeId: "discreet-sos-user",
+        employeeName: "Discreet SOS Warning",
+        zone: "Unknown",
+        timestamp: Date.now(),
+        data: { minutesRemaining: 5 },
+      } as any);
+    } catch {}
+  }, DISCREET_TIMEOUT_MS - WARN_BEFORE_MS);
+
+  // E-H3: emit a heartbeat every 2 min so responders can tell the session is still alive
+  _discreetHbInterval = setInterval(() => {
+    try {
+      emitSyncEvent({
+        type: "DISCREET_SOS_HEARTBEAT",
+        employeeId: "discreet-sos-user",
+        employeeName: "Discreet SOS Heartbeat",
+        zone: "Unknown",
+        timestamp: Date.now(),
+        data: { at: Date.now() },
+      } as any);
+    } catch {}
+  }, HEARTBEAT_MS);
 
   // Update state
   updateState({
@@ -427,6 +471,10 @@ export async function deactivateDiscreetSos(): Promise<void> {
   if (discreetState.autoTimeoutId) {
     clearTimeout(discreetState.autoTimeoutId);
   }
+
+  // E-H3: clear warn + heartbeat timers
+  if (_discreetWarnTimer) { clearTimeout(_discreetWarnTimer); _discreetWarnTimer = null; }
+  if (_discreetHbInterval) { clearInterval(_discreetHbInterval); _discreetHbInterval = null; }
 
   // Update state
   updateState({
