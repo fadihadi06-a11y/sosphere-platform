@@ -3,6 +3,8 @@
 // Complete hybrid flow: Profile → Zone Toggle → Setup → Plan → Launch
 // ═══════════════════════════════════════════════════════════════
 import { useState, useCallback, useRef } from "react";
+// D-H8: canonical email validator (utils/validation.ts)
+import { isValidEmail } from "./utils/validation";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Building2, Users, MapPin, Shield, ArrowRight, ArrowLeft,
@@ -124,7 +126,11 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   const FREE_PROVIDERS = ["gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com","icloud.com","mail.com","protonmail.com","yandex.com","zoho.com","live.com","msn.com","me.com","qq.com","163.com","126.com","gmx.com","web.de","mailinator.com","guerrillamail.com","tempmail.com"];
   const validateBusinessEmail = (email: string) => {
     if (!email) return "";
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // D-H8: use the canonical isValidEmail helper so every form in
+    // the app applies the SAME RFC-compatible rule. The inline regex
+    // this replaced accepted "a@b.c" which Supabase + most SMTP
+    // servers reject (TLD must be ≥ 2 chars).
+    const emailRegex = { test: (v: string) => isValidEmail(v) };
     if (!emailRegex.test(email)) return "Please enter a valid email address";
     const domain = email.split("@")[1]?.toLowerCase();
     if (!domain) return "Invalid email format";

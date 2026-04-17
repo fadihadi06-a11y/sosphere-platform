@@ -367,22 +367,68 @@ export async function validateSessionFingerprint(skipDuringEmergency: boolean = 
   }
 
   if (storedFP !== currentFP) {
-    // Fingerprint changed — could be browser update or device theft
-    // Log the event but give a grace period: re-bind if user re-authenticates
+    // ── S-H1: bounded grace window ──────────────────────────────
+    // Fingerprint mismatches legitimately happen for a few reasons:
+    //   • Browser auto-update bumped the UA string
+    //   • Chrome's canvas fingerprint randomisation toggled
+    //   • User cleared one cookie / changed display resolution
+    //
+    // A hard logout on every such event is hostile UX. BUT a
+    // fingerprint change IS also the signature we'd expect from a
+    // stolen-JWT attack — same token, different device. The
+    // grace-window compromise:
+    //
+    //   1. First mismatch → stamp sosphere_fp_grace_until =
+    //      Date.now() + 10min. Return valid=false BUT signal
+    //      grace_active=true so the caller can show a soft
+    //      "re-confirm identity" prompt instead of a logout.
+    //
+    //   2. Within the grace window, bindSessionToDevice() (called
+    //      on a successful re-auth) updates the stored fingerprint
+    //      and clears the grace marker — legitimate user is saved.
+    //
+    //   3. After the window expires, the session is fully
+    //      invalidated. An attacker who can't satisfy the
+    //      re-auth challenge within 10 minutes gets kicked.
+    const GRACE_KEY = "sosphere_fp_grace_until";
+    const GRACE_WINDOW_MS = 10 * 60 * 1000;
+    const now = Date.now();
+    let graceUntil = 0;
+    try {
+      const raw = localStorage.getItem(GRACE_KEY);
+      graceUntil = raw ? parseInt(raw, 10) || 0 : 0;
+    } catch { /* ignore */ }
+
+    // First mismatch this session — open the window.
+    if (graceUntil === 0 || graceUntil < now - GRACE_WINDOW_MS) {
+      try { localStorage.setItem(GRACE_KEY, String(now + GRACE_WINDOW_MS)); } catch { /* ignore */ }
+      graceUntil = now + GRACE_WINDOW_MS;
+    }
+
+    const graceActive = graceUntil > now;
     return {
       valid: false,
-      reason: "Device fingerprint changed. Please re-authenticate to confirm your identity.",
+      reason: graceActive
+        ? "Device signature changed — please re-confirm your identity."
+        : "Device signature changed and grace window expired — signed out.",
       fingerprint: currentFP,
-    };
+      graceActive,
+      graceExpiresAt: graceUntil,
+    } as any;
   }
 
+  // Matching fingerprint — clear any lingering grace marker.
+  try { localStorage.removeItem("sosphere_fp_grace_until"); } catch { /* ignore */ }
   return { valid: true, fingerprint: currentFP };
 }
 
-/** Bind a new session to the current device */
+/** Bind a new session to the current device.
+ *  S-H1: clears the grace marker so a subsequent fingerprint match
+ *  is treated as fully-validated rather than still in-grace. */
 export async function bindSessionToDevice(): Promise<void> {
   const fp = await generateDeviceFingerprint();
   localStorage.setItem(FINGERPRINT_KEY, fp);
+  try { localStorage.removeItem("sosphere_fp_grace_until"); } catch { /* ignore */ }
 }
 
 /** Clear device fingerprint (on logout) */
