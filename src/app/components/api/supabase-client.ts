@@ -107,7 +107,7 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
     const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
     await GoogleAuth.initialize({
-      clientId: "380367770593-080m690rtj5aatdhmk483bu2i24198v0.apps.googleusercontent.com",
+      clientId: "380367770593-0a65j29596vq3kgc8b53l2b667khgf97.apps.googleusercontent.com",
       scopes: ["profile", "email"],
       // grantOfflineAccess: true → maps to requestServerAuthCode(clientId, true)
       // in the native Java plugin. The 'true' parameter forces Google to show

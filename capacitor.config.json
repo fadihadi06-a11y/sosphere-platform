@@ -22,7 +22,7 @@
     },
     "GoogleAuth": {
       "scopes": ["profile", "email"],
-      "serverClientId": "${GOOGLE_SERVER_CLIENT_ID}",
+      "serverClientId": "380367770593-0a65j29596vq3kgc8b53l2b667khgf97.apps.googleusercontent.com",
       "forceCodeForRefreshToken": true
     }
   }
