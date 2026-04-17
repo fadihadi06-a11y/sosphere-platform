@@ -1,21 +1,36 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# O-C3: production-ready ProGuard rules for SOSphere
+# Keep source line numbers for Sentry stack traces
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Capacitor reflection surface
+-keep public class com.getcapacitor.** { public *; }
+-keep public class com.getcapacitor.annotation.** { *; }
+-keep class com.getcapacitor.PluginHandle { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep Capacitor plugins used by this app
+-keep public class com.codetrixstudio.capacitor.GoogleAuth.** { public *; }
+-keep public class com.getcapacitor.community.** { public *; }
+-keep public class capacitor.plugin.** { public *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep WebView JS bridge callbacks
+-keepclassmembers class * {
+  @android.webkit.JavascriptInterface <methods>;
+}
+
+# Keep callback interfaces (reflection)
+-keep interface * { *; }
+
+# Twilio Voice SDK safety
+-keep class com.twilio.voice.** { *; }
+-keep class com.twilio.audioswitch.** { *; }
+
+# Gson/JSON reflection (if used transitively)
+-keep class com.google.gson.** { *; }
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+
+# Suppress noisy warnings from optional deps
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**
