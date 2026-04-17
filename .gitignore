@@ -7,3 +7,7 @@ dist/
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Local debug output (not for repo)
+.sosphere-debug/
+
