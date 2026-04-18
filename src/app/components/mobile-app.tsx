@@ -236,7 +236,13 @@ export function MobileApp() {
     try {
       const hasOAuth = window.location.hash?.includes("access_token");
       const hasProfile = !!localStorage.getItem("sosphere_individual_profile");
-      const hasConsent = !!localStorage.getItem("sosphere_tos_consent");
+      // AUDIT-FIX: accept BOTH the canonical key and the legacy
+      // key from a previous version of consent-screens.tsx. Without
+      // this, every code update silently invalidated existing users'
+      // consent and forced them through the consent flow again.
+      const hasConsent =
+        !!localStorage.getItem("sosphere_tos_consent") ||
+        !!localStorage.getItem("sosphere_terms_consent");
       return hasOAuth || (hasProfile && hasConsent);
     } catch { return false; }
   });
