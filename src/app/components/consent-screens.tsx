@@ -7,11 +7,59 @@ import { useLang } from "./useLang";
 const TOS_CONSENT_KEY = "sosphere_tos_consent";
 const GPS_CONSENT_KEY = "sosphere_gps_consent";
 
+// AUDIT-FIX (2026-04-18): legacy key from a previous version that
+// used a different naming convention. Live audit on vercel.app
+// found a real user with `sosphere_terms_consent: true` and no
+// `sosphere_tos_consent` — the upgrade had silently dropped their
+// consent. We read both keys (preferring the new one) and migrate
+// transparently on first read.
+const LEGACY_TOS_CONSENT_KEY = "sosphere_terms_consent";
+
 export interface TosConsent { accepted: boolean; timestamp: number; version: string; }
 export interface GpsConsent { allowed: boolean; timestamp: number; declinedWarningShown: boolean; }
 
 export function getTosConsent(): TosConsent | null {
-  try { const raw = localStorage.getItem(TOS_CONSENT_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  try {
+    // 1. Prefer the canonical (current) key.
+    const raw = localStorage.getItem(TOS_CONSENT_KEY);
+    if (raw) return JSON.parse(raw) as TosConsent;
+    // 2. Fall back to the legacy key. If found, migrate forward
+    //    (write under the new key, remove the old one) so the
+    //    next read is fast and the old key doesn't linger.
+    //
+    // Handles three known legacy storage shapes:
+    //   • Full object  → {accepted, timestamp, version}
+    //   • Bare boolean → JSON `true` (parses as boolean, not object)
+    //   • Bare string  → "true" (not valid JSON, hits the catch)
+    const legacy = localStorage.getItem(LEGACY_TOS_CONSENT_KEY);
+    if (legacy) {
+      let parsed: TosConsent;
+      try {
+        const raw = JSON.parse(legacy);
+        if (raw && typeof raw === "object" && "accepted" in raw) {
+          parsed = raw as TosConsent;
+        } else {
+          // Bare boolean (true) or other primitive → treat truthy as accepted.
+          parsed = {
+            accepted: raw === true || raw === "true",
+            timestamp: 0,
+            version: "legacy",
+          };
+        }
+      } catch {
+        // Not even valid JSON — bare unquoted "true" or similar.
+        parsed = { accepted: legacy === "true", timestamp: 0, version: "legacy" };
+      }
+      if (parsed?.accepted) {
+        try {
+          localStorage.setItem(TOS_CONSENT_KEY, JSON.stringify(parsed));
+          localStorage.removeItem(LEGACY_TOS_CONSENT_KEY);
+        } catch { /* best effort migration */ }
+      }
+      return parsed;
+    }
+    return null;
+  } catch { return null; }
 }
 export function getGpsConsent(): GpsConsent | null {
   try { const raw = localStorage.getItem(GPS_CONSENT_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }

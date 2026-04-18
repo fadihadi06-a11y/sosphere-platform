@@ -1,0 +1,315 @@
+
+> @figma/my-make-file@0.0.1 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/user/Downloads/sosphere-platform[39m
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö baseline[2m > [22m[2ma fully-covered worker scores 0 and is 'safe'
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":0,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":0}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö baseline[2m > [22m[2mscore is capped at 100 even with every penalty applied
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":100,"level":"critical"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":35,"finalScore":100}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes a worker with <30 days tenure
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":30,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":30}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes a worker with no buddy
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":20,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":20}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes long check-in intervals (>120 min)
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":20,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":20}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mdoes NOT penalize a check-in interval at exactly 120 min
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":0,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":0}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes battery <20%
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":25,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":25}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes no-movement >30 min as possible collapse
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":15,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":15}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mdoes NOT penalize movement gaps <=30 min
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":0,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":0}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2mpenalizes extreme heat (>45┬░C)
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":15,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":15}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö individual factors[2m > [22m[2maggregates incident history and open investigations
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":16,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":16,"finalScore":16}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 0 maps to level safe
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":0,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":0}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 40 maps to level safe
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":55,"level":"caution"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":55}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 41 maps to level caution
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":50,"level":"caution"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":50}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 60 maps to level caution
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":60,"level":"caution"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":60}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 61 maps to level warning
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":65,"level":"warning"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":65}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 80 maps to level warning
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":85,"level":"critical"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":85}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 81 maps to level critical
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":90,"level":"critical"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":90}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö risk level thresholds[2m > [22m[2mscore 100 maps to level critical
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":100,"level":"critical"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":100}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö suggestions surface the right interventions[2m > [22m[2msuggests 'Assign experienced buddy' for new workers
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":30,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":30}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö suggestions surface the right interventions[2m > [22m[2msuggests immediate contact on no_movement factor
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":15,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":15}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mcalculateRiskScore ΓÇö suggestions surface the right interventions[2m > [22m[2msuggests a battery pack when battery critical
+[22m[39m[SUPABASE_READY] risk_score_calculated: {"employeeId":"E1","score":25,"level":"safe"}
+[SUPABASE_READY] risk_score_with_incidents: {"employeeId":"E1","incidentFactor":0,"finalScore":25}
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mmapping helpers ΓÇö engine Γåö register levels round-trip[2m > [22m[2mengine ΓåÆ register mapping covers all four engine levels
+[22m[39m[SUPABASE_READY] risk_level_mapped: safe ΓåÆ negligible
+[SUPABASE_READY] risk_level_mapped: caution ΓåÆ low
+[SUPABASE_READY] risk_level_mapped: warning ΓåÆ high
+[SUPABASE_READY] risk_level_mapped: critical ΓåÆ extreme
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mmapping helpers ΓÇö engine Γåö register levels round-trip[2m > [22m[2mregister ΓåÆ engine mapping covers all five register levels
+[22m[39m[SUPABASE_READY] risk_level_mapped: negligible ΓåÆ safe
+[SUPABASE_READY] risk_level_mapped: low ΓåÆ caution
+[SUPABASE_READY] risk_level_mapped: medium ΓåÆ caution
+[SUPABASE_READY] risk_level_mapped: high ΓåÆ warning
+[SUPABASE_READY] risk_level_mapped: extreme ΓåÆ critical
+
+[90mstdout[2m | src/app/components/__tests__/risk-scoring-engine.test.ts[2m > [22m[2mmapping helpers ΓÇö engine Γåö register levels round-trip[2m > [22m[2mengine ΓåÆ register ΓåÆ engine is idempotent for the four engine levels
+[22m[39m[SUPABASE_READY] risk_level_mapped: safe ΓåÆ negligible
+[SUPABASE_READY] risk_level_mapped: negligible ΓåÆ safe
+[SUPABASE_READY] risk_level_mapped: caution ΓåÆ low
+[SUPABASE_READY] risk_level_mapped: low ΓåÆ caution
+[SUPABASE_READY] risk_level_mapped: warning ΓåÆ high
+[SUPABASE_READY] risk_level_mapped: high ΓåÆ warning
+[SUPABASE_READY] risk_level_mapped: critical ΓåÆ extreme
+[SUPABASE_READY] risk_level_mapped: extreme ΓåÆ critical
+
+ [32mΓ£ô[39m src/app/components/__tests__/risk-scoring-engine.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [31mΓ¥»[39m src/app/components/__tests__/validation.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 51[2mms[22m[39m
+[31m   [31m├ù[31m isValidE164Phone (E-H8)[2m > [22maccepts well-formed international numbers[39m[32m 30[2mms[22m[39m
+[31m     ΓåÆ expected false to be true // Object.is equality[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22maccepts formatting junk and normalises[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22maccepts missing +[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22mrejects nullish / empty / garbage[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22mrejects too-short numbers (< 8 digits)[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22mrejects too-long numbers (> 15 digits)[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidE164Phone (E-H8)[2m > [22mrejects numbers starting with 0 (invalid E.164)[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22maccepts normal addresses[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22mtrims whitespace before validating[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22mrejects obviously malformed addresses[32m 2[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22mrejects the 'a@b.c' edge case (TLD too short)[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22mrejects non-string input[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidEmail (D-H8)[2m > [22mrejects over-length emails (RFC 5321 cap 254)[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidUuid[2m > [22maccepts canonical UUIDs[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidUuid[2m > [22mrejects malformed[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isNonEmptyString[2m > [22mnarrows types correctly[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m sanitiseUserInput[2m > [22mtrims whitespace[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m sanitiseUserInput[2m > [22mstrips control characters[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m sanitiseUserInput[2m > [22mstrips bidi override (anti-spoofing)[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m sanitiseUserInput[2m > [22mcaps length[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m sanitiseUserInput[2m > [22mreturns empty string for non-string[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidHttpUrl[2m > [22maccepts http + https URLs[32m 1[2mms[22m[39m
+   [32mΓ£ô[39m isValidHttpUrl[2m > [22mrejects other schemes[32m 0[2mms[22m[39m
+   [32mΓ£ô[39m isValidHttpUrl[2m > [22mrejects malformed[32m 0[2mms[22m[39m
+ [32mΓ£ô[39m src/app/components/__tests__/rate-limiter.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+ [32mΓ£ô[39m src/app/components/__tests__/complete-logout.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32mΓ£ô[39m src/app/components/__tests__/rate-limit-client.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+[90mstdout[2m | src/app/components/__tests__/phone-utils.test.ts[2m > [22m[2mmigrateStoredContactsToE164 ΓÇö idempotent self-heal[2m > [22m[2mrewrites leading-0 Iraqi numbers in place and reports the diff count
+[22m[39m[phone-utils] migrated 1 entries in sosphere_emergency_contacts to E.164
+
+[90mstdout[2m | src/app/components/__tests__/phone-utils.test.ts[2m > [22m[2mmigrateStoredContactsToE164 ΓÇö idempotent self-heal[2m > [22m[2mis idempotent ΓÇö running twice changes nothing the second time
+[22m[39m[phone-utils] migrated 1 entries in sosphere_emergency_contacts to E.164
+
+[90mstdout[2m | src/app/components/__tests__/phone-utils.test.ts[2m > [22m[2mmigrateStoredContactsToE164 ΓÇö idempotent self-heal[2m > [22m[2mflags un-fixable entries with phoneInvalid: true without erasing them
+[22m[39m[phone-utils] migrated 1 entries in sosphere_emergency_contacts to E.164
+
+stderr | src/app/components/__tests__/phone-utils.test.ts > migrateStoredContactsToE164 ΓÇö idempotent self-heal > no-ops cleanly on missing / invalid storage payload
+[phone-utils] migration failed for sosphere_emergency_contacts: Unexpected token 'o', "not valid json" is not valid JSON
+
+ [32mΓ£ô[39m src/app/components/__tests__/phone-utils.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32mΓ£ô[39m src/app/components/__tests__/duress-service.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+stderr | src/app/components/__tests__/offline-database.test.ts
+[OfflineDB] Init warning: ReferenceError: indexedDB is not defined
+    at C:\Users\user\Downloads\sosphere-platform\src\app\components\offline-database.ts:201:21
+    at new Promise (<anonymous>)
+    at openDB (C:\Users\user\Downloads\sosphere-platform\src\app\components\offline-database.ts:200:19)
+    at C:\Users\user\Downloads\sosphere-platform\src\app\components\offline-database.ts:986:1
+    at VitestExecutor.runModule (file:///C:/Users/user/Downloads/sosphere-platform/node_modules/vite-node/dist/client.mjs:397:10)
+    at VitestExecutor.runModule (file:///C:/Users/user/Downloads/sosphere-platform/node_modules/vitest/dist/chunks/execute.B7h3T_Hc.js:667:57)
+    at VitestExecutor.directRequest (file:///C:/Users/user/Downloads/sosphere-platform/node_modules/vite-node/dist/client.mjs:375:14)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at VitestExecutor.cachedRequest (file:///C:/Users/user/Downloads/sosphere-platform/node_modules/vite-node/dist/client.mjs:189:11)
+    at VitestExecutor.dependencyRequest (file:///C:/Users/user/Downloads/sosphere-platform/node_modules/vite-node/dist/client.mjs:239:10)
+
+ [32mΓ£ô[39m src/app/components/__tests__/offline-database.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [31mΓ¥»[39m src/app/components/__tests__/audit-log-ua.test.ts [2m([22m[2m7 tests[22m[2m | [22m[31m7 failed[39m[2m)[22m[32m 32[2mms[22m[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mclassifies Chrome Android as chrome/android/mobile[39m[32m 18[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mclassifies Safari iPhone as safari/ios/mobile[39m[32m 2[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mclassifies Firefox Windows as firefox/windows[39m[32m 2[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mclassifies Edge macOS as edge/macos[39m[32m 1[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mclassifies unknown UA as unknown/desktop[39m[32m 2[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mreturns undefined for missing navigator[39m[32m 1[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+[31m   [31m├ù[31m classifyUserAgent (S-M2)[2m > [22mNEVER contains raw version numbers (privacy)[39m[32m 1[2mms[22m[39m
+[31m     ΓåÆ Cannot set property navigator of #<Object> which has only a getter[39m
+ [32mΓ£ô[39m src/app/components/__tests__/backoff.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32mΓ£ô[39m src/app/components/__tests__/sos-server-trigger-userid.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstdout[2m | src/app/components/__tests__/risk-register-service.test.ts
+[22m[39m[Supabase] Storage adapter configured ΓÇö using Supabase backend
+
+ [32mΓ£ô[39m src/app/components/__tests__/risk-register-service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ» Failed Tests 8 ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > classifies Chrome Android as chrome/android/mobile
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:58:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[1/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > classifies Safari iPhone as safari/ios/mobile
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:67:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[2/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > classifies Firefox Windows as firefox/windows
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:76:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[3/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > classifies Edge macOS as edge/macos
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:85:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[4/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > classifies unknown UA as unknown/desktop
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:94:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[5/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > returns undefined for missing navigator
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:101:25
+     99|   it("returns undefined for missing navigator", () => {
+    100|     const original = (globalThis as any).navigator;
+    101|     (globalThis as any).navigator = undefined;
+       |                         ^
+    102|     try {
+    103|       logAuditEvent("security" as any, "test_action");
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[6/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/audit-log-ua.test.ts > classifyUserAgent (S-M2) > NEVER contains raw version numbers (privacy)
+TypeError: Cannot set property navigator of #<Object> which has only a getter
+ Γ¥» withUA src/app/components/__tests__/audit-log-ua.test.ts:44:23
+     42| function withUA(ua: string, fn: () => void) {
+     43|   const original = (globalThis as any).navigator;
+     44|   (globalThis as any).navigator = { userAgent: ua };
+       |                       ^
+     45|   try { fn(); } finally { (globalThis as any).navigator = original; }
+     46| }
+ Γ¥» src/app/components/__tests__/audit-log-ua.test.ts:112:5
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[7/8]ΓÄ»
+
+ FAIL  src/app/components/__tests__/validation.test.ts > isValidE164Phone (E-H8) > accepts well-formed international numbers
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ Γ¥» src/app/components/__tests__/validation.test.ts:25:52
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (12)[39m
+[2m      Tests [22m [1m[31m8 failed[39m[22m[2m | [22m[1m[32m134 passed[39m[22m[90m (142)[39m
+[2m   Start at [22m 15:42:26
+[2m   Duration [22m 4.62s[2m (transform 1.36s, setup 0ms, collect 2.28s, tests 521ms, environment 6ms, prepare 3.92s)[22m
+
+     23|     expect(isValidE164Phone("+441234567890")).toBe(true);   // UK
+     24|     expect(isValidE164Phone("+9661234567")).toBe(true);     // 10-digit
+     25|     expect(isValidE164Phone("+96612345678901234")).toBe(true); // max ΓÇª
+       |                                                    ^
+     26|   });
+     27| 
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[8/8]ΓÄ»
+
