@@ -229,15 +229,56 @@ export function determineContactType(hasApp: boolean, theirPlan: ContactPlan): C
 // ── Storage ───────────────────────────────────────────────────
 
 const CONTACTS_KEY = "sosphere_safety_contacts";
+// FIX 2026-04-23: sos-emergency.tsx, individual-home.tsx, family-circle.tsx,
+// mobile-app.tsx, last-breath-service.ts, manage-emergency-contacts.tsx ALL
+// read from the SIMPLER `sosphere_emergency_contacts` key (ERContact shape:
+// { id, name, relation, phone, avatar, status }). Previously the
+// Safety-Contacts page wrote only to `sosphere_safety_contacts`, so a
+// contact added via the tier UI was INVISIBLE to the SOS flow — the SOS
+// screen still said "No emergency contacts". We now mirror every write to
+// the ERContact-shaped key so every consumer sees the contact without any
+// reader needing to know about both keys.
+const LEGACY_ER_KEY = "sosphere_emergency_contacts";
 
 export function getSafetyContacts(): SafetyContact[] {
   try {
-    return JSON.parse(localStorage.getItem(CONTACTS_KEY) || "[]");
+    const contacts = JSON.parse(localStorage.getItem(CONTACTS_KEY) || "[]") as SafetyContact[];
+    // FIX 2026-04-23: on-read migration. If this user added contacts before
+    // the mirror was in place (their data lives ONLY in sosphere_safety_contacts),
+    // back-fill the legacy ER key so the SOS flow can see them without the
+    // user having to re-save each one.
+    if (Array.isArray(contacts) && contacts.length > 0) {
+      try {
+        const existingLegacy = JSON.parse(localStorage.getItem(LEGACY_ER_KEY) || "[]");
+        if (!Array.isArray(existingLegacy) || existingLegacy.length !== contacts.length) {
+          saveSafetyContacts(contacts); // triggers the mirror
+        }
+      } catch { /* migration best-effort */ }
+    }
+    return contacts;
   } catch { return []; }
 }
 
 export function saveSafetyContacts(contacts: SafetyContact[]) {
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+  // Mirror a SOS-compatible projection into the ERContact-shaped key so
+  // sos-emergency / home / family-circle / manage-emergency / etc. all see
+  // the same list. Preserves priority order. Avatar is left empty — SOS
+  // falls back to default avatars when missing.
+  try {
+    const sorted = [...contacts].sort((a, b) => (a.priority || 99) - (b.priority || 99));
+    const erProjection = sorted.map((c, idx) => ({
+      id: idx + 1,
+      name: c.name || "",
+      relation: c.relation || "",
+      phone: c.phone || "",
+      avatar: "",
+      status: "pending",
+    }));
+    localStorage.setItem(LEGACY_ER_KEY, JSON.stringify(erProjection));
+  } catch (err) {
+    console.warn("[contact-tier-system] failed to mirror to " + LEGACY_ER_KEY, err);
+  }
 }
 
 export function addSafetyContact(contact: Omit<SafetyContact, "id" | "addedAt" | "safetyLinkId" | "safetyLinkExpiry" | "safetyLinkActive" | "totalAlertsReceived" | "totalAlertsResponded" | "avgResponseTime">): SafetyContact {

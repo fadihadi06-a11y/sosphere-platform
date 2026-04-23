@@ -6,6 +6,7 @@ import {
   Plus, X, Stethoscope, Weight, Ruler, Activity,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { toast } from "sonner";
 // FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 
@@ -27,17 +28,22 @@ interface MedicalData {
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
+// FIX 2026-04-23: defaultData was pre-filled with fake demo values
+// (O+, Asthma, Hypertension, Dr. Ahmad +966..., "Carry inhaler at all times",
+// organDonor: true). New users saw this as if it were their own data — the same
+// pattern as MOCK_INCIDENTS in incident-history.tsx. Now truly empty so
+// fresh installs show empty state and users fill real info via Edit.
 const defaultData: MedicalData = {
-  bloodType: "O+",
-  height: "175",
-  weight: "78",
-  dateOfBirth: "1992-03-15",
-  conditions: ["Asthma", "Hypertension"],
-  allergies: ["Penicillin", "Peanuts"],
-  medications: ["Ventolin Inhaler", "Lisinopril 10mg"],
-  emergencyMedicalContact: { name: "Dr. Ahmad", phone: "+966501234567", relation: "Primary Doctor" },
-  notes: "Carry inhaler at all times",
-  organDonor: true,
+  bloodType: "",
+  height: "",
+  weight: "",
+  dateOfBirth: "",
+  conditions: [],
+  allergies: [],
+  medications: [],
+  emergencyMedicalContact: { name: "", phone: "", relation: "" },
+  notes: "",
+  organDonor: false,
 };
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -87,10 +93,12 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
 
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
-      {/* Ambient */}
+      {/* Ambient — MIUI fix: force own compositor layer so the radial-gradient
+          doesn't blend-combine with the cards below and cause rainbow tearing */}
       <div
+        data-ambient-glow
         className="absolute top-[-100px] left-1/2 -translate-x-1/2 pointer-events-none"
-        style={{ width: 500, height: 400, background: "radial-gradient(ellipse, rgba(255,45,85,0.03) 0%, transparent 65%)" }}
+        style={{ width: 500, height: 400, background: "radial-gradient(ellipse, rgba(255,45,85,0.03) 0%, transparent 65%)", transform: "translate(-50%, 0) translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}
       />
 
       {/* Header */}
@@ -144,9 +152,17 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         </motion.div>
 
         {/* Blood Type + Vitals */}
+        {/* FIX 2026-04-23: force GPU compositing layers on each card to fix
+            rainbow/horizontal-stripe tearing on MIUI WebView (Xiaomi phones).
+            The issue: transparent rgba backgrounds inside a CSS grid, overlaid
+            on the ambient radial-gradient, caused the MIUI compositor to leak
+            uninitialized GPU buffer content ("scratches"). Adding
+            transform:translateZ(0) + willChange:transform promotes each card
+            to its own compositor layer so it gets a clean initialized buffer. */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           className="mb-4"
+          style={{ transform: "translateZ(0)" }}
         >
           <div className="grid grid-cols-2 gap-2.5">
             {/* Blood Type */}
@@ -157,6 +173,9 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
                 background: "rgba(255,45,85,0.03)",
                 border: "1px solid rgba(255,45,85,0.08)",
                 gridRow: "1 / 3",
+                transform: "translateZ(0)",
+                willChange: "transform",
+                backfaceVisibility: "hidden",
               }}
             >
               <Droplets style={{ width: 20, height: 20, color: "#FF2D55", marginBottom: 8 }} />
@@ -187,7 +206,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             </div>
 
             {/* Height */}
-            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Ruler style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Height</span>
@@ -205,7 +224,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             </div>
 
             {/* Weight */}
-            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <Weight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Weight</span>
@@ -225,6 +244,11 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         </motion.div>
 
         {/* Organ Donor */}
+        {/* FIX 2026-04-23: toggle is now always clickable (removed `editing &&`
+            gate) so users can flip it without hunting for the Edit button.
+            When NOT in editing mode we also commit the change into data so
+            the Save button picks it up on next explicit Edit/Save, and the
+            cursor+opacity give a consistent always-active visual. */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="flex items-center justify-between px-4 py-3 mb-4"
@@ -235,13 +259,21 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>Organ Donor</span>
           </div>
           <button
-            onClick={() => editing && setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
+            type="button"
+            onClick={() => setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
+            aria-pressed={data.organDonor}
+            aria-label={`Organ donor ${data.organDonor ? "on" : "off"} — tap to toggle`}
             className="relative shrink-0"
+            /* FIX 2026-04-23: force LTR direction on the toggle so the knob's
+               x-translate is not mirrored by RTL Arabic layout. Without this,
+               on Arabic locale the knob visually appeared on the LEFT when the
+               organ-donor state was ON, confusing users. */
+            dir="ltr"
             style={{
               width: 48, height: 28, borderRadius: 14,
               background: data.organDonor ? "rgba(0,200,83,0.2)" : "rgba(255,255,255,0.06)",
               border: `1.5px solid ${data.organDonor ? "rgba(0,200,83,0.3)" : "rgba(255,255,255,0.08)"}`,
-              cursor: editing ? "pointer" : "default",
+              cursor: "pointer",
               boxSizing: "border-box",
               padding: 0,
             }}
@@ -251,7 +283,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
               className="absolute"
               style={{
-                top: 2,
+                top: 2, left: 0,
                 width: 20, height: 20, borderRadius: 10,
                 background: data.organDonor ? "#00C853" : "rgba(255,255,255,0.25)",
               }}
@@ -378,40 +410,78 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}
           >
             {editing ? (
+              /* FIX 2026-04-23: added explicit labels above each input + helper
+                 hint text. Previously the 3 rectangles showed only a barely-
+                 visible placeholder (default browser color on a dark theme),
+                 so users didn't know what to enter. */
               <>
-                <input
-                  value={data.emergencyMedicalContact.name}
-                  onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, name: e.target.value } }))}
-                  placeholder="Name"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
-                />
-                <input
-                  value={data.emergencyMedicalContact.phone}
-                  onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, phone: e.target.value } }))}
-                  placeholder="Phone"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
-                />
-                <input
-                  value={data.emergencyMedicalContact.relation}
-                  onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, relation: e.target.value } }))}
-                  placeholder="Relation"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
-                />
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 2, lineHeight: 1.4 }}>
+                  Who should paramedics call about your medical condition? (doctor, family member, caregiver…)
+                </p>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.6)", display: "block", marginBottom: 4 }}>
+                    Full name
+                  </label>
+                  <input
+                    value={data.emergencyMedicalContact.name}
+                    onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, name: e.target.value } }))}
+                    placeholder="e.g. Dr. Ahmed Saleh"
+                    className="w-full bg-transparent text-white outline-none px-3 py-2"
+                    style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.6)", display: "block", marginBottom: 4 }}>
+                    Phone number
+                  </label>
+                  <input
+                    value={data.emergencyMedicalContact.phone}
+                    onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, phone: e.target.value } }))}
+                    placeholder="e.g. +964 771 000 0000"
+                    inputMode="tel"
+                    className="w-full bg-transparent text-white outline-none px-3 py-2"
+                    style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.6)", display: "block", marginBottom: 4 }}>
+                    Relationship (optional)
+                  </label>
+                  <input
+                    value={data.emergencyMedicalContact.relation}
+                    onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, relation: e.target.value } }))}
+                    placeholder="e.g. Doctor, Wife, Brother"
+                    className="w-full bg-transparent text-white outline-none px-3 py-2"
+                    style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  />
+                </div>
               </>
             ) : (
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
-                  <Stethoscope style={{ width: 16, height: 16, color: "#00C853" }} />
+              // Fix 2026-04-23: only show contact card if ANY field has data.
+              // Previously always rendered the green stethoscope icon + empty
+              // text, making the card look broken when no contact was set.
+              (data.emergencyMedicalContact.name.trim() ||
+               data.emergencyMedicalContact.phone.trim() ||
+               data.emergencyMedicalContact.relation.trim()) ? (
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
+                    <Stethoscope style={{ width: 16, height: 16, color: "#00C853" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white truncate" style={{ fontSize: 14, fontWeight: 600 }}>{data.emergencyMedicalContact.name || "—"}</p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{data.emergencyMedicalContact.relation || "—"}</p>
+                  </div>
+                  {data.emergencyMedicalContact.phone && (
+                    <span style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>{data.emergencyMedicalContact.phone}</span>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{data.emergencyMedicalContact.name}</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{data.emergencyMedicalContact.relation}</p>
+              ) : (
+                <div className="flex items-center justify-center py-4" style={{ minHeight: 60 }}>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center" }}>
+                    No emergency contact set · Tap <span style={{ color: "rgba(0,200,224,0.6)", fontWeight: 600 }}>Edit</span> to add
+                  </p>
                 </div>
-                <span style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>{data.emergencyMedicalContact.phone}</span>
-              </div>
+              )
             )}
           </div>
         </motion.div>
@@ -461,8 +531,42 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             <QrCode style={{ width: 14, height: 14 }} />
             {isPro ? "QR Badge" : "QR Badge (Pro)"}
           </motion.button>
+          {/* FIX 2026-04-23: Share button had no onClick (dead button per audit).
+              Now uses Web Share API on native, clipboard fallback on desktop.
+              Shares a plain-text summary of the medical ID — never the full
+              QR payload (which could include PII). */}
           <motion.button
             whileTap={{ scale: 0.97 }}
+            onClick={async () => {
+              const summary = [
+                "SOSphere Medical ID",
+                data.bloodType ? `Blood Type: ${data.bloodType}` : null,
+                data.conditions.length ? `Conditions: ${data.conditions.join(", ")}` : null,
+                data.allergies.length ? `Allergies: ${data.allergies.join(", ")}` : null,
+                data.medications.length ? `Medications: ${data.medications.join(", ")}` : null,
+                data.emergencyMedicalContact.name ? `Emergency contact: ${data.emergencyMedicalContact.name} ${data.emergencyMedicalContact.phone}` : null,
+                data.organDonor ? "Organ donor: Yes" : null,
+                data.notes ? `Notes: ${data.notes}` : null,
+              ].filter(Boolean).join("\n");
+              try {
+                const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string }) => Promise<void> };
+                if (nav.share) {
+                  await nav.share({ title: "Medical ID", text: summary });
+                  return;
+                }
+                if (navigator.clipboard) {
+                  await navigator.clipboard.writeText(summary);
+                  // FIX 2026-04-23: use toast (sonner) instead of window.alert.
+                  // The native alert showed an ugly "localhost:" origin bar
+                  // that looked broken.
+                  toast.success("Medical ID copied", {
+                    description: "Paste into a message to share it with responders.",
+                  });
+                }
+              } catch (err) {
+                console.warn("[MedicalID] share failed:", err);
+              }
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-3"
             style={{
               borderRadius: 14,

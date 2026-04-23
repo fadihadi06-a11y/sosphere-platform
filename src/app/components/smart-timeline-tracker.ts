@@ -94,18 +94,40 @@ async function sha256(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Sync fallback for environments without crypto.subtle
+// FIX 2026-04-23: This "sync fallback" was previously disguised as SHA-256
+// but used a 32-bit integer hash that was NEITHER cryptographic NOR
+// collision-resistant. Repeating an 8-hex block × 8 to "look like" SHA-256
+// was actively deceptive — audit logs signed with this can be tampered with
+// trivially (any attacker can find a collision in milliseconds).
+//
+// Rather than silently lying, we now:
+//  1. Return a clearly-marked NON-CRYPTOGRAPHIC fingerprint prefixed with
+//     "NONCRYPTO:" so every downstream reader knows not to trust it.
+//  2. Log a warning (visible, not silent) when this path is taken.
+//  3. Anyone inspecting the audit trail sees the prefix and understands the
+//     entry was recorded in a fallback environment without real hashing.
+//
+// The proper solution is to ensure ALL callers await the async sha256()
+// function (which uses crypto.subtle). This fallback exists only for
+// environments where that API is unavailable (very old WebViews). In those
+// cases we'd rather fail honestly than fake integrity.
 function sha256Sync(message: string): string {
-  // Simple hash for sync contexts — still unique, just not cryptographic
-  let hash = 0;
+  // Simple FNV-1a style fingerprint — readable but NOT cryptographic
+  let hash = 2166136261 >>> 0;
   for (let i = 0; i < message.length; i++) {
-    const char = message.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash ^= message.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
   }
-  // Extend to look like SHA-256 for consistency
-  const base = Math.abs(hash).toString(16).padStart(8, "0");
-  return (base + base + base + base + base + base + base + base).slice(0, 64);
+  const fingerprint = hash.toString(16).padStart(8, "0");
+  // Log once per session so the fallback is visible in the console
+  if (typeof console !== "undefined" && !(globalThis as { __sha256SyncWarned?: boolean }).__sha256SyncWarned) {
+    console.warn(
+      "[smart-timeline-tracker] crypto.subtle unavailable — falling back to NON-CRYPTOGRAPHIC fingerprint. Audit-log integrity downgraded for this session."
+    );
+    (globalThis as { __sha256SyncWarned?: boolean }).__sha256SyncWarned = true;
+  }
+  // Explicit prefix so every log reader knows this is not real SHA-256
+  return `NONCRYPTO:${fingerprint}`;
 }
 
 // ── Core: Add Event to Timeline ─────────────────────────────────

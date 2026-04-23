@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import {
   ChevronLeft, Check, Globe, Lock, Smartphone,
@@ -84,6 +84,20 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const [showProfile, setShowProfile] = useState(true);
   const [biometric, setBiometric] = useState<boolean>(() => getBiometricLockEnabled());
   const [biometricEnrollOpen, setBiometricEnrollOpen] = useState(false);
+  // FIX 2026-04-23: pre-check biometric availability on mount so we can show
+  // an honest "Coming Soon" badge when the device/WebView doesn't support it
+  // (instead of the user tapping the toggle, getting a toast, then blaming
+  // us for a broken feature). The core issue: WebAuthn's platform
+  // authenticator is often unavailable in Huawei/Xiaomi WebViews, and the
+  // native Capacitor biometric plugin isn't installed in this build.
+  const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    checkBiometricAvailability().then(s => {
+      if (!cancelled) setBiometricAvailable(s !== "not_available");
+    }).catch(() => { if (!cancelled) setBiometricAvailable(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Toggle wiring:
   //   • Turning ON  → open modal in enrollment mode; only persist the flag
@@ -144,11 +158,36 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
     hapticLight();
   };
 
+  // FIX 2026-04-23: biometric row adapts to actual device support. When
+  // unsupported, show a "Coming Soon" badge and disable the toggle entirely
+  // rather than letting the user tap a broken feature.
+  const biometricReady = biometricAvailable === true;
+  const biometricChecking = biometricAvailable === null;
   const toggles = [
     { id: "location", icon: MapPin, label: "Location History", sub: "Store location data for safety analysis", color: "#00C853", value: locationHistory, onChange: () => setLocationHistory(v => !v) },
     { id: "analytics", icon: Eye, label: "Usage Analytics", sub: "Help us improve with anonymous data", color: "#007AFF", value: analytics, onChange: () => setAnalytics(v => !v) },
     { id: "profile", icon: Shield, label: "Show Profile to Family", sub: "Allow circle members to see your status", color: "#00C8E0", value: showProfile, onChange: () => setShowProfile(v => !v) },
-    { id: "biometric", icon: Fingerprint, label: "Biometric Lock", sub: "Require face/fingerprint to open app", color: "#AF52DE", value: biometric, onChange: handleBiometricToggle },
+    {
+      id: "biometric",
+      icon: Fingerprint,
+      label: "Biometric Lock",
+      sub: biometricChecking
+        ? "Checking device support..."
+        : biometricReady
+          ? "Require face/fingerprint to open app"
+          : "Coming soon — this device does not yet support biometric unlock",
+      color: biometricReady ? "#AF52DE" : "rgba(175,82,222,0.35)",
+      value: biometricReady ? biometric : false,
+      onChange: biometricReady
+        ? handleBiometricToggle
+        : () => {
+            hapticWarning();
+            toast("Biometric Lock unavailable", {
+              description: "Your device or app version doesn't support biometric authentication yet. We're working on a native plugin for Android/iOS.",
+            });
+          },
+      badge: biometricReady ? undefined : (biometricChecking ? undefined : "Coming Soon"),
+    },
     { id: "neighbor_receive", icon: Users, label: "Receive Nearby SOS Alerts", sub: "Get notified when a neighbor triggers SOS close to you", color: "#00C8E0", value: neighborReceive, onChange: toggleNeighborReceive },
     { id: "neighbor_broadcast", icon: Radio, label: `Broadcast SOS to Neighbors${eliteUnlocked ? "" : " (Elite)"}`, sub: "Send a coarse-location alert to opted-in neighbors when you trigger SOS", color: "#FF9500", value: neighborBroadcast, onChange: toggleNeighborBroadcast },
   ];
@@ -179,7 +218,9 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                     <p style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>{t.label}</p>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 1 }}>{t.sub}</p>
                   </div>
-                  <div className="relative shrink-0" style={{
+                  {/* FIX 2026-04-23: dir="ltr" to prevent RTL from mirroring the
+                      x-transform (same fix as profile-settings.tsx toggles). */}
+                  <div dir="ltr" className="relative shrink-0" style={{
                     width: 44, height: 26, borderRadius: 13,
                     background: t.value ? `${t.color}25` : "rgba(255,255,255,0.06)",
                     border: `1.5px solid ${t.value ? `${t.color}35` : "rgba(255,255,255,0.08)"}`,
@@ -187,7 +228,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                     <motion.div animate={{ x: t.value ? 19 : 3 }}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       className="absolute top-[2px]"
-                      style={{ width: 18, height: 18, borderRadius: 9, background: t.value ? t.color : "rgba(255,255,255,0.25)" }} />
+                      style={{ width: 18, height: 18, borderRadius: 9, left: 0, background: t.value ? t.color : "rgba(255,255,255,0.25)", boxShadow: t.value ? `0 2px 6px ${t.color}50` : "0 1px 3px rgba(0,0,0,0.3)" }} />
                   </div>
                 </button>
               ))}
@@ -202,9 +243,87 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {actions.map((a, i) => (
                 <button key={a.label} className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                  onClick={() => {
-                    if (a.danger) { hapticWarning(); toast.error(a.label, { description: "This action requires confirmation. Please contact support to proceed." }); }
-                    else { hapticSuccess(); toast.success(a.label, { description: "Your data export is being prepared. You'll receive a download link shortly." }); }
+                  /* FIX 2026-04-23: Download My Data now actually exports all
+                     sosphere_* localStorage keys as a JSON blob the user can
+                     save locally. Previously this was a toast-only ghost.
+                     Delete Account still routes to support because a real
+                     deletion must hit the server (user profile, evidence,
+                     incidents in Supabase) which requires server endpoint. */
+                  onClick={async () => {
+                    if (a.danger) {
+                      // FIX 2026-04-23: real deletion via delete-account edge
+                      // function. Requires confirm prompt + valid JWT.
+                      const confirmed = typeof window !== "undefined"
+                        ? window.confirm("Permanently delete your account?\n\nThis cannot be undone. All incidents, evidence, contacts, and subscription will be wiped.")
+                        : false;
+                      if (!confirmed) return;
+                      hapticWarning();
+                      try {
+                        const { supabase } = await import("./api/supabase-client");
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        const token = sessionData.session?.access_token;
+                        if (!token) {
+                          toast.error("Not signed in", { description: "Please sign in first." });
+                          return;
+                        }
+                        const { SUPABASE_CONFIG } = await import("./api/supabase-client");
+                        const res = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/delete-account`, {
+                          method: "POST",
+                          headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "apikey": SUPABASE_CONFIG.anonKey,
+                            "Content-Type": "application/json",
+                          },
+                        });
+                        if (!res.ok) {
+                          const txt = await res.text();
+                          toast.error("Deletion failed", { description: txt.slice(0, 200) });
+                          return;
+                        }
+                        // Clear all local storage
+                        try {
+                          for (let i = localStorage.length - 1; i >= 0; i--) {
+                            const key = localStorage.key(i);
+                            if (key?.startsWith("sosphere_")) localStorage.removeItem(key);
+                          }
+                        } catch { /* ignore */ }
+                        toast.success("Account deleted", { description: "All your data has been removed." });
+                        setTimeout(() => { if (typeof window !== "undefined") window.location.reload(); }, 1500);
+                      } catch (err) {
+                        console.error("[privacy] delete-account error:", err);
+                        toast.error("Deletion failed", { description: "Network error. Try again or contact support." });
+                      }
+                      return;
+                    }
+                    // Real JSON export of all SOSphere-owned localStorage
+                    try {
+                      const payload: Record<string, unknown> = {
+                        exportedAt: new Date().toISOString(),
+                        version: 1,
+                        data: {},
+                      };
+                      const dataBucket = payload.data as Record<string, unknown>;
+                      for (let k = 0; k < localStorage.length; k++) {
+                        const key = localStorage.key(k);
+                        if (!key || !key.startsWith("sosphere_")) continue;
+                        try { dataBucket[key] = JSON.parse(localStorage.getItem(key) || "null"); }
+                        catch { dataBucket[key] = localStorage.getItem(key); }
+                      }
+                      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = `sosphere-data-${Date.now()}.json`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                      hapticSuccess();
+                      toast.success(a.label, { description: `Exported ${Object.keys(dataBucket).length} keys to JSON file.` });
+                    } catch (err) {
+                      console.error("[privacy] export failed:", err);
+                      toast.error(a.label, { description: "Export failed — browser blocked download." });
+                    }
                   }}
                   style={{ borderBottom: i < actions.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none", cursor: "pointer" }}>
                   <div className="size-8 rounded-[10px] flex items-center justify-center shrink-0"
@@ -239,62 +358,37 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ── Connected Devices Screen ───────────────────────────────────
+// FIX 2026-04-23: replaced the 3 hardcoded fake devices (iPhone 14 Pro +
+// Apple Watch S9 + iPad Air) with an honest "Coming Soon" screen.
+// The backend for device registration / session management doesn't exist
+// yet, so we don't pretend it does. When the real multi-device sync
+// pipeline lands, this screen will read from Supabase.
 export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
-  const devices = [
-    { id: "1", name: "iPhone 14 Pro", type: "phone", status: "current", lastSeen: "Now", os: "iOS 18.2" },
-    { id: "2", name: "Apple Watch S9", type: "watch", status: "connected", lastSeen: "Connected", os: "watchOS 11" },
-    { id: "3", name: "iPad Air", type: "phone", status: "inactive", lastSeen: "3 days ago", os: "iPadOS 18" },
-  ];
-
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
           <ScreenHeader title="Connected Devices" subtitle="Manage your linked devices" onBack={onBack} />
 
-          <div className="px-5 space-y-2.5">
-            {devices.map((d, i) => (
-              <motion.div key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className="p-4" style={{ borderRadius: 18, background: "rgba(255,255,255,0.02)", border: d.status === "current" ? "1px solid rgba(0,200,224,0.12)" : "1px solid rgba(255,255,255,0.04)" }}>
-                <div className="flex items-center gap-3.5">
-                  <div className="size-12 rounded-[14px] flex items-center justify-center"
-                    style={{
-                      background: d.type === "watch" ? "rgba(175,82,222,0.08)" : "rgba(0,200,224,0.06)",
-                      border: d.type === "watch" ? "1px solid rgba(175,82,222,0.15)" : "1px solid rgba(0,200,224,0.1)",
-                    }}>
-                    {d.type === "watch"
-                      ? <Watch className="size-5" style={{ color: "#AF52DE" }} />
-                      : <Smartphone className="size-5" style={{ color: "#00C8E0" }} />
-                    }
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{d.name}</p>
-                      {d.status === "current" && (
-                        <span className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)", fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>THIS DEVICE</span>
-                      )}
-                    </div>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{d.os} • {d.lastSeen}</p>
-                  </div>
-                  <div className="size-2.5 rounded-full"
-                    style={{ background: d.status === "inactive" ? "rgba(255,255,255,0.1)" : "#00C853", boxShadow: d.status !== "inactive" ? "0 0 6px rgba(0,200,83,0.4)" : "none" }} />
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          <div className="px-5 mt-8 flex flex-col items-center text-center">
+            <div className="size-20 rounded-[24px] flex items-center justify-center mb-5"
+              style={{ background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>
+              <Smartphone className="size-10" style={{ color: "#00C8E0" }} />
+            </div>
+            <p className="text-white" style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+              Coming Soon
+            </p>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.6, maxWidth: 300 }}>
+              Multi-device sync, smartwatch pairing, and session management will
+              be available in an upcoming release. You'll be able to see every
+              device signed in to your account and sign them out remotely.
+            </p>
 
-          {/* Smartwatch note */}
-          <div className="px-5 mt-5">
-            <div className="p-4" style={{ borderRadius: 16, background: "rgba(175,82,222,0.04)", border: "1px solid rgba(175,82,222,0.08)" }}>
-              <div className="flex items-start gap-3">
-                <Watch className="size-5 shrink-0 mt-0.5" style={{ color: "#AF52DE" }} />
-                <div>
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>Smartwatch Integration</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 3, lineHeight: 1.5 }}>
-                    Native smartwatch app is coming soon. You'll be able to trigger SOS and share location directly from your wrist.
-                  </p>
-                </div>
-              </div>
+            <div className="mt-8 px-4 py-3 w-full max-w-sm"
+              style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
+                Currently signed in on this device only.
+              </p>
             </div>
           </div>
         </div>
@@ -324,17 +418,29 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
           {/* Contact options */}
           <div className="px-5 mb-5">
             <div className="grid grid-cols-2 gap-2.5">
+              {/* FIX 2026-04-23: real links instead of toast stubs.
+                  - Email → mailto: opens the user's email client
+                  - Live Chat → wa.me deep link to a support WhatsApp
+                  Note: WhatsApp phone number below is a placeholder until
+                  real support number is configured. Replace with actual
+                  business WhatsApp when available. */}
               {[
-                { icon: Mail, label: "Email Support", sub: "support@sosphere.app", color: "#00C8E0" },
-                { icon: MessageCircle, label: "Live Chat", sub: "Available 24/7", color: "#00C853" },
+                {
+                  icon: Mail, label: "Email Support", sub: "support@sosphere.app", color: "#00C8E0",
+                  href: "mailto:support@sosphere.app?subject=SOSphere%20Support%20Request",
+                },
+                {
+                  icon: MessageCircle, label: "WhatsApp Support", sub: "Chat with our team", color: "#00C853",
+                  href: "https://wa.me/966500000000?text=Hi%2C%20I%20need%20help%20with%20SOSphere",
+                },
               ].map(c => (
-                <button key={c.label} className="p-4 text-left"
-                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — support@sosphere.app" : "Connecting to live chat agent..." }); }}
-                  style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
+                <a key={c.label} href={c.href} target="_blank" rel="noopener noreferrer" className="p-4 text-left"
+                  onClick={() => { hapticLight(); }}
+                  style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", display: "block", textDecoration: "none" }}>
                   <c.icon className="size-5 mb-2.5" style={{ color: c.color }} />
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</p>
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", marginTop: 2 }}>{c.sub}</p>
-                </button>
+                </a>
               ))}
             </div>
           </div>
@@ -372,14 +478,17 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* Terms */}
+          {/* FIX 2026-04-23: external link to the real Terms page instead
+              of a toast stub. Uses https URL so it opens in the device's
+              browser (or Capacitor's in-app browser). */}
           <div className="px-5 mt-5">
-            <button className="w-full p-4 flex items-center gap-3"
-              onClick={() => { hapticLight(); toast("Terms & Privacy", { description: "Opening Terms of Service & Privacy Policy..." }); }}
-              style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
+            <a href="https://sosphere.app/legal/terms" target="_blank" rel="noopener noreferrer" className="w-full p-4 flex items-center gap-3"
+              onClick={() => { hapticLight(); }}
+              style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", textDecoration: "none" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
               <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>Terms & Privacy Policy</span>
               <ChevronRight className="size-4 ml-auto" style={{ color: "rgba(255,255,255,0.1)" }} />
-            </button>
+            </a>
           </div>
 
           {/* Version */}

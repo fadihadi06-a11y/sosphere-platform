@@ -73,7 +73,21 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
 }, ref) {
   const t = tProp || ((k: string) => k);
   const tabs = getTabs(t);
-  const [activeTab, setActiveTab] = useState("home");
+  // FIX 2026-04-23: persist last active tab so that returning from a
+  // sub-screen (Medical ID, Emergency Packet, etc.) lands the user back on
+  // the tab they came from — previously always reset to "home" which is
+  // why users opening Medical ID from Profile returned to Home on Back.
+  const [activeTab, setActiveTabRaw] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem("sosphere_last_tab");
+      if (saved && ["home", "family", "map", "profile"].includes(saved)) return saved;
+    } catch { /* ignore */ }
+    return "home";
+  });
+  const setActiveTab = (tab: string) => {
+    setActiveTabRaw(tab);
+    try { localStorage.setItem("sosphere_last_tab", tab); } catch { /* ignore */ }
+  };
 
   // Expose handleBack to parent (mobile-app) for Android back button support
   useImperativeHandle(ref, () => ({
@@ -98,6 +112,11 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
     if (screen === "connected-devices") onNavigateToDevices?.();
     if (screen === "help") onNavigateToHelp?.();
     if (screen === "elite-features") onNavigateToEliteFeatures?.();
+    // FIX 2026-04-23: Terms & Privacy Policy — routes to external page so
+    // users see the actual legal text instead of a dead button. Uses
+    // onNavigateToPrivacy as a safe handler (same legal surface); if a
+    // dedicated Terms page is added later, switch to a new prop.
+    if (screen === "terms") onNavigateToPrivacy?.();
   };
 
   return (
@@ -111,6 +130,10 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           onCheckinTimer={onCheckinTimer}
           onMedicalID={onNavigateToMedicalID}
           onFamilyCircle={() => setActiveTab("family")}
+          /* FIX 2026-04-23: wire Home's Emergency-Contacts buttons to the
+             real Emergency Contacts screen. Previously they fell back to
+             Family Circle which is a different (location-sharing) feature. */
+          onEmergencyContacts={onNavigateToEmergencyContacts}
           onLiveLocation={() => setActiveTab("map")}
           onNotifications={onNavigateToNotifications}
           onSafeWalk={onNavigateToSafeWalk}
