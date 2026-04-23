@@ -116,7 +116,7 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
       <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"#05070E",fontFamily:"'Outfit',system-ui,sans-serif",zIndex:9999}}>
 
         {/* Ambient glow */}
-        <div style={{position:"absolute",top:"-15%",left:"50%",transform:"translateX(-50%)",width:"min(140vw,560px)",height:"min(140vw,560px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(0,200,224,0.06) 0%,transparent 60%)",pointerEvents:"none"}}/>
+        <div data-ambient-glow style={{position:"absolute",top:"-15%",left:"50%",transform:"translateX(-50%)",width:"min(140vw,560px)",height:"min(140vw,560px)",borderRadius:"50%",background:"radial-gradient(circle,rgba(0,200,224,0.06) 0%,transparent 60%)",pointerEvents:"none"}}/>
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"max(20px,env(safe-area-inset-top)) 20px 0",position:"relative",zIndex:10}}>
@@ -230,7 +230,22 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
             style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <Globe size={15} color="rgba(255,255,255,.4)"/>
           </button>
-          <button onClick={onComplete}
+          <button
+            onClick={() => {
+              // AUDIT-FIX (2026-04-18): Skip used to bypass the
+              // server-side markOnboardingComplete call, leaving
+              // profiles.onboarding_completed=false forever. Now
+              // Skip does the same side-effects as "isLast" path.
+              console.log("[SUPABASE_READY] onboarding_skipped");
+              void (async () => {
+                try {
+                  const { markOnboardingComplete } = await import("./api/onboarding-server");
+                  await markOnboardingComplete();
+                } catch { /* silent */ }
+              })();
+              try { localStorage.setItem("sosphere_onboarding_completed", "1"); } catch { /* ignore */ }
+              onComplete();
+            }}
             style={{paddingInline:14,height:34,borderRadius:999,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",fontSize:13,fontWeight:600,color:"rgba(255,255,255,.4)",fontFamily:"'Tajawal',sans-serif"}}>
             {isAr ? "تخطي" : "Skip"}
           </button>

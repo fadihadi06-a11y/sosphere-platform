@@ -38,6 +38,15 @@ describe("isValidE164Phone (E-H8)", () => {
     expect(isValidE164Phone("966512345678")).toBe(true);
   });
 
+  it("accepts '00' international access code (MENA / EU convention)", () => {
+    // AUDIT-FIX 2026-04-18: live test with a real Iraqi contact
+    // `009647728569514` was being rejected. ITU-T treats `00` as
+    // equivalent to `+` for international dialing.
+    expect(isValidE164Phone("009647728569514")).toBe(true); // Iraq
+    expect(isValidE164Phone("00441234567890")).toBe(true);  // UK via 00
+    expect(isValidE164Phone("0044 1234 567890")).toBe(true); // with spaces
+  });
+
   it("rejects nullish / empty / garbage", () => {
     expect(isValidE164Phone(null)).toBe(false);
     expect(isValidE164Phone(undefined)).toBe(false);
@@ -56,8 +65,9 @@ describe("isValidE164Phone (E-H8)", () => {
     expect(isValidE164Phone("+966123456789012345678")).toBe(false); // 20+ digits
   });
 
-  it("rejects numbers starting with 0 (invalid E.164)", () => {
-    // E.164 country codes never start with 0.
+  it("rejects single-leading-zero numbers (invalid E.164)", () => {
+    // E.164 country codes never start with 0. But "00" prefix is
+    // legitimate international access code (handled by the test above).
     expect(isValidE164Phone("+0123456789")).toBe(false);
     expect(isValidE164Phone("0123456789")).toBe(false);
   });

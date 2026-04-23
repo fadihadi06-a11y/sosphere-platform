@@ -337,25 +337,30 @@ export function WelcomeActivation() {
             {/* Download CTA */}
             <div className="w-full p-4 rounded-2xl space-y-3"
               style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.12)" }}>
+              {/* AUDIT-FIX (2026-04-18): removed fake App Store /
+                  Google Play tiles (they were non-functional divs, no
+                  href, no onClick). Until the app is published to the
+                  stores, direct users to the web app with a real link. */}
               <div className="flex items-center gap-3">
                 <Smartphone className="size-5 shrink-0" style={{ color: "#00C8E0" }} />
                 <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>
-                  {isAr ? "حمّل التطبيق" : "Download the App"}
+                  {isAr ? "افتح التطبيق" : "Open the App"}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {["App Store", "Google Play"].map(store => (
-                  <div key={store} className="py-2.5 rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{store}</span>
-                  </div>
-                ))}
-              </div>
+              <a
+                href="/app"
+                className="block py-2.5 rounded-xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg, #00C8E0, #0099B3)", textDecoration: "none" }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                  {isAr ? "الدخول إلى لوحة التحكم" : "Go to Dashboard"}
+                </span>
+              </a>
             </div>
 
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-              {isAr ? "يمكنك أيضاً الوصول عبر المتصفح على" : "Or access via browser at"}{" "}
-              <span style={{ color: "#00C8E0" }}>sosphere.app/app</span>
+              {isAr ? "رابط الوصول المباشر" : "Direct access URL"}:{" "}
+              <span style={{ color: "#00C8E0", fontFamily: "monospace" }}>sosphere-platform.vercel.app/app</span>
             </p>
           </motion.div>
         )}

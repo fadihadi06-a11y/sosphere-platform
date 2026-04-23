@@ -20,10 +20,19 @@
 // from Edge Functions, Workers, or React components alike.
 // ═══════════════════════════════════════════════════════════════
 
-/** True if the string looks like a real, dialable E.164 phone. */
+/** True if the string looks like a real, dialable E.164 phone.
+ *  AUDIT-FIX (2026-04-18): live test on a real Iraqi contact number
+ *  `009647728569514` was being rejected. The `00` prefix is the
+ *  ITU-T "international access code" used in most of the world
+ *  outside North America — it is functionally equivalent to `+`
+ *  when dialing. The native dialer accepted it fine; only our
+ *  over-strict client-side pre-check was dropping it. We now
+ *  normalise `00` → `+` before validating. */
 export function isValidE164Phone(p: string | undefined | null): boolean {
   if (!p) return false;
-  const s = String(p).replace(/[\s\-().]/g, "");
+  let s = String(p).replace(/[\s\-().]/g, "");
+  // Normalise the international access code prefix.
+  if (s.startsWith("00")) s = "+" + s.slice(2);
   return /^\+?[1-9]\d{7,14}$/.test(s);
 }
 

@@ -58,6 +58,9 @@ interface IndividualLayoutProps {
   onLogout?: () => void;
   /** Optional translator function. Falls back to English keys if absent. */
   t?: (key: string) => string;
+  /** Notified when active tab changes — lets parent hide overlays like the
+      floating VoiceSOSWidget on non-Home tabs. */
+  onActiveTabChange?: (tab: string) => void;
 }
 
 export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLayoutProps>(function IndividualLayout({
@@ -70,10 +73,15 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
   onNavigateToSafeWalk,
   onLogout,
   t: tProp,
+  onActiveTabChange,
 }, ref) {
   const t = tProp || ((k: string) => k);
   const tabs = getTabs(t);
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTabRaw] = useState("home");
+  const setActiveTab = (tab: string) => {
+    setActiveTabRaw(tab);
+    onActiveTabChange?.(tab);
+  };
 
   // Expose handleBack to parent (mobile-app) for Android back button support
   useImperativeHandle(ref, () => ({
@@ -111,6 +119,11 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           onCheckinTimer={onCheckinTimer}
           onMedicalID={onNavigateToMedicalID}
           onFamilyCircle={() => setActiveTab("family")}
+          // AUDIT-FIX (2026-04-18): "Add Contact" + "View All" buttons
+          // on home now open the real Emergency Contacts screen (with
+          // country picker + add/edit/delete CRUD) instead of the
+          // Family Circle invite flow.
+          onEmergencyContacts={onNavigateToEmergencyContacts}
           onLiveLocation={() => setActiveTab("map")}
           onNotifications={onNavigateToNotifications}
           onSafeWalk={onNavigateToSafeWalk}
@@ -129,13 +142,19 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
       )}
 
       {/* Bottom Nav */}
+      {/* AUDIT-FIX (2026-04-21): solid background + top hairline
+          replaces 3-stop gradient fade that banded on Android OLED. */}
       <div
         className="absolute bottom-0 left-0 right-0 z-20"
         style={{
-          background: "linear-gradient(180deg, transparent 0%, rgba(5,7,14,0.97) 35%)",
+          background: "#05070E",
+          boxShadow: "0 -1px 0 rgba(255,255,255,0.04)",
         }}
       >
-        <div className="flex items-center justify-around px-4 pb-8 pt-3">
+        <div
+          className="flex items-center justify-around px-4"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)", paddingTop: 12 }}
+        >
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (

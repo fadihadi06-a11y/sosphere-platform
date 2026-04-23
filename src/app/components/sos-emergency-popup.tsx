@@ -692,6 +692,7 @@ export function SOSEmergencyPopup({
     >
       {/* Ambient glow */}
       <motion.div
+        data-ambient-glow
         animate={{ opacity: [0.12, 0.35, 0.12] }}
         transition={{ duration: 2, repeat: Infinity }}
         className="absolute inset-0 rounded-2xl pointer-events-none"

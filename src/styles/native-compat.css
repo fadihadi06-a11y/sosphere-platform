@@ -743,6 +743,118 @@ html.native-ios {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/* ANDROID WEBVIEW COMPOSITOR FIX (2026-04-22) — MIUI tearing                 */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * PROBLEM: On MIUI Android WebView, the GPU compositor produces rainbow
+ * scan-line noise wherever these stack up:
+ *   1. Fullscreen absolutely-positioned overlays with radial-gradient
+ *      backgrounds using 0-alpha colors (invisible "ambient glow" decor)
+ *   2. motion.div / framer-motion animated children (transform + opacity)
+ *      rendered on top of those overlays
+ *   3. Native map WebGL canvas (Leaflet) or scrollable lists underneath
+ *
+ * Users saw this as: corrupted Height/Weight/Blood Type cards on Medical
+ * ID, white scan-line band on Family Circle detail drawer, and horizontal
+ * tearing on the Map's selected-place card.
+ *
+ * FIX STRATEGY (single-point):
+ *   A. Neutralise invisible ambient overlays by removing them only on
+ *      native Android, leaving web/iOS untouched.
+ *   B. Force every absolutely-positioned animated node onto its own GPU
+ *      compositing layer so the map/scroll layer below can't bleed in.
+ *   C. Disable backdrop-filter on native Android (known-broken on MIUI
+ *      WebView pre-Chrome 100).
+ */
+
+html.native-android .sos-ambient-glow,
+html.native-android [data-ambient-glow] {
+  display: none !important;
+}
+
+/* MIUI WebView cannot keep translucent overlays in sync with animated
+   transforms. Give every absolutely-positioned node its own compositor
+   layer. This is free in practice: the node stays in its layer once
+   composited, so map/scroll tiles below can't leak pixels through it. */
+html.native-android [class*="absolute"] {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Ensure root screen containers always paint on a solid backdrop; some
+   screens relied on the removed ambient div for their bg colour. */
+html.native-android #root {
+  background: #05070E;
+  isolation: isolate;
+}
+
+/* backdrop-filter: blur(...) is silently corrupted on MIUI WebView
+   (< Chrome 100) — it produces flicker + tearing on the element behind.
+   Fall back to a solid-ish background on native Android. */
+html.native-android [style*="backdrop-filter"],
+html.native-android [style*="backdropFilter"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Leaflet canvas must stay on its own layer so it doesn't composite with
+   the cards above it. (Applied globally — harmless on desktop/iOS.) */
+.leaflet-container,
+.leaflet-tile-pane,
+.leaflet-overlay-pane {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* AUDIT-FIX (2026-04-22 v6): user reported "cannot type in fields".
+   Root cause: several input elements had `background: transparent` +
+   `border: none` but NO explicit `color`. On Android WebView the
+   default input colour is black, which is invisible on our dark
+   theme. The user could type — but couldn't SEE the text.
+   Fix: force white input text on native platforms as a safety net
+   regardless of per-input inline style. */
+html.native-android input,
+html.native-android textarea,
+html.native-ios input,
+html.native-ios textarea {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  caret-color: #00C8E0;
+}
+
+html.native-android input::placeholder,
+html.native-android textarea::placeholder,
+html.native-ios input::placeholder,
+html.native-ios textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.35);
+}
+
+/* AUDIT-FIX (2026-04-22 v6): MIUI GPU tearing persists even with
+   ambient overlay removed because framer-motion's transform+opacity
+   entry animations themselves trigger the compositor bug. On native
+   Android, disable all framer-motion entry animations by instantly
+   jumping to final state. Motion is a "nice to have" — readable,
+   glitch-free content is the priority on a safety app. */
+html.native-android * {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0ms !important;
+}
+
+/* Keep interactive press feedback (whileTap scale) responsive — those
+   are CSS transitions applied to the pressed state, not entry
+   animations, so re-enable them narrowly. */
+html.native-android button:active,
+html.native-android [role="button"]:active,
+html.native-android a[role="button"]:active {
+  transition-duration: 80ms !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /* DEBUG: Safe Area Visualization */
 /* ─────────────────────────────────────────────────────────────────────────── */
 

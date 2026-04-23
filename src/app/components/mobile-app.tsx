@@ -228,6 +228,12 @@ export function MobileApp() {
   const [loginPhone, setLoginPhone] = useState("");
   const [loginMode, setLoginMode] = useState<"employee" | "individual" | "demo">("individual");
   const [loginRole, setLoginRole] = useState("worker");
+  // AUDIT-FIX (2026-04-18): live test showed sos-alert rejected the
+  // trigger with 403 "userId mismatch" because we were passing
+  // `EMP-${name}` instead of the Supabase auth UUID that the server
+  // compares against `auth.uid()`. This state holds the authoritative
+  // user id — populated from getSession() on mount + OAuth callback.
+  const [authUserId, setAuthUserId] = useState("");
   const [selectedPath, setSelectedPath] = useState<"civilian" | "employee" | null>(null);
 
   // -- Profile restore loading state ---------------------------
@@ -314,6 +320,9 @@ export function MobileApp() {
   const screenHistoryRef = useRef<Screen[]>([]);
   // Ref to IndividualLayout for handling back button within tabs
   const individualLayoutRef = useRef<IndividualLayoutHandle>(null);
+  // AUDIT-FIX (2026-04-21): track which civilian tab is active so
+  // floating overlays (VoiceSOSWidget) only appear on the Home tab.
+  const [civilianActiveTab, setCivilianActiveTab] = useState<string>("home");
 
   // -- FIX 3: SOS Dedup � prevents triple-trigger from hold + shake + fall --
   const sosInProgressRef = useRef(false);
@@ -521,6 +530,8 @@ export function MobileApp() {
           setLoginName(savedProfile.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "");
           setLoginPhone(savedProfile.phone || "");
           setLoginMode("individual");
+          // AUDIT-FIX: authoritative user id for SOS server calls.
+          setAuthUserId(session.user.id);
           screenHistoryRef.current = [];
           setIsRestoring(false);
           navigate("individual-home");
@@ -533,6 +544,9 @@ export function MobileApp() {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
           setLoginName(meta.full_name || meta.name || session.user.email?.split("@")[0] || "");
+          // AUDIT-FIX: capture auth UUID even on partial restore so SOS
+          // works the moment the user finishes the welcome flow.
+          setAuthUserId(session.user.id);
           console.log("[Auth] Partial session found, sending to welcome for full flow");
         }
 
@@ -750,6 +764,17 @@ export function MobileApp() {
     if (screenRef.current === "individual-home" && individualLayoutRef.current?.handleBack()) {
       return; // Handled by IndividualLayout — went back to home tab
     }
+    // AUDIT-FIX (2026-04-21) — CRITICAL: on root screens (Home / Dashboard
+    // / Welcome / Login) the back button MUST exit the app, NEVER pop the
+    // history stack. Previous bug: pressing back on Home popped the
+    // history and sent the user back into the login/onboarding chain,
+    // making it appear they were "logged out" without tapping Log Out.
+    if (ROOT_SCREENS.includes(screenRef.current)) {
+      try {
+        if (CapacitorApp) CapacitorApp.exitApp();
+      } catch {}
+      return;
+    }
     const history = screenHistoryRef.current;
     if (history.length > 0) {
       const prev = history[history.length - 1];
@@ -757,7 +782,7 @@ export function MobileApp() {
       setDirection(-1);
       setScreen(prev);
     } else {
-      // No history — exit app if on root screen
+      // No history, non-root screen — fallback: exit (shouldn't normally happen)
       try {
         if (CapacitorApp) CapacitorApp.exitApp();
       } catch {}
@@ -852,6 +877,11 @@ export function MobileApp() {
       console.log("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
       setLoginName(info.name || info.email.split("@")[0]);
       setLoginMode("individual");
+      // AUDIT-FIX: capture the authoritative Supabase auth UUID so that
+      // subsequent SOS triggers pass the userId the server expects.
+      // info.id comes from getGoogleUserInfo which returns the
+      // Supabase session user.id (auth.uid()).
+      if ((info as any).id) setAuthUserId((info as any).id);
 
       // Step 3: Route through the FULL validation chain
       // Even returning users must have completed consent + registration locally.
@@ -936,12 +966,17 @@ export function MobileApp() {
                 {/* Broadcast Island � floating broadcast alert */}
         <BroadcastIsland />
 
-        {/* Voice SOS Widget -- floating microphone.
-            WHITELIST (safer than blacklist): only render on the two home
-            screens where a voice trigger actually makes sense. During an
-            active SOS (sos-emergency) or any modal / flow screen, the mic
-            is both pointless and visually intrusive. */}
-        {(screen === "individual-home" || screen === "employee-dashboard") && (
+        {/* Voice SOS Widget — AUDIT-FIX (2026-04-21): user reported the
+            floating microphone looks like a broken indicator (always
+            crossed out when mic permission not granted) and is visually
+            intrusive on every civilian screen. Now gated behind an
+            explicit opt-in flag (`sosphere_voice_sos_enabled`). Default
+            OFF — user enables it from Settings > Security if they want
+            voice-triggered SOS. Admin/employee dashboard keeps it since
+            it's a pro-grade feature users actively opted into.
+            TODO: add the opt-in toggle to profile-settings when user
+            approves the feature. For now: always hidden on civilian. */}
+        {screen === "employee-dashboard" && (
           <VoiceSOSWidget
             onVoiceSOSTriggered={handleVoiceSOSTriggered}
             primaryKeyword="help me"
@@ -961,7 +996,7 @@ export function MobileApp() {
               exit={{ opacity: 0, y: -80 }}
               transition={{ type: "spring", damping: 20, stiffness: 200 }}
               className="absolute left-3 right-3 z-40"
-              style={{ top: 68 }}
+              style={{ top: "calc(env(safe-area-inset-top) + 56px)" }}
             >
               <div
                 style={{
@@ -969,7 +1004,7 @@ export function MobileApp() {
                   border: "1px solid rgba(255,45,85,0.3)",
                   borderRadius: 16,
                   padding: "12px 14px",
-                  backdropFilter: "blur(20px)",
+                  /* backdropFilter removed — Android WebView edge artifact */
                 }}
               >
                 <div className="flex items-start gap-3">
@@ -990,7 +1025,7 @@ export function MobileApp() {
                   </motion.div>
                   <div className="flex-1 min-w-0">
                     <div style={{ fontSize: 11, fontWeight: 800, color: "#FF2D55", letterSpacing: "0.3px" }}>
-                      ?? SEARCH & RESCUE ACTIVATED
+                      SEARCH & RESCUE ACTIVATED
                     </div>
                     <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 3, lineHeight: 1.4 }}>
                       {sarAlert.employeeName
@@ -998,8 +1033,10 @@ export function MobileApp() {
                         : "A colleague is missing. Stay alert and respond if contacted by admin."}
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <div
+                      <button
+                        type="button"
                         onClick={() => setSarAlert(null)}
+                        aria-label="Acknowledge search and rescue alert"
                         style={{
                           fontSize: 9, fontWeight: 700, color: "#FF2D55", padding: "4px 10px",
                           borderRadius: 6, background: "rgba(255,45,85,0.15)", cursor: "pointer",
@@ -1007,7 +1044,7 @@ export function MobileApp() {
                         }}
                       >
                         ACKNOWLEDGED
-                      </div>
+                      </button>
                       <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>
                         Tap to dismiss
                       </div>
@@ -1257,7 +1294,7 @@ export function MobileApp() {
 
         {/* -- Offline Status Indicator -- */}
         {isInApp && (
-          <div className="absolute top-[52px] right-4 z-[55]">
+          <div className="absolute right-4 z-[55]" style={{ top: "calc(env(safe-area-inset-top) + 12px)" }}>
             <OfflineIndicator compact />
           </div>
         )}
@@ -1277,7 +1314,7 @@ export function MobileApp() {
                   background: "rgba(255,45,85,0.95)",
                   borderRadius: 14,
                   padding: "10px 14px",
-                  backdropFilter: "blur(20px)",
+                  /* backdropFilter removed — Android WebView edge artifact */
                   border: "1px solid rgba(255,255,255,0.15)",
                 }}
               >
@@ -1474,6 +1511,7 @@ export function MobileApp() {
             {screen === "individual-home" && (
               <IndividualLayout
                 ref={individualLayoutRef}
+                onActiveTabChange={setCivilianActiveTab}
                 userName={loginName}
                 onSOSTrigger={() => { guardedSOSTrigger("hold", "individual-home"); }}
                 onRecordingChange={setRecordingEnabled}
@@ -1516,6 +1554,7 @@ export function MobileApp() {
                   setLoginName("");
                   setLoginPhone("");
                   setLoginMode("individual");
+                  setAuthUserId("");
                   screenHistoryRef.current = [];
                   navigate("welcome", -1);
                 }}
@@ -1560,6 +1599,7 @@ export function MobileApp() {
                   setLoginName("");
                   setLoginPhone("");
                   setLoginMode("individual");
+                  setAuthUserId("");
                   screenHistoryRef.current = [];
                   navigate("welcome", -1);
                 }}
@@ -1573,7 +1613,7 @@ export function MobileApp() {
                 isPremium={userPlan === "pro" || userPlan === "employee"}
                 onNavigateToSubscription={() => { navigate("subscription"); }}
                 userName={loginName}
-                userId={`EMP-${loginName.replace(/\s+/g, "")}`}
+                userId={authUserId || `EMP-${loginName.replace(/\s+/g, "")}`}
                 // FIX FATAL-1: Read phone from stored profile, blood type from stored medical
                 // Never send fake phone in emergency context
                 userPhone={safeLoadJSON<{phone?:string}>("sosphere_individual_profile", {}).phone || ""}
@@ -1616,7 +1656,7 @@ export function MobileApp() {
                 record={incidentRecord}
                 isAr={lang === "ar"}
                 onViewFullReport={() => navigate("emergency-record")}
-                onGoHome={() => navigate(sourceScreen, -1)}
+                onGoHome={() => { screenHistoryRef.current = []; navigate(sourceScreen, -1); }}
                 onNeedMoreHelp={() => {
                   // User reports they still need help — re-trigger SOS.
                   // Reset the rate limiter (it was meant to prevent accidental
@@ -1629,18 +1669,18 @@ export function MobileApp() {
             )}
 
             {screen === "post-emergency-debrief" && !incidentRecord && (
-              <EmergencyRecordFallback onBack={() => navigate(sourceScreen, -1)} />
+              <EmergencyRecordFallback onBack={goBack} />
             )}
 
             {screen === "emergency-record" && incidentRecord && (
               <EmergencyResponseRecord
                 record={incidentRecord}
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
               />
             )}
 
             {screen === "emergency-record" && !incidentRecord && (
-              <EmergencyRecordFallback onBack={() => navigate(sourceScreen, -1)} />
+              <EmergencyRecordFallback onBack={goBack} />
             )}
 
             {screen === "checkin-timer" && (
@@ -1648,7 +1688,7 @@ export function MobileApp() {
                 userName={loginName}
                 userZone={companyName ? "Zone B-7 � Sector 4" : "Personal"}
                 onSOSTrigger={() => guardedSOSTrigger("hold")}
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 onTimerStateChange={setTimerActive}
                 lang={lang === "ar" ? "ar" : "en"}
               />
@@ -1656,14 +1696,14 @@ export function MobileApp() {
 
             {screen === "medical-id" && (
               <MedicalID
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 userPlan={userPlan}
               />
             )}
 
             {screen === "subscription" && (
               <SubscriptionPlans
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 currentPlan={userPlan}
                 onUpgrade={(plan) => {
                   setUserPlan(plan);
@@ -1674,7 +1714,7 @@ export function MobileApp() {
 
             {screen === "incident-history" && (
               <IncidentHistory
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 userPlan={userPlan}
                 onUpgrade={() => navigate("subscription")}
               />
@@ -1682,7 +1722,7 @@ export function MobileApp() {
 
             {screen === "emergency-packet" && (
               <EmergencyPacket
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 userPlan={userPlan}
                 userName={loginName}
                 onUpgrade={() => navigate("subscription")}
@@ -1690,56 +1730,56 @@ export function MobileApp() {
             )}
 
             {screen === "emergency-services" && (
-              <EmergencyServices onBack={() => navigate(sourceScreen, -1)} />
+              <EmergencyServices onBack={goBack} />
             )}
 
             {screen === "emergency-contacts" && (
               <EmergencyContacts
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 userPlan={userPlan}
                 onUpgrade={() => navigate("subscription")}
               />
             )}
 
             {screen === "notifications" && (
-              <NotificationsCenter onBack={() => navigate(sourceScreen, -1)} />
+              <NotificationsCenter onBack={goBack} />
             )}
 
             {screen === "evacuation" && (
-              <EvacuationScreen onBack={() => navigate(sourceScreen, -1)} />
+              <EvacuationScreen onBack={goBack} />
             )}
 
             {screen === "language" && (
-              <LanguageScreen onBack={() => navigate(sourceScreen, -1)} lang={lang} onChangeLang={handleLangChange} />
+              <LanguageScreen onBack={goBack} lang={lang} onChangeLang={handleLangChange} />
             )}
 
             {screen === "privacy" && (
-              <PrivacyScreen onBack={() => navigate(sourceScreen, -1)} />
+              <PrivacyScreen onBack={goBack} />
             )}
 
             {screen === "connected-devices" && (
-              <ConnectedDevicesScreen onBack={() => navigate(sourceScreen, -1)} />
+              <ConnectedDevicesScreen onBack={goBack} />
             )}
 
             {screen === "help" && (
-              <HelpScreen onBack={() => navigate(sourceScreen, -1)} />
+              <HelpScreen onBack={goBack} />
             )}
 
             {screen === "elite-features" && (
-              <EliteFeaturesScreen onBack={() => navigate(sourceScreen, -1)} />
+              <EliteFeaturesScreen onBack={goBack} />
             )}
 
             {screen === "mission-tracker" && (
-              <MissionTrackerScreen employeeId={`EMP-${loginName.replace(/\s+/g, "")}`} onBack={() => navigate(sourceScreen, -1)} />
+              <MissionTrackerScreen employeeId={`EMP-${loginName.replace(/\s+/g, "")}`} onBack={goBack} />
             )}
 
             {screen === "safe-walk" && (
               <SafeWalkMode
                 emergencyContacts={safeWalkContacts}
                 userName={loginName}
-                userId={`EMP-${loginName.replace(/\s+/g, "")}`}
+                userId={authUserId || `EMP-${loginName.replace(/\s+/g, "")}`}
                 userZone={companyMatchData?.zoneName || (companyName ? "Field Zone" : "Personal")}
-                onBack={() => navigate(sourceScreen, -1)}
+                onBack={goBack}
                 onSOSTrigger={() => guardedSOSTrigger("hold")}
                 isPro={userPlan === "pro" || userPlan === "employee"}
                 onUpgrade={() => navigate("subscription")}

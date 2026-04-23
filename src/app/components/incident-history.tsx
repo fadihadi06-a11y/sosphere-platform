@@ -293,7 +293,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
     .filter(inc => !deletedIds.includes(inc.id))
     .filter(inc => {
       if (!isPro) {
-        const sevenDaysAgo = new Date(2026, 2, 7);
+        const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         return inc.date >= sevenDaysAgo;
       }
@@ -340,7 +340,9 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 350, background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 60%)" }}
       />
 
@@ -577,7 +579,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
                             transition={{ duration: 0.3 }}
                             className="overflow-hidden"
                           >
-                            <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                            <div className="px-4 pb-4 space-y-3" style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", paddingTop: 12 }}>
                               {/* Quick Info Cards */}
                               <div className="grid grid-cols-3 gap-2 pt-3">
                                 <div className="py-2 text-center" style={{ borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -796,7 +798,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
               key="del-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(10px)" }}
+              style={{ background: "rgba(0,0,0,0.85)" }}
               onClick={() => setShowDeleteConfirm(null)}
             />
             <motion.div

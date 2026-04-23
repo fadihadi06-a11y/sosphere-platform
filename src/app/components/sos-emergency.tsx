@@ -31,6 +31,10 @@ import {
 // P1-#6: Neighbor responses live panel (mounted during active SOS)
 import { NeighborResponsesPanel } from "./neighbor-responses-panel";
 import { canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
+// SMS-B (2026-04-21): silent SMS cascade — tries native SmsManager first,
+// then Twilio (if secrets set), then sms: URL. See sms-sender.ts.
+import { sendSOSMessage, type SendResult } from "./sms-sender";
+import { SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ─── Haptic Feedback (vibration pattern during active SOS) ───────────────────
 let hapticIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -65,55 +69,26 @@ async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: 
   return false;
 }
 
-// ─── Direct Call (bypasses OS app chooser) ───────────────────────────────────
+// ─── Direct Call — simplified 2026-04-21 v4 ──────────────────────────────────
+// User requested removing all custom auto-dial logic (ACTION_CALL via Java
+// bridge, CallNumber plugin) because it failed on MIUI + dual-SIM phones
+// and sometimes surfaced app choosers. Now: plain `tel:` URI which opens
+// the device's default dialer with the number pre-filled. The user taps
+// the call button. This is reliable across every Android device.
+//
+// The SOS cascade (call-contact-1 → 30s no-answer → call-contact-2 → ...)
+// still runs per plan limits from PLAN_LIMITS:
+//   • Free: 1 contact attempt only
+//   • Pro:  cascades through all contacts with MAX_CYCLES retries
 async function directCall(phone: string): Promise<boolean> {
   const cleaned = phone.replace(/[\s\-()]/g, "");
   if (!cleaned) return false;
-
-  // Method 1: Native Java bridge — ACTION_CALL directly to phone dialer (NO chooser)
-  try {
-    const native = (window as any).SOSphereNative;
-    if (native?.directCall) {
-      const ok = native.directCall(cleaned);
-      if (ok) {
-        console.log("[SOS] directCall success via SOSphereNative:", cleaned);
-        return true;
-      }
-    }
-  } catch (err) {
-    console.warn("[SOS] SOSphereNative.directCall failed:", err);
-  }
-
-  // Method 2: capacitor-call-number plugin (backup)
-  try {
-    const { CallNumber } = await import("capacitor-call-number");
-    await CallNumber.call({ number: cleaned, bypassAppChooser: true });
-    console.log("[SOS] directCall success via CallNumber plugin:", cleaned);
-    return true;
-  } catch (err) {
-    console.warn("[SOS] CallNumber plugin failed:", err);
-  }
-
-  // Method 3: Web browser fallback — ONLY used when NOT running inside the
-  // Capacitor native shell. The tel: URI scheme on Android always triggers
-  // the app chooser (WhatsApp / Contacts / Truecaller / etc.), which is
-  // exactly what we are trying to avoid. Inside the native app the two
-  // methods above are authoritative — if they both fail, we surface the
-  // failure to the caller rather than dump to the chooser.
-  const isNativeShell =
-    typeof (window as any).Capacitor !== "undefined" &&
-    (window as any).Capacitor?.isNativePlatform?.() === true;
-
-  if (isNativeShell) {
-    console.error("[SOS] directCall: native paths exhausted — refusing tel: fallback to avoid app chooser");
-    return false;
-  }
-
   try {
     window.location.href = `tel:${cleaned}`;
-    console.log("[SOS] directCall fallback tel: (web only):", cleaned);
+    console.log("[SOS] tel: dispatched:", cleaned);
     return true;
-  } catch {
+  } catch (err) {
+    console.error("[SOS] tel: dispatch failed:", err);
     return false;
   }
 }
@@ -1826,9 +1801,27 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         const callDuration = callDialStartTime > 0 ? (Date.now() - callDialStartTime) / 1000 : 0;
         console.log("[SOS] Call ended, duration:", callDuration, "seconds");
         if (callDuration >= 5) {
-          // Call lasted >5 seconds — someone likely answered and talked
-          console.log("[SOS] Call was answered (duration > 5s) — marking connected");
+          // AUDIT-FIX (2026-04-21): when the SIM call ends after a real
+          // conversation (>= 5s), advance SOS from "calling" to
+          // "monitoring" automatically. Previous behaviour left SOS
+          // stuck in "calling" until the user manually ended it.
+          // Monitoring phase = audio recording + photo burst + GPS
+          // beacons — which is exactly what the user asked for.
+          console.log("[SOS] Call was answered (duration > 5s) — advancing to monitoring");
           manualAnswerRef.current = true;
+          q.current.phase = "monitoring";
+          q.current.phaseTimer = 0;
+          setPhase("monitoring");
+          setPhaseTimer(0);
+          setMonitorSec(0);
+          addEvent({
+            type: "pause_end",
+            title: isAr ? "انتهت المكالمة — بدأت المراقبة" : "Call ended — monitoring started",
+            detail: isAr
+              ? "التسجيل الصوتي + اللقطات + GPS كل 30 ث"
+              : "Audio recording + photo burst + GPS every 30s",
+            color: "#00C8E0",
+          });
         }
         // If <5s, it was probably rejected or went to voicemail — let timeout handle it
         callDialStartTime = 0;
@@ -1928,6 +1921,10 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             updateContact(0, "calling");
             addEvent({ type: "call_out", title: `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
+            // AUDIT-FIX (2026-04-21 v4): restored original design —
+            // SMS is sent ONLY to the contact that ANSWERS the call
+            // (in the "answered" case below). Previous v3 fired SMS
+            // at activation to everyone; user rejected that change.
             // ── PHASE 1: "during" / "both" mode — start recording at activation ──
             // Safe-guarded: only starts once, only if recordingEnabled, never interferes
             // with the post-call "after" recording path.
@@ -2146,12 +2143,46 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           break;
 
         case "answered":
-          // Send location to the person who answered (once)
+          // AUDIT-FIX (2026-04-21 v4): fire the ACTUAL SMS via the
+          // silent sender when a contact answers. Previously this
+          // just logged an event without hitting the wire.
+          // Sender chain: native SmsManager → Twilio → sms: URL.
           if (r.phaseTimer === 1 && !r.smsSent) {
             r.smsSent = true; setSmsSent(true); setLocationSent(true);
-            addEvent({ type: "sms_sent", title: "Location shared", detail: `Google Maps · ${contactsRef.current.find(c => c.status === "answered")?.name || "Responder"}`, color: "#00C853" });
+            const answered = contactsRef.current.find(c => c.status === "answered");
+            const recipients = answered ? [answered.phone].filter(p => !!p && p.length >= 8) : [];
+            const lastPos = getLastKnownPosition();
+            if (recipients.length > 0) {
+              sendSOSMessage({
+                recipients,
+                parts: {
+                  userName: userName || "SOSphere user",
+                  gpsCoords: lastPos ? { lat: lastPos.latitude, lng: lastPos.longitude } : null,
+                  gpsAccuracy: lastPos?.accuracy,
+                  trigger: "hold_3s",
+                  errId: errIdRef.current,
+                  lang: isAr ? "ar" : "en",
+                },
+                supabaseUrl: SUPABASE_CONFIG.url,
+                supabaseAuthHeader: SUPABASE_CONFIG.anonKey ? `Bearer ${SUPABASE_CONFIG.anonKey}` : undefined,
+                strictSilent: false,
+              }).then((result: SendResult) => {
+                addEvent({
+                  type: "sms_sent",
+                  title: result.sent.length > 0
+                    ? (isAr ? "تمّ إرسال الموقع" : "Location sent")
+                    : (isAr ? "فشل إرسال SMS" : "SMS failed"),
+                  detail: result.sent.length > 0
+                    ? `${answered?.name || "Responder"} · ${result.path}`
+                    : (result.error || "unknown"),
+                  color: result.sent.length > 0 ? "#00C853" : "#FF9500",
+                });
+              });
+            } else {
+              addEvent({ type: "sms_sent", title: "Location shared (no phone)", detail: "No valid phone number", color: "#FF9500" });
+            }
             addEvent({ type: "location_share", title: "Live GPS — updating every 30s", detail: "Responder can see your live location now", color: "#00C8E0" });
-            emitSyncEvent({ type: "SOS_CONTACT_ANSWERED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { contactName: contactsRef.current.find(c => c.status === "answered")?.name, gpsTrailActive: true, phone: userPhone, bloodType: userBloodType } });
+            emitSyncEvent({ type: "SOS_CONTACT_ANSWERED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { contactName: answered?.name, gpsTrailActive: true, phone: userPhone, bloodType: userBloodType } });
           }
           // After 15 seconds in answered state, move to recording (simulates call end)
           if (r.phaseTimer >= 15) {
@@ -2715,6 +2746,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
       {/* Ambient background — subtle radial glow */}
       <motion.div
+        data-ambient-glow
         animate={{ opacity: [0.4, 0.7, 0.4] }}
         transition={{ duration: 4, repeat: Infinity }}
         className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none"

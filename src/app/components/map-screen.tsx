@@ -94,11 +94,18 @@ export function MapScreen({ onBack }: MapScreenProps) {
     const { lat, lng } = gpsCoords;
     // Place mock emergency services around the user's real location
     const places: NearbyPlace[] = [
-      { id: "h1", name: "Nearest Hospital", type: "hospital", distance: "1.2 km", address: "Emergency services", phone: "911", lat: lat + 0.008, lng: lng + 0.005 },
-      { id: "h2", name: "Medical Center", type: "hospital", distance: "2.5 km", address: "24H Emergency", phone: "911", lat: lat - 0.006, lng: lng + 0.012 },
-      { id: "p1", name: "Police Station", type: "police", distance: "0.8 km", address: "Local police", phone: "999", lat: lat + 0.004, lng: lng - 0.007 },
-      { id: "p2", name: "Security Office", type: "police", distance: "1.9 km", address: "Security patrol", phone: "999", lat: lat - 0.009, lng: lng - 0.004 },
-      { id: "f1", name: "Fire Station", type: "fire", distance: "1.5 km", address: "Fire & rescue", phone: "998", lat: lat + 0.01, lng: lng - 0.003 },
+      // AUDIT-FIX (2026-04-22): spaced markers out so hover tooltips
+      // don't visually collide with neighbouring icons. Previous layout
+      // placed Hospital h1 (+0.008,+0.005) and Fire f1 (+0.01,-0.003)
+      // vertically close enough that the hospital's tooltip (rendered
+      // above the marker with offset [0,-18]) visually landed over the
+      // fire truck icon, making it look like "Nearest Hospital" was
+      // pointing to the fire station.
+      { id: "h1", name: "Nearest Hospital", type: "hospital", distance: "1.2 km", address: "Emergency services", phone: "911", lat: lat + 0.007, lng: lng + 0.010 },
+      { id: "h2", name: "Medical Center", type: "hospital", distance: "2.5 km", address: "24H Emergency", phone: "911", lat: lat - 0.008, lng: lng + 0.014 },
+      { id: "p1", name: "Police Station", type: "police", distance: "0.8 km", address: "Local police", phone: "999", lat: lat + 0.003, lng: lng - 0.009 },
+      { id: "p2", name: "Security Office", type: "police", distance: "1.9 km", address: "Security patrol", phone: "999", lat: lat - 0.011, lng: lng - 0.005 },
+      { id: "f1", name: "Fire Station", type: "fire", distance: "1.5 km", address: "Fire & rescue", phone: "998", lat: lat + 0.014, lng: lng - 0.012 },
     ];
     setNearbyPlaces(places);
   }, [gpsCoords]);
@@ -199,9 +206,17 @@ export function MapScreen({ onBack }: MapScreenProps) {
         .addTo(mapRef.current!)
         .on("click", () => setSelectedPlace(place));
 
+      // AUDIT-FIX (2026-04-22): type-specific tooltip class so each
+      // tooltip inherits the colour of its marker (red=hospital,
+      // blue=police, orange=fire). Previously all tooltips were cyan
+      // which made "Nearest Hospital" look like it belonged to any
+      // nearby marker. Also switched to `direction: auto` so Leaflet
+      // flips the tooltip to the side that has room, preventing the
+      // label from landing on top of an adjacent marker icon.
       marker.bindTooltip(place.name, {
-        direction: "top",
+        direction: "auto",
         offset: [0, -18],
+        className: `sosphere-tooltip sosphere-tooltip-${place.type}`,
       });
 
       placeMarkersRef.current.push(marker);
@@ -215,16 +230,24 @@ export function MapScreen({ onBack }: MapScreenProps) {
     style.id = "sosphere-map-style";
     style.textContent = `
       .sosphere-tooltip {
-        background: rgba(0,200,224,0.15) !important;
-        border: 1px solid rgba(0,200,224,0.3) !important;
-        color: #00C8E0 !important;
+        background: rgba(10,16,32,0.95) !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        color: #fff !important;
         font-weight: 700 !important;
         font-size: 10px !important;
-        padding: 2px 6px !important;
+        padding: 3px 8px !important;
         border-radius: 6px !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+        white-space: nowrap !important;
       }
-      .sosphere-tooltip::before { border-bottom-color: rgba(0,200,224,0.3) !important; }
+      .sosphere-tooltip-hospital { border-color: rgba(255,45,85,0.6) !important; color: #FF5A7A !important; }
+      .sosphere-tooltip-police   { border-color: rgba(0,122,255,0.6) !important; color: #4A9BFF !important; }
+      .sosphere-tooltip-fire     { border-color: rgba(255,149,0,0.6) !important; color: #FFB74D !important; }
+      .sosphere-tooltip::before,
+      .sosphere-tooltip-top::before { border-top-color: rgba(10,16,32,0.95) !important; }
+      .sosphere-tooltip-bottom::before { border-bottom-color: rgba(10,16,32,0.95) !important; }
+      .sosphere-tooltip-left::before { border-left-color: rgba(10,16,32,0.95) !important; }
+      .sosphere-tooltip-right::before { border-right-color: rgba(10,16,32,0.95) !important; }
       .leaflet-container { background: #0a0e1a !important; }
     `;
     document.head.appendChild(style);
@@ -242,9 +265,74 @@ export function MapScreen({ onBack }: MapScreenProps) {
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
 
+      {/* ── Top Controls — AUDIT-FIX (2026-04-21 v2): MOVED OUT of the
+          map container. Now it's a flex sibling ABOVE the map, with
+          natural height. This eliminates the `absolute` overlap where
+          the map could render tiles behind / through the top bar
+          (which was the source of the reported "stripes"). Map can
+          ONLY paint below this bar now. */}
+      <div
+        className="shrink-0 px-4 pb-3 z-40"
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 12px)",
+          background: "#05070E",
+          boxShadow: "0 1px 0 rgba(255,255,255,0.04)",
+        }}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          {onBack && (
+            <motion.button whileTap={{ scale: 0.9 }} onClick={onBack}
+              className="size-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}>
+              <ArrowLeft style={{ width: 16, height: 16, color: "rgba(255,255,255,0.7)" }} />
+            </motion.button>
+          )}
+          <div className="flex-1">
+            <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>Nearby Safety</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+              {gpsCoords ? `${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E` : gpsError ? "Tap locate to retry" : "Acquiring GPS..."}
+            </p>
+          </div>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => {
+            if (gpsCoords && mapRef.current) {
+              mapRef.current.setView([gpsCoords.lat, gpsCoords.lng], 15, { animate: true });
+            } else {
+              retryGPS();
+            }
+          }}
+            className="size-9 rounded-xl flex items-center justify-center"
+            style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
+            <Locate style={{ width: 15, height: 15, color: "#00C8E0" }} />
+          </motion.button>
+        </div>
+
+        {/* Category Filters */}
+        <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          {categories.map((cat) => {
+            const isActive = category === cat.id;
+            const CatIcon = cat.icon;
+            return (
+              <motion.button key={cat.id} whileTap={{ scale: 0.95 }}
+                onClick={() => { setCategory(cat.id); setSelectedPlace(null); }}
+                className="flex items-center gap-1.5 px-3 py-2 shrink-0"
+                style={{
+                  borderRadius: 12,
+                  background: isActive ? `${cat.color}15` : "rgba(10,14,28,0.85)",
+                  boxShadow: `inset 0 0 0 1px ${isActive ? `${cat.color}40` : "rgba(255,255,255,0.08)"}`,
+                }}>
+                <CatIcon style={{ width: 12, height: 12, color: isActive ? cat.color : "rgba(255,255,255,0.25)" }} />
+                <span style={{ fontSize: 11, fontWeight: isActive ? 600 : 500, color: isActive ? cat.color : "rgba(255,255,255,0.3)" }}>
+                  {cat.label}
+                </span>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── Real Leaflet Map ── */}
       <div className="relative flex-1">
-        <div ref={mapContainerRef} className="absolute inset-0 z-0" />
+        <div ref={mapContainerRef} className="absolute inset-0 z-0" style={{ background: "#05070E" }} />
 
         {/* GPS Loading Overlay */}
         {!gpsCoords && (
@@ -271,83 +359,63 @@ export function MapScreen({ onBack }: MapScreenProps) {
           </div>
         )}
 
-        {/* ── Top Controls ── */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-12 px-4 pb-2"
-          style={{ background: "linear-gradient(180deg, rgba(5,7,14,0.92) 0%, rgba(5,7,14,0.6) 60%, transparent 100%)" }}
-        >
-          <div className="flex items-center gap-3 mb-3">
-            {onBack && (
-              <motion.button whileTap={{ scale: 0.9 }} onClick={onBack}
-                className="size-9 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}>
-                <ArrowLeft style={{ width: 16, height: 16, color: "rgba(255,255,255,0.7)" }} />
-              </motion.button>
-            )}
-            <div className="flex-1">
-              <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>Nearby Safety</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
-                {gpsCoords ? `${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E` : gpsError ? "Tap locate to retry" : "Acquiring GPS..."}
-              </p>
-            </div>
-            <motion.button whileTap={{ scale: 0.9 }} onClick={() => {
-              if (gpsCoords && mapRef.current) {
-                mapRef.current.setView([gpsCoords.lat, gpsCoords.lng], 15, { animate: true });
-              } else {
-                retryGPS();
-              }
-            }}
-              className="size-9 rounded-xl flex items-center justify-center"
-              style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
-              <Locate style={{ width: 15, height: 15, color: "#00C8E0" }} />
-            </motion.button>
-          </div>
+        {/* AUDIT-FIX (2026-04-21 v2): the absolute Top Controls was moved
+            OUT to be a flex sibling above the map — see start of return. */}
 
-          {/* Category Filters */}
-          <div className="flex gap-2">
-            {categories.map((cat) => {
-              const isActive = category === cat.id;
-              const CatIcon = cat.icon;
-              return (
-                <motion.button key={cat.id} whileTap={{ scale: 0.95 }}
-                  onClick={() => { setCategory(cat.id); setSelectedPlace(null); }}
-                  className="flex items-center gap-1.5 px-3 py-2"
-                  style={{
-                    borderRadius: 12,
-                    background: isActive ? `${cat.color}15` : "rgba(10,14,28,0.7)",
-                    border: `1px solid ${isActive ? `${cat.color}30` : "rgba(255,255,255,0.06)"}`,
-                    backdropFilter: "blur(12px)",
-                  }}>
-                  <CatIcon style={{ width: 12, height: 12, color: isActive ? cat.color : "rgba(255,255,255,0.25)" }} />
-                  <span style={{ fontSize: 11, fontWeight: isActive ? 600 : 500, color: isActive ? cat.color : "rgba(255,255,255,0.3)" }}>
-                    {cat.label}
-                  </span>
-                </motion.button>
-              );
-            })}
-          </div>
-        </div>
+        {/* ── Bottom: Selected Place Card ──
+            AUDIT-FIX (2026-04-22 v4): user reported horizontal scan-
+            line noise (tearing) on MIUI WebView covering the bottom
+            area when tapping a place marker. Root cause identified
+            from actual device screenshot: the previous structure had
+            (a) an outer wrapper div with `transition: background 180ms`
+            that animated from transparent → #05070E on selection, and
+            (b) an INNER `motion.div` doing `translateY(100 → 0)` on
+            top of the wrapper. On MIUI's GPU compositor, this stacks
+            two animating layers directly above the Leaflet OpenGL map
+            layer — during the transition window the background is
+            partially transparent AND the inner layer is transform-
+            animating. The compositor can't keep the map tiles and the
+            two moving translucent layers in sync, producing the scan-
+            line noise.
 
-        {/* ── Bottom: Selected Place Card ── */}
-        <div className="absolute bottom-0 left-0 right-0 z-30 pb-24">
-          <AnimatePresence>
-            {selectedPlace && (
-              <motion.div
-                key="place-card"
-                initial={{ y: 100, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 100, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="mx-4"
-              >
+            Fix: one single AnimatePresence → one single motion.div
+            that owns BOTH the opaque backdrop strip AND the card.
+            No CSS `transition`, no nested animated layers. The
+            wrapper is only in the DOM when `selectedPlace` is set,
+            and it carries a fully opaque #05070E from the very first
+            paint — so the map is never peeking through a semi-
+            transparent layer. `transform: translateZ(0)`, `isolation:
+            isolate` and `willChange: transform` force this node onto
+            its own compositor layer, fully detached from the map
+            below. Net result: no half-rendered frames, no tearing. */}
+        <AnimatePresence>
+          {selectedPlace && (
+            <motion.div
+              key="place-card-wrapper"
+              initial={{ y: 140 }}
+              animate={{ y: 0 }}
+              exit={{ y: 140 }}
+              transition={{ type: "spring", stiffness: 320, damping: 34 }}
+              className="absolute bottom-0 left-0 right-0 z-30"
+              style={{
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 96px)",
+                paddingTop: 16,
+                background: "#05070E",        // ALWAYS solid from first paint
+                isolation: "isolate",          // own stacking context
+                transform: "translateZ(0)",    // force GPU layer
+                willChange: "transform",       // hint compositor
+                backfaceVisibility: "hidden",  // avoid sub-pixel flicker
+              }}
+            >
+              <div className="mx-4">
                 <div className="p-4" style={{
                   borderRadius: 20,
-                  background: "rgba(10,18,32,0.95)",
-                  border: `1px solid ${typeConfig[selectedPlace.type].color}20`,
-                  backdropFilter: "blur(30px)",
+                  background: "#0A1220",
+                  boxShadow: `inset 0 0 0 1px ${typeConfig[selectedPlace.type].color}40, 0 8px 24px rgba(0,0,0,0.6)`,
                 }}>
                   <div className="flex items-start gap-3">
                     <div className="size-11 rounded-[13px] flex items-center justify-center shrink-0"
-                      style={{ background: `${typeConfig[selectedPlace.type].color}12`, border: `1px solid ${typeConfig[selectedPlace.type].color}25` }}>
+                      style={{ background: `${typeConfig[selectedPlace.type].color}20`, boxShadow: `inset 0 0 0 1px ${typeConfig[selectedPlace.type].color}40` }}>
                       {(() => { const Ic = typeConfig[selectedPlace.type].icon; return <Ic style={{ width: 17, height: 17, color: typeConfig[selectedPlace.type].color }} />; })()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -368,28 +436,53 @@ export function MapScreen({ onBack }: MapScreenProps) {
                   <div className="flex gap-2 mt-3">
                     <motion.button whileTap={{ scale: 0.97 }}
                       onClick={() => {
-                        if (gpsCoords) {
-                          window.open(`https://www.google.com/maps/dir/?api=1&origin=${gpsCoords.lat},${gpsCoords.lng}&destination=${selectedPlace.lat},${selectedPlace.lng}&travelmode=driving`, "_blank");
+                        // Capacitor WebView ignores target="_blank"; use geo: intent first,
+                        // fall back to Google Maps URL if the device has no geo handler.
+                        if (!gpsCoords) return;
+                        const geoUri = `geo:${selectedPlace.lat},${selectedPlace.lng}?q=${selectedPlace.lat},${selectedPlace.lng}(${encodeURIComponent(selectedPlace.name)})`;
+                        const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${gpsCoords.lat},${gpsCoords.lng}&destination=${selectedPlace.lat},${selectedPlace.lng}&travelmode=driving`;
+                        try {
+                          // Try native geo intent first (best on Android)
+                          window.location.href = geoUri;
+                          // If still on page after 600ms, fall back to web URL
+                          setTimeout(() => { window.location.href = webUrl; }, 600);
+                        } catch {
+                          window.location.href = webUrl;
                         }
                       }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
-                      style={{ borderRadius: 12, background: `${typeConfig[selectedPlace.type].color}12`, border: `1px solid ${typeConfig[selectedPlace.type].color}25`, fontSize: 12, fontWeight: 600, color: typeConfig[selectedPlace.type].color }}>
+                      style={{ borderRadius: 12, background: `${typeConfig[selectedPlace.type].color}1F`, boxShadow: `inset 0 0 0 1px ${typeConfig[selectedPlace.type].color}40`, fontSize: 12, fontWeight: 700, color: typeConfig[selectedPlace.type].color }}>
                       <Navigation style={{ width: 13, height: 13 }} />
                       Directions
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.97 }}
-                      onClick={() => { window.location.href = `tel:${selectedPlace.phone}`; }}
+                      onClick={async () => {
+                        // AUDIT-FIX (2026-04-21 v5): replace tel: URL (which
+                        // showed app chooser with WhatsApp/Zoom on MIUI)
+                        // with clipboard copy + toast. User opens dialer
+                        // themselves and pastes — no chooser possible.
+                        try {
+                          await navigator.clipboard?.writeText(selectedPlace.phone);
+                          import("sonner").then(m => m.toast(`${selectedPlace.phone} copied`, {
+                            description: "Open your dialer and paste to call",
+                          }));
+                        } catch {
+                          import("sonner").then(m => m.toast("Dial " + selectedPlace.phone, {
+                            description: "Copy the number and dial manually",
+                          }));
+                        }
+                      }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
-                      style={{ borderRadius: 12, background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontSize: 12, fontWeight: 600, color: "#00C853" }}>
+                      style={{ borderRadius: 12, background: "rgba(0,200,83,0.12)", boxShadow: "inset 0 0 0 1px rgba(0,200,83,0.3)", fontSize: 12, fontWeight: 700, color: "#00C853" }}>
                       <Phone style={{ width: 13, height: 13 }} />
                       Call {selectedPlace.phone}
                     </motion.button>
                   </div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

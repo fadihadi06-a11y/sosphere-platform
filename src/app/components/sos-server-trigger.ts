@@ -65,9 +65,14 @@ function nextBackoffMs(attempts: number): number {
 // but stripping obviously-invalid numbers BEFORE Twilio prevents an
 // SMS/call attempt silently failing with a 21211 error that the
 // victim never sees. Accepts +<country><subscriber> with 8-15 digits.
+// AUDIT-FIX (2026-04-18): accept the `00` international access-code
+// prefix (common in MENA / EU) as equivalent to `+`. Live test with
+// a real Iraqi number `009647728569514` revealed the prior regex
+// silently rejected it even though the native dialer handled it fine.
 function isValidE164Phone(p: string | undefined | null): boolean {
   if (!p) return false;
-  const s = String(p).replace(/[\s\-().]/g, "");
+  let s = String(p).replace(/[\s\-().]/g, "");
+  if (s.startsWith("00")) s = "+" + s.slice(2);
   return /^\+?[1-9]\d{7,14}$/.test(s);
 }
 
@@ -311,20 +316,31 @@ export async function triggerServerSOS(opts: {
   const tier = getTierString();
   const now = Date.now();
 
-  // ── E-H8: validate contact phones BEFORE Twilio ─────────────
+  // ── E-H8: validate + normalise contact phones BEFORE Twilio ───
   // Strip invalid E.164 numbers so Twilio doesn't silently fail on a
-  // 21211 error the victim never learns about. If NO valid contacts
-  // remain, we still fire the SOS (server-side contacts may be richer,
-  // and the local dialer Path A is independent) but we log loudly.
-  const validatedContacts = (opts.contacts || []).filter(c => {
-    const ok = isValidE164Phone(c?.phone);
-    if (!ok) {
-      console.warn(
-        `[SOS-Server] E-H8: dropping invalid contact phone: name="${c?.name}" phone="${c?.phone}"`,
-      );
-    }
-    return ok;
-  });
+  // 21211 error the victim never learns about. Normalise `00` prefix
+  // to `+` so MENA / EU-style numbers reach Twilio in the format it
+  // requires. If NO valid contacts remain, we still fire the SOS
+  // (server-side contacts may be richer, and the local dialer Path A
+  // is independent) but we log loudly.
+  const normalisePhone = (raw: string | undefined | null): string => {
+    if (!raw) return "";
+    let s = String(raw).replace(/[\s\-().]/g, "");
+    if (s.startsWith("00")) s = "+" + s.slice(2);
+    else if (!s.startsWith("+")) s = "+" + s;
+    return s;
+  };
+  const validatedContacts = (opts.contacts || [])
+    .filter(c => {
+      const ok = isValidE164Phone(c?.phone);
+      if (!ok) {
+        console.warn(
+          `[SOS-Server] E-H8: dropping invalid contact phone: name="${c?.name}" phone="${c?.phone}"`,
+        );
+      }
+      return ok;
+    })
+    .map(c => ({ ...c, phone: normalisePhone(c.phone) }));
   if (validatedContacts.length === 0 && (opts.contacts || []).length > 0) {
     console.error(
       "[SOS-Server] E-H8: ALL emergency contacts failed E.164 validation — " +

@@ -27,17 +27,22 @@ interface MedicalData {
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
+// AUDIT-FIX (2026-04-18): default values must not carry another
+// person's medical history (was pre-filled with Dr. Ahmad + Saudi
+// phone + fake conditions). Responders reading a user's ID in an
+// emergency would have seen someone else's data. Now defaults are
+// empty so the user fills their real info.
 const defaultData: MedicalData = {
-  bloodType: "O+",
-  height: "175",
-  weight: "78",
-  dateOfBirth: "1992-03-15",
-  conditions: ["Asthma", "Hypertension"],
-  allergies: ["Penicillin", "Peanuts"],
-  medications: ["Ventolin Inhaler", "Lisinopril 10mg"],
-  emergencyMedicalContact: { name: "Dr. Ahmad", phone: "+966501234567", relation: "Primary Doctor" },
-  notes: "Carry inhaler at all times",
-  organDonor: true,
+  bloodType: "",
+  height: "",
+  weight: "",
+  dateOfBirth: "",
+  conditions: [],
+  allergies: [],
+  medications: [],
+  emergencyMedicalContact: { name: "", phone: "", relation: "" },
+  notes: "",
+  organDonor: false,
 };
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -86,15 +91,17 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
   });
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
-      {/* Ambient */}
-      <div
-        className="absolute top-[-100px] left-1/2 -translate-x-1/2 pointer-events-none"
-        style={{ width: 500, height: 400, background: "radial-gradient(ellipse, rgba(255,45,85,0.03) 0%, transparent 65%)" }}
-      />
+    <div className="relative flex flex-col h-full overflow-hidden" style={{ fontFamily: "'Outfit', sans-serif", background: "#05070E" }}>
+      {/* AUDIT-FIX (2026-04-22 v5): REMOVED ambient radial-gradient
+          overlay. On MIUI WebView the combination of
+          (radial-gradient with alpha=0) + (motion.div children doing
+          opacity/y animations on the Blood Type / Height / Weight
+          grid) caused GPU compositor tearing — the "rainbow scan-line
+          noise" users saw over those cards. The gradient was purely
+          decorative and invisible on dark backgrounds anyway. */}
 
       {/* Header */}
-      <div className="shrink-0 pt-[58px] px-5 pb-3">
+      <div className="shrink-0 px-5 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}>
         <div className="flex items-center justify-between">
           <button onClick={onBack} className="flex items-center gap-1 -ml-1 p-1">
             <ChevronLeft style={{ width: 20, height: 20, color: "#00C8E0" }} />
@@ -106,9 +113,9 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowQR(true)}
                 className="p-2 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+                style={{ background: "rgba(255,255,255,0.06)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)" }}
               >
-                <QrCode style={{ width: 16, height: 16, color: "rgba(255,255,255,0.35)" }} />
+                <QrCode style={{ width: 16, height: 16, color: "rgba(255,255,255,0.5)" }} />
               </motion.button>
             )}
             <motion.button
@@ -116,14 +123,14 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
               onClick={() => setEditing(!editing)}
               className="p-2 rounded-xl"
               style={{
-                background: editing ? "rgba(0,200,224,0.08)" : "rgba(255,255,255,0.03)",
-                border: `1px solid ${editing ? "rgba(0,200,224,0.15)" : "rgba(255,255,255,0.05)"}`,
+                background: editing ? "rgba(0,200,224,0.15)" : "rgba(255,255,255,0.06)",
+                boxShadow: `inset 0 0 0 1px ${editing ? "rgba(0,200,224,0.35)" : "rgba(255,255,255,0.12)"}`,
               }}
             >
               {editing ? (
                 <Check style={{ width: 16, height: 16, color: "#00C8E0" }} />
               ) : (
-                <Edit3 style={{ width: 16, height: 16, color: "rgba(255,255,255,0.35)" }} />
+                <Edit3 style={{ width: 16, height: 16, color: "rgba(255,255,255,0.5)" }} />
               )}
             </motion.button>
           </div>
@@ -149,13 +156,15 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
           className="mb-4"
         >
           <div className="grid grid-cols-2 gap-2.5">
-            {/* Blood Type */}
+            {/* Blood Type — AUDIT-FIX (2026-04-21): bumped bg opacity +
+                inset boxShadow; low-alpha bg + border combination was
+                invisible on Android OLED (user reported stripes/noise). */}
             <div
               className="p-4 flex flex-col items-center"
               style={{
                 borderRadius: 18,
-                background: "rgba(255,45,85,0.03)",
-                border: "1px solid rgba(255,45,85,0.08)",
+                background: "rgba(255,45,85,0.08)",
+                boxShadow: "inset 0 0 0 1px rgba(255,45,85,0.18)",
                 gridRow: "1 / 3",
               }}
             >
@@ -181,44 +190,60 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
                     </button>
                   ))}
                 </div>
-              ) : (
+              ) : data.bloodType ? (
                 <span style={{ fontSize: 36, fontWeight: 900, color: "#FF2D55", letterSpacing: "-1px" }}>{data.bloodType}</span>
+              ) : (
+                <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,45,85,0.55)", textAlign: "center", lineHeight: 1.4, padding: "0 4px" }}>
+                  Tap edit pencil<br />to set type
+                </span>
               )}
             </div>
 
             {/* Height */}
-            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.05)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <Ruler style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Height</span>
+                <Ruler style={{ width: 12, height: 12, color: "rgba(0,200,224,0.7)" }} />
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, letterSpacing: "0.3px" }}>HEIGHT</span>
               </div>
               {editing ? (
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={data.height}
                   onChange={e => setData(prev => ({ ...prev, height: e.target.value }))}
-                  className="w-full bg-transparent text-white outline-none"
-                  style={{ fontSize: 20, fontWeight: 700, caretColor: "#00C8E0" }}
+                  placeholder="0"
+                  className="w-full text-white outline-none"
+                  style={{ fontSize: 20, fontWeight: 700, color: "#fff", caretColor: "#00C8E0", background: "transparent", border: "none" }}
                 />
               ) : (
-                <span className="text-white" style={{ fontSize: 20, fontWeight: 700 }}>{data.height} <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>cm</span></span>
+                <span className="text-white" style={{ fontSize: 20, fontWeight: 700 }}>
+                  {data.height || <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>}
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginLeft: 4 }}>cm</span>
+                </span>
               )}
             </div>
 
             {/* Weight */}
-            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.05)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <Weight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.5)" }} />
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Weight</span>
+                <Weight style={{ width: 12, height: 12, color: "rgba(0,200,224,0.7)" }} />
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, letterSpacing: "0.3px" }}>WEIGHT</span>
               </div>
               {editing ? (
                 <input
+                  type="number"
+                  inputMode="numeric"
                   value={data.weight}
                   onChange={e => setData(prev => ({ ...prev, weight: e.target.value }))}
-                  className="w-full bg-transparent text-white outline-none"
-                  style={{ fontSize: 20, fontWeight: 700, caretColor: "#00C8E0" }}
+                  placeholder="0"
+                  className="w-full text-white outline-none"
+                  style={{ fontSize: 20, fontWeight: 700, color: "#fff", caretColor: "#00C8E0", background: "transparent", border: "none" }}
                 />
               ) : (
-                <span className="text-white" style={{ fontSize: 20, fontWeight: 700 }}>{data.weight} <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>kg</span></span>
+                <span className="text-white" style={{ fontSize: 20, fontWeight: 700 }}>
+                  {data.weight || <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>}
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginLeft: 4 }}>kg</span>
+                </span>
               )}
             </div>
           </div>
@@ -228,11 +253,11 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="flex items-center justify-between px-4 py-3 mb-4"
-          style={{ borderRadius: 14, background: "rgba(0,200,83,0.03)", border: "1px solid rgba(0,200,83,0.08)" }}
+          style={{ borderRadius: 14, background: "rgba(0,200,83,0.08)", boxShadow: "inset 0 0 0 1px rgba(0,200,83,0.2)" }}
         >
           <div className="flex items-center gap-2.5">
             <Activity style={{ width: 14, height: 14, color: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>Organ Donor</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.75)" }}>Organ Donor</span>
           </div>
           <button
             onClick={() => editing && setData(prev => ({ ...prev, organDonor: !prev.organDonor }))}
@@ -290,10 +315,10 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
 
             <div
               className="p-3"
-              style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}
+              style={{ borderRadius: 16, background: "rgba(255,255,255,0.04)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
             >
               {section.items.length === 0 ? (
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.12)", textAlign: "center", padding: "8px 0" }}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center", padding: "8px 0" }}>
                   No {section.label.toLowerCase()} added
                 </p>
               ) : (
@@ -305,11 +330,11 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
                       className="flex items-center gap-1.5 px-3 py-1.5"
                       style={{
                         borderRadius: 10,
-                        background: `${section.color}08`,
-                        border: `1px solid ${section.color}15`,
+                        background: `${section.color}1A`,
+                        boxShadow: `inset 0 0 0 1px ${section.color}35`,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 500, color: `${section.color}CC` }}>{item}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: `${section.color}F0` }}>{item}</span>
                       {editing && (
                         <button onClick={() => removeItemFromList(section.key, i)} className="ml-0.5">
                           <X style={{ width: 10, height: 10, color: `${section.color}60` }} />
@@ -375,42 +400,59 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
           </div>
           <div
             className="p-4 space-y-3"
-            style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}
+            style={{ borderRadius: 16, background: "rgba(255,255,255,0.04)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
           >
             {editing ? (
               <>
                 <input
                   value={data.emergencyMedicalContact.name}
                   onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, name: e.target.value } }))}
-                  placeholder="Name"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  placeholder="Name (e.g. Dr. Ahmed)"
+                  className="w-full text-white outline-none px-3 py-2"
+                  style={{ fontSize: 14, borderRadius: 10, color: "#fff", background: "rgba(255,255,255,0.05)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)", caretColor: "#00C8E0", border: "none" }}
                 />
                 <input
+                  type="tel"
+                  inputMode="tel"
                   value={data.emergencyMedicalContact.phone}
                   onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, phone: e.target.value } }))}
-                  placeholder="Phone"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  placeholder="Phone (+964...)"
+                  className="w-full text-white outline-none px-3 py-2"
+                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.05)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)", caretColor: "#00C8E0", border: "none", fontFamily: "'Outfit', monospace" }}
                 />
                 <input
                   value={data.emergencyMedicalContact.relation}
                   onChange={e => setData(prev => ({ ...prev, emergencyMedicalContact: { ...prev.emergencyMedicalContact, relation: e.target.value } }))}
-                  placeholder="Relation"
-                  className="w-full bg-transparent text-white outline-none px-3 py-2"
-                  style={{ fontSize: 14, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", caretColor: "#00C8E0" }}
+                  placeholder="Relation (Doctor / Family / Friend)"
+                  className="w-full text-white outline-none px-3 py-2"
+                  style={{ fontSize: 14, borderRadius: 10, color: "#fff", background: "rgba(255,255,255,0.05)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)", caretColor: "#00C8E0", border: "none" }}
                 />
               </>
-            ) : (
+            ) : data.emergencyMedicalContact.name || data.emergencyMedicalContact.phone ? (
               <div className="flex items-center gap-3">
-                <div className="size-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
+                <div className="size-10 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(0,200,83,0.12)", boxShadow: "inset 0 0 0 1px rgba(0,200,83,0.25)" }}>
                   <Stethoscope style={{ width: 16, height: 16, color: "#00C853" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{data.emergencyMedicalContact.name}</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{data.emergencyMedicalContact.relation}</p>
+                  <p className="text-white truncate" style={{ fontSize: 14, fontWeight: 600 }}>{data.emergencyMedicalContact.name || "—"}</p>
+                  <p className="truncate" style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{data.emergencyMedicalContact.relation || "No relation set"}</p>
                 </div>
-                <span style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>{data.emergencyMedicalContact.phone}</span>
+                {data.emergencyMedicalContact.phone && (
+                  <span className="shrink-0" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 500, fontFamily: "'Outfit', monospace" }}>
+                    {data.emergencyMedicalContact.phone}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 py-2">
+                <div className="size-10 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.03)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
+                  <Stethoscope style={{ width: 16, height: 16, color: "rgba(255,255,255,0.25)" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", fontStyle: "italic" }}>
+                    Not set — tap edit pencil to add a doctor or medical contact
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -425,17 +467,20 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
             <Shield style={{ width: 13, height: 13, color: "rgba(255,255,255,0.3)" }} />
             <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Additional Notes</span>
           </div>
-          <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+          <div className="p-3.5" style={{ borderRadius: 16, background: "rgba(255,255,255,0.04)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
             {editing ? (
               <textarea
                 value={data.notes}
                 onChange={e => setData(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Any extra info first responders should know (e.g. pacemaker, blind in left eye, Arabic speaker)..."
                 className="w-full bg-transparent text-white outline-none resize-none"
-                rows={2}
+                rows={3}
                 style={{ fontSize: 13, caretColor: "#00C8E0", lineHeight: 1.6 }}
               />
             ) : (
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.6 }}>{data.notes || "No additional notes"}</p>
+              <p style={{ fontSize: 13, color: data.notes ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.35)", lineHeight: 1.6, fontStyle: data.notes ? "normal" : "italic" }}>
+                {data.notes || "No additional notes"}
+              </p>
             )}
           </div>
         </motion.div>
@@ -447,15 +492,27 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
         >
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={() => setShowQR(true)}
+            onClick={() => {
+              // AUDIT-FIX (2026-04-18): free users tapping "QR Badge"
+              // used to open a modal that only renders if isPro →
+              // nothing visible. Now: free users get a clear upgrade
+              // prompt via toast instead of silent failure.
+              if (!isPro) {
+                import("sonner").then(m => m.toast("QR Badge is an Elite feature", {
+                  description: "Upgrade to generate a scannable medical ID for first responders.",
+                }));
+                return;
+              }
+              setShowQR(true);
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-3"
             style={{
               borderRadius: 14,
-              background: isPro ? "rgba(255,45,85,0.06)" : "rgba(255,255,255,0.02)",
-              border: `1px solid ${isPro ? "rgba(255,45,85,0.12)" : "rgba(255,255,255,0.04)"}`,
-              color: isPro ? "#FF2D55" : "rgba(255,255,255,0.15)",
+              background: isPro ? "rgba(255,45,85,0.12)" : "rgba(255,255,255,0.05)",
+              boxShadow: `inset 0 0 0 1px ${isPro ? "rgba(255,45,85,0.3)" : "rgba(255,255,255,0.1)"}`,
+              color: isPro ? "#FF2D55" : "rgba(255,255,255,0.4)",
               fontSize: 13, fontWeight: 600,
-              cursor: isPro ? "pointer" : "default",
+              cursor: "pointer",
             }}
           >
             <QrCode style={{ width: 14, height: 14 }} />
@@ -463,11 +520,37 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.97 }}
+            onClick={async () => {
+              // AUDIT-FIX: Share button was completely dead. Now uses
+              // Web Share API (available on Android Capacitor WebView)
+              // with a text-only summary of the medical ID. Non-PII
+              // fields only for safety — the full Medical ID is
+              // served via the SOS web viewer to actual responders.
+              const summary = [
+                `SOSphere Medical ID`,
+                data.bloodType ? `Blood: ${data.bloodType}` : null,
+                data.allergies?.length ? `Allergies: ${data.allergies.join(", ")}` : null,
+                data.conditions?.length ? `Conditions: ${data.conditions.join(", ")}` : null,
+                data.medications?.length ? `Meds: ${data.medications.join(", ")}` : null,
+              ].filter(Boolean).join("\n");
+              try {
+                if ((navigator as any).share) {
+                  await (navigator as any).share({ title: "Medical ID", text: summary });
+                } else if (navigator.clipboard) {
+                  await navigator.clipboard.writeText(summary);
+                  const { toast } = await import("sonner");
+                  toast.success("Copied", { description: "Medical ID summary copied to clipboard." });
+                } else {
+                  const { toast } = await import("sonner");
+                  toast("Share unavailable", { description: "Your device does not support share or clipboard APIs." });
+                }
+              } catch { /* user cancelled — silent */ }
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-3"
             style={{
               borderRadius: 14,
-              background: "rgba(0,200,224,0.06)",
-              border: "1px solid rgba(0,200,224,0.12)",
+              background: "rgba(0,200,224,0.14)",
+              boxShadow: "inset 0 0 0 1px rgba(0,200,224,0.3)",
               color: "#00C8E0",
               fontSize: 13, fontWeight: 600,
             }}
@@ -486,7 +569,7 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
               key="qr-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)" }}
+              style={{ background: "rgba(0,0,0,0.9)" }}
               onClick={() => setShowQR(false)}
             />
             <motion.div
@@ -496,8 +579,8 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
               className="absolute inset-x-8 z-50 flex flex-col items-center p-6"
               style={{
                 top: "50%", transform: "translateY(-50%)",
-                borderRadius: 24, background: "rgba(10,16,32,0.98)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 24, background: "rgba(10,16,32,0.99)",
+                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
               }}
             >
               <div className="flex items-center gap-2 mb-4">
@@ -519,8 +602,8 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
                 style={{
                   borderRadius: 14,
                   background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.35)",
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.5)",
                   fontSize: 14, fontWeight: 600,
                 }}
               >
@@ -533,3 +616,4 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
     </div>
   );
 }
+

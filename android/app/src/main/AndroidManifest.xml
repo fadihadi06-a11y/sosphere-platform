@@ -6,6 +6,17 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!--
+      SMS-A (2026-04-21): SEND_SMS required for silent emergency SMS
+      during SOS. Category: "Emergency or Safety alerts" — must file
+      a Permissions Declaration with Google Play before Production
+      release. In Debug / Sideload, works immediately once granted.
+      Usage: MainActivity.SOSphereNative.sendSMSSilent() triggered
+      by Shake ×3 / Hold 3s / Dead-Man's-Switch auto-trigger. Sent
+      ONLY to contacts the user has added themselves (consent).
+    -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
     <!-- O-C1: Android 13+ runtime permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

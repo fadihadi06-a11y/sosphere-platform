@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
+import { useLang, setLang } from "./useLang";
 import {
   ChevronLeft, Check, Globe, Lock, Smartphone,
   HelpCircle, Mail, MessageCircle, FileText, Shield,
@@ -40,12 +41,41 @@ const LANGUAGES = [
 ];
 
 export function LanguageScreen({ onBack }: { onBack: () => void }) {
-  const [selected, setSelected] = useState("en");
+  // AUDIT-FIX (2026-04-18): was a local useState only — selecting a
+  // language did NOTHING to the rest of the app (no i18n dispatch, no
+  // persistence). Now wires the real setLang() from useLang which
+  // persists + broadcasts to every subscriber.
+  const { lang: currentLang } = useLang();
+  const [selected, setSelected] = useState(currentLang);
+  const [showSoonToast, setShowSoonToast] = useState(false);
+
+  const handlePick = (code: string) => {
+    setSelected(code);
+    // Only `ar` and `en` are fully translated in this build; other
+    // codes persist the user's preference but fall back to English
+    // until the translation bundles ship. Tell the user honestly.
+    if (code === "ar" || code === "en") {
+      setLang(code);
+    } else {
+      try { localStorage.setItem("sosphere_lang", code); } catch { /* ignore */ }
+      setLang("en");
+      setShowSoonToast(true);
+      setTimeout(() => setShowSoonToast(false), 2500);
+    }
+  };
 
   return (
     <div className="relative flex flex-col h-full">
+      {showSoonToast && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full"
+          style={{ background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.25)" }}>
+          <span style={{ fontSize: 12, color: "#FF9500", fontWeight: 600 }}>
+            Full translation coming soon — showing English for now
+          </span>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           <ScreenHeader title="Language" subtitle="Choose your preferred language" onBack={onBack} />
 
           <div className="px-5">
@@ -53,7 +83,7 @@ export function LanguageScreen({ onBack }: { onBack: () => void }) {
               {LANGUAGES.map((lang, i) => (
                 <button
                   key={lang.code}
-                  onClick={() => setSelected(lang.code)}
+                  onClick={() => handlePick(lang.code)}
                   className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
                   style={{ borderBottom: i < LANGUAGES.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}
                 >
@@ -62,6 +92,9 @@ export function LanguageScreen({ onBack }: { onBack: () => void }) {
                     <p style={{ fontSize: 14, fontWeight: 500, color: selected === lang.code ? "#fff" : "rgba(255,255,255,0.5)" }}>{lang.name}</p>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 1 }}>{lang.native}</p>
                   </div>
+                  {(lang.code === "ar" || lang.code === "en") && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "#00C853", letterSpacing: "0.5px" }}>READY</span>
+                  )}
                   {selected === lang.code && (
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
                       <Check className="size-4" style={{ color: "#00C8E0" }} />
@@ -78,10 +111,39 @@ export function LanguageScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ── Privacy Screen ─────────────────────────────────────────────
+// AUDIT-FIX (2026-04-18): privacy toggles were local-state-only —
+// user flipped "Location History" or "Analytics" and the toggle
+// snapped back to defaults on every visit. Now each toggle
+// persists its value in localStorage so user preferences survive.
+const PRIVACY_KEYS = {
+  locationHistory: "sosphere_priv_location_history",
+  analytics: "sosphere_priv_analytics",
+  showProfile: "sosphere_priv_show_profile",
+} as const;
+function readPrivacyFlag(key: string, defaultVal: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return defaultVal;
+    return raw === "1" || raw === "true";
+  } catch { return defaultVal; }
+}
+function writePrivacyFlag(key: string, v: boolean): void {
+  try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* ignore */ }
+}
+
 export function PrivacyScreen({ onBack }: { onBack: () => void }) {
-  const [locationHistory, setLocationHistory] = useState(true);
-  const [analytics, setAnalytics] = useState(false);
-  const [showProfile, setShowProfile] = useState(true);
+  const [locationHistory, setLocationHistoryState] = useState(() => readPrivacyFlag(PRIVACY_KEYS.locationHistory, true));
+  const [analytics, setAnalyticsState] = useState(() => readPrivacyFlag(PRIVACY_KEYS.analytics, false));
+  const [showProfile, setShowProfileState] = useState(() => readPrivacyFlag(PRIVACY_KEYS.showProfile, true));
+  const setLocationHistory = (v: boolean | ((p: boolean) => boolean)) => {
+    setLocationHistoryState(prev => { const next = typeof v === "function" ? v(prev) : v; writePrivacyFlag(PRIVACY_KEYS.locationHistory, next); return next; });
+  };
+  const setAnalytics = (v: boolean | ((p: boolean) => boolean)) => {
+    setAnalyticsState(prev => { const next = typeof v === "function" ? v(prev) : v; writePrivacyFlag(PRIVACY_KEYS.analytics, next); return next; });
+  };
+  const setShowProfile = (v: boolean | ((p: boolean) => boolean)) => {
+    setShowProfileState(prev => { const next = typeof v === "function" ? v(prev) : v; writePrivacyFlag(PRIVACY_KEYS.showProfile, next); return next; });
+  };
   const [biometric, setBiometric] = useState<boolean>(() => getBiometricLockEnabled());
   const [biometricEnrollOpen, setBiometricEnrollOpen] = useState(false);
 
@@ -161,7 +223,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           <ScreenHeader title="Privacy & Security" subtitle="Control your data and access" onBack={onBack} />
 
           {/* Toggles */}
@@ -203,8 +265,72 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
               {actions.map((a, i) => (
                 <button key={a.label} className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
                   onClick={() => {
-                    if (a.danger) { hapticWarning(); toast.error(a.label, { description: "This action requires confirmation. Please contact support to proceed." }); }
-                    else { hapticSuccess(); toast.success(a.label, { description: "Your data export is being prepared. You'll receive a download link shortly." }); }
+                    // AUDIT-FIX (2026-04-18): prior handlers showed
+                    // a misleading toast "download link shortly" or
+                    // "contact support" when nothing actually
+                    // happened. Real behaviour now:
+                    //   • Download My Data: build a JSON blob from
+                    //     every sosphere_* localStorage key + trigger
+                    //     browser download immediately.
+                    //   • Delete Account: open a second-step confirm
+                    //     (handled via toast action button) that
+                    //     clears all local data + signs the user out.
+                    //     Server-side account deletion is a manual
+                    //     support request — this clears device state.
+                    if (a.danger) {
+                      hapticWarning();
+                      toast.error("Delete all local data?", {
+                        description: "This clears every SOSphere profile, contact, and preference stored on this device. Server-side account deletion must be requested via support@sosphere.co.",
+                        action: {
+                          label: "Confirm clear",
+                          onClick: async () => {
+                            try {
+                              const { completeLogout } = await import("./api/complete-logout");
+                              await completeLogout();
+                            } catch {
+                              // Fallback: manual sweep if module unavailable
+                              try {
+                                const keys: string[] = [];
+                                for (let i = 0; i < localStorage.length; i++) {
+                                  const k = localStorage.key(i);
+                                  if (k && k.startsWith("sosphere_")) keys.push(k);
+                                }
+                                keys.forEach(k => localStorage.removeItem(k));
+                              } catch { /* ignore */ }
+                            }
+                            toast.success("All local data cleared");
+                          }
+                        }
+                      });
+                    } else {
+                      hapticSuccess();
+                      try {
+                        const data: Record<string, unknown> = {
+                          _exportedAt: new Date().toISOString(),
+                          _app: "SOSphere",
+                        };
+                        for (let i = 0; i < localStorage.length; i++) {
+                          const k = localStorage.key(i);
+                          if (k && k.startsWith("sosphere_")) {
+                            const raw = localStorage.getItem(k) || "";
+                            try { data[k] = JSON.parse(raw); }
+                            catch { data[k] = raw; }
+                          }
+                        }
+                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = `sosphere-data-${new Date().toISOString().slice(0, 10)}.json`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                        toast.success("Data exported", { description: "JSON file downloaded to your device" });
+                      } catch (err) {
+                        toast.error("Export failed", { description: String(err) });
+                      }
+                    }
                   }}
                   style={{ borderBottom: i < actions.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none", cursor: "pointer" }}>
                   <div className="size-8 rounded-[10px] flex items-center justify-center shrink-0"
@@ -240,16 +366,40 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
 
 // ── Connected Devices Screen ───────────────────────────────────
 export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
-  const devices = [
-    { id: "1", name: "iPhone 14 Pro", type: "phone", status: "current", lastSeen: "Now", os: "iOS 18.2" },
-    { id: "2", name: "Apple Watch S9", type: "watch", status: "connected", lastSeen: "Connected", os: "watchOS 11" },
-    { id: "3", name: "iPad Air", type: "phone", status: "inactive", lastSeen: "3 days ago", os: "iPadOS 18" },
-  ];
+  // AUDIT-FIX (2026-04-18): was hardcoded "iPhone 14 Pro / Apple Watch
+  // S9 / iPad Air" — fake devices shown to every user regardless of
+  // what they actually own. Now derives the CURRENT device from the
+  // browser / WebView user agent so the list always reflects reality.
+  // Multi-device sync is not yet implemented — until the Supabase
+  // `user_devices` table is wired up, we only show the current device.
+  const currentDevice = (() => {
+    try {
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+      let name = "Current device";
+      let type: "phone" | "watch" = "phone";
+      let os = "";
+      if (/iPhone|iPad|iPod/.test(ua)) {
+        name = /iPad/.test(ua) ? "iPad" : "iPhone";
+        const v = ua.match(/OS (\d+)_/);
+        os = v ? `iOS ${v[1]}` : "iOS";
+      } else if (/Android/.test(ua)) {
+        const m = ua.match(/Android (\d+)/);
+        os = m ? `Android ${m[1]}` : "Android";
+        const mm = ua.match(/; ([^)]+)\)/);
+        name = mm ? mm[1].split(";").pop()?.trim() || "Android device" : "Android device";
+      } else if (/Mac/.test(ua)) { name = "Mac"; os = "macOS"; }
+      else if (/Windows/.test(ua)) { name = "Windows PC"; os = "Windows"; }
+      return { id: "current", name, type, status: "current" as const, lastSeen: "Now", os };
+    } catch {
+      return { id: "current", name: "This device", type: "phone" as const, status: "current" as const, lastSeen: "Now", os: "" };
+    }
+  })();
+  const devices = [currentDevice];
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           <ScreenHeader title="Connected Devices" subtitle="Manage your linked devices" onBack={onBack} />
 
           <div className="px-5 space-y-2.5">
@@ -318,7 +468,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           <ScreenHeader title="Help & Support" subtitle="Get help with SOSphere" onBack={onBack} />
 
           {/* Contact options */}
@@ -329,7 +479,16 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
                 { icon: MessageCircle, label: "Live Chat", sub: "Available 24/7", color: "#00C853" },
               ].map(c => (
                 <button key={c.label} className="p-4 text-left"
-                  onClick={() => { hapticLight(); toast.success(c.label, { description: c.label === "Email Support" ? "Opening email client — support@sosphere.app" : "Connecting to live chat agent..." }); }}
+                  onClick={() => {
+                    hapticLight();
+                    if (c.label === "Email Support") {
+                      window.location.href = "mailto:support@sosphere.co?subject=" + encodeURIComponent("Support request from SOSphere app");
+                    } else if (c.label === "Live Chat") {
+                      toast(c.label, { description: "Live chat coming soon — email support@sosphere.co for now." });
+                    } else {
+                      toast.success(c.label);
+                    }
+                  }}
                   style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
                   <c.icon className="size-5 mb-2.5" style={{ color: c.color }} />
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</p>
@@ -374,7 +533,11 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
           {/* Terms */}
           <div className="px-5 mt-5">
             <button className="w-full p-4 flex items-center gap-3"
-              onClick={() => { hapticLight(); toast("Terms & Privacy", { description: "Opening Terms of Service & Privacy Policy..." }); }}
+              onClick={() => {
+                hapticLight();
+                try { window.open("https://sosphere.co/terms", "_blank"); }
+                catch { window.location.href = "https://sosphere.co/terms"; }
+              }}
               style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
               <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>Terms & Privacy Policy</span>
@@ -443,7 +606,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           <ScreenHeader
             title="Elite Features"
             subtitle="Personalise your SOS experience"

@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   MapPin, Phone,
   MessageSquare, ChevronRight, X, Check,
   Send, UserPlus,
-  Copy, Share2, Radio,
+  Copy, Share2, Radio, Edit3,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { Lang } from "./dashboard-i18n";
+// AUDIT-FIX (2026-04-19): shared civilian-store — one source of truth for
+// contacts, used by every screen. Edits from any screen propagate instantly.
+import { useContacts, ContactEditSheet, type SafetyContact } from "./shared-stores";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface FamilyMember {
   id: number;
   name: string;
-  role: string;
+  role: string;        // relation label shown in UI ("Spouse", "Parent"…)
+  phone: string;       // canonical E.164 used for tel:/sms: handlers
   avatar: string;
   online: boolean;
   lastSeen: string;
@@ -23,29 +27,35 @@ interface FamilyMember {
   sharingLocation: boolean;
 }
 
-// ─── Load REAL emergency contacts from localStorage ──────────────────────────
-function loadRealMembers(): FamilyMember[] {
-  try {
-    const raw = localStorage.getItem("sosphere_emergency_contacts");
-    if (raw) {
-      const contacts: { name: string; phone: string }[] = JSON.parse(raw);
-      return contacts
-        .filter(c => c.name?.trim())
-        .map((c, i) => ({
-          id: i + 1,
-          name: c.name,
-          role: c.phone || "",
-          avatar: "", // real contacts use initials
-          online: false,
-          lastSeen: "",
-          location: "",
-          battery: 0,
-          safetyStatus: "unknown" as const,
-          sharingLocation: false,
-        }));
-    }
-  } catch (_) { /* ignore */ }
-  return [];
+// AUDIT-FIX (2026-04-19): contacts come from the shared civilian-store
+// via useContacts() — the store auto-migrates legacy localStorage data
+// and the list stays live across all screens.
+function contactToMember(c: SafetyContact): FamilyMember & { contactId: string } {
+  const lastSeenText = c.lastSeen
+    ? (() => {
+        const diff = Date.now() - c.lastSeen;
+        if (diff < 60000) return "Just now";
+        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+        return `${Math.floor(diff / 86400000)}d ago`;
+      })()
+    : "";
+  return {
+    contactId: c.id,
+    id: parseInt(c.id.replace(/\D/g, "").slice(-6) || "0", 10) || c.addedAt,
+    name: c.name,
+    role: c.relation || "",
+    phone: c.phone || "",
+    avatar: "",
+    online: c.isOnline,
+    lastSeen: lastSeenText,
+    location: c.lastKnownLocation
+      ? `${c.lastKnownLocation.lat.toFixed(3)}, ${c.lastKnownLocation.lng.toFixed(3)}`
+      : "",
+    battery: c.batteryLevel ?? 0,
+    safetyStatus: c.type === "ghost" ? "unknown" as const : (c.isOnline ? "safe" as const : "unknown" as const),
+    sharingLocation: c.locationSharingEnabled,
+  };
 }
 
 const statusConfig = {
@@ -59,12 +69,21 @@ const statusConfig = {
 export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
   const isAr = lang === "ar";
   const tr = (en: string, ar: string) => (isAr ? ar : en);
-  const [members] = useState<FamilyMember[]>(loadRealMembers);
-  const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
+  const [contacts] = useContacts();
+  const members = useMemo(() => contacts.map(contactToMember), [contacts]);
+  const [selectedMember, setSelectedMember] = useState<(FamilyMember & { contactId?: string }) | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showCheckAll, setShowCheckAll] = useState(false);
   const [checkAllSent, setCheckAllSent] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  // Contextual edit sheet — opened from long-press on a card or from
+  // the member detail sheet's Edit pill. Same primitive used by every screen.
+  const [editingContact, setEditingContact] = useState<SafetyContact | null>(null);
+  const [showEditSheet, setShowEditSheet] = useState(false);
+  const openEditFor = (contactId: string) => {
+    const target = contacts.find(c => c.id === contactId);
+    if (target) { setEditingContact(target); setShowEditSheet(true); }
+  };
 
   const onlineCount = members.filter(m => m.online).length;
   const safeCount = members.filter(m => m.safetyStatus === "safe").length;
@@ -81,12 +100,16 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
 
   return (
     <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ scrollbarWidth: "none" }} dir={isAr ? "rtl" : "ltr"}>
-      {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
+      {/* Ambient — tagged data-ambient-glow so global native-compat.css
+          can disable it on MIUI WebView where the radial-gradient +
+          transform-animated children produce rainbow tearing. */}
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0) 0%, transparent 70%)" }}
       />
 
-      <div className="pt-14 pb-28">
+      <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)" }}>
         {/* ── Header ── */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -135,22 +158,42 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
 
         {/* ── Members List ── */}
         <div className="px-5">
-          <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.6px", marginBottom: 10, textTransform: "uppercase" }}>
-            {tr("Members", "الأعضاء")} ({members.length})
-          </p>
+          <div className="flex items-center justify-between mb-2.5">
+            <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.6px", textTransform: "uppercase" }}>
+              {tr("Members", "الأعضاء")} ({members.length})
+            </p>
+            {/* AUDIT-FIX (2026-04-21): explicit Add Contact button in
+                Family Circle — user was confused how to add someone. */}
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { setEditingContact(null); setShowEditSheet(true); }}
+              className="flex items-center gap-1.5 px-3 h-8 rounded-[10px]"
+              style={{
+                background: "linear-gradient(135deg, #00C8E0, #0099B3)",
+                boxShadow: "0 4px 14px rgba(0,200,224,0.25)",
+              }}
+            >
+              <UserPlus style={{ width: 13, height: 13, color: "#fff" }} strokeWidth={2.5} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.2px" }}>
+                {tr("Add Contact", "إضافة")}
+              </span>
+            </motion.button>
+          </div>
 
           <div className="space-y-2.5">
             {members.map((member, i) => {
               const status = statusConfig[member.safetyStatus];
+              const cid = (member as FamilyMember & { contactId?: string }).contactId;
+              // AUDIT-FIX (2026-04-21): removed long-press (too sensitive,
+              // triggered on light touches). Edit access lives on the
+              // explicit Edit pill inside the detail sheet.
               return (
-                <motion.button
-                  key={member.id}
+                <motion.div
+                  key={cid ?? member.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.15 + i * 0.06 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setSelectedMember(member)}
-                  className="w-full text-left"
+                  className="relative w-full text-left"
                 >
                   <div
                     className="p-3.5 flex items-center gap-3"
@@ -217,9 +260,29 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                       </div>
                     </div>
 
-                    <ChevronRight style={{ width: 14, height: 14, color: "rgba(255,255,255,0.08)" }} />
+                    {/* Explicit actions — replaces hidden long-press */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {cid && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEditFor(cid); }}
+                          aria-label={tr("Edit contact", "تعديل")}
+                          className="size-8 rounded-[9px] flex items-center justify-center"
+                          style={{ background: "rgba(0,200,224,0.08)" }}
+                        >
+                          <Edit3 style={{ width: 13, height: 13, color: "#00C8E0" }} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedMember(member)}
+                        aria-label={tr("View details", "التفاصيل")}
+                        className="size-8 rounded-[9px] flex items-center justify-center"
+                        style={{ background: "rgba(255,255,255,0.04)" }}
+                      >
+                        <ChevronRight style={{ width: 14, height: 14, color: "rgba(255,255,255,0.35)" }} />
+                      </button>
+                    </div>
                   </div>
-                </motion.button>
+                </motion.div>
               );
             })}
           </div>
@@ -279,7 +342,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               key="detail-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+              style={{ background: "rgba(0,0,0,0.82)" }}
               onClick={() => setSelectedMember(null)}
             />
             <motion.div
@@ -288,12 +351,12 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
-              className="absolute bottom-0 left-0 right-0 z-50 px-5 pb-10 pt-5"
+              className="absolute bottom-0 left-0 right-0 z-50 px-5 pt-5"
               style={{
                 borderRadius: "28px 28px 0 0",
-                background: "rgba(10,18,32,0.98)",
-                backdropFilter: "blur(40px)",
-                borderTop: `1px solid ${statusConfig[selectedMember.safetyStatus].color}20`,
+                background: "rgba(10,18,32,0.99)",
+                boxShadow: `inset 0 1px 0 ${statusConfig[selectedMember.safetyStatus].color}20`,
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)",
               }}
             >
               <div className="flex justify-center mb-4">
@@ -325,9 +388,22 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{selectedMember.location}</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedMember(null)}>
-                  <X style={{ width: 18, height: 18, color: "rgba(255,255,255,0.3)" }} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const cid = (selectedMember as FamilyMember & { contactId?: string }).contactId;
+                      if (cid) { openEditFor(cid); setSelectedMember(null); }
+                    }}
+                    aria-label={tr("Edit contact", "تعديل جهة الاتصال")}
+                    className="size-9 rounded-[10px] flex items-center justify-center"
+                    style={{ background: "rgba(0,200,224,0.08)" }}
+                  >
+                    <Edit3 style={{ width: 15, height: 15, color: "#00C8E0" }} />
+                  </button>
+                  <button onClick={() => setSelectedMember(null)} className="size-9 rounded-[10px] flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)" }}>
+                    <X style={{ width: 16, height: 16, color: "rgba(255,255,255,0.4)" }} />
+                  </button>
+                </div>
               </div>
 
               {/* Quick Actions — simplified: Call + Message only */}
@@ -335,7 +411,12 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                 {/* Primary: One-tap Call */}
                 <motion.button
                   whileTap={{ scale: 0.93 }}
-                  className="flex items-center justify-center gap-2.5 py-4"
+                  onClick={() => {
+                    const phone = (selectedMember.phone || "").replace(/[^0-9+]/g, "");
+                    if (phone) window.location.href = `tel:${phone}`;
+                  }}
+                  disabled={!selectedMember.phone}
+                  className="flex items-center justify-center gap-2.5 py-4 disabled:opacity-40"
                   style={{ borderRadius: 16, background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}
                 >
                   <Phone style={{ width: 18, height: 18, color: "#00C853" }} />
@@ -344,7 +425,12 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                 {/* Message */}
                 <motion.button
                   whileTap={{ scale: 0.93 }}
-                  className="flex items-center justify-center gap-2.5 py-4"
+                  onClick={() => {
+                    const phone = (selectedMember.phone || "").replace(/[^0-9+]/g, "");
+                    if (phone) window.location.href = `sms:${phone}`;
+                  }}
+                  disabled={!selectedMember.phone}
+                  className="flex items-center justify-center gap-2.5 py-4 disabled:opacity-40"
                   style={{ borderRadius: 16, background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.12)" }}
                 >
                   <MessageSquare style={{ width: 18, height: 18, color: "#007AFF" }} />
@@ -370,10 +456,21 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                 ))}
               </div>
 
-              {/* Request Check-in */}
+              {/* Request Check-in — sends SMS asking "are you safe?" */}
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                className="w-full flex items-center justify-center gap-2 py-3.5 mt-4"
+                onClick={() => {
+                  const phone = (selectedMember.phone || "").replace(/[^0-9+]/g, "");
+                  if (!phone) return;
+                  const msg = encodeURIComponent(
+                    isAr
+                      ? `مرحباً ${selectedMember.name}، هل أنت بخير؟ أرسل لي إشارة عند قراءتك الرسالة. — SOSphere`
+                      : `Hi ${selectedMember.name}, are you safe? Please reply to confirm. — SOSphere`
+                  );
+                  window.location.href = `sms:${phone}?body=${msg}`;
+                }}
+                disabled={!selectedMember.phone}
+                className="w-full flex items-center justify-center gap-2 py-3.5 mt-4 disabled:opacity-40"
                 style={{
                   borderRadius: 14,
                   background: "rgba(0,200,224,0.06)",
@@ -397,7 +494,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               key="invite-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+              style={{ background: "rgba(0,0,0,0.82)" }}
               onClick={() => setShowInvite(false)}
             />
             <motion.div
@@ -406,12 +503,12 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
-              className="absolute bottom-0 left-0 right-0 z-50 px-5 pb-10 pt-5"
+              className="absolute bottom-0 left-0 right-0 z-50 px-5 pt-5"
               style={{
                 borderRadius: "28px 28px 0 0",
-                background: "rgba(10,18,32,0.98)",
-                backdropFilter: "blur(40px)",
-                borderTop: "1px solid rgba(0,200,224,0.12)",
+                background: "rgba(10,18,32,0.99)",
+                boxShadow: "inset 0 1px 0 rgba(0,200,224,0.12)",
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)",
               }}
             >
               <div className="flex justify-center mb-4">
@@ -461,10 +558,29 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
                   { icon: Share2, label: tr("Share Link", "مشاركة الرابط"), detail: tr("Share via any app", "شارك عبر أي تطبيق"), color: "#00C8E0" },
                 ].map((opt) => {
                   const OptIcon = opt.icon;
+                  const isSms = opt.icon === MessageSquare;
+                  const handleShare = () => {
+                    const inviteUrl = `https://sosphere.co/invite/FML-8K3P`;
+                    const inviteMsg = isAr
+                      ? `انضم لدائرة عائلتي على SOSphere للتواصل الآمن: ${inviteUrl}`
+                      : `Join my family circle on SOSphere for safe coordination: ${inviteUrl}`;
+                    if (isSms) {
+                      window.location.href = `sms:?body=${encodeURIComponent(inviteMsg)}`;
+                    } else if ((navigator as { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> }).share) {
+                      (navigator as { share: (data: { title?: string; text?: string; url?: string }) => Promise<void> }).share({
+                        title: "SOSphere Family Invite",
+                        text: inviteMsg,
+                        url: inviteUrl,
+                      }).catch(() => { /* user cancelled */ });
+                    } else {
+                      navigator.clipboard?.writeText(inviteMsg);
+                    }
+                  };
                   return (
                     <motion.button
                       key={opt.label}
                       whileTap={{ scale: 0.98 }}
+                      onClick={handleShare}
                       className="w-full flex items-center gap-3 p-3.5 text-left"
                       style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
                     >
@@ -497,7 +613,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               key="check-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+              style={{ background: "rgba(0,0,0,0.82)" }}
               onClick={() => setShowCheckAll(false)}
             />
             <motion.div
@@ -510,7 +626,7 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
               style={{ top: "35%", left: 0, right: 0 }}
             >
               <div className="p-5 flex flex-col items-center text-center"
-                style={{ borderRadius: 24, background: "rgba(10,18,32,0.98)", border: "1px solid rgba(0,200,224,0.12)", backdropFilter: "blur(40px)" }}
+                style={{ borderRadius: 24, background: "rgba(10,18,32,0.99)", boxShadow: "inset 0 0 0 1px rgba(0,200,224,0.12)" }}
               >
                 {checkAllSent ? (
                   <>
@@ -562,6 +678,14 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
           </>
         )}
       </AnimatePresence>
+
+      {/* ── Contextual Contact Edit Sheet — shared primitive ── */}
+      <ContactEditSheet
+        contact={editingContact}
+        open={showEditSheet}
+        onClose={() => setShowEditSheet(false)}
+        onSaved={() => setShowEditSheet(false)}
+      />
     </div>
   );
 }

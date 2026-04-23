@@ -492,6 +492,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
 
       {/* Ambient */}
       <div
+        data-ambient-glow
         className="absolute top-[-100px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{
           width: 500, height: 500,
@@ -507,7 +508,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
       />
 
       {/* Header */}
-      <div className="shrink-0 pt-[58px] px-5 pb-2">
+      <div className="shrink-0 px-5 pb-2" style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}>
         <div className="flex items-center">
           <button
             onClick={phase === "setup" ? onBack : () => setShowCancelConfirm(true)}
@@ -1021,13 +1022,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
           <>
             <motion.div key="wm-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)" }}
+              style={{ background: "rgba(0,0,0,0.9)" }}
             />
             <motion.div key="wm-sheet"
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 34 }}
               className="absolute bottom-0 left-0 right-0 z-50 px-5 pb-10 pt-6"
-              style={{ borderRadius: "28px 28px 0 0", background: "rgba(8,12,24,0.98)", borderTop: "1px solid rgba(255,150,0,0.15)" }}
+              style={{ borderRadius: "28px 28px 0 0", background: "rgba(8,12,24,0.99)", boxShadow: "inset 0 1px 0 rgba(255,150,0,0.15)" }}
             >
               <div className="flex justify-center mb-5">
                 <div style={{ width: 36, height: 4, borderRadius: 99, background: "rgba(255,255,255,0.08)" }} />
@@ -1116,7 +1117,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
           <>
             <motion.div key="cc-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}
+              style={{ background: "rgba(0,0,0,0.88)" }}
             />
             <motion.div key="cc"
               initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}

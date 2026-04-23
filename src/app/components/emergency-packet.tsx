@@ -46,10 +46,30 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     incident: true,
   });
 
+  // AUDIT-FIX (2026-04-18): read REAL user data from localStorage so
+  // responders don't see fake Sarah/Alex/Mom with +966 numbers or
+  // O+ blood type for a user whose real type is different. The
+  // previous hardcoded values were production disasters — a first
+  // responder would read Riyadh address + fake phone numbers that
+  // don't belong to the person they're trying to help.
+  const [realMedical, setRealMedical] = useState<any>({});
+  const [realContacts, setRealContacts] = useState<any[]>([]);
+  const [realProfile, setRealProfile] = useState<any>({});
+
   useEffect(() => {
     const t = setTimeout(() => setPacketReady(true), 800);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    try { setRealMedical(JSON.parse(localStorage.getItem("sosphere_medical_id") || "{}")); } catch {}
+    try { setRealContacts(JSON.parse(localStorage.getItem("sosphere_emergency_contacts") || "[]")); } catch {}
+    try { setRealProfile(JSON.parse(localStorage.getItem("sosphere_individual_profile") || "{}")); } catch {}
+  }, []);
+
+  // Helper: bullet from list or "—" placeholder if empty.
+  const joinOrDash = (arr: any[] | undefined) =>
+    Array.isArray(arr) && arr.length > 0 ? arr.join(", ") : "—";
 
   const toggleModule = (id: string) => {
     if (id === "location") return; // always on
@@ -86,34 +106,38 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       color: "#FF2D55",
       enabled: modules.medical,
       proOnly: false,
+      // AUDIT-FIX: read from localStorage.sosphere_medical_id (the same
+      // store the Medical ID screen writes to). Empty values render as
+      // "—" rather than showing someone else's data to responders.
       items: [
-        { label: "Blood Type", value: "O+", color: "#FF2D55" },
-        { label: "Conditions", value: "Asthma, Hypertension" },
-        { label: "Allergies", value: "Penicillin, Peanuts", color: "#FF9500" },
-        { label: "Medications", value: "Ventolin Inhaler, Lisinopril 10mg" },
-        { label: "Organ Donor", value: "Yes", color: "#00C853" },
-        { label: "Emergency Note", value: "Carry inhaler at all times" },
+        { label: "Blood Type", value: realMedical?.bloodType || "—", color: realMedical?.bloodType ? "#FF2D55" : undefined },
+        { label: "Conditions", value: joinOrDash(realMedical?.conditions) },
+        { label: "Allergies", value: joinOrDash(realMedical?.allergies), color: realMedical?.allergies?.length ? "#FF9500" : undefined },
+        { label: "Medications", value: joinOrDash(realMedical?.medications) },
+        { label: "Organ Donor", value: realMedical?.organDonor ? "Yes" : "No", color: realMedical?.organDonor ? "#00C853" : undefined },
+        { label: "Emergency Note", value: realMedical?.notes || "—" },
       ],
     },
     {
       id: "contacts",
       icon: Users,
       label: "Emergency Contacts",
-      description: isPro ? "All 4 contacts with call order" : "1 contact (Free limit)",
+      description: realContacts.length > 0
+        ? `${realContacts.length} contact${realContacts.length > 1 ? "s" : ""} with call order`
+        : "No contacts added yet",
       color: "#00C8E0",
       enabled: modules.contacts,
       proOnly: false,
-      items: isPro
-        ? [
-            { label: "#1 Priority", value: "Sarah (Wife) · +966 501 234 567", color: "#00C853" },
-            { label: "#2", value: "Alex (Son) · +966 502 345 678" },
-            { label: "#3", value: "Mom (Mother) · +966 503 456 789" },
-            { label: "#4", value: "David (Brother) · +966 504 567 890" },
-            { label: "Call Cycle", value: "20s per contact → retry", color: "#FF9500" },
-          ]
+      // AUDIT-FIX: read real user contacts. If empty, show a clear
+      // "add contacts first" hint instead of fake Sarah/Alex data.
+      items: realContacts.length > 0
+        ? realContacts.slice(0, isPro ? 999 : 1).map((c: any, i: number) => ({
+            label: i === 0 ? "#1 Priority" : `#${i + 1}`,
+            value: `${c.name || "Unnamed"}${c.relation ? ` (${c.relation})` : ""} · ${c.phone || ""}`,
+            color: i === 0 ? "#00C853" : undefined,
+          }))
         : [
-            { label: "#1 Priority", value: "Sarah (Wife) · +966 501 234 567", color: "#00C853" },
-            { label: "Limit", value: "1 contact on Free plan", color: "#FF9500" },
+            { label: "Status", value: "No emergency contacts added — add at least one for the packet to be useful", color: "#FF9500" },
           ],
     },
     {
@@ -124,13 +148,15 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       color: "#8E8E93",
       enabled: modules.device,
       proOnly: true,
+      // AUDIT-FIX: read real device info from navigator when available.
+      // Values we can't detect (IMEI, exact carrier) are marked "—"
+      // rather than fake "iPhone 14 Pro / STC 5G".
       items: [
-        { label: "Device", value: "iPhone 14 Pro · iOS 19.2" },
-        { label: "Battery", value: "73% (not charging)", color: "#00C853" },
-        { label: "Network", value: "STC · 5G · Strong signal", color: "#00C853" },
-        { label: "Wi-Fi", value: "Connected (Home-5G)" },
-        { label: "App Version", value: "SOSphere v2.4.1" },
-        { label: "IMEI", value: "35-XXXX-XXXX-XXXX-X" },
+        { label: "Device", value: typeof navigator !== "undefined" ? (navigator.userAgent.match(/\(([^)]+)\)/)?.[1] || "—") : "—" },
+        { label: "Battery", value: "—" /* wired from getBatteryLevel() in future */, color: "#00C853" },
+        { label: "Network", value: typeof navigator !== "undefined" && (navigator as any).connection?.effectiveType ? String((navigator as any).connection.effectiveType).toUpperCase() : "—" },
+        { label: "Wi-Fi", value: typeof navigator !== "undefined" ? (navigator.onLine ? "Online" : "Offline") : "—" },
+        { label: "App Version", value: "SOSphere · debug" },
       ],
     },
     {
@@ -190,12 +216,13 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
       {/* Ambient */}
       <div
+        data-ambient-glow
         className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 350, background: "radial-gradient(ellipse, rgba(0,200,224,0.04) 0%, transparent 60%)" }}
       />
 
       {/* ── Header ── */}
-      <div className="shrink-0 pt-[58px] px-5 pb-2">
+      <div className="shrink-0 px-5 pb-2" style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}>
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="flex items-center gap-1 -ml-1 p-1">
             <ChevronLeft style={{ width: 20, height: 20, color: "#00C8E0" }} />
@@ -491,11 +518,15 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
         </motion.div>
       </div>
 
-      {/* ── Bottom Action Bar ── */}
+      {/* ── Bottom Action Bar ──
+          AUDIT-FIX: gradient fade replaced with solid bar + top hairline
+          (gradient transition banded visibly on Android OLED). */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20 px-5 pb-10 pt-4"
+        className="absolute bottom-0 left-0 right-0 z-20 px-5 pt-4"
         style={{
-          background: "linear-gradient(180deg, transparent 0%, rgba(5,7,14,0.97) 30%)",
+          background: "#05070E",
+          boxShadow: "0 -1px 0 rgba(255,255,255,0.04)",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)",
         }}
       >
         <div className="flex gap-2.5">
@@ -538,7 +569,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               key="prev-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}
+              style={{ background: "rgba(0,0,0,0.88)" }}
               onClick={() => setShowPreview(false)}
             />
             <motion.div
@@ -547,13 +578,13 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
-              className="absolute bottom-0 left-0 right-0 z-50 px-5 pb-10 pt-5"
+              className="absolute bottom-0 left-0 right-0 z-50 px-5 pt-5"
               style={{
                 borderRadius: "28px 28px 0 0",
-                background: "rgba(10,18,32,0.98)",
-                backdropFilter: "blur(40px)",
-                borderTop: "1px solid rgba(0,200,224,0.12)",
+                background: "rgba(10,18,32,0.99)",
+                boxShadow: "inset 0 1px 0 rgba(0,200,224,0.12)",
                 maxHeight: "75%",
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)",
               }}
             >
               <div className="flex justify-center mb-4">
@@ -637,7 +668,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               key="share-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}
+              style={{ background: "rgba(0,0,0,0.88)" }}
               onClick={() => setShowShareSheet(false)}
             />
             <motion.div
@@ -646,12 +677,12 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
-              className="absolute bottom-0 left-0 right-0 z-50 px-5 pb-10 pt-5"
+              className="absolute bottom-0 left-0 right-0 z-50 px-5 pt-5"
               style={{
                 borderRadius: "28px 28px 0 0",
-                background: "rgba(10,18,32,0.98)",
-                backdropFilter: "blur(40px)",
-                borderTop: "1px solid rgba(0,200,224,0.12)",
+                background: "rgba(10,18,32,0.99)",
+                boxShadow: "inset 0 1px 0 rgba(0,200,224,0.12)",
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)",
               }}
             >
               <div className="flex justify-center mb-4">
@@ -676,10 +707,21 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                   { icon: Globe, label: "WhatsApp", detail: "Share via WhatsApp", color: "#25D366" },
                 ].map(opt => {
                   const OptIcon = opt.icon;
+                  const handleShareOpt = () => {
+                    const summary = "SOSphere Emergency Packet — medical ID, contacts, and last known location.";
+                    if (opt.label === "SMS") {
+                      window.location.href = `sms:?body=${encodeURIComponent(summary)}`;
+                    } else if (opt.label === "Email") {
+                      window.location.href = `mailto:?subject=${encodeURIComponent("SOSphere Emergency Packet")}&body=${encodeURIComponent(summary)}`;
+                    } else if (opt.label === "WhatsApp") {
+                      window.location.href = `https://wa.me/?text=${encodeURIComponent(summary)}`;
+                    }
+                  };
                   return (
                     <motion.button
                       key={opt.label}
                       whileTap={{ scale: 0.98 }}
+                      onClick={handleShareOpt}
                       className="w-full flex items-center gap-3 p-3.5 text-left"
                       style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
                     >
@@ -717,33 +759,40 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
         )}
       </AnimatePresence>
 
-      {/* ── QR Modal ── */}
+      {/* ── QR Modal ── AUDIT-FIX (2026-04-22 v5): user screenshot
+          showed the modal clipped to the right half of the screen
+          because `position: absolute` was relative to the inner
+          packet container (not the viewport) AND the inline
+          transform-based centering was being overridden by the new
+          global `translateZ(0)` rule for absolutes. Switched to
+          `position: fixed inset-0` with flexbox centering — no
+          transforms needed, no clipping possible. */}
       <AnimatePresence>
         {showQR && (
-          <>
-            <motion.div
-              key="qr-bg"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)" }}
-              onClick={() => setShowQR(false)}
-            />
+          <motion.div
+            key="qr-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(0,0,0,0.92)" }}
+            onClick={() => setShowQR(false)}
+          >
             <motion.div
               key="qr-modal"
-              initial={{ scale: 0.85, opacity: 0 }}
+              initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.85, opacity: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="absolute z-50 flex flex-col items-center"
-              style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+              className="flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
             >
               <div
                 className="p-6 flex flex-col items-center"
                 style={{
                   borderRadius: 28,
-                  background: "rgba(10,18,32,0.98)",
-                  border: "1px solid rgba(0,200,224,0.12)",
-                  backdropFilter: "blur(40px)",
+                  background: "#0A1220",
+                  boxShadow: "inset 0 0 0 1px rgba(0,200,224,0.25), 0 20px 40px rgba(0,0,0,0.6)",
                 }}
               >
                 <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>Emergency QR</p>
@@ -780,7 +829,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 </button>
               </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

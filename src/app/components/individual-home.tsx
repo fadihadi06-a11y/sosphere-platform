@@ -41,7 +41,7 @@ function getQuickActions(isAr: boolean) {
   ];
 }
 
-export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
+export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onEmergencyContacts, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onEmergencyContacts?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
   const t = tProp || ((k: string) => k);
   const { isAr } = useLang();
   const quickActions = getQuickActions(isAr);
@@ -123,11 +123,13 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
       </AnimatePresence>
 
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0) 0%, transparent 70%)" }}
       />
 
-      <div className="pt-14 pb-28">
+      <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)" }}>
         {/* ── Top Bar ── */}
         <div className="flex items-center justify-between px-6 mb-5">
           <div className="flex items-center gap-2">
@@ -419,6 +421,12 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
           className="px-5 mb-5"
         >
           <div className="grid grid-cols-4 gap-2">
+            {/* AUDIT-FIX (2026-04-21): unified visual weight for all
+                quick actions — identical card background + border +
+                icon tint strength + label weight/color. The colour
+                identity of each action (cyan/green/orange/red) now
+                lives ONLY in the icon stroke, not in the card tint.
+                This removes the "some clear, some transparent" feeling. */}
             {quickActions.map((action, i) => (
               <motion.button
                 key={action.id}
@@ -430,17 +438,20 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
                 className="flex flex-col items-center gap-2 py-3"
                 style={{
                   borderRadius: 16,
-                  background: "rgba(255,255,255,0.015)",
-                  border: "1px solid rgba(255,255,255,0.035)",
+                  background: "rgba(255,255,255,0.035)",
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
                 }}
               >
                 <div
                   className="size-9 rounded-[11px] flex items-center justify-center"
-                  style={{ background: action.bg, border: `1px solid ${action.color}15` }}
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    boxShadow: `inset 0 0 0 1px ${action.color}30`,
+                  }}
                 >
-                  <action.icon className="size-[15px]" style={{ color: action.color }} />
+                  <action.icon className="size-[15px]" style={{ color: action.color }} strokeWidth={2.2} />
                 </div>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 500, textAlign: "center", lineHeight: 1.3 }}>
+                <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.72)", fontWeight: 600, textAlign: "center", lineHeight: 1.3, letterSpacing: "0.1px" }}>
                   {action.label}
                 </span>
               </motion.button>

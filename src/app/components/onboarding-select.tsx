@@ -28,7 +28,9 @@ export function OnboardingSelect({ onSelectIndividual, onSelectCompany }: Onboar
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ direction: isAr ? "rtl" : "ltr", ...S }}>
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[400px] pointer-events-none"
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[400px] pointer-events-none"
         style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.05) 0%, transparent 60%)" }} />
 
       <div className="flex-1 overflow-y-auto flex flex-col px-6 pt-12 pb-6 relative z-10">

@@ -18,10 +18,45 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Plus, Edit3, Trash2, Check, Phone, AlertTriangle } from "lucide-react";
+import { X, Plus, Edit3, Trash2, Check, Phone, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { normalizeE164 } from "./phone-utils";
 import { useLang } from "./useLang";
+import { CountrySheet, COUNTRIES, type Country } from "./country-picker";
+
+// AUDIT-FIX (2026-04-18): default country = Iraq (most users). The picker
+// lets the user change it — but we never again parse mystery phone
+// strings for their country code. Canonical E.164 is BUILT from the
+// selected dial + the subscriber digits.
+const DEFAULT_COUNTRY: Country = COUNTRIES.find(c => c.code === "IQ") || COUNTRIES[0];
+
+/**
+ * Parse an already-stored E.164 phone back into {country, subscriber}
+ * for the edit form. Falls back to the default country if we can't
+ * identify the prefix (graceful for legacy data).
+ */
+function splitE164(e164: string | undefined): { country: Country; subscriber: string } {
+  if (!e164) return { country: DEFAULT_COUNTRY, subscriber: "" };
+  const cleaned = String(e164).trim();
+  // Sort country dials by length descending so +1268 matches before +1.
+  const sorted = [...COUNTRIES].sort((a, b) => b.dial.length - a.dial.length);
+  for (const c of sorted) {
+    if (cleaned.startsWith(c.dial)) {
+      return { country: c, subscriber: cleaned.slice(c.dial.length).replace(/\D/g, "") };
+    }
+  }
+  return { country: DEFAULT_COUNTRY, subscriber: cleaned.replace(/\D/g, "") };
+}
+
+/**
+ * Build canonical E.164 from {country, subscriber}. Strips any leading
+ * zero from the subscriber (local trunk prefix that some users type),
+ * then returns `<dial><subscriber-digits>`.
+ */
+function buildE164(country: Country, subscriber: string): string {
+  const digits = subscriber.replace(/\D/g, "").replace(/^0+/, "");
+  return digits ? `${country.dial}${digits}` : "";
+}
 
 interface StoredContact {
   id: number;
@@ -340,8 +375,16 @@ function ContactForm({
 }) {
   const tr = (en: string, ar: string) => (isAr ? ar : en);
   const [name, setName] = useState(draft.name || "");
-  const [phone, setPhone] = useState(draft.phone || "");
+  // AUDIT-FIX: split phone into country + subscriber. Parse an
+  // existing stored E.164 back into its components for edit.
+  const initial = splitE164(draft.phone);
+  const [country, setCountry] = useState<Country>(initial.country);
+  const [subscriber, setSubscriber] = useState(initial.subscriber);
   const [relation, setRelation] = useState(draft.relation || "");
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Canonical E.164 form the rest of the app consumes.
+  const phone = buildE164(country, subscriber);
 
   const isNew = !draft.name && !draft.phone;
 
@@ -402,29 +445,57 @@ function ContactForm({
               <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>
                 {tr("PHONE NUMBER", "رقم الهاتف")}
               </label>
-              <input
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="+964 77 XXXX XXXX"
-                type="tel"
-                inputMode="tel"
-                dir="ltr"
-                className="w-full mt-1.5 px-4 py-3 text-white outline-none"
-                style={{
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  fontSize: 14,
-                  fontFamily: "'Outfit', monospace",
-                }}
-              />
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 4 }}>
-                {tr(
-                  "Accepted: 07728569514 · +9647728569514 · 009647728569514",
-                  "مقبول: 07728569514 · +9647728569514 · 009647728569514"
-                )}
+              <div className="flex gap-2 mt-1.5" dir="ltr">
+                {/* Country code trigger */}
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="flex items-center gap-2 px-3 py-3 text-white outline-none"
+                  style={{
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    fontSize: 14,
+                    minWidth: 110,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>{country.flag}</span>
+                  <span style={{ fontFamily: "'Outfit', monospace", fontWeight: 600 }}>{country.dial}</span>
+                  <ChevronDown className="size-3.5 ml-auto" style={{ color: "rgba(255,255,255,0.4)" }} />
+                </button>
+                {/* Subscriber number (digits only — the dial is guaranteed) */}
+                <input
+                  value={subscriber}
+                  onChange={e => setSubscriber(e.target.value.replace(/\D/g, ""))}
+                  placeholder="7728569514"
+                  type="tel"
+                  inputMode="numeric"
+                  dir="ltr"
+                  className="flex-1 px-4 py-3 text-white outline-none"
+                  style={{
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    fontSize: 14,
+                    fontFamily: "'Outfit', monospace",
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 4, fontFamily: "'Outfit', monospace" }}>
+                {subscriber
+                  ? tr("Will dial: ", "سيتّصل بـ: ") + (phone || "—")
+                  : tr("Type the local number (digits only)", "اكتب الرقم المحلي (أرقام فقط)")
+                }
               </p>
             </div>
+
+            {/* Country picker sheet */}
+            <CountrySheet
+              open={pickerOpen}
+              selected={country}
+              onSelect={(c) => { setCountry(c); setPickerOpen(false); }}
+              onClose={() => setPickerOpen(false)}
+            />
 
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>

@@ -99,20 +99,41 @@ export function EmergencyServices({ onBack }: EmergencyServicesProps) {
     setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
   };
 
-  const handleDial = (number: string) => {
+  // AUDIT-FIX (2026-04-21 v5): `tel:` URL surfaced app choosers on
+  // MIUI (WhatsApp / Messages / Zoom / Contacts), which the user
+  // explicitly rejected. Emergency Services now COPIES the number to
+  // the clipboard + toasts. The user opens their own dialer app and
+  // pastes. No chooser, no uncertainty.
+  const handleDial = async (number: string) => {
     setDialingNumber(number);
-    setTimeout(() => setDialingNumber(null), 2000);
+    const cleaned = number.replace(/[^0-9+]/g, "");
+    if (cleaned) {
+      try {
+        await navigator.clipboard?.writeText(cleaned);
+        // Lazy import toast to avoid adding weight to initial bundle
+        import("sonner").then(m => m.toast(`${cleaned} copied`, {
+          description: "Open your dialer and paste to call",
+        }));
+      } catch {
+        import("sonner").then(m => m.toast("Couldn't copy — dial manually", {
+          description: cleaned,
+        }));
+      }
+    }
+    setTimeout(() => setDialingNumber(null), 800);
   };
 
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 350, background: "radial-gradient(ellipse, rgba(255,45,85,0.03) 0%, transparent 60%)" }}
       />
 
       {/* ── Header ── */}
-      <div className="shrink-0 pt-[58px] px-5 pb-2">
+      <div className="shrink-0 px-5 pb-2" style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}>
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="flex items-center gap-1 -ml-1 p-1">
             <ChevronRight style={{ width: 20, height: 20, color: "#00C8E0", transform: "rotate(180deg)" }} />
@@ -322,7 +343,7 @@ export function EmergencyServices({ onBack }: EmergencyServicesProps) {
               key="cp-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}
+              style={{ background: "rgba(0,0,0,0.88)" }}
               onClick={() => setShowCountryPicker(false)}
             />
             <motion.div
@@ -393,7 +414,7 @@ export function EmergencyServices({ onBack }: EmergencyServicesProps) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             className="absolute inset-0 z-60 flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)" }}
+            style={{ background: "rgba(0,0,0,0.9)" }}
           >
             <div className="flex flex-col items-center">
               <motion.div

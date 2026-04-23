@@ -95,7 +95,9 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 400, background: "radial-gradient(ellipse, rgba(0,200,224,0.04) 0%, transparent 60%)" }}
       />
 

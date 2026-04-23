@@ -15,8 +15,27 @@
 // safe to use on the SOS hot path.
 // ═══════════════════════════════════════════════════════════════
 
-// B-M1: origin allowlist via ALLOWED_ORIGINS env
-export const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+// B-M1: origin allowlist via ALLOWED_ORIGINS env.
+//
+// AUDIT-FIX (2026-04-18): live testing on a real Android device
+// discovered the Capacitor WebView uses origin `https://localhost`
+// (NOT the Vercel domain). Every Edge Function call from the native
+// app was being blocked by CORS, silently breaking Twilio token
+// fetch and therefore the voice-call feature for Elite-tier users.
+//
+// The default allowlist now includes both the web prod domain and
+// the two Capacitor-WebView origins (https://localhost and
+// capacitor://localhost — the latter for the `server.androidScheme`
+// native setting, if ever toggled). Operators who want to narrow
+// the allowlist can still override via the ALLOWED_ORIGINS env.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://sosphere-platform.vercel.app",
+  "https://sosphere.co",
+  "https://localhost",           // Capacitor Android WebView (default scheme)
+  "capacitor://localhost",       // Capacitor iOS / Android alternate scheme
+].join(",");
+
+export const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || DEFAULT_ALLOWED_ORIGINS)
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

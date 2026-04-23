@@ -15,8 +15,32 @@ import {
   Wifi, WifiOff, Zap, Crown, ChevronRight, ChevronDown,
   CheckCircle2, XCircle, MessageSquare, Globe, Lock,
   UserPlus, Signal, Timer, Locate, Navigation,
+  MoreHorizontal, PauseCircle, PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CountrySheet, COUNTRIES, type Country } from "./country-picker";
+
+// AUDIT-FIX (2026-04-18): split phone input into country picker +
+// subscriber number so stored phones are ALWAYS canonical E.164.
+// Matches WhatsApp/Telegram UX pattern — no ambiguity, no parsing.
+const DEFAULT_COUNTRY: Country = COUNTRIES.find(c => c.code === "IQ") || COUNTRIES[0];
+
+function splitE164(raw?: string): { country: Country; subscriber: string } {
+  if (!raw) return { country: DEFAULT_COUNTRY, subscriber: "" };
+  const s = String(raw).trim();
+  const sorted = [...COUNTRIES].sort((a, b) => b.dial.length - a.dial.length);
+  for (const c of sorted) {
+    if (s.startsWith(c.dial)) {
+      return { country: c, subscriber: s.slice(c.dial.length).replace(/\D/g, "") };
+    }
+  }
+  return { country: DEFAULT_COUNTRY, subscriber: s.replace(/\D/g, "") };
+}
+
+function buildE164(country: Country, subscriber: string): string {
+  const digits = subscriber.replace(/\D/g, "").replace(/^0+/, "");
+  return digits ? `${country.dial}${digits}` : "";
+}
 import {
   type SafetyContact, type ContactType, type ContactPlan,
   CONTACT_TYPE_CONFIG, PLAN_LIMITS, EMERGENCY_RIPPLE_WAVES,
@@ -71,7 +95,12 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
   const [showForm, setShowForm] = useState(false);
   const [editingContact, setEditingContact] = useState<SafetyContact | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // AUDIT-FIX (2026-04-18): Senior UI/UX redesign. Removed the
+  // expand/collapse card pattern entirely — Edit/Delete were hidden
+  // behind two taps. Now a discreet ⋯ menu on the right of each card
+  // surfaces all actions at one tap, keeping the card row compact
+  // and glitch-free.
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showRipple, setShowRipple] = useState(false);
   const [showSafetyLink, setShowSafetyLink] = useState<SafetyContact | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | ContactType>("all");
@@ -141,15 +170,14 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
   };
 
   return (
-    <div className="relative flex flex-col h-full">
-      {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
-      />
+    <div className="relative flex flex-col h-full" style={{ overflow: "hidden" }}>
+      {/* AUDIT-FIX: ambient radial gradient removed — on Android OLED
+          displays the 0.03-alpha cyan ellipse renders as visible
+          horizontal bands ("stripes") at the ellipse boundary. */}
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
-          {/* ── Header ───────────────────────────────────── */}
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
+          {/* ── Header with Back + prominent Add action ───────── */}
           <div className="flex items-center justify-between px-5 mb-4">
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="size-9 rounded-[12px] flex items-center justify-center"
@@ -163,28 +191,51 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
                 </p>
               </div>
             </div>
+            {/* AUDIT-FIX (2026-04-18): prominent Add button at top.
+                Previously the only add affordance lived below an empty
+                list and a dashed-border button that users missed. Stat
+                tiles below look like cards → confused users. Now the
+                Add action is the first thing they see. */}
+            {(canAddMore || isPro) && (
+              <button
+                onClick={() => { setEditingContact(null); setShowForm(true); }}
+                className="flex items-center gap-2 px-3.5 h-9 rounded-[12px]"
+                style={{
+                  background: "linear-gradient(135deg, #00C8E0, #0099B3)",
+                  boxShadow: "0 4px 14px rgba(0,200,224,0.25)",
+                }}
+              >
+                <Plus className="size-[16px]" style={{ color: "#fff" }} strokeWidth={2.5} />
+                <span className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Add</span>
+              </button>
+            )}
           </div>
 
-          {/* ── Contact Type Stats ────────────────────────── */}
+          {/* ── Contact Type Stats ──────────────────────────
+              AUDIT-FIX: the earlier 0.02-alpha background + 1px border
+              rendered as invisible tiles with hairline "stripes" on
+              Android OLED displays. Now using a solid darker fill +
+              inset boxShadow so the tiles always have a clear shape. */}
           <div className="px-5 mb-4">
             <div className="grid grid-cols-3 gap-2">
               {(["full", "lite", "ghost"] as const).map(type => {
                 const cfg = CONTACT_TYPE_CONFIG[type];
                 const TypeIcon = typeIcons[type];
                 const count = stats[type];
+                const isActive = activeFilter === type;
                 return (
                   <button
                     key={type}
-                    onClick={() => setActiveFilter(activeFilter === type ? "all" : type)}
-                    className="p-2.5 rounded-xl text-center relative overflow-hidden"
+                    onClick={() => setActiveFilter(isActive ? "all" : type)}
+                    className="p-2.5 rounded-xl text-center relative"
                     style={{
-                      background: activeFilter === type ? `${cfg.color}0A` : "rgba(255,255,255,0.02)",
-                      border: `1px solid ${activeFilter === type ? `${cfg.color}20` : "rgba(255,255,255,0.04)"}`,
+                      background: isActive ? `${cfg.color}14` : "rgba(255,255,255,0.04)",
+                      boxShadow: `inset 0 0 0 1px ${isActive ? `${cfg.color}40` : "rgba(255,255,255,0.08)"}`,
                     }}
                   >
                     <TypeIcon className="size-4 mx-auto mb-1" style={{ color: cfg.color }} />
                     <p className="text-white" style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{count}</p>
-                    <p style={{ fontSize: 9, color: `${cfg.color}90`, fontWeight: 600, marginTop: 2 }}>{cfg.label}</p>
+                    <p style={{ fontSize: 9, color: cfg.color, fontWeight: 700, marginTop: 2, letterSpacing: "0.3px" }}>{cfg.label}</p>
                   </button>
                 );
               })}
@@ -225,24 +276,67 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
             </button>
           </motion.div>
 
-          {/* ── Contact List ──────────────────────────────── */}
+          {/* ── Contact List (or empty state) ──────────────── */}
           <div className="px-5 space-y-2.5">
+            {/* AUDIT-FIX (2026-04-18): proper empty state when no
+                contacts yet. Before, users saw only 3 zero-count filter
+                tiles + a dashed button below the fold — confusing. */}
+            {filtered.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full p-6 text-center"
+                style={{
+                  borderRadius: 20,
+                  background: "rgba(0,200,224,0.03)",
+                  border: "1px solid rgba(0,200,224,0.08)",
+                }}
+              >
+                <div className="size-14 rounded-full flex items-center justify-center mx-auto mb-3"
+                  style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)" }}>
+                  <UserPlus className="size-6" style={{ color: "#00C8E0" }} />
+                </div>
+                <h3 className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>No safety contacts yet</h3>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 6, lineHeight: 1.5 }}>
+                  Add people who should be alerted when you trigger SOS — family, close friends, or trusted colleagues.
+                </p>
+                <button
+                  onClick={() => { setEditingContact(null); setShowForm(true); }}
+                  className="inline-flex items-center gap-2 mt-4 px-4 h-10"
+                  style={{
+                    borderRadius: 12,
+                    background: "linear-gradient(135deg, #00C8E0, #0099B3)",
+                    fontSize: 13, fontWeight: 700, color: "#fff",
+                    boxShadow: "0 4px 14px rgba(0,200,224,0.25)",
+                  }}
+                >
+                  <Plus className="size-4" strokeWidth={2.5} />
+                  Add your first contact
+                </button>
+              </motion.div>
+            )}
+
             <AnimatePresence>
               {filtered.sort((a, b) => a.priority - b.priority).map((contact, i) => (
                 <ContactCard
                   key={contact.id}
                   contact={contact}
                   index={i}
-                  isExpanded={expandedId === contact.id}
                   isPro={isPro}
-                  onToggleExpand={() => setExpandedId(expandedId === contact.id ? null : contact.id)}
-                  onToggleFavorite={() => toggleFavorite(contact.id)}
-                  onToggleTracking={() => toggleTracking(contact.id)}
-                  onEdit={() => { setEditingContact(contact); setShowForm(true); }}
-                  onDelete={() => setDeleteConfirm(contact.id)}
-                  onCopyLink={() => handleCopyLink(contact)}
-                  onResendInvite={() => resendInvite(contact)}
-                  onShowSafetyLink={() => setShowSafetyLink(contact)}
+                  menuOpen={menuOpenId === contact.id}
+                  onToggleMenu={() => setMenuOpenId(menuOpenId === contact.id ? null : contact.id)}
+                  onCloseMenu={() => setMenuOpenId(null)}
+                  onToggleFavorite={() => { toggleFavorite(contact.id); setMenuOpenId(null); }}
+                  onToggleTracking={() => { toggleTracking(contact.id); setMenuOpenId(null); }}
+                  onEdit={() => { setEditingContact(contact); setShowForm(true); setMenuOpenId(null); }}
+                  onDelete={() => { setDeleteConfirm(contact.id); setMenuOpenId(null); }}
+                  onCopyPhone={async () => {
+                    try {
+                      await navigator.clipboard?.writeText(contact.phone);
+                      toast.success("Phone copied");
+                    } catch { /* silent */ }
+                    setMenuOpenId(null);
+                  }}
+                  onShowSafetyLink={() => { setShowSafetyLink(contact); setMenuOpenId(null); }}
                   deleteConfirm={deleteConfirm}
                   onCancelDelete={() => setDeleteConfirm(null)}
                   onConfirmDelete={() => deleteContact(contact.id)}
@@ -390,18 +484,18 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
 // Contact Card
 // ═══════════════════════════════════════════════════════════════
 
-function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onToggleFavorite, onToggleTracking, onEdit, onDelete, onCopyLink, onResendInvite, onShowSafetyLink, deleteConfirm, onCancelDelete, onConfirmDelete }: {
+function ContactCard({ contact, index, isPro, menuOpen, onToggleMenu, onCloseMenu, onToggleFavorite, onToggleTracking, onEdit, onDelete, onCopyPhone, onShowSafetyLink, deleteConfirm, onCancelDelete, onConfirmDelete }: {
   contact: SafetyContact;
   index: number;
-  isExpanded: boolean;
   isPro: boolean;
-  onToggleExpand: () => void;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
   onToggleFavorite: () => void;
   onToggleTracking: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onCopyLink: () => void;
-  onResendInvite: () => void;
+  onCopyPhone: () => void;
   onShowSafetyLink: () => void;
   deleteConfirm: string | null;
   onCancelDelete: () => void;
@@ -409,280 +503,238 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
 }) {
   const cfg = CONTACT_TYPE_CONFIG[contact.type];
   const RelIcon = relationIcons[contact.relation] || User;
-  const TypeIcon = typeIcons[contact.type];
 
+  // AUDIT-FIX (2026-04-18) — Senior UI/UX redesign:
+  //   • Removed card expand/collapse (Edit/Delete were hidden behind 2 taps)
+  //   • Discreet ⋯ menu button on the right surfaces all actions at one tap
+  //   • Priority moved INSIDE the avatar (corner badge, no overflow outside card bounds)
+  //   • Single 1px border, no backdrop-filter on list cards (no fuzzy edges)
+  //   • Strict flex row with min-w-0 + truncate on name row (no text bleed into ⋯)
+  //   • Delete confirm kept inline but below the row — doesn't cause layout shift
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ delay: index * 0.03 }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28, delay: index * 0.025 }}
+      className="relative"
     >
       <div
-        className="relative overflow-hidden"
         style={{
-          borderRadius: 18,
-          background: isExpanded ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.02)",
-          border: `1px solid ${contact.isFavorite ? "rgba(0,200,224,0.12)" : contact.type === "ghost" ? "rgba(255,150,0,0.08)" : "rgba(255,255,255,0.04)"}`,
+          borderRadius: 16,
+          background: "rgba(255,255,255,0.025)",
+          boxShadow: `inset 0 0 0 1px ${contact.isFavorite ? "rgba(0,200,224,0.18)" : "rgba(255,255,255,0.055)"}`,
+          overflow: "hidden",
         }}
       >
-        {/* Main Row */}
-        <button onClick={onToggleExpand} className="w-full p-4 text-left">
-          <div className="flex items-center gap-3.5">
-            {/* Avatar + Priority */}
-            <div className="relative">
-              <div
-                className="size-12 rounded-[14px] flex items-center justify-center"
-                style={{
-                  background: contact.isFavorite ? "rgba(0,200,224,0.08)" : `${cfg.color}08`,
-                  border: `1px solid ${contact.isFavorite ? "rgba(0,200,224,0.15)" : `${cfg.color}15`}`,
-                }}
-              >
-                <RelIcon className="size-5" style={{ color: contact.isFavorite ? "#00C8E0" : cfg.color }} />
-              </div>
-              {/* Priority */}
-              <div
-                className="absolute -top-1 -left-1 size-5 rounded-full flex items-center justify-center"
-                style={{
-                  background: "#FF2D55",
-                  boxShadow: "0 2px 6px rgba(255,45,85,0.3)",
-                  fontSize: 9, fontWeight: 800, color: "#fff",
-                }}
-              >
-                {contact.priority}
-              </div>
-              {/* Online indicator */}
-              {contact.hasApp && (
-                <div
-                  className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full flex items-center justify-center"
-                  style={{ background: "#0A1220", border: `2px solid ${contact.isOnline ? "#00C853" : "rgba(255,255,255,0.1)"}` }}
-                >
-                  <div className="size-1.5 rounded-full" style={{ background: contact.isOnline ? "#00C853" : "rgba(255,255,255,0.2)" }} />
-                </div>
-              )}
+        <div className="flex items-center gap-3 px-3.5 py-3">
+          {/* Avatar + in-badge priority */}
+          <div className="relative shrink-0">
+            <div
+              className="size-11 rounded-[12px] flex items-center justify-center"
+              style={{
+                background: contact.isFavorite ? "rgba(0,200,224,0.10)" : `${cfg.color}10`,
+                border: `1px solid ${contact.isFavorite ? "rgba(0,200,224,0.20)" : `${cfg.color}20`}`,
+              }}
+            >
+              <RelIcon className="size-[18px]" style={{ color: contact.isFavorite ? "#00C8E0" : cfg.color }} />
             </div>
-
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-white truncate" style={{ fontSize: 15, fontWeight: 600 }}>{contact.name}</p>
-                {contact.isFavorite && (
-                  <div className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)" }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>PRIMARY</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex items-center gap-1">
-                  <TypeIcon className="size-3" style={{ color: cfg.color }} />
-                  <span style={{ fontSize: 10, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
-                </div>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.1)" }}>·</span>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{contact.relation}</span>
-                {contact.hasApp && contact.batteryLevel !== null && (
-                  <>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.1)" }}>·</span>
-                    <div className="flex items-center gap-0.5">
-                      <Battery className="size-2.5" style={{ color: contact.batteryLevel < 20 ? "#FF2D55" : "rgba(255,255,255,0.15)" }} />
-                      <span style={{ fontSize: 9, color: contact.batteryLevel < 20 ? "#FF2D55" : "rgba(255,255,255,0.15)" }}>{contact.batteryLevel}%</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              {/* Location or SMS status */}
-              <p className="mt-1 truncate" style={{ fontSize: 10, color: "rgba(255,255,255,0.12)" }}>
-                {contact.type === "ghost"
-                  ? `SMS · ${contact.phone}`
-                  : contact.lastKnownLocation
-                    ? `${contact.lastKnownLocation.lat.toFixed(3)}, ${contact.lastKnownLocation.lng.toFixed(3)} · ${fmtTime(contact.lastKnownLocation.timestamp)}`
-                    : contact.phone
-                }
-              </p>
-            </div>
-
-            {/* Tracking indicator + Expand */}
-            <div className="flex items-center gap-2">
-              {contact.locationSharingEnabled && contact.type !== "ghost" && (
-                <motion.div animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-                  <Locate className="size-3.5" style={{ color: "#00C853" }} />
-                </motion.div>
-              )}
-              {contact.type === "ghost" && (
-                <Link className="size-3.5" style={{ color: "#FF9500" }} />
-              )}
-              <ChevronDown
-                className="size-4 transition-transform"
-                style={{ color: "rgba(255,255,255,0.15)", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
-              />
+            {/* Priority badge — bottom-right, offset slightly so avatar corner stays clean */}
+            <div
+              className="absolute rounded-full flex items-center justify-center"
+              style={{
+                bottom: -2,
+                right: -2,
+                width: 14,
+                height: 14,
+                background: "#FF2D55",
+                boxShadow: "0 0 0 1.5px #05070E",
+                fontSize: 8, fontWeight: 800, color: "#fff",
+                lineHeight: 1,
+              }}
+            >
+              {contact.priority}
             </div>
           </div>
-        </button>
 
-        {/* ── Expanded Detail ──────────────────────────── */}
-        <AnimatePresence>
-          {isExpanded && (
+          {/* Name + meta — min-w-0 forces flex to allow truncation */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-white truncate" style={{ fontSize: 14.5, fontWeight: 600, letterSpacing: "-0.1px" }}>
+                {contact.name}
+              </p>
+              {contact.isFavorite && (
+                <span
+                  className="shrink-0 px-1.5"
+                  style={{
+                    fontSize: 8.5, fontWeight: 700, color: "#00C8E0",
+                    lineHeight: "14px",
+                    letterSpacing: "0.5px",
+                    borderRadius: 4,
+                    background: "rgba(0,200,224,0.10)",
+                  }}
+                >
+                  PRIMARY
+                </span>
+              )}
+            </div>
+            <p className="truncate mt-0.5" style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+              <span style={{ color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
+              {contact.relation ? <span style={{ color: "rgba(255,255,255,0.15)" }}> · {contact.relation}</span> : null}
+              {contact.hasApp && contact.batteryLevel !== null && (
+                <span style={{ color: contact.batteryLevel < 20 ? "#FF2D55" : "rgba(255,255,255,0.25)" }}> · {contact.batteryLevel}% </span>
+              )}
+            </p>
+            <p className="truncate mt-0.5" style={{ fontSize: 10.5, color: "rgba(255,255,255,0.25)", fontFamily: "'Outfit', monospace" }}>
+              {contact.phone || "—"}
+            </p>
+          </div>
+
+          {/* Right-side meta + ⋯ menu */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {contact.hasApp && contact.isOnline && (
+              <span
+                title="Online"
+                className="size-2 rounded-full shrink-0"
+                style={{ background: "#00C853" }}
+              />
+            )}
+            {contact.locationSharingEnabled && contact.type !== "ghost" && (
+              <Locate className="size-3.5 shrink-0" style={{ color: "#00C853" }} />
+            )}
+            {contact.type === "ghost" && (
+              <Link className="size-3.5 shrink-0" style={{ color: "#FF9500" }} />
+            )}
+            {/* ⋯ Menu trigger — clear hit-box, no background unless menu open */}
+            <button
+              onClick={onToggleMenu}
+              aria-label="Contact actions"
+              className="size-8 rounded-[10px] flex items-center justify-center transition-colors"
+              style={{
+                background: menuOpen ? "rgba(255,255,255,0.08)" : "transparent",
+              }}
+            >
+              <MoreHorizontal className="size-[18px]" style={{ color: menuOpen ? "#fff" : "rgba(255,255,255,0.45)" }} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Dropdown menu — inline, replaces old expansion ── */}
+        <AnimatePresence initial={false}>
+          {menuOpen && (
+            <motion.div
+              key="menu"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ type: "spring", stiffness: 360, damping: 30 }}
+              style={{ overflow: "hidden" }}
+            >
+              <div
+                className="grid grid-cols-4 gap-1 px-2 pb-3 mx-2"
+                style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", paddingTop: 10 }}
+              >
+                {/* Edit */}
+                <button
+                  onClick={onEdit}
+                  className="flex flex-col items-center justify-center gap-1 py-2 rounded-[10px]"
+                  style={{ background: "rgba(255,255,255,0.03)" }}
+                >
+                  <Edit3 className="size-[15px]" style={{ color: "rgba(255,255,255,0.7)" }} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Edit</span>
+                </button>
+                {/* Primary toggle */}
+                <button
+                  onClick={onToggleFavorite}
+                  className="flex flex-col items-center justify-center gap-1 py-2 rounded-[10px]"
+                  style={{ background: contact.isFavorite ? "rgba(0,200,224,0.08)" : "rgba(255,255,255,0.03)" }}
+                >
+                  <Star className="size-[15px]" style={{ fill: contact.isFavorite ? "#00C8E0" : "none", color: contact.isFavorite ? "#00C8E0" : "rgba(255,255,255,0.7)" }} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: contact.isFavorite ? "#00C8E0" : "rgba(255,255,255,0.55)" }}>
+                    {contact.isFavorite ? "Primary" : "Set primary"}
+                  </span>
+                </button>
+                {/* Copy phone OR copy safety link */}
+                <button
+                  onClick={contact.type === "ghost" ? onShowSafetyLink : onCopyPhone}
+                  className="flex flex-col items-center justify-center gap-1 py-2 rounded-[10px]"
+                  style={{ background: "rgba(255,255,255,0.03)" }}
+                >
+                  {contact.type === "ghost" ? (
+                    <Globe className="size-[15px]" style={{ color: "#FF9500" }} />
+                  ) : (
+                    <Copy className="size-[15px]" style={{ color: "rgba(255,255,255,0.7)" }} />
+                  )}
+                  <span style={{ fontSize: 10, fontWeight: 600, color: contact.type === "ghost" ? "#FF9500" : "rgba(255,255,255,0.55)" }}>
+                    {contact.type === "ghost" ? "Safety link" : "Copy phone"}
+                  </span>
+                </button>
+                {/* Delete */}
+                <button
+                  onClick={onDelete}
+                  className="flex flex-col items-center justify-center gap-1 py-2 rounded-[10px]"
+                  style={{ background: "rgba(255,45,85,0.06)" }}
+                >
+                  <Trash2 className="size-[15px]" style={{ color: "#FF2D55" }} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#FF2D55" }}>Delete</span>
+                </button>
+              </div>
+
+              {/* Location-sharing toggle — app contacts only, outside the 4-grid */}
+              {contact.hasApp && contact.type !== "ghost" && (
+                <div className="px-3 pb-3">
+                  <button
+                    onClick={onToggleTracking}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[10px]"
+                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <span className="flex items-center gap-2">
+                      {contact.locationSharingEnabled
+                        ? <PauseCircle className="size-[15px]" style={{ color: "#FF2D55" }} />
+                        : <PlayCircle className="size-[15px]" style={{ color: "#00C853" }} />
+                      }
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>
+                        {contact.locationSharingEnabled ? "Pause location sharing" : "Resume location sharing"}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Delete confirm — inline below card ── */}
+        <AnimatePresence initial={false}>
+          {deleteConfirm === contact.id && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden"
+              style={{ overflow: "hidden" }}
             >
-              <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.03)" }}>
-                {/* Contact Type Info */}
-                <div className="rounded-xl p-3 mt-3" style={{ background: `${cfg.color}06`, border: `1px solid ${cfg.color}10` }}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <TypeIcon className="size-3.5" style={{ color: cfg.color }} />
-                    <p style={{ fontSize: 11, fontWeight: 700, color: cfg.color }}>{cfg.label}</p>
-                  </div>
-                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", lineHeight: 1.5 }}>
-                    {cfg.description}
-                  </p>
-                  {/* Features */}
-                  <div className="mt-2 space-y-1">
-                    {cfg.features.slice(0, 3).map(f => (
-                      <div key={f} className="flex items-center gap-1.5">
-                        <CheckCircle2 className="size-2.5 shrink-0" style={{ color: cfg.color }} />
-                        <span style={{ fontSize: 9.5, color: "rgba(255,255,255,0.3)" }}>{f}</span>
-                      </div>
-                    ))}
-                    {cfg.limitations.length > 0 && cfg.limitations.slice(0, 2).map(l => (
-                      <div key={l} className="flex items-center gap-1.5">
-                        <XCircle className="size-2.5 shrink-0" style={{ color: "rgba(255,255,255,0.1)" }} />
-                        <span style={{ fontSize: 9.5, color: "rgba(255,255,255,0.15)" }}>{l}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tracking Status (for app contacts) */}
-                {contact.hasApp && (
-                  <div className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <div className="flex items-center gap-2">
-                      {contact.locationSharingEnabled
-                        ? <Eye className="size-3.5" style={{ color: "#00C853" }} />
-                        : <EyeOff className="size-3.5" style={{ color: "rgba(255,255,255,0.15)" }} />
-                      }
-                      <span style={{ fontSize: 11, fontWeight: 600, color: contact.locationSharingEnabled ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)" }}>
-                        Location {contact.locationSharingEnabled ? "sharing" : "paused"}
-                      </span>
-                      {contact.locationSharingEnabled && (
-                        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>
-                          · every {contact.locationUpdateFrequency}s
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={onToggleTracking}
-                      className="px-2.5 py-1 rounded-lg"
-                      style={{
-                        background: contact.locationSharingEnabled ? "rgba(255,45,85,0.06)" : "rgba(0,200,83,0.06)",
-                        border: `1px solid ${contact.locationSharingEnabled ? "rgba(255,45,85,0.1)" : "rgba(0,200,83,0.1)"}`,
-                        fontSize: 10, fontWeight: 600,
-                        color: contact.locationSharingEnabled ? "#FF2D55" : "#00C853",
-                      }}
-                    >
-                      {contact.locationSharingEnabled ? "Pause" : "Enable"}
-                    </button>
-                  </div>
-                )}
-
-                {/* Safety Link (for ghost contacts) */}
-                {contact.type === "ghost" && (
-                  <div className="rounded-xl p-3" style={{ background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.08)" }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Globe className="size-3.5" style={{ color: "#FF9500" }} />
-                      <p style={{ fontSize: 11, fontWeight: 700, color: "#FF9500" }}>Safety Link</p>
-                    </div>
-                    <p className="mb-2.5" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.4 }}>
-                      During emergencies, {contact.name} receives an SMS with this link to see your live location.
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={onCopyLink}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg"
-                        style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)", fontSize: 11, fontWeight: 600, color: "#FF9500" }}
-                      >
-                        <Copy className="size-3" /> Copy Link
-                      </button>
-                      <button
-                        onClick={onShowSafetyLink}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg"
-                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}
-                      >
-                        <Eye className="size-3" /> Preview
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Invite to download (for ghost contacts) */}
-                {contact.type === "ghost" && (
-                  <button
-                    onClick={onResendInvite}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl"
-                    style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)", fontSize: 11, fontWeight: 600, color: "#00C8E0" }}
-                  >
-                    <SmartphoneNfc className="size-3.5" />
-                    Invite to Download SOSphere
-                  </button>
-                )}
-
-                {/* Response Stats */}
-                {contact.totalAlertsReceived > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: "Alerts", value: contact.totalAlertsReceived, color: "#FF2D55" },
-                      { label: "Responded", value: contact.totalAlertsResponded, color: "#00C853" },
-                      { label: "Avg Time", value: `${contact.avgResponseTime}s`, color: "#00C8E0" },
-                    ].map(s => (
-                      <div key={s.label} className="text-center rounded-lg py-2" style={{ background: "rgba(255,255,255,0.02)" }}>
-                        <p className="text-white" style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</p>
-                        <p style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>{s.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Actions Row */}
-                <div className="flex gap-2">
-                  <button onClick={onToggleFavorite} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", fontSize: 10, fontWeight: 600, color: contact.isFavorite ? "#FFD700" : "rgba(255,255,255,0.25)" }}>
-                    <Star className="size-3" style={{ fill: contact.isFavorite ? "#FFD700" : "none" }} /> {contact.isFavorite ? "Primary" : "Set Primary"}
-                  </button>
-                  <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>
-                    <Edit3 className="size-3" /> Edit
-                  </button>
-                  <button onClick={onDelete} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl"
-                    style={{ background: "rgba(255,45,85,0.04)", border: "1px solid rgba(255,45,85,0.08)", fontSize: 10, fontWeight: 600, color: "rgba(255,45,85,0.5)" }}>
-                    <Trash2 className="size-3" />
-                  </button>
-                </div>
-
-                {/* Delete Confirm */}
-                <AnimatePresence>
-                  {deleteConfirm === contact.id && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="flex items-center gap-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                        <p style={{ fontSize: 12, color: "rgba(255,45,85,0.6)", flex: 1 }}>Remove from safety contacts?</p>
-                        <button onClick={onCancelDelete} className="px-3 py-1.5 rounded-lg"
-                          style={{ background: "rgba(255,255,255,0.04)", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>
-                          Cancel
-                        </button>
-                        <button onClick={onConfirmDelete} className="px-3 py-1.5 rounded-lg"
-                          style={{ background: "rgba(255,45,85,0.1)", fontSize: 11, fontWeight: 600, color: "#FF2D55" }}>
-                          Remove
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+              <div
+                className="flex items-center gap-2 px-3 py-3"
+                style={{ boxShadow: "inset 0 1px 0 rgba(255,45,85,0.1)", background: "rgba(255,45,85,0.04)" }}
+              >
+                <AlertTriangle className="size-4 shrink-0" style={{ color: "#FF2D55" }} />
+                <span className="flex-1" style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                  Delete {contact.name}?
+                </span>
+                <button
+                  onClick={onCancelDelete}
+                  className="px-3 h-8 rounded-[8px]"
+                  style={{ background: "rgba(255,255,255,0.05)", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onConfirmDelete}
+                  className="px-3 h-8 rounded-[8px]"
+                  style={{ background: "#FF2D55", fontSize: 11, fontWeight: 700, color: "#fff" }}
+                >
+                  Delete
+                </button>
               </div>
             </motion.div>
           )}
@@ -691,10 +743,6 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
     </motion.div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Add/Edit Contact Form
-// ═══════════════════════════════════════════════════════════════
 
 function AddEditContactForm({ contact, isPro, onClose, onSave }: {
   contact: SafetyContact | null;
@@ -745,7 +793,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="absolute inset-0 z-40 flex items-end"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(0,0,0,0.78)" }}
       onClick={onClose}
     >
       <motion.div
@@ -933,7 +981,7 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="absolute inset-0 z-40 flex items-end"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(0,0,0,0.82)" }}
       onClick={onClose}
     >
       <motion.div
@@ -1127,7 +1175,7 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="absolute inset-0 z-40 flex items-end"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(0,0,0,0.82)" }}
       onClick={onClose}
     >
       <motion.div

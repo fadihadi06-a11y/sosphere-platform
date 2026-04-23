@@ -36,18 +36,13 @@ const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
   broadcast: { icon: Megaphone, color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
 };
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  { id: "1", type: "family", title: "Sarah checked in", message: "Sarah confirmed she's safe at home.", time: "2m ago", read: false, urgent: false },
-  { id: "2", type: "location", title: "Alex left school zone", message: "Alex has moved outside the school geofence area.", time: "18m ago", read: false, urgent: true },
-  { id: "3", type: "checkin", title: "Check-in reminder", message: "Your 2-hour check-in timer expires in 5 minutes. Please respond.", time: "45m ago", read: false, urgent: true },
-  { id: "4", type: "system", title: "App updated to v1.1", message: "New features: improved SOS response time and battery optimization.", time: "2h ago", read: true, urgent: false },
-  { id: "5", type: "family", title: "Mom's location updated", message: "Mom is now at City Hospital. Last check-in 25 minutes ago.", time: "3h ago", read: true, urgent: false },
-  { id: "6", type: "sos", title: "SOS drill completed", message: "Your monthly SOS drill was successful. All contacts notified in 8 seconds.", time: "1d ago", read: true, urgent: false },
-  { id: "7", type: "medical", title: "Medical ID updated", message: "Your blood type and allergy information has been synced.", time: "2d ago", read: true, urgent: false },
-  { id: "8", type: "system", title: "Pro features activated", message: "Enjoy unlimited emergency contacts, 5-min recording, and PDF export.", time: "3d ago", read: true, urgent: false },
-  { id: "9", type: "family", title: "David joined Family Circle", message: "David accepted your invitation and is now part of your safety circle.", time: "5d ago", read: true, urgent: false },
-  { id: "10", type: "location", title: "New safe zone added", message: "Home zone has been set up. You'll get alerts when family members arrive or leave.", time: "1w ago", read: true, urgent: false },
-];
+// AUDIT-FIX (2026-04-18): removed the 10 hardcoded fake notifications
+// (Sarah / Alex / Mom / David / "Pro features activated" / "City
+// Hospital" / v1.1 update) that used to ship as initial state for
+// every new user. A civilian seeing fake family-member alerts on
+// their own inbox is confusing and unprofessional. Real notifications
+// now come exclusively from the broadcast store + incoming events.
+const INITIAL_NOTIFICATIONS: Notification[] = [];
 
 function timeAgo(ts: number): string {
   const diff = Math.floor((Date.now() - ts) / 1000);
@@ -221,12 +216,14 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
   return (
     <div className="relative flex flex-col h-full">
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0) 0%, transparent 70%)" }}
       />
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           {/* Header */}
           <div className="flex items-center justify-between px-5 mb-4">
             <div className="flex items-center gap-3">

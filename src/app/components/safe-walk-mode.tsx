@@ -312,12 +312,14 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro = false, onUpgrade, e
   return (
     <div className="relative flex flex-col h-full">
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: phase === "active" ? "radial-gradient(ellipse, rgba(0,200,83,0.04) 0%, transparent 70%)" : phase === "escalated" ? "radial-gradient(ellipse, rgba(255,45,85,0.05) 0%, transparent 70%)" : "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
+        style={{ background: phase === "active" ? "radial-gradient(ellipse, rgba(0,200,83,0) 0%, transparent 70%)" : phase === "escalated" ? "radial-gradient(ellipse, rgba(255,45,85,0) 0%, transparent 70%)" : "radial-gradient(ellipse, rgba(0,200,224,0) 0%, transparent 70%)" }}
       />
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: "none" }}>
-        <div className="pt-14 pb-8">
+        <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 32px)" }}>
           {/* ── Header ───────────────────────────────── */}
           <div className="flex items-center justify-between px-5 mb-5">
             <div className="flex items-center gap-3">

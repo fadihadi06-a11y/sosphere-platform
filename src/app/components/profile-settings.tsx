@@ -5,9 +5,13 @@ import {
   Globe, Moon, Lock, LogOut, HelpCircle, FileText,
   Users, Building2, Smartphone, MapPin, User,
   Star, Zap, AlertTriangle, Clock, Package, Phone,
-  Sparkles,
+  Sparkles, Camera,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+// AUDIT-FIX (2026-04-21): avatar editing entry point — tap on the
+// profile photo to open the shared AvatarEditSheet. Same primitive
+// will later wire into Home header too.
+import { useProfile, AvatarEditSheet } from "./shared-stores";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help" | "elite-features";
@@ -47,6 +51,8 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
   const [notifications, setNotifications] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
+  const [showAvatarEdit, setShowAvatarEdit] = useState(false);
+  const [profile] = useProfile();
 
   const isPro = userPlan === "pro" || userPlan === "employee";
 
@@ -89,7 +95,7 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
       title: "Support",
       items: [
         { id: "help", icon: HelpCircle, label: "Help & Support", color: "rgba(255,255,255,0.3)", chevron: true, action: () => onNavigate("help") },
-        { id: "terms", icon: FileText, label: "Terms & Privacy Policy", color: "rgba(255,255,255,0.3)", chevron: true },
+        { id: "terms", icon: FileText, label: "Terms & Privacy Policy", color: "rgba(255,255,255,0.3)", chevron: true, action: () => { try { window.open("https://sosphere.co/terms", "_blank"); } catch { window.location.href = "https://sosphere.co/terms"; } } },
         { id: "logout", icon: LogOut, label: "Log Out", color: "#FF2D55", danger: true, action: onLogout },
       ],
     },
@@ -104,11 +110,13 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
   return (
     <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ scrollbarWidth: "none" }}>
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 70%)" }}
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[500px] h-[300px] pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(0,200,224,0) 0%, transparent 70%)" }}
       />
 
-      <div className="pt-14 pb-28">
+      <div style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)" }}>
         {/* Profile Card */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -131,13 +139,37 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
             />
 
             <div className="flex items-center gap-4 relative z-10">
-              {/* Avatar */}
-              <div className="relative">
+              {/* Avatar — tap to change (AvatarEditSheet) */}
+              <button
+                onClick={() => setShowAvatarEdit(true)}
+                aria-label="Change profile photo"
+                className="relative group"
+              >
                 <div
-                  className="size-[64px] rounded-[20px] overflow-hidden"
-                  style={{ border: `2px solid ${planConfig.border}` }}
+                  className="size-[64px] rounded-[20px] overflow-hidden flex items-center justify-center"
+                  style={{
+                    border: `2px solid ${planConfig.border}`,
+                    background: profile.avatarUrl
+                      ? "transparent"
+                      : "linear-gradient(135deg, rgba(0,200,224,0.15), rgba(0,153,179,0.08))",
+                  }}
                 >
-                  <ImageWithFallback src={AVATAR_URL} alt="Profile" className="w-full h-full object-cover" />
+                  {profile.avatarUrl ? (
+                    <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                  ) : profile.avatarInitials ? (
+                    <span className="text-white" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.5px" }}>
+                      {profile.avatarInitials}
+                    </span>
+                  ) : (
+                    <ImageWithFallback src={AVATAR_URL} alt="Profile" className="w-full h-full object-cover" />
+                  )}
+                </div>
+                {/* Camera overlay on hover/tap — signals tap to edit */}
+                <div
+                  className="absolute inset-0 rounded-[20px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ background: "rgba(0,0,0,0.55)" }}
+                >
+                  <Camera className="size-[18px]" style={{ color: "#fff" }} />
                 </div>
                 {/* Plan badge */}
                 <div
@@ -146,7 +178,7 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                 >
                   <planConfig.icon style={{ width: 12, height: 12, color: planConfig.color }} />
                 </div>
-              </div>
+              </button>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
@@ -286,24 +318,35 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
                   style={{
-                    borderBottom: i < section.items.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none",
+                    /* AUDIT-FIX: boxShadow instead of borderBottom —
+                       full-width 1px border rendered as visible
+                       horizontal stripe on Android OLED. */
+                    boxShadow: i < section.items.length - 1
+                      ? "inset 0 -1px 0 rgba(255,255,255,0.035)"
+                      : "none",
                   }}
                 >
-                  {/* Icon */}
+                  {/* Icon — AUDIT-FIX (2026-04-21): bumped bg to 18%
+                      alpha + inset boxShadow to render crisply on OLED.
+                      Previously 10% bg + 1px border looked "half-dim". */}
                   <div
                     className="size-8 rounded-[10px] flex items-center justify-center shrink-0"
-                    style={{ background: `${item.color}10`, border: `1px solid ${item.color}18` }}
+                    style={{
+                      background: `${item.color}20`,
+                      boxShadow: `inset 0 0 0 1px ${item.color}40`,
+                    }}
                   >
-                    <item.icon style={{ width: 14, height: 14, color: item.color }} />
+                    <item.icon style={{ width: 14, height: 14, color: item.color }} strokeWidth={2.2} />
                   </div>
 
-                  {/* Label */}
+                  {/* Label — AUDIT-FIX: bumped label opacity 70% -> 90%
+                      and subtitle 15% -> 45% so text is readable on OLED. */}
                   <div className="flex-1 min-w-0">
-                    <p style={{ fontSize: 14, fontWeight: 500, color: item.danger ? "#FF2D55" : "rgba(255,255,255,0.7)" }}>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: item.danger ? "#FF2D55" : "rgba(255,255,255,0.92)" }}>
                       {item.label}
                     </p>
                     {item.sub && (
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 1 }}>{item.sub}</p>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{item.sub}</p>
                     )}
                   </div>
 
@@ -324,23 +367,28 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                     </span>
                   )}
 
-                  {/* Toggle */}
+                  {/* Toggle — AUDIT-FIX (2026-04-21): force LTR direction
+                      on the track + use `left` positioning instead of
+                      Framer's translateX. Previous version's circle
+                      animated OUTSIDE the track bounds under RTL layout. */}
                   {item.toggle && (
                     <div
-                      className="relative shrink-0"
+                      dir="ltr"
+                      className="relative shrink-0 overflow-hidden"
                       style={{
                         width: 44, height: 26, borderRadius: 13,
-                        background: item.toggleValue ? `${item.color}25` : "rgba(255,255,255,0.06)",
-                        border: `1.5px solid ${item.toggleValue ? `${item.color}35` : "rgba(255,255,255,0.08)"}`,
+                        background: item.toggleValue ? `${item.color}30` : "rgba(255,255,255,0.08)",
+                        boxShadow: `inset 0 0 0 1.5px ${item.toggleValue ? `${item.color}50` : "rgba(255,255,255,0.12)"}`,
                       }}
                     >
-                      <motion.div
-                        animate={{ x: item.toggleValue ? 19 : 3 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        className="absolute top-[2px]"
+                      <div
                         style={{
+                          position: "absolute",
+                          top: 3,
+                          left: item.toggleValue ? 22 : 3,
                           width: 18, height: 18, borderRadius: 9,
-                          background: item.toggleValue ? item.color : "rgba(255,255,255,0.25)",
+                          background: item.toggleValue ? item.color : "rgba(255,255,255,0.45)",
+                          transition: "left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background 180ms",
                         }}
                       />
                     </div>
@@ -370,6 +418,9 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
           <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0</p>
         </motion.div>
       </div>
+
+      {/* ── Contextual Avatar Edit Sheet — shared primitive ── */}
+      <AvatarEditSheet open={showAvatarEdit} onClose={() => setShowAvatarEdit(false)} />
     </div>
   );
 }
