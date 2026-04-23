@@ -28,6 +28,67 @@ interface EmergencyPacketProps {
   userName?: string;
 }
 
+// FIX 2026-04-23: helpers to read REAL user data from localStorage instead of
+// hardcoded Saudi demo ("King Fahad Rd, O+, Sarah +966 501 234 567, iPhone 14
+// Pro"). These fields show up in the Packet Preview modal and QR payload,
+// which are legal/forensic surfaces — fake data there is misleading and
+// dangerous (first-responder scans QR → gets wrong blood type or wrong
+// location → wrong treatment).
+function readReal<T>(key: string, fallback: T): T {
+  try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; }
+  catch { return fallback; }
+}
+
+function readRealLocation() {
+  const trail = readReal<Array<{ lat: number; lng: number; timestamp: number }>>("sosphere_gps_trail", []);
+  const last = trail[trail.length - 1];
+  if (last) {
+    return {
+      lat: last.lat, lng: last.lng,
+      coordinates: `${last.lat.toFixed(6)}°N, ${last.lng.toFixed(6)}°E`,
+      address: "Location captured — resolve via lat/lng", // no reverse-geocoding on device
+      lastUpdated: new Date(last.timestamp).toLocaleTimeString("en-US", { hour12: false }),
+      accuracy: "—",
+      altitude: "—",
+    };
+  }
+  return {
+    lat: 0, lng: 0,
+    coordinates: "Not yet captured",
+    address: "GPS not acquired yet",
+    lastUpdated: "—",
+    accuracy: "—",
+    altitude: "—",
+  };
+}
+
+function readRealMedicalId() {
+  const data = readReal<{
+    bloodType?: string; conditions?: string[]; allergies?: string[];
+    medications?: string[]; organDonor?: boolean; notes?: string;
+  }>("sosphere_medical_id", {});
+  return {
+    bloodType: data.bloodType?.trim() || "—",
+    conditions: (data.conditions || []).join(", ") || "—",
+    allergies: (data.allergies || []).join(", ") || "—",
+    medications: (data.medications || []).join(", ") || "—",
+    organDonor: data.organDonor ? "Yes" : "No",
+    notes: data.notes?.trim() || "—",
+  };
+}
+
+function readRealContacts() {
+  const arr = readReal<Array<{ name: string; phone: string; relation?: string }>>(
+    "sosphere_emergency_contacts", []
+  );
+  return arr.map((c, i) => ({
+    priority: i + 1,
+    name: c.name || "—",
+    phone: c.phone || "—",
+    relation: c.relation || "",
+  }));
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: EmergencyPacketProps) {
   const isPro = userPlan === "pro" || userPlan === "employee";
@@ -37,14 +98,36 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
   const [copied, setCopied] = useState(false);
   const [expandedModule, setExpandedModule] = useState<string | null>("location");
   const [packetReady, setPacketReady] = useState(false);
-  const [modules, setModules] = useState<Record<string, boolean>>({
-    location: true,
-    medical: true,
-    contacts: true,
-    device: true,
-    recording: true,
-    incident: true,
+  // FIX 2026-04-23: persist packet module preferences to localStorage so the
+  // SOS handler can READ them when building the emergency payload.
+  // Previously these toggles were UI-only — user could turn OFF Medical ID
+  // but the server still received it. Now they actually gate the data.
+  const [modules, setModules] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("sosphere_packet_modules") || "null");
+      if (saved && typeof saved === "object") {
+        return {
+          location: true, // always on, cannot be disabled
+          medical: saved.medical !== false,
+          contacts: saved.contacts !== false,
+          device: saved.device !== false,
+          recording: saved.recording !== false,
+          incident: saved.incident !== false,
+        };
+      }
+    } catch { /* ignore and use defaults */ }
+    return { location: true, medical: true, contacts: true, device: true, recording: true, incident: true };
   });
+
+  useEffect(() => {
+    try { localStorage.setItem("sosphere_packet_modules", JSON.stringify(modules)); }
+    catch { /* quota */ }
+  }, [modules]);
+
+  // FIX 2026-04-23: compute real data once per render from storage.
+  const realLocation = readRealLocation();
+  const realMedical = readRealMedicalId();
+  const realContacts = readRealContacts();
 
   useEffect(() => {
     const t = setTimeout(() => setPacketReady(true), 800);
@@ -62,20 +145,22 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
   };
 
   const packetModules: PacketModule[] = [
+    // FIX 2026-04-23: every module below now reads REAL user data. No more
+    // hardcoded Saudi demo that misled first responders who scan the QR.
     {
       id: "location",
       icon: MapPin,
       label: "Live Location",
-      description: "GPS coordinates + address updated every 10s",
+      description: "GPS coordinates updated every 10s",
       color: "#00C8E0",
       enabled: true,
       proOnly: false,
       items: [
-        { label: "Address", value: "King Fahad Rd, Al Olaya District, Riyadh" },
-        { label: "Coordinates", value: "24.7136°N, 46.6753°E" },
-        { label: "Accuracy", value: "±3m (GPS + Wi-Fi)", color: "#00C853" },
-        { label: "Last Updated", value: "Just now", color: "#00C8E0" },
-        { label: "Altitude", value: "612m above sea level" },
+        { label: "Address", value: realLocation.address },
+        { label: "Coordinates", value: realLocation.coordinates },
+        { label: "Accuracy", value: realLocation.accuracy, color: "#00C853" },
+        { label: "Last Updated", value: realLocation.lastUpdated, color: "#00C8E0" },
+        { label: "Altitude", value: realLocation.altitude },
       ],
     },
     {
@@ -87,34 +172,33 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       enabled: modules.medical,
       proOnly: false,
       items: [
-        { label: "Blood Type", value: "O+", color: "#FF2D55" },
-        { label: "Conditions", value: "Asthma, Hypertension" },
-        { label: "Allergies", value: "Penicillin, Peanuts", color: "#FF9500" },
-        { label: "Medications", value: "Ventolin Inhaler, Lisinopril 10mg" },
-        { label: "Organ Donor", value: "Yes", color: "#00C853" },
-        { label: "Emergency Note", value: "Carry inhaler at all times" },
+        { label: "Blood Type", value: realMedical.bloodType, color: "#FF2D55" },
+        { label: "Conditions", value: realMedical.conditions },
+        { label: "Allergies", value: realMedical.allergies, color: "#FF9500" },
+        { label: "Medications", value: realMedical.medications },
+        { label: "Organ Donor", value: realMedical.organDonor, color: "#00C853" },
+        { label: "Emergency Note", value: realMedical.notes },
       ],
     },
     {
       id: "contacts",
       icon: Users,
       label: "Emergency Contacts",
-      description: isPro ? "All 4 contacts with call order" : "1 contact (Free limit)",
+      description: realContacts.length === 0
+        ? "No contacts added yet"
+        : isPro
+          ? `${realContacts.length} contact(s) with call order`
+          : `${Math.min(1, realContacts.length)} contact (Free limit)`,
       color: "#00C8E0",
       enabled: modules.contacts,
       proOnly: false,
-      items: isPro
-        ? [
-            { label: "#1 Priority", value: "Sarah (Wife) · +966 501 234 567", color: "#00C853" },
-            { label: "#2", value: "Alex (Son) · +966 502 345 678" },
-            { label: "#3", value: "Mom (Mother) · +966 503 456 789" },
-            { label: "#4", value: "David (Brother) · +966 504 567 890" },
-            { label: "Call Cycle", value: "20s per contact → retry", color: "#FF9500" },
-          ]
-        : [
-            { label: "#1 Priority", value: "Sarah (Wife) · +966 501 234 567", color: "#00C853" },
-            { label: "Limit", value: "1 contact on Free plan", color: "#FF9500" },
-          ],
+      items: realContacts.length === 0
+        ? [{ label: "Status", value: "Add at least one contact via Home or Profile", color: "#FF9500" }]
+        : realContacts.slice(0, isPro ? 10 : 1).map((c, i) => ({
+            label: i === 0 ? "#1 Priority" : `#${i + 1}`,
+            value: `${c.name}${c.relation ? ` (${c.relation})` : ""} · ${c.phone}`,
+            color: i === 0 ? "#00C853" : undefined,
+          })),
     },
     {
       id: "device",
@@ -124,13 +208,14 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       color: "#8E8E93",
       enabled: modules.device,
       proOnly: true,
+      // FIX 2026-04-23: removed fake "iPhone 14 Pro · iOS 19.2 · STC 5G · IMEI…"
+      // Real device info requires Capacitor Device plugin which is already
+      // installed — but until wired, show honest placeholders.
       items: [
-        { label: "Device", value: "iPhone 14 Pro · iOS 19.2" },
-        { label: "Battery", value: "73% (not charging)", color: "#00C853" },
-        { label: "Network", value: "STC · 5G · Strong signal", color: "#00C853" },
-        { label: "Wi-Fi", value: "Connected (Home-5G)" },
-        { label: "App Version", value: "SOSphere v2.4.1" },
-        { label: "IMEI", value: "35-XXXX-XXXX-XXXX-X" },
+        { label: "Device", value: typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent.slice(0, 60) : "—" },
+        { label: "Battery", value: "Captured at SOS trigger", color: "#00C853" },
+        { label: "Network", value: typeof navigator !== "undefined" && (navigator as { onLine?: boolean }).onLine ? "Online" : "Offline", color: "#00C853" },
+        { label: "App Version", value: "SOSphere (debug build)" },
       ],
     },
     {
@@ -175,14 +260,20 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     return modules[m.id] !== false;
   }).length;
 
+  // FIX 2026-04-23: QR payload reads REAL data. Previously hardcoded
+  // Saudi demo data (lat 24.71, blood O+, Penicillin/Peanuts, +966…) —
+  // first responders scanning the code got WRONG medical info and WRONG
+  // location. That's a life-threatening mistake for an emergency app.
   const qrData = JSON.stringify({
     app: "SOSphere",
     type: "emergency_packet",
     user: userName || "User",
-    location: { lat: 24.7136, lng: 46.6753 },
-    blood: "O+",
-    allergies: ["Penicillin", "Peanuts"],
-    contact: "+966501234567",
+    location: { lat: realLocation.lat, lng: realLocation.lng },
+    blood: realMedical.bloodType,
+    allergies: realMedical.allergies === "—" ? [] : realMedical.allergies.split(", ").filter(Boolean),
+    medications: realMedical.medications === "—" ? [] : realMedical.medications.split(", ").filter(Boolean),
+    conditions: realMedical.conditions === "—" ? [] : realMedical.conditions.split(", ").filter(Boolean),
+    contact: realContacts[0]?.phone || "",
     ts: new Date().toISOString(),
   });
 
@@ -259,7 +350,12 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>
                   {packetReady ? "Packet Ready" : "Preparing..."}
                 </p>
-                <p style={{ fontSize: 11, color: packetReady ? "rgba(0,200,83,0.5)" : "rgba(255,150,0,0.5)" }}>
+                {/* FIX 2026-04-23 (v2): the earlier span-level dir="ltr" was
+                    being over-ridden by the parent RTL paragraph. Forcing
+                    the entire <p> to dir="ltr" + textAlign:left guarantees
+                    "4 modules active · Standby" reads correctly regardless
+                    of the root language direction. */}
+                <p dir="ltr" style={{ fontSize: 11, color: packetReady ? "rgba(0,200,83,0.5)" : "rgba(255,150,0,0.5)", textAlign: "left" }}>
                   {enabledCount} modules active · {packetReady ? "Standby" : "Loading data"}
                 </p>
               </div>
@@ -351,7 +447,9 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                           </span>
                         )}
                       </div>
-                      <p className="truncate" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
+                      {/* FIX 2026-04-23: dir="ltr" prevents RTL from flipping
+                          "1 contact (Free limit)" to "(Free limit) 1 contact". */}
+                      <p dir="ltr" className="truncate" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "left" }}>
                         {mod.description}
                       </p>
                     </div>
@@ -364,12 +462,16 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                         <span style={{ fontSize: 8, fontWeight: 700, color: "#00C853", letterSpacing: "0.3px" }}>ALWAYS ON</span>
                       </div>
                     ) : (
+                      // FIX 2026-04-23: missed RTL fix — same pattern as
+                      // profile-settings toggles. dir="ltr" forces knob to
+                      // render at expected x-position in Arabic layout.
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleModule(mod.id);
                         }}
+                        dir="ltr"
                         className="relative"
                         style={{
                           width: 40, height: 22, borderRadius: 11,
@@ -383,6 +485,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
                           className="absolute top-[2px] size-[16px] rounded-full"
                           style={{
+                            left: 0,
                             background: isEnabled ? mod.color : "rgba(255,255,255,0.15)",
                             boxShadow: isEnabled ? `0 0 6px ${mod.color}40` : "none",
                           }}
@@ -584,11 +687,17 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                     className="p-3"
                     style={{ borderRadius: 12, background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.06)" }}
                   >
+                    {/* FIX 2026-04-23: preview now reflects the REAL data
+                        your contacts would receive. Hardcoded Saudi demo
+                        values (King Fahad Rd, O+, Penicillin/Peanuts)
+                        were misleading for every user who isn't that demo
+                        persona. If a field is missing (user hasn't filled
+                        Medical ID yet), we show a dash instead of a lie. */}
                     <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
                       🚨 <span style={{ fontWeight: 700, color: "#FF2D55" }}>EMERGENCY ALERT</span> — {userName || "User"} needs help!
-                      <br />📍 King Fahad Rd, Riyadh
-                      <br />🩸 Blood: O+ | Allergies: Penicillin, Peanuts
-                      <br />🔗 View full packet: sosphere.app/e/7A3F1C
+                      <br />📍 {realLocation.coordinates === "Not yet captured" ? "Location pending" : realLocation.coordinates}
+                      <br />🩸 Blood: {realMedical.bloodType} | Allergies: {realMedical.allergies}
+                      <br />🔗 Live: sosphere.app/e/{Date.now().toString(36).slice(-6).toUpperCase()}
                     </p>
                   </div>
                 </div>
@@ -734,18 +843,41 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.85, opacity: 0 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="absolute z-50 flex flex-col items-center"
-              style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+              className="absolute z-50 inset-x-4 flex flex-col items-center"
+              /* FIX 2026-04-23: the modal previously used fixed left:50%
+                 transform + no max-width, which clipped on narrow phones
+                 (QR half visible). Now uses inset-x-4 for horizontal padding
+                 and max-width so content always fits. Added explicit close
+                 button in top-right corner + keeps the lower Close button. */
+              style={{ top: "50%", transform: "translateY(-50%)", maxWidth: 360, marginLeft: "auto", marginRight: "auto" }}
             >
               <div
-                className="p-6 flex flex-col items-center"
+                className="p-6 flex flex-col items-center w-full relative"
                 style={{
                   borderRadius: 28,
                   background: "rgba(10,18,32,0.98)",
                   border: "1px solid rgba(0,200,224,0.12)",
                   backdropFilter: "blur(40px)",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
                 }}
               >
+                {/* FIX 2026-04-23: explicit X close button in top-right */}
+                <button
+                  onClick={() => setShowQR(false)}
+                  aria-label="Close"
+                  className="absolute top-3 right-3"
+                  style={{
+                    width: 32, height: 32, borderRadius: 16,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "rgba(255,255,255,0.5)", fontSize: 16, fontWeight: 700,
+                    cursor: "pointer", padding: 0,
+                  }}
+                >
+                  ×
+                </button>
                 <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>Emergency QR</p>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginBottom: 16 }}>
                   Scan for instant packet access

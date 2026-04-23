@@ -41,7 +41,12 @@ function getQuickActions(isAr: boolean) {
   ];
 }
 
-export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
+// FIX 2026-04-23: added `onEmergencyContacts` prop — distinct from
+// `onFamilyCircle`. Emergency Contacts = people to call in an emergency.
+// Family Circle = family location-sharing feature. Previously the Home
+// page's "Add Contact" and "View All" buttons on the Emergency Contacts
+// card were routed to Family Circle by mistake, confusing users.
+export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCheckinTimer, onMedicalID, onFamilyCircle, onEmergencyContacts, onLiveLocation, onNotifications, onSafeWalk, t: tProp }: { userName: string; onSOSTrigger: () => void; onRecordingChange?: (enabled: boolean) => void; onCheckinTimer?: () => void; onMedicalID?: () => void; onFamilyCircle?: () => void; onEmergencyContacts?: () => void; onLiveLocation?: () => void; onNotifications?: () => void; onSafeWalk?: () => void; t?: (key: string) => string }) {
   const t = tProp || ((k: string) => k);
   const { isAr } = useLang();
   const quickActions = getQuickActions(isAr);
@@ -459,7 +464,10 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
             <p className="text-white" style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.2px" }}>
               {isAr ? "جهات الطوارئ" : "Emergency Contacts"}
             </p>
-            <button className="flex items-center gap-0.5" onClick={onFamilyCircle} style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>
+            {/* FIX 2026-04-23: routes to the real Emergency Contacts page,
+                not Family Circle. Falls back to onFamilyCircle only if the
+                new handler isn't wired up (defensive for older screens). */}
+            <button className="flex items-center gap-0.5" onClick={onEmergencyContacts || onFamilyCircle} style={{ fontSize: 12, color: "rgba(0,200,224,0.5)", fontWeight: 500 }}>
               {isAr ? "عرض الكل" : "View All"} <ChevronRight className="size-3.5" />
             </button>
           </div>
@@ -508,7 +516,11 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
                   {isAr ? "لم تُضف جهات طوارئ بعد" : "No emergency contacts added yet"}
                 </p>
-                <button onClick={onFamilyCircle} className="mt-2" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 500 }}>
+                {/* FIX 2026-04-23: Add Contact now opens Emergency Contacts,
+                    not Family Circle. The label on the button always said
+                    "Add Contact", but the click sent users to Family Circle
+                    which is a different feature (family location sharing). */}
+                <button onClick={onEmergencyContacts || onFamilyCircle} className="mt-2" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 500 }}>
                   {isAr ? "إضافة جهة اتصال" : "Add Contact"}
                 </button>
               </div>

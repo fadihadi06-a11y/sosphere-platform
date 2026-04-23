@@ -108,33 +108,33 @@ public class MainActivity extends BridgeActivity {
                         return false;
                     }
 
-                    runOnUiThread(() -> {
-                        String dialerPkg = resolveSystemDialerPackage();
+                    final String resolvedDialer = resolveSystemDialerPackage();
 
+                    // FIX 2026-04-23: if we cannot identify the system dialer, FAIL HARD
+                    // instead of risking the packageless-intent chooser (WhatsApp / Zoom /
+                    // Truecaller). The previous "last-resort" packageless fallback was
+                    // what triggered the chooser users kept seeing.
+                    if (resolvedDialer == null) {
+                        android.util.Log.e("SOSphereNative",
+                            "directCall: no system dialer resolved — refusing to start activity (would show chooser)");
+                        return false;
+                    }
+
+                    runOnUiThread(() -> {
                         Intent callIntent = new Intent(Intent.ACTION_CALL);
                         callIntent.setData(Uri.parse("tel:" + cleaned));
                         callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                        if (dialerPkg != null) {
-                            callIntent.setPackage(dialerPkg);
-                        }
-                        // NOTE: We intentionally DO NOT call a packageless fallback here.
-                        // If we can't find the system dialer, let this throw rather than
-                        // risk showing an app chooser (WhatsApp/Contacts/etc).
+                        callIntent.setPackage(resolvedDialer);
 
                         try {
                             startActivity(callIntent);
                         } catch (Exception first) {
-                            // Last-resort: try without package. May show chooser on some OEMs,
-                            // but better than silent failure in a real emergency.
-                            try {
-                                Intent fallback = new Intent(Intent.ACTION_CALL);
-                                fallback.setData(Uri.parse("tel:" + cleaned));
-                                fallback.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(fallback);
-                            } catch (Exception e2) {
-                                e2.printStackTrace();
-                            }
+                            // FIX 2026-04-23: no packageless retry. If the targeted system
+                            // dialer rejected the intent, surface the failure rather than
+                            // fall back to a chooser. JS side will move to the next tier.
+                            android.util.Log.e("SOSphereNative",
+                                "directCall: targeted dialer " + resolvedDialer + " refused ACTION_CALL — failing closed",
+                                first);
                         }
                     });
                     return true;

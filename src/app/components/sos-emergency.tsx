@@ -19,7 +19,60 @@ import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
-const reportError = (..._args: any[]) => {};
+// FIX 2026-04-23: Replaced silent `reportError` stub with a real handler that
+// forwards to Sentry + records the failure to the smart timeline so it is
+// visible on the audit trail. The previous `const reportError = () => {};`
+// swallowed critical failures (battery API, dialer failures, directCall
+// errors) during an active SOS — the UI still showed "Connected" while the
+// emergency channel was actually dead. Errors in a safety app MUST be
+// visible, never silent.
+import { captureException } from "./sentry-client";
+type ReportErrorLevel = "warning" | "error" | "fatal";
+function reportError(
+  err: Error | unknown,
+  context: { type?: string; component?: string; phone?: string; [k: string]: unknown } = {},
+  level: ReportErrorLevel = "error",
+): void {
+  try {
+    // 1. Forward to Sentry (if initialized). captureException expects
+    //    { tags, extra } — tags must be string values, extras can be anything.
+    const tags: Record<string, string> = {
+      component: String(context.component || "sos-emergency"),
+      type: String(context.type || "generic"),
+      level,
+    };
+    captureException(
+      err instanceof Error ? err : new Error(String(err ?? "unknown")),
+      { tags, extra: context as Record<string, unknown> },
+    );
+  } catch {
+    /* captureException already has its own guards; don't mask here */
+  }
+  // 2. Always log to console so the error is visible during debugging.
+  const label = `[SOS:${context.type || "generic"}]`;
+  if (level === "fatal" || level === "error") {
+    console.error(label, err, context);
+  } else {
+    console.warn(label, err, context);
+  }
+  // 3. Breadcrumb into the audit timeline so forensic review can see that
+  //    a subsystem failed mid-emergency (e.g., dialer crashed, battery API
+  //    denied). We DO NOT include the raw Error stack to avoid leaking PII.
+  try {
+    const msg = err instanceof Error ? err.message : String(err ?? "");
+    // trackEventSync is fire-and-forget; errors here would be re-entrant
+    trackEventSync(
+      (context.emergencyId as string) || "unknown",
+      "error_reported",
+      `${context.type || "error"}: ${msg.slice(0, 200)}`,
+      context.component as string || "System",
+      "System",
+      { level, ...context },
+    );
+  } catch {
+    /* audit write is best-effort */
+  }
+}
 import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, getRecordingMode, type SubscriptionTier, type RecordingMode } from "./subscription-service";
 import { isDuressPin, isDuressFeatureAvailable } from "./duress-service";
 // ── Server-side SOS trigger (Path B — parallel to local dialer) ──
@@ -31,6 +84,9 @@ import {
 // P1-#6: Neighbor responses live panel (mounted during active SOS)
 import { NeighborResponsesPanel } from "./neighbor-responses-panel";
 import { canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
+// FIX 2026-04-23: safeTelCall — directs 911/999/112 through native CallNumber
+// plugin (no chooser), so the emergency-number buttons dial immediately.
+import { safeTelCall } from "./utils/safe-tel";
 
 // ─── Haptic Feedback (vibration pattern during active SOS) ───────────────────
 let hapticIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -49,18 +105,33 @@ function stopHapticFeedback() {
 }
 
 // ─── SMS with Tracking Link (Free tier — sends web-viewer link to non-app contacts) ──
+// FIX 2026-04-23: Previously this used `sms:` URI scheme on native which
+// triggered the Android app chooser (WhatsApp / Zoom / Messages / etc.),
+// exactly the leak the user reported. On native the server-side Twilio SMS
+// burst (triggerServerSOS in sos-server-trigger.ts) already handles this,
+// so the local sms: URI is redundant AND causes the chooser popup.
+//
+// New behavior: on native, do nothing here — server handles it. On web,
+// still open the sms: URI since the browser can hand off to a mail/SMS
+// client the user explicitly chooses to use.
 async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: number, lng: number) {
   const trackingUrl = `https://sosphere.co/track?lat=${lat}&lng=${lng}&name=${encodeURIComponent(userName)}&t=${Date.now()}`;
   const message = `🚨 SOS from ${userName}! Live location: ${trackingUrl}`;
   try {
-    // Try native SMS via Capacitor
     const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
-      // Use SMS URI scheme
-      window.location.href = `sms:${contactPhone.replace(/[\s\-()]/g, "")}?body=${encodeURIComponent(message)}`;
-      return true;
+      // Native: rely on triggerServerSOS (Twilio SMS) — no local sms: URI
+      console.log("[SOS] SMS deferred to server (Twilio) — no local sms: URI to avoid app chooser");
+      return false;
     }
   } catch {}
+  // Web-only fallback — user explicitly gets their browser's sms: handler
+  if (typeof window !== "undefined") {
+    try {
+      window.location.href = `sms:${contactPhone.replace(/[\s\-()]/g, "")}?body=${encodeURIComponent(message)}`;
+      return true;
+    } catch {}
+  }
   console.log("[SOS] SMS tracking link would be sent:", message);
   return false;
 }
@@ -179,6 +250,16 @@ export interface IncidentRecord {
   comment: string;
   /** Evidence vault entry ID (links to Evidence Pipeline) */
   evidenceId?: string;
+  /** FIX 2026-04-23: identity chain — Supabase auth.uid() of the user who
+   *  triggered this incident. Previously only userName/userPhone from
+   *  localStorage were stored (mutable, unverifiable). Now captured from
+   *  the session so PDF/Dashboard/legal review can attest who pressed SOS. */
+  userId?: string;
+  /** Cleartext user-visible name at time of trigger (for PDF header only). */
+  userName?: string;
+  /** Resolution reason captured from doEnd() — e.g. "user_safe",
+   *  "false_alarm", "timeout", "user_ended". Previously lost. */
+  endReason?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -331,9 +412,13 @@ function GlowCircle({
     isCalling    ? "#00C8E0" :
     isPausing    ? "#FF9500" : "#FF2D55";
 
+  // FIX 2026-04-23: only expose displayContact when we actually have a name.
+  // Previously, when contacts were missing, an empty `{}` stub was used, which
+  // produced labels like "Connected · undefined". Guarding on the name
+  // prevents that UI leak and keeps the label hidden in the 0-contacts flow.
   const displayContact =
-    isConnected  ? answeredContact  :
-    isCalling    ? currentContact   : null;
+    (isConnected && answeredContact?.name) ? answeredContact :
+    (isCalling && currentContact?.name) ? currentContact : null;
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -1668,6 +1753,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       photos: docPhotosRef.current,
       comment: docCommentRef.current,
       evidenceId: evidenceIdRef.current,
+      // FIX 2026-04-23: identity chain + resolution reason in the persisted
+      // record. Without these, the PDF can't prove "who triggered" or
+      // "how the incident ended" — both essential for legal defensibility.
+      userId: userId,
+      userName: userName,
+      endReason: reason,
     };
     // ── STOP any active voice recording on SOS end ──
     stopRealRecording();
@@ -1822,6 +1913,19 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         console.log("[SOS] Call dialing started (OFFHOOK)");
         // Do NOT mark as answered yet — OFFHOOK fires immediately when dialing
       } else if (state === "ended" && q.current.phase === "calling") {
+        // FIX 2026-04-23: when the user has NO emergency contacts, the
+        // "calling" phase is purely a placeholder that shows the 911/999/112
+        // quick-dial buttons. Any ACTION_PHONE_STATE_CHANGED we detect here
+        // is the user's OWN dial to an emergency number — NOT an emergency
+        // contact answering. Previously this caused the app to mis-promote
+        // the phase to "answered" with `answeredContact = {}`, which rendered
+        // "Connected · undefined" and kicked off the document/record flow
+        // for a non-existent contact. Ignore and stay in "calling".
+        if (contactsRef.current.length === 0) {
+          console.log("[SOS] ignoring call-ended event — 0 contacts; this was user's own emergency-number dial, not a contact answering");
+          callDialStartTime = 0;
+          return;
+        }
         // Call ended — check if it lasted long enough to have been answered
         const callDuration = callDialStartTime > 0 ? (Date.now() - callDialStartTime) / 1000 : 0;
         console.log("[SOS] Call ended, duration:", callDuration, "seconds");
@@ -2069,17 +2173,26 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           }
           // ── Answer detection: via manualAnswerRef (user presses "Connected" button) ──
           if (manualAnswerRef.current) {
-            manualAnswerRef.current = false;
             const c = contactsRef.current[idx];
-            r.phase = "answered"; r.phaseTimer = 0;
-            setPhase("answered"); setPhaseTimer(0);
-            updateContact(idx, "answered");
-            setAnsweredContact({ ...c });
-            addEvent({ type: "answered", title: `${c.name} answered`, color: "#00C853" });
-            trackEventSync(errIdRef.current, "contact_answered",
-              `${c.name} answered the call`,
-              c.name, "Emergency Contact",
-              { contactPhone: c.phone, responseTimeSec: q.current.elapsed });
+            // FIX 2026-04-23: guard against advancing to "answered" when
+            // contactsRef[idx] is undefined (0 contacts / stale idx). Previously
+            // `setAnsweredContact({ ...undefined })` produced `{}` and the UI
+            // rendered "Connected · undefined" + "… undefined answered".
+            if (!c) {
+              console.warn("[SOS] manualAnswerRef set but contactsRef[", idx, "] is undefined — clearing flag, staying in calling phase");
+              manualAnswerRef.current = false;
+            } else {
+              manualAnswerRef.current = false;
+              r.phase = "answered"; r.phaseTimer = 0;
+              setPhase("answered"); setPhaseTimer(0);
+              updateContact(idx, "answered");
+              setAnsweredContact({ ...c });
+              addEvent({ type: "answered", title: `${c.name} answered`, color: "#00C853" });
+              trackEventSync(errIdRef.current, "contact_answered",
+                `${c.name} answered the call`,
+                c.name, "Emergency Contact",
+                { contactPhone: c.phone, responseTimeSec: q.current.elapsed });
+            }
           } else if (r.phaseTimer >= CALL_SEC) {
             // No answer after CALL_SEC seconds → move to next contact
             r.phase = "no_answer"; r.phaseTimer = 0;
@@ -2239,9 +2352,19 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const answered = contacts.filter(c => c.status === "answered").length;
     const total    = contacts.length;
     if (phase === "starting")    return isAr ? "جاري تفعيل الطوارئ..." : "Activating Emergency...";
-    if (phase === "calling")     return isAr
-      ? `الاتصال بجهة ${currentIdx + 1} من ${total}`
-      : `Calling contact ${currentIdx + 1} of ${total}`;
+    // FIX 2026-04-23: when total === 0 (no emergency contacts set), show a
+    // meaningful message instead of "Calling contact 1 of 0" which looked
+    // like a division-by-zero bug to the user.
+    if (phase === "calling") {
+      if (total === 0) {
+        return isAr
+          ? "لا توجد جهات اتصال — استخدم أزرار الطوارئ"
+          : "No emergency contacts — use 911 / 999 / 112";
+      }
+      return isAr
+        ? `الاتصال بجهة ${currentIdx + 1} من ${total}`
+        : `Calling contact ${currentIdx + 1} of ${total}`;
+    }
     if (phase === "no_answer")   return isAr ? "لم يردّ — ننتقل للتالي" : "No answer — moving to next";
     if (phase === "pausing")     return isAr
       ? `إعادة المحاولة خلال ${pauseRemaining}ث`
@@ -2661,17 +2784,38 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               {isAr ? "أضف جهة اتصال واحدة على الأقل لنتمكن من الاتصال بها في حالة الطوارئ" : "Add at least one contact so we can call them in an emergency"}
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <input value={quickName} onChange={e => setQuickName(e.target.value)} placeholder={isAr ? "الاسم" : "Name"}
-                style={{ height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "inherit", direction: isAr ? "rtl" : "ltr" }} />
-              <input value={quickPhone} onChange={e => setQuickPhone(e.target.value)} placeholder={isAr ? "رقم الهاتف" : "Phone number"}
-                type="tel" inputMode="tel" dir="ltr"
-                style={{ height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "'Outfit', monospace" }} />
-              <input value={quickRelation} onChange={e => setQuickRelation(e.target.value)} placeholder={isAr ? "الصلة (اختياري) — مثال: زوجة، أخ" : "Relation (optional) — e.g. Wife, Brother"}
-                style={{ height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "inherit", direction: isAr ? "rtl" : "ltr" }} />
+            {/* FIX 2026-04-23: added explicit labels above each field. The three
+                empty rectangles with near-invisible placeholders looked like a
+                broken form — users didn't know what they were for. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,200,224,0.75)", display: "block", marginBottom: 5, letterSpacing: "0.3px" }}>
+                  {isAr ? "اسم جهة الاتصال *" : "Contact name *"}
+                </label>
+                <input value={quickName} onChange={e => setQuickName(e.target.value)}
+                  placeholder={isAr ? "مثال: أحمد، زوجتي…" : "e.g. Ahmed, my wife…"}
+                  style={{ width: "100%", height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "inherit", direction: isAr ? "rtl" : "ltr", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,200,224,0.75)", display: "block", marginBottom: 5, letterSpacing: "0.3px" }}>
+                  {isAr ? "رقم الهاتف *" : "Phone number *"}
+                </label>
+                <input value={quickPhone} onChange={e => setQuickPhone(e.target.value)}
+                  placeholder={isAr ? "مثال: ‎+964 771 000 0000" : "e.g. +964 771 000 0000"}
+                  type="tel" inputMode="tel" dir="ltr"
+                  style={{ width: "100%", height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "'Outfit', monospace", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.35)", display: "block", marginBottom: 5, letterSpacing: "0.3px" }}>
+                  {isAr ? "الصلة (اختياري)" : "Relationship (optional)"}
+                </label>
+                <input value={quickRelation} onChange={e => setQuickRelation(e.target.value)}
+                  placeholder={isAr ? "مثال: زوجة، أخ، طبيب…" : "e.g. Wife, Brother, Doctor…"}
+                  style={{ width: "100%", height: 50, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#fff", fontSize: 15, padding: "0 16px", fontFamily: "inherit", direction: isAr ? "rtl" : "ltr", boxSizing: "border-box" }} />
+              </div>
             </div>
 
             <motion.button whileTap={{ scale: 0.97 }} onClick={handleQuickSetupSave}
@@ -2918,6 +3062,41 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         <div className="text-center px-5 mb-4">
           <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", letterSpacing: "-0.2px" }}>{statusLabel()}</p>
           {cycle > 1 && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", marginTop: 2 }}>{isAr ? `الدورة ${cycle}` : `Cycle ${cycle}`}</p>}
+
+          {/* FIX 2026-04-23: when the user has NO emergency contacts set AND
+              SOS is active (calling/pausing), show direct-dial buttons for
+              the local emergency numbers. Before: we only showed the text
+              "No emergency contacts — use 911/999/112" but didn't give the
+              user a way to dial them, which is exactly the moment they need
+              that button most. Uses safeTelCall → CallNumber plugin → no
+              app chooser. */}
+          {contacts.length === 0 && (phase === "calling" || phase === "pausing") && (
+            <div className="flex items-center justify-center gap-2 mt-3">
+              {["911", "999", "112"].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => safeTelCall(num, "Emergency services")}
+                  aria-label={isAr ? `اتصل بـ ${num}` : `Call ${num}`}
+                  style={{
+                    minWidth: 72,
+                    padding: "10px 16px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, rgba(255,45,85,0.18), rgba(204,0,51,0.18))",
+                    border: "1.5px solid rgba(255,45,85,0.45)",
+                    color: "#fff",
+                    fontSize: 16,
+                    fontWeight: 800,
+                    letterSpacing: "0.5px",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(255,45,85,0.25)",
+                  }}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -3243,15 +3422,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#FF9500" }}>{pauseRemaining}s</span>
                 </div>
-                {/* Explain what the user is about to see: Android's native
-                    dialer will appear again when the next call fires. This
-                    prevents the "why is Contacts/Zoom popping up again?!"
-                    confusion the user reported. */}
-                <p style={{ fontSize: 10, color: "rgba(255,150,0,0.65)", marginTop: 2, lineHeight: 1.3 }}>
-                  {isAr
-                    ? "سيفتح نظام الهاتف شاشة الاتصال تلقائياً (زر جهات الاتصال من نظام أندرويد، ليس من التطبيق)."
-                    : "Android's system dialer will re-open automatically (Contacts button is from Android, not from this app)."}
-                </p>
+                {/* FIX 2026-04-23: removed the "Android's system dialer will re-open
+                    / Contacts button is from Android" disclaimer. It was a patch
+                    previous agent added to excuse the chooser popup instead of
+                    fixing it. After the safe-tel.ts + MainActivity.java hardening
+                    the dialer should NOT re-open with a chooser anymore, so the
+                    disclaimer is both unnecessary and misleading. */}
                 <div style={{ height: 2, borderRadius: 99, background: "rgba(255,255,255,0.05)" }}>
                   <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#FF9500,#FF7700)", width: `${((PAUSE_SEC - pauseRemaining) / PAUSE_SEC) * 100}%`, transition: "width 1s linear" }} />
                 </div>
@@ -3293,7 +3469,10 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           // Pick the single most relevant status message (priority order).
           let msg: { icon: any; color: string; text: string; pulse?: boolean } | null = null;
 
-          if (smsSent && answeredContact) {
+          // FIX 2026-04-23: also require answeredContact.name so we don't
+          // render "Location sent · undefined answered" when the contact
+          // object is a degenerate stub.
+          if (smsSent && answeredContact?.name) {
             msg = {
               icon: CheckCircle,
               color: "#00C853",

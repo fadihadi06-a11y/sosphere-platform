@@ -139,8 +139,14 @@ export function BiometricGateModal({
       const success = await enrollBiometric(userId, userName);
 
       if (success) {
-        // Enrollment successful - verify immediately
-        setState("verify");
+        // FIX 2026-04-23: enrollBiometric ALREADY authenticated the user via
+        // the OS biometric prompt (with allowDeviceCredential fallback). The
+        // previous flow then forced a second "verify" pass — user had to
+        // type their PIN TWICE which was confusing and felt broken. One
+        // successful authenticate is sufficient proof of identity, so we
+        // now go straight to the "verified" state and fire onVerified.
+        setState("verified");
+        setTimeout(() => { onVerified(); }, 800);
       } else {
         setError("Enrollment cancelled or failed");
         setState("enroll");

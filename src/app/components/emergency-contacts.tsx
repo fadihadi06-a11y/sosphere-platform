@@ -81,8 +81,11 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
   const limits = PLAN_LIMITS[isPro ? "pro" : "free"];
 
   // Load contacts
+  // FIX 2026-04-23: removed seedDemoContacts() call. It injected 3 fake
+  // contacts (Sarah Johnson, Omar Johnson, Khalid) on first visit — the same
+  // pattern as MOCK_INCIDENTS and medical-id defaults. New users now see a
+  // clean empty state and add their real contacts via the + button.
   useEffect(() => {
-    seedDemoContacts();
     setContacts(getSafetyContacts());
   }, []);
 

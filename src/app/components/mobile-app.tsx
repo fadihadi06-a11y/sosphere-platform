@@ -12,6 +12,7 @@ import { PendingApproval } from "./pending-approval";
 import { EmployeeWelcome } from "./employee-welcome";
 import { EmployeeQuickSetup } from "./employee-quick-setup";
 import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layout";
+import { safeTelCall } from "./utils/safe-tel";
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
 import { PostEmergencyDebrief } from "./post-emergency-debrief";
@@ -51,7 +52,11 @@ import { enableAutoSync } from "./offline-sync-engine";
 import { useFallDetection, FallDetectionOverlay } from "./fall-detection";
 import { useNotifications } from "./push-notifications";
 import { useShakeDetection } from "./shake-to-sos";
-import { VoiceSOSWidget } from "./voice-sos-widget";
+// FIX 2026-04-23: VoiceSOSWidget removed — Web Speech API is unreliable on
+// Android WebView (MIUI/EMUI kill background services, no offline support,
+// hardcoded English, no keyword persistence). Would mislead users into
+// relying on a "feature" that doesn't work at the critical moment. Reliable
+// SOS triggers (Hold 3s, Shake×3, 911/999/112 buttons) are preserved.
 import { useT, type Lang } from "./dashboard-i18n";
 import { MobileEmergencyChat } from "./emergency-chat";
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
@@ -432,26 +437,9 @@ export function MobileApp() {
     return () => clearTimeout(t);
   }, [loginName]);
 
-  // -- Voice SOS Trigger Handler --------------------------------
-  const handleVoiceSOSTriggered = useCallback(
-    (keyword: string, confidence: number) => {
-      if (import.meta.env.DEV) {
-        console.log(`[Voice SOS] Keyword detected: "${keyword}" (confidence: ${(confidence * 100).toFixed(1)}%)`);
-      }
-      // Use guardedSOSTrigger to prevent spam and concurrent SOS
-      if (!guardedSOSTrigger("voice")) return;
-      // Emit SOS event
-      emitSyncEvent({
-        type: "VOICE_SOS",
-        employeeId: `EMP-${loginName.replace(/\s+/g, "")}`,
-        employeeName: loginName,
-        zone: userZone,
-        timestamp: Date.now(),
-        data: { triggerMethod: "voice", keyword, confidence },
-      });
-    },
-    [guardedSOSTrigger, loginName, userZone]
-  );
+  // FIX 2026-04-23: Voice SOS handler removed alongside VoiceSOSWidget.
+  // No other consumers — this was the only place that emitted VOICE_SOS
+  // events. See import-block comment above for removal rationale.
 
   // -- SAR Alert (Search & Rescue notification from admin) ------
   const [sarAlert, setSarAlert] = useState<{ active: boolean; employeeName?: string; zone?: string } | null>(null);
@@ -936,21 +924,9 @@ export function MobileApp() {
                 {/* Broadcast Island � floating broadcast alert */}
         <BroadcastIsland />
 
-        {/* Voice SOS Widget -- floating microphone.
-            WHITELIST (safer than blacklist): only render on the two home
-            screens where a voice trigger actually makes sense. During an
-            active SOS (sos-emergency) or any modal / flow screen, the mic
-            is both pointless and visually intrusive. */}
-        {(screen === "individual-home" || screen === "employee-dashboard") && (
-          <VoiceSOSWidget
-            onVoiceSOSTriggered={handleVoiceSOSTriggered}
-            primaryKeyword="help me"
-            secondaryKeywords={["emergency", "mayday"]}
-            confidenceThreshold={0.7}
-            cooldownMs={30000}
-            position="bottom-left"
-          />
-        )}
+        {/* FIX 2026-04-23: floating VoiceSOSWidget removed from Home.
+            Reliable triggers (Hold 3s / Shake×3 / 911/999/112 buttons)
+            remain untouched. */}
 
         {/* -- SAR Alert Banner � slides down when SAR activated --- */}
         <AnimatePresence>
@@ -1289,9 +1265,13 @@ export function MobileApp() {
                       Alert could not be saved. Call emergency services directly:
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <a href="tel:911" style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", textDecoration: "none" }}>911</a>
-                      <a href="tel:999" style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", textDecoration: "none" }}>999</a>
-                      <a href="tel:112" style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", textDecoration: "none" }}>112</a>
+                      {/* FIX 2026-04-23: replaced hardcoded <a href="tel:..."> with buttons that use
+                          safeTelCall — on Android native these used to trigger the app chooser
+                          (WhatsApp / Zoom / Messages popup). safeTelCall uses CallNumber plugin
+                          with bypassAppChooser on native, tel: only on mobile web. */}
+                      <button type="button" onClick={() => safeTelCall("911", "Emergency")} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", border: "none", cursor: "pointer" }}>911</button>
+                      <button type="button" onClick={() => safeTelCall("999", "Emergency")} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", border: "none", cursor: "pointer" }}>999</button>
+                      <button type="button" onClick={() => safeTelCall("112", "Emergency")} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "4px 12px", borderRadius: 8, background: "rgba(255,255,255,0.2)", border: "none", cursor: "pointer" }}>112</button>
                       <button onClick={() => setStorageBanner({ visible: false, message: "" })} style={{ marginLeft: "auto", fontSize: 10, color: "rgba(255,255,255,0.7)" }}>Dismiss</button>
                     </div>
                   </div>

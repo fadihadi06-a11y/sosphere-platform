@@ -73,7 +73,80 @@ const countries: Country[] = [
       { id: "eg-4", service: "Tourist Police", number: "126", icon: Globe, color: "#00C8E0", description: "Tourist Police Force", available: "24/7" },
     ],
   },
+  // FIX 2026-04-23: added Iraq + other MENA countries — user is +964
+  // and the previous default of Saudi Arabia was misleading for them.
+  {
+    code: "IQ", name: "Iraq", flag: "🇮🇶",
+    numbers: [
+      { id: "iq-1", service: "Ambulance", number: "122", icon: Hospital, color: "#FF2D55", description: "Emergency Medical Services", available: "24/7" },
+      { id: "iq-2", service: "Police", number: "104", icon: Shield, color: "#007AFF", description: "Iraqi Police", available: "24/7" },
+      { id: "iq-3", service: "Fire", number: "115", icon: Flame, color: "#FF9500", description: "Civil Defense", available: "24/7" },
+    ],
+  },
+  {
+    code: "JO", name: "Jordan", flag: "🇯🇴",
+    numbers: [
+      { id: "jo-1", service: "Emergency (All)", number: "911", icon: AlertTriangle, color: "#FF2D55", description: "Police, Fire & Ambulance", available: "24/7" },
+    ],
+  },
+  {
+    code: "LB", name: "Lebanon", flag: "🇱🇧",
+    numbers: [
+      { id: "lb-1", service: "Ambulance", number: "140", icon: Hospital, color: "#FF2D55", description: "Red Cross", available: "24/7" },
+      { id: "lb-2", service: "Police", number: "112", icon: Shield, color: "#007AFF", description: "Internal Security", available: "24/7" },
+      { id: "lb-3", service: "Fire", number: "175", icon: Flame, color: "#FF9500", description: "Civil Defense", available: "24/7" },
+    ],
+  },
+  {
+    code: "KW", name: "Kuwait", flag: "🇰🇼",
+    numbers: [
+      { id: "kw-1", service: "Emergency (All)", number: "112", icon: AlertTriangle, color: "#FF2D55", description: "Police, Fire & Ambulance", available: "24/7" },
+    ],
+  },
+  {
+    code: "QA", name: "Qatar", flag: "🇶🇦",
+    numbers: [
+      { id: "qa-1", service: "Emergency (All)", number: "999", icon: AlertTriangle, color: "#FF2D55", description: "Police, Fire & Ambulance", available: "24/7" },
+    ],
+  },
+  {
+    code: "BH", name: "Bahrain", flag: "🇧🇭",
+    numbers: [
+      { id: "bh-1", service: "Emergency (All)", number: "999", icon: AlertTriangle, color: "#FF2D55", description: "Police, Fire & Ambulance", available: "24/7" },
+    ],
+  },
+  {
+    code: "OM", name: "Oman", flag: "🇴🇲",
+    numbers: [
+      { id: "om-1", service: "Emergency (All)", number: "9999", icon: AlertTriangle, color: "#FF2D55", description: "Police, Fire & Ambulance", available: "24/7" },
+    ],
+  },
 ];
+
+// FIX 2026-04-23: phone country code → country mapping for auto-detection.
+// Reads the user's stored phone number and picks the matching country on
+// first mount instead of defaulting to Saudi Arabia for everyone.
+const PHONE_CC_TO_COUNTRY: Record<string, string> = {
+  "966": "SA", "1": "US", "971": "AE", "44": "GB", "20": "EG",
+  "964": "IQ", "962": "JO", "961": "LB", "965": "KW", "974": "QA",
+  "973": "BH", "968": "OM",
+};
+function detectCountryFromStoredPhone(): string {
+  try {
+    const raw = localStorage.getItem("sosphere_individual_profile") ||
+                localStorage.getItem("sosphere_user_profile") || "{}";
+    const profile = JSON.parse(raw);
+    const phone: string = profile.phone || profile.phoneNumber || "";
+    if (!phone) return "SA";
+    const clean = phone.replace(/[^\d+]/g, "").replace(/^\+/, "");
+    // Try longest-match first (4-digit, 3-digit, 2-digit, 1-digit prefix)
+    for (const len of [4, 3, 2, 1]) {
+      const prefix = clean.slice(0, len);
+      if (PHONE_CC_TO_COUNTRY[prefix]) return PHONE_CC_TO_COUNTRY[prefix];
+    }
+  } catch { /* ignore */ }
+  return "SA";
+}
 
 interface EmergencyServicesProps {
   onBack: () => void;
@@ -81,7 +154,13 @@ interface EmergencyServicesProps {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 export function EmergencyServices({ onBack }: EmergencyServicesProps) {
-  const [selectedCountry, setSelectedCountry] = useState<Country>(countries[0]);
+  // FIX 2026-04-23: auto-detect country from user's stored phone number
+  // instead of defaulting to Saudi Arabia for everyone. Iraqi user (+964)
+  // previously saw SA numbers by mistake.
+  const [selectedCountry, setSelectedCountry] = useState<Country>(() => {
+    const code = detectCountryFromStoredPhone();
+    return countries.find(c => c.code === code) || countries[0];
+  });
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>(["sa-1", "sa-2"]);

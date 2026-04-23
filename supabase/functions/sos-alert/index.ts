@@ -853,7 +853,13 @@ serve(async (req: Request) => {
       let callPromise: Promise<{ sid: string; status: string } | null> = Promise.resolve(null);
 
       if (tier === "basic") {
-        const twimlUrl = `${SUPA_URL}/functions/v1/twilio-twiml?emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+        // FIX 2026-04-23: previously pointed to `twilio-twiml` which does
+        // NOT exist in this codebase — Basic tier calls always failed
+        // silently. The real TwiML endpoint is `sos-bridge-twiml`, which
+        // handles both bridge (Elite) and announce-only flow via the
+        // `mode=announce` query param. This ensures Basic-tier users
+        // actually get their outbound call with emergency details.
+        const twimlUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
         callPromise = twilioCall(cleanPhone, twimlUrl, {
           statusCallback: statusCb,
           machineDetection: true,

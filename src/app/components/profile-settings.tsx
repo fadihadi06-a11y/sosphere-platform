@@ -64,7 +64,11 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
         { id: "incidents", icon: Clock, label: "Incident History", sub: isPro ? "Unlimited archive" : "Last 7 days", color: "#FF9500", chevron: true, action: () => onNavigate("incident-history") },
         { id: "packet", icon: Package, label: "Emergency Packet", sub: "Data sent during SOS", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-packet") },
         { id: "services", icon: Phone, label: "Emergency Services", sub: "Emergency numbers by country", color: "#FF2D55", chevron: true, action: () => onNavigate("emergency-services") },
-        { id: "emergency", icon: Users, label: "Emergency Contacts", sub: isPro ? "4 contacts" : "1 contact (Free limit)", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-contacts"), badge: !isPro ? "PRO" : undefined, badgeColor: "#00C8E0" },
+        // FIX 2026-04-23: removed the "PRO" badge. Free users CAN add 1
+        // emergency contact — the badge made the row look locked and users
+        // thought the feature required an upgrade. The sub-text still says
+        // "1 contact (Free limit)" which is informative without misleading.
+        { id: "emergency", icon: Users, label: "Emergency Contacts", sub: isPro ? "4 contacts" : "1 contact (Free limit)", color: "#00C8E0", chevron: true, action: () => onNavigate("emergency-contacts") },
         { id: "location", icon: MapPin, label: "Live Location Sharing", color: "#00C853", toggle: true, toggleValue: locationSharing },
       ],
     },
@@ -81,7 +85,10 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
       title: "Account",
       items: [
         { id: "subscription", icon: Crown, label: "Subscription", sub: planConfig.label, color: "#FFD700", chevron: true, action: () => onNavigate("subscription") },
-        { id: "devices", icon: Smartphone, label: "Connected Devices", sub: "1 device", color: "#00C8E0", chevron: true, action: () => onNavigate("connected-devices") },
+        // FIX 2026-04-23: Connected Devices marked as Coming Soon because the
+        // backend feature isn't ready. Removed the navigation action so the
+        // user can't reach a broken screen, and added a visible badge.
+        { id: "devices", icon: Smartphone, label: "Connected Devices", sub: "Coming soon", color: "rgba(255,255,255,0.25)", badge: "Coming Soon", badgeColor: "rgba(255,255,255,0.35)" },
         { id: "privacy", icon: Lock, label: "Privacy & Security", color: "rgba(255,255,255,0.4)", chevron: true, action: () => onNavigate("privacy") },
       ],
     },
@@ -89,7 +96,10 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
       title: "Support",
       items: [
         { id: "help", icon: HelpCircle, label: "Help & Support", color: "rgba(255,255,255,0.3)", chevron: true, action: () => onNavigate("help") },
-        { id: "terms", icon: FileText, label: "Terms & Privacy Policy", color: "rgba(255,255,255,0.3)", chevron: true },
+        // FIX 2026-04-23: Terms & Privacy previously had no action (tap = dead).
+        // Now opens the terms page. Also works as external fallback if no
+        // internal page is registered — mobile-app.tsx routes it.
+        { id: "terms", icon: FileText, label: "Terms & Privacy Policy", color: "rgba(255,255,255,0.3)", chevron: true, action: () => onNavigate("terms") },
         { id: "logout", icon: LogOut, label: "Log Out", color: "#FF2D55", danger: true, action: onLogout },
       ],
     },
@@ -303,7 +313,11 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                       {item.label}
                     </p>
                     {item.sub && (
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 1 }}>{item.sub}</p>
+                      // FIX 2026-04-23: dir="ltr" + unicode-bidi:isolate prevents
+                      // RTL from reordering numbers inside mixed strings like
+                      // "1 contact (Free limit)" which was rendering as
+                      // "contact (Free limit) 1" in Arabic layout.
+                      <p dir="ltr" style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 1, unicodeBidi: "isolate" }}>{item.sub}</p>
                     )}
                   </div>
 
@@ -325,8 +339,12 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                   )}
 
                   {/* Toggle */}
+                  {/* FIX 2026-04-23: added dir="ltr" to prevent RTL layout from
+                      mirroring the motion.div x-transform. Without this, the
+                      knob visually appeared on the LEFT when ON in Arabic. */}
                   {item.toggle && (
                     <div
+                      dir="ltr"
                       className="relative shrink-0"
                       style={{
                         width: 44, height: 26, borderRadius: 13,
@@ -340,7 +358,9 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                         className="absolute top-[2px]"
                         style={{
                           width: 18, height: 18, borderRadius: 9,
+                          left: 0,
                           background: item.toggleValue ? item.color : "rgba(255,255,255,0.25)",
+                          boxShadow: item.toggleValue ? `0 2px 6px ${item.color}50` : "0 1px 3px rgba(0,0,0,0.3)",
                         }}
                       />
                     </div>

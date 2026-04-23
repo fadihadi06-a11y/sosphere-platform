@@ -9,7 +9,7 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { IncidentRecord, ERREvent } from "./sos-emergency";
 import { getGPSTrail } from "./smart-timeline-tracker";
-import { generateIndividualReport, type IndividualReportData } from "./individual-pdf-report";
+import { generateIndividualReport, computeIncidentHashAsync, type IndividualReportData } from "./individual-pdf-report";
 
 interface EmergencyResponseRecordProps {
   record: IncidentRecord;
@@ -107,16 +107,82 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
           {/* PDF Export */}
           <motion.button
             whileTap={{ scale: 0.93 }}
-            onClick={() => {
+            onClick={async () => {
               if (record.isPremium) {
-                // Generate actual PDF report
                 // Real user profile from localStorage
                 const _profile = (() => { try { return JSON.parse(localStorage.getItem("sosphere_individual_profile") || "{}"); } catch { return {}; } })();
-                // Real GPS trail from smart-timeline-tracker; fall back to single known point
+
+                // FIX 2026-04-23: honest GPS trail. Previously if getGPSTrail()
+                // returned empty we synthesized a fallback (single trigger
+                // point pretending to be a trail). Now we keep the trail
+                // empty when no real data exists and set the honesty flag so
+                // the PDF renders "GPS trail not available".
                 const _rawTrail = getGPSTrail();
                 const _gpsTrail = _rawTrail.length > 0
                   ? _rawTrail.map(p => ({ lat: p.lat, lng: p.lng, time: new Date(p.timestamp) }))
-                  : [{ lat: record.location.lat, lng: record.location.lng, time: record.startTime }];
+                  : [];
+                const _gpsTrailIsReal = _rawTrail.length > 0;
+
+                // FIX 2026-04-23: call duration previously hardcoded as 15s
+                // whenever c.status === "answered". Now we measure it from
+                // the event timeline — the gap between the "call_out" for
+                // this contact and the subsequent "answered" / "no_answer"
+                // / "sos_end" event. If we can't measure, we leave
+                // callDuration undefined (PDF shows "—" honestly).
+                const _measureCallDuration = (contactName: string): number | undefined => {
+                  const ev = record.events;
+                  let startIdx = -1;
+                  for (let i = 0; i < ev.length; i++) {
+                    if (ev[i].type === "call_out" && (ev[i].detail?.includes(contactName) || ev[i].title?.includes(contactName))) {
+                      startIdx = i;
+                      break;
+                    }
+                  }
+                  if (startIdx < 0) return undefined;
+                  for (let j = startIdx + 1; j < ev.length; j++) {
+                    const t = ev[j].type;
+                    if (t === "answered" || t === "no_answer" || t === "sos_end") {
+                      const ms = ev[j].ts.getTime() - ev[startIdx].ts.getTime();
+                      if (ms > 0 && ms < 30 * 60 * 1000) return Math.round(ms / 1000);
+                      return undefined;
+                    }
+                  }
+                  return undefined;
+                };
+
+                // FIX 2026-04-23: endReason previously hardcoded as
+                // "contact_resolved". Now we derive from the record's
+                // terminating event detail if available, else "unknown".
+                const _endReason = (() => {
+                  const lastEnd = [...record.events].reverse().find(e => e.type === "sos_end");
+                  if (lastEnd?.detail) return lastEnd.detail;
+                  if (lastEnd?.title) return lastEnd.title;
+                  return "unknown";
+                })();
+
+                // FIX 2026-04-23: honesty flags — these fields are ONLY true
+                // when we actually captured and persisted the blob. Until
+                // Phase 1 (real audio/photo capture) lands, these stay
+                // false and the PDF admits the data isn't really stored.
+                const _audioCaptured = false;
+                const _photosCaptured = false;
+
+                // FIX 2026-04-23: real SHA-256 document hash (was
+                // deterministic mock). Canonical payload is a stable JSON
+                // representation of the incident.
+                const _canonical = JSON.stringify({
+                  id: record.id,
+                  start: record.startTime.toISOString(),
+                  end: (record.endTime || new Date()).toISOString(),
+                  trigger: record.triggerMethod,
+                  location: record.location,
+                  contacts: record.contacts.map(c => ({ name: c.name, phone: c.phone, status: c.status })),
+                  cycles: record.cyclesCompleted,
+                  recordingSec: record.recordingSeconds,
+                  events: record.events.map(e => ({ type: e.type, title: e.title, ts: e.ts.toISOString() })),
+                });
+                const _documentHash = await computeIncidentHashAsync(record.id, _canonical);
+
                 const reportData: IndividualReportData = {
                   userName: _profile.name || _profile.fullName || "User",
                   userPhone: _profile.phone || "",
@@ -127,22 +193,27 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                   endTime: record.endTime || new Date(),
                   location: record.location,
                   gpsTrail: _gpsTrail,
+                  gpsTrailIsReal: _gpsTrailIsReal,
                   contacts: record.contacts.map(c => ({
                     name: c.name,
                     relation: c.relation,
                     phone: c.phone,
                     status: c.status as any,
-                    callDuration: c.status === "answered" ? 15 : undefined,
+                    callDuration: _measureCallDuration(c.name),
                   })),
                   cyclesCompleted: record.cyclesCompleted,
                   recordingDuration: record.recordingSeconds,
                   photoCount: record.photos?.length || 0,
+                  audioCaptured: _audioCaptured,
+                  audioUrl: null,
+                  photosCaptured: _photosCaptured,
                   timeline: record.events.map(ev => ({
                     time: ev.ts,
                     event: ev.title,
                     type: (ev.type === "sos_start" || ev.type === "sos_end" ? "trigger" : ev.type === "call_out" || ev.type === "no_answer" ? "call" : ev.type === "answered" ? "answer" : ev.type === "location_share" || ev.type === "sms_sent" ? "location" : ev.type === "recording_start" || ev.type === "recording_end" ? "recording" : "end") as any,
                   })),
-                  endReason: "contact_resolved",
+                  endReason: _endReason,
+                  documentHash: _documentHash,
                 };
                 generateIndividualReport(reportData);
               } else {

@@ -18,6 +18,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Shield, Home } from "lucide-react";
 import { captureException } from "./sentry-client";
+import { safeTelCall } from "./utils/safe-tel";
 
 // =================================================================
 // Types
@@ -215,19 +216,23 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 8, textAlign: "center" }}>
               In case of emergency, call directly:
             </p>
+            {/* FIX 2026-04-23: replaced <a href="tel:..."> with buttons using safeTelCall.
+                On Android native the tel: URI surfaces the OS app chooser (WhatsApp / Zoom
+                / Truecaller); safeTelCall routes through capacitor-call-number with
+                bypassAppChooser on native, tel: on mobile web, toast on desktop. */}
             <div className="flex gap-3">
-              <a href="tel:911" className="flex items-center gap-2 px-4 py-2 rounded-xl"
-                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700 }}>
+              <button type="button" onClick={() => safeTelCall("911", "Emergency")} className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700, cursor: "pointer" }}>
                 Call 911
-              </a>
-              <a href="tel:999" className="flex items-center gap-2 px-4 py-2 rounded-xl"
-                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700 }}>
+              </button>
+              <button type="button" onClick={() => safeTelCall("999", "Emergency")} className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700, cursor: "pointer" }}>
                 Call 999
-              </a>
-              <a href="tel:112" className="flex items-center gap-2 px-4 py-2 rounded-xl"
-                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700 }}>
+              </button>
+              <button type="button" onClick={() => safeTelCall("112", "Emergency")} className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                style={{ fontSize: 13, color: "#FF2D55", background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", fontWeight: 700, cursor: "pointer" }}>
                 Call 112
-              </a>
+              </button>
             </div>
           </div>
         </div>
