@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft, Shield, Clock, MapPin, Phone, PhoneMissed,
@@ -6,7 +6,6 @@ import {
   Filter, Search, Calendar, ChevronRight, ChevronDown,
   Mic, Zap, Timer, X, Eye, Trash2, Share2,
 } from "lucide-react";
-import { generateDemoIndividualReport } from "./individual-pdf-report";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type IncidentType = "sos" | "checkin_expired" | "dms_auto";
@@ -34,122 +33,6 @@ interface Incident {
   resolved: boolean;
   events: IncidentEvent[];
 }
-
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const MOCK_INCIDENTS: Incident[] = [
-  {
-    id: "ERR-2026-7A3F1C",
-    type: "sos",
-    severity: "resolved",
-    date: new Date(2026, 2, 5, 22, 14),
-    duration: 187,
-    triggerMethod: "Hold 3s",
-    location: { address: "King Fahad Rd, Riyadh", lat: 24.7136, lng: 46.6753 },
-    contactsCalled: 3,
-    contactsAnswered: 1,
-    hasRecording: true,
-    recordingDuration: 58,
-    resolved: true,
-    events: [
-      { time: "22:14:03", title: "SOS Activated", detail: "Trigger: Hold 3s", type: "sos_start" },
-      { time: "22:14:05", title: "Calling Sarah", detail: "+966 501 234 567", type: "call_out" },
-      { time: "22:14:25", title: "Sarah — No Answer", type: "no_answer" },
-      { time: "22:14:27", title: "Calling Alex", detail: "+966 502 345 678", type: "call_out" },
-      { time: "22:14:35", title: "Alex Answered", detail: "Call duration: 2m 34s", type: "answered" },
-      { time: "22:14:36", title: "SMS Sent to Alex", detail: "Location: 24.7136°N, 46.6753°E", type: "sms_sent" },
-      { time: "22:14:40", title: "Recording Started", detail: "Audio evidence capture", type: "recording" },
-      { time: "22:17:10", title: "SOS Ended", detail: "Manually cancelled by user", type: "sos_end" },
-    ],
-  },
-  {
-    id: "ERR-2026-5B2E9D",
-    type: "checkin_expired",
-    severity: "high",
-    date: new Date(2026, 2, 3, 3, 45),
-    duration: 312,
-    triggerMethod: "Dead Man's Switch",
-    location: { address: "Al Olaya District, Riyadh", lat: 24.6902, lng: 46.6855 },
-    contactsCalled: 3,
-    contactsAnswered: 2,
-    hasRecording: false,
-    resolved: true,
-    events: [
-      { time: "03:45:00", title: "Check-in Timer Expired", detail: "No response within 5 min window", type: "dms_trigger" },
-      { time: "03:45:02", title: "Auto-SOS Activated", type: "sos_start" },
-      { time: "03:45:04", title: "Calling Sarah", type: "call_out" },
-      { time: "03:45:12", title: "Sarah Answered", detail: "Call duration: 4m 12s", type: "answered" },
-      { time: "03:45:13", title: "SMS Sent to Sarah", detail: "Location shared", type: "sms_sent" },
-      { time: "03:50:14", title: "SOS Ended", detail: "Confirmed safe by Sarah", type: "sos_end" },
-    ],
-  },
-  {
-    id: "ERR-2026-1D8A4F",
-    type: "sos",
-    severity: "critical",
-    date: new Date(2026, 1, 18, 19, 32),
-    duration: 423,
-    triggerMethod: "Shake ×3",
-    location: { address: "Industrial Area, Dammam", lat: 26.3927, lng: 49.9777 },
-    contactsCalled: 3,
-    contactsAnswered: 0,
-    hasRecording: true,
-    recordingDuration: 60,
-    resolved: false,
-    events: [
-      { time: "19:32:11", title: "SOS Activated", detail: "Trigger: Shake ×3", type: "sos_start" },
-      { time: "19:32:13", title: "Calling Sarah", type: "call_out" },
-      { time: "19:32:33", title: "Sarah — No Answer", type: "no_answer" },
-      { time: "19:32:35", title: "Calling Alex", type: "call_out" },
-      { time: "19:32:55", title: "Alex — No Answer", type: "no_answer" },
-      { time: "19:32:57", title: "Calling Mom", type: "call_out" },
-      { time: "19:33:17", title: "Mom — No Answer", type: "no_answer" },
-      { time: "19:33:20", title: "Recording Started", detail: "60s max (Free plan)", type: "recording" },
-      { time: "19:39:14", title: "SOS Ended", detail: "Timeout — No response", type: "sos_end" },
-    ],
-  },
-  {
-    id: "ERR-2026-9C7F2B",
-    type: "sos",
-    severity: "resolved",
-    date: new Date(2026, 1, 10, 14, 8),
-    duration: 95,
-    triggerMethod: "Hold 3s",
-    location: { address: "Prince Sultan St, Jeddah", lat: 21.5433, lng: 39.1728 },
-    contactsCalled: 1,
-    contactsAnswered: 1,
-    hasRecording: false,
-    resolved: true,
-    events: [
-      { time: "14:08:22", title: "SOS Activated", detail: "Trigger: Hold 3s", type: "sos_start" },
-      { time: "14:08:24", title: "Calling Sarah", type: "call_out" },
-      { time: "14:08:31", title: "Sarah Answered", detail: "Call duration: 1m 12s", type: "answered" },
-      { time: "14:08:32", title: "SMS Sent to Sarah", type: "sms_sent" },
-      { time: "14:09:57", title: "SOS Ended", detail: "Manually cancelled", type: "sos_end" },
-    ],
-  },
-  {
-    id: "ERR-2026-3E5D8A",
-    type: "dms_auto",
-    severity: "medium",
-    date: new Date(2026, 0, 28, 6, 15),
-    duration: 145,
-    triggerMethod: "Dead Man's Switch",
-    location: { address: "King Abdullah Rd, Riyadh", lat: 24.7255, lng: 46.6522 },
-    contactsCalled: 2,
-    contactsAnswered: 1,
-    hasRecording: false,
-    resolved: true,
-    events: [
-      { time: "06:15:00", title: "Check-in Timer Expired", type: "dms_trigger" },
-      { time: "06:15:02", title: "Auto-SOS Activated", type: "sos_start" },
-      { time: "06:15:04", title: "Calling Sarah", type: "call_out" },
-      { time: "06:15:24", title: "Sarah — No Answer", type: "no_answer" },
-      { time: "06:15:26", title: "Calling Alex", type: "call_out" },
-      { time: "06:15:33", title: "Alex Answered", type: "answered" },
-      { time: "06:17:25", title: "SOS Ended", detail: "Confirmed safe", type: "sos_end" },
-    ],
-  },
-];
 
 // ─── Real record converter ────────────────────────────────────────────────────
 function loadRealIncidents(): Incident[] {
@@ -280,11 +163,8 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
     return () => window.removeEventListener("storage", handler);
   }, []);
 
-  // Merge: real incidents first, then mock as fallback demo data (filtered out if any real exist)
-  const allIncidents = useMemo<Incident[]>(() => {
-    if (realIncidents.length > 0) return realIncidents; // user has real data — show only that
-    return MOCK_INCIDENTS; // no real history yet — show demo data
-  }, [realIncidents]);
+  // Real incidents only — no demo/mock fallback (cleaned 2026-04-23)
+  const allIncidents: Incident[] = realIncidents;
 
   const isPro = userPlan === "pro" || userPlan === "employee";
 
@@ -293,7 +173,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
     .filter(inc => !deletedIds.includes(inc.id))
     .filter(inc => {
       if (!isPro) {
-        const sevenDaysAgo = new Date(2026, 2, 7);
+        const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         return inc.date >= sevenDaysAgo;
       }
@@ -312,7 +192,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
 
   const hiddenCount = allIncidents.filter(inc => {
     if (isPro) return false;
-    const sevenDaysAgo = new Date(2026, 2, 7);
+    const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     return inc.date < sevenDaysAgo;
   }).length;
@@ -340,7 +220,9 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
       {/* Ambient */}
-      <div className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
+      <div
+        data-ambient-glow
+        className="absolute top-[-80px] left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 350, background: "radial-gradient(ellipse, rgba(0,200,224,0.03) 0%, transparent 60%)" }}
       />
 
@@ -362,18 +244,6 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
               }}
             >
               <Search style={{ width: 16, height: 16, color: showSearch ? "#00C8E0" : "rgba(255,255,255,0.3)" }} />
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => generateDemoIndividualReport()}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-              style={{
-                background: "rgba(0,200,224,0.06)",
-                border: "1px solid rgba(0,200,224,0.12)",
-              }}
-            >
-              <Download style={{ width: 14, height: 14, color: "#00C8E0" }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0" }}>Export My Report</span>
             </motion.button>
           </div>
         </div>
@@ -577,7 +447,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
                             transition={{ duration: 0.3 }}
                             className="overflow-hidden"
                           >
-                            <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                            <div className="px-4 pb-4 space-y-3" style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", paddingTop: 12 }}>
                               {/* Quick Info Cards */}
                               <div className="grid grid-cols-3 gap-2 pt-3">
                                 <div className="py-2 text-center" style={{ borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -796,7 +666,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
               key="del-bg"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(10px)" }}
+              style={{ background: "rgba(0,0,0,0.85)" }}
               onClick={() => setShowDeleteConfirm(null)}
             />
             <motion.div
