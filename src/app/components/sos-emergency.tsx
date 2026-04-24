@@ -260,6 +260,26 @@ export interface IncidentRecord {
   /** Resolution reason captured from doEnd() — e.g. "user_safe",
    *  "false_alarm", "timeout", "user_ended". Previously lost. */
   endReason?: string;
+  /** FIX 2026-04-24: evidence chain honesty flags. Previously the PDF
+   *  report hardcoded audioCaptured=false / photosCaptured=false because
+   *  the IncidentRecord didn't carry the signals that upload had
+   *  actually occurred — so even real recordings were rendered as
+   *  "blob unavailable". These fields make the end-to-end chain
+   *  verifiable:
+   *    - audioUrl:        Supabase Storage public URL when uploadSOSAudio
+   *                       succeeded in recorder.onstop. May be empty if
+   *                       the record was finalized before upload drained
+   *                       (onstop is async); downstream readers should
+   *                       fall back to evidence-store lookup by id.
+   *    - audioCaptured:   true iff either the public URL or the base64
+   *                       dataUrl were populated — i.e. a real blob
+   *                       existed at end-of-SOS.
+   *    - photosCaptured:  true iff docPhotosRef had ≥1 dataUrl at
+   *                       end-of-SOS. Photos are always base64 in-memory
+   *                       until storeEvidence uploads them. */
+  audioUrl?: string | null;
+  audioCaptured?: boolean;
+  photosCaptured?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1660,8 +1680,56 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const batch = [...gpsBufferRef.current];
     gpsBufferRef.current = [];
     gpsLastFlushRef.current = Date.now();
-    // [SUPABASE_READY] gps_trail_batch: insert batch into gps_trail table
-    console.log("[SUPABASE_READY] gps_batch: " + batch.length + " points");
+
+    // FIX 2026-04-24 (Point 4): actually persist the trail.
+    //
+    // Tree of events, with civilian/employee fork clearly marked:
+    //
+    //   flushGpsBuffer
+    //   ├── [ALL USERS] Append batch to localStorage sosphere_gps_trail
+    //   │     └── Source-of-truth for PDF Section 6 + Emergency Packet.
+    //   │        Cap at 500 points (oldest dropped) to bound storage.
+    //   ├── [ALL USERS] trackEventSync → timeline store (full batch in
+    //   │     metadata, not just lastPoint — this was the fat bug:
+    //   │     getGPSTrail(id) could only recover 1-of-5 points per flush).
+    //   ├── [ALL USERS] emitSyncEvent for same-device sync / Supabase
+    //   │     Realtime broadcast (unchanged).
+    //   └── [EMPLOYEES ONLY] Upload batch to public.gps_trail
+    //         table so the company dashboard can render live movement
+    //         + Section 7 of the PDF can cross-reference against server.
+    //         Civilians (mode === "individual") skip this — they have
+    //         no company binding and no dispatcher reviewing them.
+
+    // Path 1 (all users): append to localStorage — this is what the
+    // PDF, Emergency Packet, and shared-store readers consume today.
+    try {
+      const STORAGE_CAP = 500;
+      const existingRaw = localStorage.getItem("sosphere_gps_trail") || "[]";
+      let existing: any[] = [];
+      try { existing = JSON.parse(existingRaw); if (!Array.isArray(existing)) existing = []; } catch { existing = []; }
+      const merged = [
+        ...existing,
+        ...batch.map(p => ({
+          lat: p.lat,
+          lng: p.lng,
+          accuracy: p.accuracy,
+          fromRealGPS: p.fromRealGPS,
+          timestamp: p.timestamp,
+          emergencyId: errIdRef.current,
+          employeeId: userId,
+          employeeName: userName,
+        })),
+      ];
+      const capped = merged.length > STORAGE_CAP ? merged.slice(-STORAGE_CAP) : merged;
+      localStorage.setItem("sosphere_gps_trail", JSON.stringify(capped));
+    } catch (err) {
+      // Storage quota / disabled storage — never fatal to the SOS flow.
+      console.warn("[SOS-GPS] localStorage persist failed:", err);
+    }
+
+    // Path 2 (all users): sync event + timeline — now carries the FULL
+    // batch so downstream readers can reconstruct every point, not just
+    // the last one per flush.
     emitSyncEvent({
       type: "GPS_TRAIL_UPDATE",
       employeeId: userId,
@@ -1673,8 +1741,37 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     trackEventSync(errIdRef.current, "gps_updated",
       `GPS trail updated: ${batch.length} points`,
       "System", "System",
-      { pointCount: batch.length, lastPoint: batch[batch.length - 1] });
-  }, [userId, userName, userZone]);
+      { pointCount: batch.length, batch });
+
+    // Path 3 (EMPLOYEES ONLY): upload to server gps_trail table so the
+    // company dashboard renders live movement and the PDF's server-side
+    // cross-reference has independent corroboration.
+    if (mode === "employee") {
+      (async () => {
+        try {
+          const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+          if (!SUPABASE_CONFIG.isConfigured) return;
+          const rows = batch.map((p) => ({
+            id: `GPS-${errIdRef.current}-${p.timestamp}-${p.trailPoint}`,
+            employee_id: userId || null,
+            lat: p.lat,
+            lng: p.lng,
+            accuracy: p.accuracy,
+            is_emergency: true,
+            recorded_at: new Date(p.timestamp).toISOString(),
+            source: p.fromRealGPS ? "gps" : "dead_reckoning",
+            session_id: errIdRef.current,
+          }));
+          const { error } = await supabase.from("gps_trail").insert(rows);
+          if (error) {
+            console.warn("[SOS-GPS] server upload failed:", error.message);
+          }
+        } catch (err) {
+          console.warn("[SOS-GPS] server upload exception:", err);
+        }
+      })();
+    }
+  }, [userId, userName, userZone, mode]);
 
   useEffect(() => {
     // Collect a GPS point every 6s (5 points × 6s = 30s natural flush cycle)
@@ -1743,6 +1840,16 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }).catch(() => {});
     q.current.phase = "ended";
     addEvent({ type: "sos_end", title: reason, detail: `Duration: ${fmt(q.current.elapsed)}`, color: "#00C8E0" });
+    // FIX 2026-04-24: evidence flags for end-to-end chain.
+    // Snapshot refs at record-construction time. Note: recorder.onstop
+    // is async, so audioPublicUrlRef may still be empty here if the
+    // user ended SOS before the upload drained — that's why downstream
+    // readers (emergency-response-record.tsx) MUST also check the
+    // evidence vault by id. These fields are the fast-path signal.
+    const _audioUrl = audioPublicUrlRef.current || null;
+    const _audioCaptured = !!(audioPublicUrlRef.current || audioDataUrlRef.current);
+    const _photosCaptured = (docPhotosRef.current?.length ?? 0) > 0;
+
     const record: IncidentRecord = {
       id: errIdRef.current, startTime: new Date(Date.now() - q.current.elapsed * 1000),
       endTime: new Date(), triggerMethod: "hold",
@@ -1759,6 +1866,10 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       userId: userId,
       userName: userName,
       endReason: reason,
+      // FIX 2026-04-24: evidence chain honesty flags (see interface docs)
+      audioUrl: _audioUrl,
+      audioCaptured: _audioCaptured,
+      photosCaptured: _photosCaptured,
     };
     // ── STOP any active voice recording on SOS end ──
     stopRealRecording();
@@ -1865,14 +1976,50 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // PATH B: Server-side SOS trigger (fires in PARALLEL with local dialer)
     // Does NOT block or wait for Path A (local call).
     // ══════════════════════════════════════════════════════════
+
+    // FIX 2026-04-24 (Point 5): read the user's Emergency Packet
+    // privacy toggles from localStorage and hand them to the server.
+    // The toggles were always persisted (emergency-packet.tsx writes on
+    // every change) but no SOS-trigger code was reading them — the
+    // "OFF Medical ID" switch was a lie. This snapshot is made at the
+    // moment of trigger so a mid-SOS settings change doesn't retroactively
+    // alter what was shared.
+    const _packetModules: {
+      location: true;
+      medical: boolean;
+      contacts: boolean;
+      device: boolean;
+      recording: boolean;
+      incident: boolean;
+    } = (() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem("sosphere_packet_modules") || "null");
+        if (raw && typeof raw === "object") {
+          return {
+            location: true,
+            medical:   raw.medical   !== false,
+            contacts:  raw.contacts  !== false,
+            device:    raw.device    !== false,
+            recording: raw.recording !== false,
+            incident:  raw.incident  !== false,
+          };
+        }
+      } catch { /* fall through */ }
+      // Open-by-default for users who never visited the Packet screen.
+      return { location: true, medical: true, contacts: true, device: true, recording: true, incident: true };
+    })();
+
     triggerServerSOS({
       emergencyId: errIdRef.current,
       userId,
       userName,
       userPhone,
-      contacts: contactsRef.current.map(c => ({ name: c.name, phone: c.phone, relation: c.relation })),
-      bloodType: userBloodType,
+      contacts: _packetModules.contacts
+        ? contactsRef.current.map(c => ({ name: c.name, phone: c.phone, relation: c.relation }))
+        : [],
+      bloodType: _packetModules.medical ? userBloodType : undefined,
       zone: userZone,
+      packetModules: _packetModules,
     }).then(result => {
       setServerResult(result);
       if (result.success) {

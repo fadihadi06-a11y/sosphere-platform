@@ -14,6 +14,35 @@ let _companyId: string | null = null;
 let _syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let _adminChannel: ReturnType<typeof supabase.channel> | null = null;
 let _evacChannel: ReturnType<typeof supabase.channel> | null = null;
+// FIX 2026-04-24 (Point 6): Postgres Change-Data-Capture channel.
+// Unlike the broadcast-only _syncChannel/_adminChannel/_evacChannel, this
+// subscribes to actual INSERT/UPDATE events on the tables that sos-alert
+// (Point 2), dashboard-actions (Point 3), GPS trail (Point 4) and
+// packet-aware audits (Point 5) write to. Every subscriber hangs off a
+// single channel to keep the websocket connection count low.
+let _cdcChannel: ReturnType<typeof supabase.channel> | null = null;
+
+type CdcListener = (row: Record<string, any>, op: "INSERT" | "UPDATE" | "DELETE") => void;
+const _cdcListeners = new Map<string, Set<CdcListener>>();
+
+/**
+ * Subscribe to Postgres CDC events on a specific table. Returns an
+ * unsubscribe function. The channel is lazy: the first subscriber
+ * creates it, later subscribers piggyback on the same socket.
+ *
+ * The listener receives the row payload + operation. For UPDATE, the
+ * row is the NEW row (not the delta); the caller can compare against
+ * their cached copy to compute the diff if needed.
+ */
+export function subscribeCdc(table: string, listener: CdcListener): () => void {
+  let set = _cdcListeners.get(table);
+  if (!set) { set = new Set(); _cdcListeners.set(table, set); }
+  set.add(listener);
+  return () => {
+    const s = _cdcListeners.get(table);
+    if (s) { s.delete(listener); if (s.size === 0) _cdcListeners.delete(table); }
+  };
+}
 
 /** Call this once after login with the company ID */
 export function initRealtimeChannels(companyId: string) {
@@ -29,6 +58,7 @@ export function initRealtimeChannels(companyId: string) {
   if (_syncChannel) supabase.removeChannel(_syncChannel);
   if (_adminChannel) supabase.removeChannel(_adminChannel);
   if (_evacChannel) supabase.removeChannel(_evacChannel);
+  if (_cdcChannel)  supabase.removeChannel(_cdcChannel);
 
   _syncChannel = supabase.channel(`sync:${companyId}`);
   _adminChannel = supabase.channel(`admin:${companyId}`);
@@ -43,6 +73,45 @@ export function initRealtimeChannels(companyId: string) {
   _evacChannel.subscribe((status) => {
     if (status === "CHANNEL_ERROR") console.warn("[Realtime] evac channel error — retrying on next event");
   });
+
+  // FIX 2026-04-24 (Point 6): Postgres CDC channel — subscribes to INSERT
+  // and UPDATE events on the tables the dashboard cares about, scoped
+  // to this company where possible. This is what eliminates the 5-second
+  // polling loops in hub-incident-reports + various dashboard tabs.
+  //
+  //   sos_queue      — new incidents (INSERT) + dispatcher state changes
+  //                    (UPDATE from dashboard-actions: review/broadcast/forward/resolve)
+  //   audit_log      — live audit feed (INSERT from sos-alert + dashboard-actions)
+  //   gps_trail      — live movement tracking during active SOS (INSERT)
+  //   sos_messages   — dispatcher ↔ worker messages (INSERT)
+  //   evidence       — evidence vault uploads (INSERT) — for Incident Reports tab
+  //
+  // Each INSERT/UPDATE fans out to the registered listeners (see subscribeCdc
+  // above). A single channel keeps the websocket count low; Supabase
+  // multiplexes the table filters server-side.
+  _cdcChannel = supabase.channel(`cdc:${companyId}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "sos_queue",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("sos_queue")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sos_queue",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("sos_queue")?.forEach(l => l(payload.new as any, "UPDATE")))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "audit_log" },
+      (payload) => _cdcListeners.get("audit_log")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "gps_trail",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("gps_trail")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "sos_messages" },
+      (payload) => _cdcListeners.get("sos_messages")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "evidence" },
+      (payload) => _cdcListeners.get("evidence")?.forEach(l => l(payload.new as any, "INSERT")))
+    .subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.warn("[Realtime] CDC channel error — table events will miss until reconnect");
+      } else if (status === "SUBSCRIBED") {
+        console.log(`[Realtime] CDC channel online for company: ${companyId}`);
+      }
+    });
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
 

@@ -232,32 +232,79 @@ export function BiometricGateModal({
   };
 
   // Handle PIN verification (fallback)
+  //
+  // FIX 2026-04-24 (pre-launch security audit): removed hardcoded
+  // DEMO_PIN="123456" bypass. That was a trivial override of the
+  // biometric gate — anyone picking up the device could walk past
+  // the lock by tapping six 1s.
+  //
+  // New behaviour:
+  //   * PIN fallback works ONLY if the user has explicitly set an
+  //     app-unlock PIN (stored as a salted SHA-256 hash locally,
+  //     following the same pattern as duress-service.ts).
+  //   * If no PIN is configured, fallback shows an honest message.
+  //     The user can still use biometric OR tap the escape hatch
+  //     ("Disable Lock & Continue" at handleDisableLockAndContinue).
+  //
+  // Until a "Set app unlock PIN" UI ships (post-launch), this means
+  // the PIN fallback path is effectively unavailable — which is
+  // strictly safer than a backdoor PIN shipped to every user.
   const handlePinVerify = async () => {
-    // In production, this would verify against Supabase
-    // For now, we use a simple demo PIN
-    const DEMO_PIN = "123456";
+    if (!pinInput || pinInput.length < 4) {
+      setError("PIN must be at least 4 digits.");
+      return;
+    }
 
-    if (pinInput === DEMO_PIN) {
+    // Read the stored hash (if any). Salt shares the same localStorage
+    // key as duress-service.ts so a single re-hash unlocks all PIN
+    // surfaces when we later add the "Set PIN" UI.
+    let storedHash: string | null = null;
+    let computedHash: string | null = null;
+    try {
+      storedHash = localStorage.getItem("sosphere_app_unlock_pin_hash");
+      const salt  = localStorage.getItem("sosphere_pin_salt") || "";
+      const data  = new TextEncoder().encode(salt + ":" + pinInput);
+      const buf   = await crypto.subtle.digest("SHA-256", data);
+      computedHash = Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, "0")).join("");
+    } catch {
+      /* crypto.subtle unavailable — fall through to failure */
+    }
+
+    if (!storedHash) {
+      setError("PIN fallback not configured on this device. Use biometric or tap Disable Lock.");
+      return;
+    }
+
+    // Constant-time compare (no early-return on mismatch).
+    let match = !!(computedHash && storedHash.length === computedHash.length);
+    if (match && computedHash) {
+      let diff = 0;
+      for (let i = 0; i < storedHash.length; i++) {
+        diff |= storedHash.charCodeAt(i) ^ computedHash.charCodeAt(i);
+      }
+      match = diff === 0;
+    }
+
+    if (match) {
       setState("verified");
       setTimeout(() => {
         onVerified();
       }, 1000);
-    } else {
-      const newAttempts = pinAttempts + 1;
-      setPinAttempts(newAttempts);
-
-      if (newAttempts >= 3) {
-        setPinLocked(true);
-        setError("Too many failed attempts. Please try again later.");
-        setTimeout(() => {
-          onCancel?.();
-        }, 3000);
-      } else {
-        setError(`Incorrect PIN. ${3 - newAttempts} attempts remaining.`);
-      }
-
-      setPinInput("");
+      return;
     }
+
+    const newAttempts = pinAttempts + 1;
+    setPinAttempts(newAttempts);
+    if (newAttempts >= 3) {
+      setPinLocked(true);
+      setError("Too many failed attempts. Please try again later.");
+      setTimeout(() => {
+        onCancel?.();
+      }, 3000);
+    } else {
+      setError(`Incorrect PIN. ${3 - newAttempts} attempts remaining.`);
+    }
+    setPinInput("");
   };
 
   // Handle enrollment fallback if biometric fails
@@ -676,7 +723,7 @@ export function BiometricGateModal({
               <div className="px-6 py-4 border-t border-slate-700/50 bg-slate-900/30">
                 <p className="text-xs text-slate-500 text-center">
                   {state === "pin_fallback"
-                    ? "Demo PIN: 123456"
+                    ? "If your PIN isn't set yet, use biometric or tap Disable Lock"
                     : "Your biometric is stored securely on this device only"}
                 </p>
               </div>

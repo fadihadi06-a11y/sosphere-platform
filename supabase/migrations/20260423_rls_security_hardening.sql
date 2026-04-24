@@ -189,31 +189,72 @@ create trigger trg_training_records_history
 -- This helper makes it trivial for service-role writers to append an audit
 -- row in one INSERT without RLS friction. Client-side inserts are still
 -- constrained by the existing audit_log RLS.
+--
+-- FIX 2026-04-24: the first draft of this helper targeted a schema that
+-- did NOT match the live DB. Live `audit_log` was originally:
+--   (id text pk, action text, actor text, actor_level text, operation text,
+--    target text, target_name text, metadata jsonb, created_at timestamptz)
+-- — minimal schema with no company_id, no actor_id/actor_name split, no
+-- severity/category/detail columns. The entire rest of the codebase
+-- (audit-log-store, data-layer, pin-verify-modal, training-center,
+-- dashboard-audit-log-page, compliance-reports) assumed a much richer
+-- schema. Rather than rewriting 6+ client modules, a separate migration
+-- (`audit_log_schema_reconcile_2026_04_24`) extends the live table with
+-- the expected columns and renames actor_level → actor_role. This RPC's
+-- INSERT targets both the minimal (action/actor/actor_role/operation/
+-- target/target_name/metadata) and rich (category/severity/actor_name/
+-- detail/target_id/client_timestamp) columns. Parameter names are kept
+-- unchanged to avoid breaking the already-deployed sos-alert v17.
 create or replace function public.log_sos_audit(
-  p_company_id uuid,
-  p_actor_id uuid,
-  p_actor_name text,
   p_action text,
-  p_detail text,
-  p_target_id text default null,
-  p_severity text default 'info'
+  p_actor text,
+  p_actor_level text default 'worker',
+  p_operation text default 'sos',
+  p_target text default null,
+  p_target_name text default null,
+  p_metadata jsonb default '{}'::jsonb
 ) returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_id text;
 begin
+  -- Stable id per call. We use a ULID-like text so reads in the
+  -- audit page can order chronologically. UUID is fine too; text pk
+  -- accepts either.
+  v_id := 'AUD-' || to_char(now() at time zone 'utc', 'YYYYMMDDHH24MISSMS')
+       || '-' || substr(md5(random()::text || clock_timestamp()::text), 1, 8);
+
   insert into public.audit_log
-    (company_id, actor_id, actor_name, actor_role, category, action, detail,
-     target_id, severity, client_timestamp, created_at)
+    (id, action, actor, actor_role, operation, target, target_name,
+     metadata, created_at,
+     -- Rich-schema mirrors so dashboard + compliance readers see the row.
+     category, severity, actor_name, detail, target_id, client_timestamp)
   values
-    (p_company_id, p_actor_id, coalesce(p_actor_name,'system'), 'system',
-     'emergency', p_action, p_detail, p_target_id, coalesce(p_severity,'info'),
-     now(), now());
+    (v_id,
+     p_action,
+     coalesce(p_actor, 'system'),
+     coalesce(p_actor_level, 'worker'),
+     coalesce(p_operation, 'sos'),
+     p_target,
+     p_target_name,
+     coalesce(p_metadata, '{}'::jsonb),
+     now(),
+     'emergency',
+     coalesce(p_metadata->>'severity', 'info'),
+     p_actor,
+     coalesce(p_metadata->>'reason', p_metadata->>'detail', null),
+     p_target,
+     now());
 end;
 $$;
 
-grant execute on function public.log_sos_audit(uuid, uuid, text, text, text, text, text) to service_role;
+-- Wide grant: service_role (Edge Functions) and authenticated (so logged-in
+-- clients can call it directly via supabase.rpc() without needing to
+-- understand the schema).
+grant execute on function public.log_sos_audit(text, text, text, text, text, text, jsonb) to service_role, authenticated;
 
 comment on function public.log_sos_audit is
-  '2026-04-23: service-role helper so Edge Functions (sos-alert etc.) can append SOS audit events without tripping the audit_log INSERT policy.';
+  '2026-04-24 v2: populates both the minimal (action/actor/actor_role/operation/target/target_name/metadata) and rich-schema (category/severity/actor_name/detail/target_id/client_timestamp) columns so both the edge-function audit writes and the dashboard/compliance readers see the same row.';

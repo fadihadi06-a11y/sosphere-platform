@@ -112,14 +112,88 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                 // Real user profile from localStorage
                 const _profile = (() => { try { return JSON.parse(localStorage.getItem("sosphere_individual_profile") || "{}"); } catch { return {}; } })();
 
-                // FIX 2026-04-23: honest GPS trail. Previously if getGPSTrail()
-                // returned empty we synthesized a fallback (single trigger
-                // point pretending to be a trail). Now we keep the trail
-                // empty when no real data exists and set the honesty flag so
-                // the PDF renders "GPS trail not available".
-                const _rawTrail = getGPSTrail();
+                // FIX 2026-04-23 + 2026-04-24 (Point 4): honest GPS trail,
+                // now sourced from the real capture chain built in
+                // sos-emergency.tsx:flushGpsBuffer.
+                //
+                // Reader priority (first non-empty wins, never synthesize):
+                //   1. Timeline store (smart-timeline-tracker) scoped to
+                //      THIS emergencyId — needs getGPSTrail(record.id).
+                //      The previous code called getGPSTrail() with no arg,
+                //      which returned [] silently.
+                //   2. localStorage sosphere_gps_trail — the full batch
+                //      written by flushGpsBuffer for every flush. Filter
+                //      to this emergency only so cross-incident points
+                //      don't leak into this report.
+                //   3. Server gps_trail table (employees only, authoritative
+                //      cross-device record) — queried below via async.
+                //
+                // If all three yield zero points, the trail is honestly
+                // empty and the PDF prints "GPS trail not available".
+
+                type RawPoint = { lat: number; lng: number; timestamp: number | string };
+                let _rawTrail: RawPoint[] = [];
+
+                // Source 1: timeline store scoped to this incident
+                const timelineTrail = getGPSTrail(record.id);
+                if (timelineTrail.length > 0) {
+                  _rawTrail = timelineTrail.map(p => ({
+                    lat: p.lat, lng: p.lng, timestamp: p.timestamp,
+                  }));
+                }
+
+                // Source 2: localStorage (both civilian and employee use
+                // this as the primary surface readers already know about)
+                if (_rawTrail.length === 0) {
+                  try {
+                    const stored: any[] = JSON.parse(
+                      localStorage.getItem("sosphere_gps_trail") || "[]",
+                    );
+                    const forThisEmergency = stored.filter(
+                      p => p && p.emergencyId === record.id && typeof p.lat === "number" && typeof p.lng === "number",
+                    );
+                    _rawTrail = forThisEmergency.map(p => ({
+                      lat: p.lat, lng: p.lng, timestamp: p.timestamp,
+                    }));
+                  } catch {
+                    /* malformed storage — fall through */
+                  }
+                }
+
+                // Source 3: server authoritative (employees only). Best-
+                // effort: if fetch fails, we keep whatever we have from
+                // sources 1+2. Never invent points on failure.
+                if (_rawTrail.length === 0) {
+                  try {
+                    const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+                    if (SUPABASE_CONFIG.isConfigured) {
+                      const { data: serverRows } = await supabase
+                        .from("gps_trail")
+                        .select("lat, lng, recorded_at")
+                        .eq("session_id", record.id)
+                        .eq("is_emergency", true)
+                        .order("recorded_at", { ascending: true });
+                      if (serverRows && serverRows.length > 0) {
+                        _rawTrail = serverRows.map((r: any) => ({
+                          lat: r.lat,
+                          lng: r.lng,
+                          timestamp: new Date(r.recorded_at).getTime(),
+                        }));
+                      }
+                    }
+                  } catch {
+                    /* server unavailable — keep sources 1+2 result */
+                  }
+                }
+
                 const _gpsTrail = _rawTrail.length > 0
-                  ? _rawTrail.map(p => ({ lat: p.lat, lng: p.lng, time: new Date(p.timestamp) }))
+                  ? _rawTrail.map(p => ({
+                      lat: p.lat,
+                      lng: p.lng,
+                      time: new Date(typeof p.timestamp === "string"
+                        ? Date.parse(p.timestamp)
+                        : p.timestamp),
+                    }))
                   : [];
                 const _gpsTrailIsReal = _rawTrail.length > 0;
 
@@ -160,12 +234,120 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                   return "unknown";
                 })();
 
-                // FIX 2026-04-23: honesty flags — these fields are ONLY true
-                // when we actually captured and persisted the blob. Until
-                // Phase 1 (real audio/photo capture) lands, these stay
-                // false and the PDF admits the data isn't really stored.
-                const _audioCaptured = false;
-                const _photosCaptured = false;
+                // FIX 2026-04-24: honesty flags NOW come from the real
+                // end-to-end chain (capture → upload → record → PDF).
+                // Primary source: the IncidentRecord populated in
+                // sos-emergency.tsx:doEnd() from audioPublicUrlRef /
+                // audioDataUrlRef / docPhotosRef at end-of-SOS.
+                //
+                // Fallback source: the evidence vault, queried by
+                // emergencyId. This closes the timing gap where the
+                // record is constructed before recorder.onstop drains
+                // (onstop is async, upload completes after SOS ends) —
+                // by the time the user clicks "Download PDF" on this
+                // screen the vault has the authoritative URL.
+                //
+                // Second-fallback source: sos-audio-upload's in-memory
+                // uploadedUrls map (getAudioPublicUrl), which survives
+                // within-session navigation even if the user cancelled
+                // SOS without submitting a debrief (so no vault entry).
+                let _audioUrl: string | null = record.audioUrl ?? null;
+                let _audioCaptured = !!record.audioCaptured;
+                let _photosCaptured = !!record.photosCaptured;
+
+                // Vault fallback — only consult if record didn't carry flags
+                if (!_audioCaptured || !_audioUrl) {
+                  try {
+                    const { getEvidenceForEmergency } = await import("./evidence-store");
+                    const entries = getEvidenceForEmergency(record.id);
+                    const entry = entries[0];
+                    if (entry) {
+                      if (!_audioUrl && entry.audioMemo?.dataUrl) {
+                        const d = entry.audioMemo.dataUrl;
+                        // Only accept real URLs, not pending:// placeholders
+                        if (d && !d.startsWith("pending://")) {
+                          _audioUrl = d;
+                          _audioCaptured = true;
+                        }
+                      }
+                      if (!_photosCaptured && entry.photos && entry.photos.length > 0) {
+                        _photosCaptured = true;
+                      }
+                    }
+                  } catch { /* vault lookup is best-effort */ }
+                }
+
+                // Second-fallback: in-memory uploader map for SOS that
+                // ended without a debrief submission (no vault entry).
+                if (!_audioUrl) {
+                  try {
+                    const { getAudioPublicUrl } = await import("./sos-audio-upload");
+                    const fromMap = getAudioPublicUrl(record.id);
+                    if (fromMap) {
+                      _audioUrl = fromMap;
+                      _audioCaptured = true;
+                    }
+                  } catch { /* uploader lookup is best-effort */ }
+                }
+
+                // FIX 2026-04-24 (Point 3): pull server-verified audit
+                // chain so the PDF proves what the server recorded,
+                // not what the client claimed. Matches on both
+                // `target = incident.id` (sos-alert path) and
+                // `target_id = incident.id` (dashboard-actions path)
+                // so we don't miss entries on either side.
+                let _serverAudit: import("./individual-pdf-report").IndividualReportData["serverAudit"] = [];
+                let _serverAuditAvailable = true;
+                // FIX 2026-04-24 (Point 5): recover the Packet-at-trigger
+                // state from the sos_triggered audit row's metadata.
+                // undefined → row missing / metadata absent → PDF prints
+                // "not recorded" (honest, never a fake default).
+                let _packetModules: import("./individual-pdf-report").IndividualReportData["packetModules"] = undefined;
+                try {
+                  const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+                  if (!SUPABASE_CONFIG.isConfigured) {
+                    _serverAuditAvailable = false;
+                  } else {
+                    const { data: auditRows, error: auditErr } = await supabase
+                      .from("audit_log")
+                      .select("actor, actor_name, actor_role, action, operation, detail, metadata, created_at")
+                      .or(`target.eq.${record.id},target_id.eq.${record.id}`)
+                      .order("created_at", { ascending: true });
+                    if (auditErr) {
+                      _serverAuditAvailable = false;
+                    } else {
+                      _serverAudit = (auditRows ?? []).map((r: any) => ({
+                        serverTime: new Date(r.created_at),
+                        actor: r.actor_name || r.actor || "system",
+                        actorRole: r.actor_role || "worker",
+                        action: r.action || "unknown",
+                        operation: r.operation || "",
+                        detail: r.detail || undefined,
+                        source: (r.metadata && r.metadata.source) || undefined,
+                      }));
+                      // FIX 2026-04-24 (Point 5): pull the packet state
+                      // from the trigger row's metadata. Prefer the
+                      // first sos_triggered row (when the decision was
+                      // actually made) over any later ones.
+                      const trig = (auditRows ?? []).find((r: any) =>
+                        r.action === "sos_triggered" && r.metadata && r.metadata.packetModules,
+                      );
+                      const pm = trig?.metadata?.packetModules;
+                      if (pm && typeof pm === "object") {
+                        _packetModules = {
+                          location: true,
+                          medical:   pm.medical   !== false,
+                          contacts:  pm.contacts  !== false,
+                          device:    pm.device    !== false,
+                          recording: pm.recording !== false,
+                          incident:  pm.incident  !== false,
+                        };
+                      }
+                    }
+                  }
+                } catch {
+                  _serverAuditAvailable = false;
+                }
 
                 // FIX 2026-04-23: real SHA-256 document hash (was
                 // deterministic mock). Canonical payload is a stable JSON
@@ -205,7 +387,7 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                   recordingDuration: record.recordingSeconds,
                   photoCount: record.photos?.length || 0,
                   audioCaptured: _audioCaptured,
-                  audioUrl: null,
+                  audioUrl: _audioUrl,
                   photosCaptured: _photosCaptured,
                   timeline: record.events.map(ev => ({
                     time: ev.ts,
@@ -214,6 +396,13 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                   })),
                   endReason: _endReason,
                   documentHash: _documentHash,
+                  // FIX 2026-04-24 (Point 3): server-verified audit chain
+                  // (may be empty if the fetch failed — the PDF will
+                  // honestly report "unavailable" in that case).
+                  serverAudit: _serverAudit,
+                  serverAuditAvailable: _serverAuditAvailable,
+                  // FIX 2026-04-24 (Point 5): packet privacy state at trigger
+                  packetModules: _packetModules,
                 };
                 generateIndividualReport(reportData);
               } else {

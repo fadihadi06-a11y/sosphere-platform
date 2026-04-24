@@ -214,6 +214,26 @@ interface SOSPayload {
   silent?: boolean;
   /** Elite-only personalised <Say> script (client-supplied, server-validated). */
   aiScript?: AiScriptPayload;
+  /**
+   * FIX 2026-04-24 (Point 5): user-controlled Emergency Packet privacy
+   * toggles. The mobile client writes these to localStorage from the
+   * Emergency Packet screen; sos-emergency.tsx reads them at trigger
+   * time and forwards them here. We honor them when building the SMS
+   * content AND persist them on sos_queue.metadata.packet_modules so
+   * the company dashboard (for employees) and the PDF report can render
+   * EXACTLY what pieces of the user's profile were shared. Defaults:
+   * every field true (open-by-default for older clients + first-run
+   * users). location is a literal true because omitting GPS from an
+   * SOS is incoherent — it's the whole point.
+   */
+  packetModules?: {
+    location: true;
+    medical: boolean;
+    contacts: boolean;
+    device: boolean;
+    recording: boolean;
+    incident: boolean;
+  };
 }
 
 // ── AI script validation ─────────────────────────────────────
@@ -604,6 +624,31 @@ serve(async (req: Request) => {
       // non-emergency requests that follow go through normal limits.
       if (current?.user_id) clearSosPriority(current.user_id);
 
+      // FIX 2026-04-24 (#28): server-side audit trail for SOS end. The
+      // dashboard + compliance reports read public.audit_log; without
+      // this call there was no server-verified record that a specific
+      // user ended a specific incident at a specific time. Best-effort:
+      // wrapped in try/catch so a failed audit never fails the SOS end.
+      try {
+        await supabase.rpc("log_sos_audit", {
+          p_action: "sos_ended",
+          p_actor: current?.user_id ?? "system",
+          p_actor_level: "worker",
+          p_operation: "sos_end",
+          p_target: emergencyId,
+          p_target_name: null,
+          p_metadata: {
+            reason: reason || "user_ended",
+            recordingSec: recordingSec ?? null,
+            photoCount: typeof photos === "number" ? photos : (photos?.length ?? 0),
+            hasComment: !!comment,
+            source: "sos-alert/end",
+          },
+        });
+      } catch (e) {
+        console.warn("[sos-alert] audit log (end) failed:", e);
+      }
+
       try {
         const ch = supabase.channel(`sos-${emergencyId}`);
         await ch.send({
@@ -663,7 +708,23 @@ serve(async (req: Request) => {
     markSosPriority(authUserId);
 
     const payload: SOSPayload = await req.json();
-    const { emergencyId, userName, userPhone, contacts, location, bloodType, zone, silent } = payload;
+    const { emergencyId, userName, userPhone, location, bloodType, zone, silent } = payload;
+    // `contacts` is mutable — we may clamp it server-side before fanout
+    // (see "FIX 2026-04-24 (#7)" block below). Declared with `let` so the
+    // slice re-assignment below is type-safe under Deno's strict mode.
+    let contacts = payload.contacts;
+    // FIX 2026-04-24 (Point 5): normalize packetModules — always returns
+    // a concrete object so downstream SMS-building code never has to
+    // deal with optional fields. Older clients or missing field → all
+    // modules on (backward-compatible open default).
+    const packet = {
+      location: true as const,
+      medical:   payload.packetModules?.medical   !== false,
+      contacts:  payload.packetModules?.contacts  !== false,
+      device:    payload.packetModules?.device    !== false,
+      recording: payload.packetModules?.recording !== false,
+      incident:  payload.packetModules?.incident  !== false,
+    };
 
     // Shape-validate aiScript early (tier gate applied after resolveTier below).
     const aiScriptShape = sanitizeAiScript(payload.aiScript);
@@ -685,6 +746,29 @@ serve(async (req: Request) => {
     // ── SERVER-SIDE TIER RESOLUTION (ignore client-supplied tier) ──
     const tier = await resolveTier(authUserId, supabase);
 
+    // FIX 2026-04-24 (pre-launch audit #7): clamp contact array length
+    // SERVER-SIDE using the authoritative tier. Client-side already
+    // clamps (sos-server-trigger.ts MAX_CONTACTS_BY_TIER), but a
+    // tampered client could strip that check and send 10,000 contacts,
+    // blowing the 150s edge-function wall and losing the entire SOS
+    // (no audit row written, no cleanup) plus burning Twilio charges
+    // for every attempt. Defence in depth: re-clamp here.
+    //
+    //   Free  → 1 contact
+    //   Basic → 3 contacts
+    //   Elite → 999 contacts (hard cap — at ~30s timeout each that's
+    //            already 8+ hours worst case, but Promise.all means
+    //            practical limit is the fanout completes in parallel
+    //            in ~30s regardless, so 999 is a generous but finite
+    //            cap that bounds memory + Twilio billing).
+    const TIER_CAP: Record<string, number> = { free: 1, basic: 3, elite: 999 };
+    const tierCap = TIER_CAP[tier] ?? TIER_CAP.free;
+    const originalCount = Array.isArray(contacts) ? contacts.length : 0;
+    if (originalCount > tierCap) {
+      console.warn(`[sos-alert] contacts clamped: tier=${tier} received=${originalCount} capped=${tierCap} user=${authUserId}`);
+      contacts = contacts.slice(0, tierCap);
+    }
+
     // Apply tier gate: aiScript is Elite-only. For Basic / Free users
     // the server falls back to the default announcement.
     const aiScript: AiScriptPayload | null = (tier === "elite") ? aiScriptShape : null;
@@ -696,7 +780,7 @@ serve(async (req: Request) => {
     const dashUrl  = `${BASE_URL}/emergency/${emergencyId}`;
     const statusCb = `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}`;
 
-    console.log(`[sos-alert] ═══ SOS TRIGGERED ═══ id=${emergencyId} tier=${tier} contacts=${contacts.length} silent=${!!silent}`);
+    console.log(`[sos-alert] ═══ SOS TRIGGERED ═══ id=${emergencyId} tier=${tier} contacts=${contacts.length}/${originalCount} silent=${!!silent}`);
 
     // B-C4/B-H1: atomic claim of the "server trigger" slot. We used to
     // read-then-write, which let two concurrent trigger requests both
@@ -820,21 +904,26 @@ serve(async (req: Request) => {
       const isPrimaryContact = idx === 0; // First contact = Path A target
 
       // ── SMS (fires first, in parallel) ──
+      // FIX 2026-04-24 (Point 5): every line below is gated by the
+      // relevant packet module. Location is always on (it's the point).
+      // Medical / device / recording / incident are honored strictly —
+      // if the user turned a module OFF in the Emergency Packet screen,
+      // that line is omitted from every outbound SMS, for every tier.
       let smsBody: string;
       if (tier === "free") {
         smsBody = [
           `🚨 SOS — ${userName}`,
           `${c.name}, ${userName} needs help!`,
           `📍 Location: ${trackUrl}`,
-          bloodType ? `🩸 Blood: ${bloodType}` : "",
+          (packet.medical && bloodType) ? `🩸 Blood: ${bloodType}` : "",
           `Open: ${dashUrl}`,
         ].filter(Boolean).join("\n");
       } else if (tier === "basic") {
         smsBody = [
           `🚨 SOS — ${userName} needs help!`,
           `📍 Live tracking: ${trackUrl}`,
-          bloodType ? `🩸 Blood type: ${bloodType}` : "",
-          `Emergency ID: ${emergencyId}`,
+          (packet.medical && bloodType) ? `🩸 Blood type: ${bloodType}` : "",
+          packet.incident ? `Emergency ID: ${emergencyId}` : "",
         ].filter(Boolean).join("\n");
       } else {
         smsBody = [
@@ -842,8 +931,8 @@ serve(async (req: Request) => {
           `${c.name}, ${userName} triggered SOS!`,
           `📍 Live: ${trackUrl}`,
           `🔗 Dashboard: ${dashUrl}`,
-          bloodType ? `🩸 Blood: ${bloodType}` : "",
-          `⏱ Recording active`,
+          (packet.medical && bloodType) ? `🩸 Blood: ${bloodType}` : "",
+          packet.recording ? `⏱ Recording active` : "",
         ].filter(Boolean).join("\n");
       }
 
@@ -926,6 +1015,53 @@ serve(async (req: Request) => {
     await supabase.from("sos_sessions").update({
       server_results: fanoutResults,
     }).eq("id", emergencyId);
+
+    // FIX 2026-04-24 (#28): server-verified audit trail for the TRIGGER
+    // path. Previously no row was ever written to audit_log from here,
+    // so compliance reports + the dashboard audit page had no evidence
+    // that a real SOS had been dispatched. Metadata captures the
+    // actionable facts that investigators need: tier, contact count,
+    // silent-mode, call/SMS success summary, zone, location.
+    try {
+      const deliverySummary = fanoutResults.reduce(
+        (acc, r) => {
+          if (r.callSid) acc.callsFired++;
+          if (r.smsSid) acc.smsFired++;
+          if ((r as any).error === "invalid_number") acc.invalidNumbers++;
+          return acc;
+        },
+        { callsFired: 0, smsFired: 0, invalidNumbers: 0 },
+      );
+      await supabase.rpc("log_sos_audit", {
+        p_action: "sos_triggered",
+        p_actor: authUserId,
+        p_actor_level: "worker",
+        p_operation: "sos_trigger",
+        p_target: emergencyId,
+        p_target_name: userName,
+        p_metadata: {
+          tier,
+          contactCount: contacts.length,
+          silent: !!silent,
+          zone: zone ?? null,
+          location: {
+            lat: location.lat,
+            lng: location.lng,
+            accuracy: location.accuracy ?? null,
+          },
+          delivery: deliverySummary,
+          // FIX 2026-04-24 (Point 5): pin the packet privacy state into
+          // the audit trail. This is what the PDF (Section 4 + 7) and
+          // the company dashboard read to render "what was shared with
+          // contacts" — proving to a legal investigator that we didn't
+          // ship data the user had turned off.
+          packetModules: packet,
+          source: "sos-alert/trigger",
+        },
+      });
+    } catch (e) {
+      console.warn("[sos-alert] audit log (trigger) failed:", e);
+    }
 
     // ── Broadcast SOS to dashboard via Realtime ──
     try {
