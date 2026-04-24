@@ -11,3 +11,7 @@ supabase/.temp/
 # Local debug output (not for repo)
 .sosphere-debug/
 
+# Temp files used by automation / subagents (never tracked)
+.tmp_*
+*.tmp.cjs
+
