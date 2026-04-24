@@ -279,7 +279,9 @@ export async function fetchAuditLog(limit = 50): Promise<AuditLogEntry[]> {
         actor: row.actor_name || row.actor_id || "System",
         target: row.target_name,
         timestamp: new Date(row.created_at),
-        details: row.details,
+        // FIX 2026-04-24: column is `detail` (singular), not `details`.
+        // The reader was silently returning undefined for every audit row.
+        details: row.detail,
       }));
     } catch (e) {
       console.warn("[data-layer] fetchAuditLog fallback:", e);
@@ -380,8 +382,3 @@ export class DataLayerError extends Error {
     super(`[DataLayer] ${entity}.${operation} failed: ${detail}`);
   }
 }
-
-
-
-
-

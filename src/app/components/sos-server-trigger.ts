@@ -307,6 +307,29 @@ export async function triggerServerSOS(opts: {
   // a 9-cell radius is dangerous. Also honored by the neighbor-alert
   // service-level opt-out in settings.
   allowNeighborBroadcast?: boolean;
+  // FIX 2026-04-24 (Point 5): user-controlled packet privacy toggles.
+  // The Emergency Packet screen lets the user decide what pieces of
+  // their profile go out with the SOS. Before this field was added,
+  // the toggles were UI-only — user could switch OFF "Medical ID"
+  // and the server still shipped blood type to every contact.
+  // Now the toggles gate what the sos-alert edge function includes
+  // in SMS/call content + stores on sos_queue.metadata. Honors
+  // civilian + employee identically — privacy applies to both.
+  //
+  //   location  — always on (GPS is the whole point of SOS)
+  //   medical   — include blood type / conditions / allergies
+  //   contacts  — list of emergency contacts (for responder briefing)
+  //   device    — battery / device model
+  //   recording — announce that ambient audio is being recorded
+  //   incident  — echo the incident ID in the SMS body
+  packetModules?: {
+    location: true;     // invariant: location is always included
+    medical: boolean;
+    contacts: boolean;
+    device: boolean;
+    recording: boolean;
+    incident: boolean;
+  };
 }): Promise<ServerTriggerResult> {
   const tier = getTierString();
   const now = Date.now();
@@ -473,9 +496,15 @@ export async function triggerServerSOS(opts: {
             location_stale: isPositionStale(),
           }
         : { lat: 0, lng: 0, accuracy: 9999, location_available: false, location_stale: true },
-      bloodType: opts.bloodType,
+      // FIX 2026-04-24 (Point 5): honor the user's Emergency Packet
+      // privacy toggles. If medical is off, don't even send bloodType
+      // to the server — defense in depth beyond sos-alert's own honor
+      // check. If modules is absent (older clients), default to the
+      // fully-open packet for backward compatibility.
+      bloodType: (opts.packetModules?.medical ?? true) ? opts.bloodType : undefined,
       zone: opts.zone,
       silent: opts.silent,
+      packetModules: opts.packetModules,
       ...(aiScript ? { aiScript } : {}),
     }, {
       timeoutMs: 20000,

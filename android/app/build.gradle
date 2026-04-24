@@ -1,5 +1,74 @@
 apply plugin: 'com.android.application'
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FIX 2026-04-24 (Point 7): release signing so Realme/Xiaomi/Huawei devices
+// unlock biometric fingerprint.
+// ─────────────────────────────────────────────────────────────────────────
+// Debug-keystore builds are treated as "untrusted" by ColorOS (Realme/OPPO),
+// MIUI (Xiaomi), and HarmonyOS (Huawei) — their biometric subsystems refuse
+// to bind fingerprint to an unsigned-with-release-key app, falling back to
+// device-credential only (the "PIN twice" UX we saw in the logs). A proper
+// release signing keystore fixes this on every affected OEM in one shot.
+//
+// Keystore loading strategy (defence in depth, prioritise env for CI):
+//   1. Environment vars SOSPHERE_KEYSTORE_PATH / _PASSWORD / _ALIAS /
+//      _KEY_PASSWORD — GitHub Actions / CI path.
+//   2. keystore.properties in android/app/  — local dev (user-managed,
+//      gitignored).
+//   3. Neither present → release build produces an UNSIGNED APK with a
+//      loud warning, debug keys otherwise. Never silently falls back.
+//
+// The helper script `scripts/release-signing.sh` walks the user through
+// generating the keystore on their own machine (private key never leaves
+// the user's computer, never committed to git).
+// ═══════════════════════════════════════════════════════════════════════════
+def loadReleaseSigningConfig() {
+    def props = new Properties()
+
+    // Env vars take priority (CI path)
+    def envPath = System.getenv("SOSPHERE_KEYSTORE_PATH")
+    if (envPath && file(envPath).exists()) {
+        return [
+            source: "env",
+            storeFile: file(envPath),
+            storePassword: System.getenv("SOSPHERE_KEYSTORE_PASSWORD") ?: "",
+            keyAlias: System.getenv("SOSPHERE_KEYSTORE_ALIAS") ?: "sosphere",
+            keyPassword: System.getenv("SOSPHERE_KEYSTORE_KEY_PASSWORD")
+                        ?: System.getenv("SOSPHERE_KEYSTORE_PASSWORD") ?: "",
+        ]
+    }
+
+    // Local keystore.properties
+    def propsFile = rootProject.file("app/keystore.properties")
+    if (propsFile.exists()) {
+        propsFile.withInputStream { props.load(it) }
+        def storeFilePath = props.getProperty("storeFile")
+        if (storeFilePath) {
+            def storeFile = new File(storeFilePath)
+            if (!storeFile.isAbsolute()) storeFile = rootProject.file("app/${storeFilePath}")
+            if (storeFile.exists()) {
+                return [
+                    source: "keystore.properties",
+                    storeFile: storeFile,
+                    storePassword: props.getProperty("storePassword") ?: "",
+                    keyAlias: props.getProperty("keyAlias") ?: "sosphere",
+                    keyPassword: props.getProperty("keyPassword")
+                                ?: props.getProperty("storePassword") ?: "",
+                ]
+            }
+        }
+    }
+
+    return null
+}
+
+def releaseSigning = loadReleaseSigningConfig()
+if (releaseSigning != null) {
+    logger.lifecycle("[SOSphere] Release signing: using ${releaseSigning.source} → ${releaseSigning.storeFile.name}")
+} else {
+    logger.warn("[SOSphere] Release signing NOT configured. Release builds will be unsigned. Run scripts/release-signing.sh to generate a keystore.")
+}
+
 android {
     namespace = "com.sosphere.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +85,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigning != null) {
+            release {
+                storeFile     releaseSigning.storeFile
+                storePassword releaseSigning.storePassword
+                keyAlias      releaseSigning.keyAlias
+                keyPassword   releaseSigning.keyPassword
+                // v2 (APK Signature Scheme) is mandatory on Android 7+
+                // and fixes a wide range of OEM biometric bind failures.
+                // v3 enables key rotation for future certificate rollover.
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (releaseSigning != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

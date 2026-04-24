@@ -67,6 +67,55 @@ export interface IndividualReportData {
   audioUrl?: string | null;  // Supabase Storage URL if uploaded
   photosCaptured?: boolean;  // true only if real photo blobs were uploaded
   gpsTrailIsReal?: boolean;  // true only if trail came from offline-gps-tracker (not synthesized)
+
+  /**
+   * FIX 2026-04-24 (Point 3): server-verified audit chain for this incident.
+   * Each entry is an audit_log row keyed by `target = incidentId` plus the
+   * emergency_id variant. Source columns: `created_at` (authoritative
+   * server time), `actor` / `actor_name`, `actor_role`, `action`,
+   * `operation`, `detail`, `metadata`.
+   *
+   * This section is what makes the PDF legally defensible — it proves
+   * what the SERVER recorded, independent of anything the client claimed.
+   * If a client-side timeline entry has no matching audit row, it's
+   * visible as a gap. If an audit entry has no client-side timeline
+   * counterpart, it's visible as an unacknowledged server event.
+   *
+   * Readers MUST NOT fabricate this list — if the fetch fails (no
+   * network, RLS block, etc.) the PDF prints "Server audit chain
+   * unavailable at report time" rather than inventing entries.
+   */
+  serverAudit?: {
+    serverTime: Date;     // audit_log.created_at — authoritative
+    actor: string;        // audit_log.actor_name || audit_log.actor
+    actorRole: string;    // audit_log.actor_role
+    action: string;       // audit_log.action
+    operation: string;    // audit_log.operation
+    detail?: string;      // audit_log.detail
+    source?: string;      // audit_log.metadata->>'source'
+  }[];
+  serverAuditAvailable?: boolean; // explicit flag — false if fetch failed
+
+  /**
+   * FIX 2026-04-24 (Point 5): the Emergency Packet privacy state at
+   * trigger time. Recovered from the sos_triggered audit row's metadata
+   * (set by the edge function from the client's localStorage snapshot).
+   * Printed in a dedicated line of Section 4 so the legal reader can
+   * see EXACTLY what parts of the user's profile were shared with
+   * contacts — nothing more, nothing less.
+   *
+   * undefined → older incidents from before this field was added;
+   * the PDF prints "packet state not recorded" rather than inventing
+   * a default that might overstate what was shared.
+   */
+  packetModules?: {
+    location: true;
+    medical: boolean;
+    contacts: boolean;
+    device: boolean;
+    recording: boolean;
+    incident: boolean;
+  };
 }
 
 // ── Colors ──────────────────────────────────────────────────────
@@ -252,10 +301,12 @@ export function generateIndividualReport(data: IndividualReportData): void {
     // ── Section 4: Evidence Collected ──
     y += 10;
     doc.setFillColor(10, 18, 32);
-    doc.roundedRect(margin, y, pw - margin * 2, 30, 3, 3, "F");
+    // FIX 2026-04-24 (Point 5): extended from 30 to 38mm to fit the
+    // "Privacy Packet Shared" row added below the existing three.
+    doc.roundedRect(margin, y, pw - margin * 2, 38, 3, 3, "F");
     doc.setDrawColor(255, 45, 85);
     doc.setLineWidth(0.3);
-    doc.roundedRect(margin, y, pw - margin * 2, 30, 3, 3, "S");
+    doc.roundedRect(margin, y, pw - margin * 2, 38, 3, 3, "S");
 
     doc.setFontSize(11);
     doc.setTextColor(255, 45, 85);
@@ -284,6 +335,26 @@ export function generateIndividualReport(data: IndividualReportData): void {
         return `${data.photoCount} photo(s) referenced (images not available in this export)`;
       })()],
       ["GPS Trail Log", `${data.gpsTrail.length} coordinate updates — timestamped`],
+      // FIX 2026-04-24 (Point 5): privacy packet state shared with
+      // contacts. "not recorded" if the audit row didn't capture it
+      // (older incidents) — NEVER a fake default.
+      ["Privacy Packet Shared", (() => {
+        if (!data.packetModules) return "not recorded for this incident";
+        const on: string[] = [];
+        const off: string[] = [];
+        const labels: Array<[keyof NonNullable<typeof data.packetModules>, string]> = [
+          ["location", "location"],
+          ["medical", "medical"],
+          ["contacts", "contacts"],
+          ["device", "device"],
+          ["recording", "recording"],
+          ["incident", "incident-id"],
+        ];
+        for (const [key, label] of labels) {
+          if (data.packetModules[key]) on.push(label); else off.push(label);
+        }
+        return `ON: ${on.join(", ") || "—"}   OFF: ${off.join(", ") || "—"}`;
+      })()],
     ];
     evidenceData.forEach(([label, value]) => {
       doc.setTextColor(107, 112, 128);
@@ -392,6 +463,74 @@ export function generateIndividualReport(data: IndividualReportData): void {
         doc.setFontSize(7);
         doc.setTextColor(107, 112, 128);
         doc.text(`+ ${data.gpsTrail.length - 20} more location updates (available in digital evidence package)`, margin + 5, y);
+        y += 8;
+      }
+    }
+
+    // ── Section 7: Server-Verified Audit Chain ──
+    // FIX 2026-04-24 (Point 3): prints the audit_log rows the server
+    // recorded for this incident. This is the legally-defensible
+    // cross-reference: if the client-side timeline (Section 5) and
+    // the server audit chain agree, the report is tamper-consistent.
+    // Any divergence is visible to an investigator.
+    if (y > ph - 40) { doc.addPage(); y = 25; }
+    doc.setFontSize(11);
+    doc.setTextColor(139, 92, 246);
+    doc.text("7. SERVER-VERIFIED AUDIT CHAIN", margin + 5, y);
+    y += 2;
+    doc.setFontSize(7);
+    doc.setTextColor(107, 114, 128);
+    doc.text(
+      "Cross-reference: these entries come directly from the server's audit_log table.",
+      margin + 5, y + 4,
+    );
+    y += 9;
+
+    if (data.serverAuditAvailable === false) {
+      doc.setFontSize(9);
+      doc.setTextColor(255, 150, 0);
+      doc.text(
+        "Server audit chain unavailable at report time — network or RLS prevented fetch.",
+        margin + 5, y,
+      );
+      y += 10;
+    } else if (!data.serverAudit || data.serverAudit.length === 0) {
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text(
+        "No server-side audit entries recorded for this incident.",
+        margin + 5, y,
+      );
+      y += 10;
+    } else {
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin + 3, right: margin + 3 },
+        head: [["Server Time (UTC)", "Actor · Role", "Action", "Source"]],
+        body: data.serverAudit.slice(0, 40).map((a) => [
+          a.serverTime.toISOString().replace("T", " ").slice(0, 19),
+          `${a.actor} · ${a.actorRole}`,
+          a.action + (a.detail ? ` — ${a.detail.slice(0, 40)}` : ""),
+          a.source || a.operation,
+        ]),
+        theme: "plain",
+        styles: { fontSize: 7, textColor: [200, 200, 200], cellPadding: 2, lineWidth: 0.1, lineColor: [30, 40, 60] },
+        headStyles: { fillColor: [10, 18, 32], textColor: [139, 92, 246], fontSize: 7, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [8, 14, 26] },
+        columnStyles: {
+          0: { cellWidth: 38 },
+          1: { cellWidth: 45 },
+          3: { cellWidth: 30 },
+        },
+      });
+      y = (doc as any).lastAutoTable.finalY + 5;
+      if (data.serverAudit.length > 40) {
+        doc.setFontSize(7);
+        doc.setTextColor(107, 112, 128);
+        doc.text(
+          `+ ${data.serverAudit.length - 40} more server audit entries (full chain in digital evidence package)`,
+          margin + 5, y,
+        );
         y += 8;
       }
     }
