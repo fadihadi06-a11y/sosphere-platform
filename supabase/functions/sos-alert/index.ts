@@ -276,6 +276,12 @@ async function twilioCall(
     record?: boolean;
     machineDetection?: boolean;
     timeout?: number;
+    /** Max duration of the whole call in seconds. Hard cap so a stuck
+     *  conference cannot bleed Twilio billing indefinitely. Twilio
+     *  terminates the call when this elapses. Default 180s = 3min
+     *  (enough for a real emergency handoff, short enough to bound
+     *  cost at $0.045/call worst case). */
+    timeLimitSec?: number;
   } = {}
 ): Promise<{ sid: string; status: string } | null> {
   try {
@@ -286,6 +292,8 @@ async function twilioCall(
       StatusCallbackMethod: "POST",
       StatusCallbackEvent: "initiated ringing answered completed",
       Timeout: String(opts.timeout ?? 30),
+      // FIX 2026-04-24 Fix #6: hard cap on call duration to bound cost.
+      TimeLimit: String(opts.timeLimitSec ?? 180),
     });
     if (opts.statusCallback) params.set("StatusCallback", opts.statusCallback);
     if (opts.record) params.set("Record", "true");
@@ -746,27 +754,77 @@ serve(async (req: Request) => {
     // ── SERVER-SIDE TIER RESOLUTION (ignore client-supplied tier) ──
     const tier = await resolveTier(authUserId, supabase);
 
-    // FIX 2026-04-24 (pre-launch audit #7): clamp contact array length
-    // SERVER-SIDE using the authoritative tier. Client-side already
-    // clamps (sos-server-trigger.ts MAX_CONTACTS_BY_TIER), but a
-    // tampered client could strip that check and send 10,000 contacts,
-    // blowing the 150s edge-function wall and losing the entire SOS
-    // (no audit row written, no cleanup) plus burning Twilio charges
-    // for every attempt. Defence in depth: re-clamp here.
+    // FIX 2026-04-24 (pre-launch audit #6+#7): server-side tier limits.
     //
-    //   Free  → 1 contact
-    //   Basic → 3 contacts
-    //   Elite → 999 contacts (hard cap — at ~30s timeout each that's
-    //            already 8+ hours worst case, but Promise.all means
-    //            practical limit is the fanout completes in parallel
-    //            in ~30s regardless, so 999 is a generous but finite
-    //            cap that bounds memory + Twilio billing).
-    const TIER_CAP: Record<string, number> = { free: 1, basic: 3, elite: 999 };
-    const tierCap = TIER_CAP[tier] ?? TIER_CAP.free;
+    // TIER_CAP mirrors src/app/components/subscription-service.ts TIER_CONFIG
+    // exactly. Keep the two in sync until the post-launch v1.1 refactor
+    // moves tier config to a DB table.
+    //
+    // Numbers are also used for:
+    //   (a) clamping the contact array (defence against tampered client)
+    //   (b) per-tier SOS rate limits (check_sos_rate_limit RPC below)
+    //   (c) Twilio call TimeLimit (cap max conference duration)
+    const TIER_CAP: Record<string, { maxContacts: number; callDurationSec: number }> = {
+      free:  { maxContacts: 1,  callDurationSec: 45  },
+      basic: { maxContacts: 6,  callDurationSec: 60  },
+      elite: { maxContacts: 10, callDurationSec: 120 },
+    };
+    const tierLimits  = TIER_CAP[tier] ?? TIER_CAP.free;
+    const tierCap     = tierLimits.maxContacts;
     const originalCount = Array.isArray(contacts) ? contacts.length : 0;
     if (originalCount > tierCap) {
       console.warn(`[sos-alert] contacts clamped: tier=${tier} received=${originalCount} capped=${tierCap} user=${authUserId}`);
       contacts = contacts.slice(0, tierCap);
+    }
+
+    // FIX 2026-04-24 (#6): per-tier SOS trigger rate limit.
+    // Guards against a compromised account hammering SOS to burn
+    // Twilio budget. Caps:
+    //   free:  1/hour, 3/day
+    //   basic: 3/hour, 15/day
+    //   elite: 5/hour, 30/day
+    // Real emergencies are rare; anyone hitting these caps is either
+    // an attacker or has a sensor miscalibration — either way, we
+    // stop billing and tell them to contact support.
+    const SOS_RATE_LIMITS: Record<string, { perHour: number; perDay: number }> = {
+      free:  { perHour: 1, perDay: 3  },
+      basic: { perHour: 3, perDay: 15 },
+      elite: { perHour: 5, perDay: 30 },
+    };
+    const userRateLimits = SOS_RATE_LIMITS[tier] ?? SOS_RATE_LIMITS.free;
+    {
+      const { data: usage, error: usageErr } = await supabase.rpc(
+        "check_sos_rate_limit",
+        { p_user_id: authUserId, p_hours: 1, p_days: 1 },
+      );
+      if (!usageErr && usage) {
+        const hourCount = (usage as any).last_hour ?? 0;
+        const dayCount  = (usage as any).last_day  ?? 0;
+        if (hourCount >= userRateLimits.perHour) {
+          console.warn(`[sos-alert] rate limit (hour) tier=${tier} user=${authUserId} count=${hourCount}`);
+          return new Response(JSON.stringify({
+            error: "rate_limit_exceeded",
+            scope: "hour",
+            tier,
+            limit: userRateLimits.perHour,
+            retry_after_sec: 3600,
+            message: "You've hit the hourly SOS limit. If this is a real emergency, call 911/999/112 directly. Contact support if you believe this is an error.",
+          }), { status: 429, headers: cors });
+        }
+        if (dayCount >= userRateLimits.perDay) {
+          console.warn(`[sos-alert] rate limit (day) tier=${tier} user=${authUserId} count=${dayCount}`);
+          return new Response(JSON.stringify({
+            error: "rate_limit_exceeded",
+            scope: "day",
+            tier,
+            limit: userRateLimits.perDay,
+            retry_after_sec: 86400,
+            message: "You've hit the daily SOS limit. If this is a real emergency, call 911/999/112 directly.",
+          }), { status: 429, headers: cors });
+        }
+      }
+      // If the RPC failed, we log and proceed — better to deliver an
+      // SOS on a best-effort basis than to block on a metering miss.
     }
 
     // Apply tier gate: aiScript is Elite-only. For Basic / Free users
@@ -953,6 +1011,7 @@ serve(async (req: Request) => {
           statusCallback: statusCb,
           machineDetection: true,
           timeout: 30,
+          timeLimitSec: tierLimits.callDurationSec, // 60s for basic
         });
       } else if (tier === "elite") {
         // Primary contact (idx=0) gets a grace delay to avoid double-ringing with Path A
@@ -978,6 +1037,7 @@ serve(async (req: Request) => {
               record: false, // Recording happens in TwiML <Conference>
               machineDetection: true,
               timeout: 30,
+              timeLimitSec: tierLimits.callDurationSec, // 120s for elite
             });
           })();
         } else {
@@ -986,6 +1046,7 @@ serve(async (req: Request) => {
             record: false,
             machineDetection: true,
             timeout: 30,
+            timeLimitSec: tierLimits.callDurationSec, // 120s for elite
           });
         }
       }
@@ -1015,6 +1076,57 @@ serve(async (req: Request) => {
     await supabase.from("sos_sessions").update({
       server_results: fanoutResults,
     }).eq("id", emergencyId);
+
+    // FIX 2026-04-24 Fix #6: record Twilio spend to the ledger.
+    // Rough estimates: SMS ≈ $0.0075, call ≈ $0.015/min.
+    // For the call we don't know actual duration at fire-time (call
+    // may still be ringing), so we estimate using the tier's TimeLimit
+    // as the worst case. Twilio status webhooks can refine later.
+    try {
+      // Resolve company_id if the user is an employee (so ledger
+      // aggregates per company for the budget check).
+      let ledgerCompanyId: string | null = null;
+      try {
+        const { data: emp } = await supabase
+          .from("employees")
+          .select("company_id")
+          .eq("user_id", authUserId)
+          .limit(1)
+          .maybeSingle();
+        ledgerCompanyId = (emp?.company_id as string | null) ?? null;
+      } catch { /* civilian — no company row */ }
+
+      const SMS_COST   = 0.0075;
+      const CALL_PER_S = 0.015 / 60; // $0.015/min
+      const callCostEstimate = tierLimits.callDurationSec * CALL_PER_S;
+
+      for (const r of fanoutResults) {
+        if (r.smsSid) {
+          await supabase.rpc("record_twilio_spend", {
+            p_company_id:    ledgerCompanyId,
+            p_user_id:       authUserId,
+            p_emergency_id:  emergencyId,
+            p_channel:       "sms",
+            p_twilio_sid:    r.smsSid,
+            p_cost_estimate: SMS_COST,
+            p_duration_sec:  null,
+          });
+        }
+        if (r.callSid) {
+          await supabase.rpc("record_twilio_spend", {
+            p_company_id:    ledgerCompanyId,
+            p_user_id:       authUserId,
+            p_emergency_id:  emergencyId,
+            p_channel:       "call",
+            p_twilio_sid:    r.callSid,
+            p_cost_estimate: callCostEstimate,
+            p_duration_sec:  tierLimits.callDurationSec,
+          });
+        }
+      }
+    } catch (ledgerErr) {
+      console.warn("[sos-alert] spend ledger write failed (non-fatal):", ledgerErr);
+    }
 
     // FIX 2026-04-24 (#28): server-verified audit trail for the TRIGGER
     // path. Previously no row was ever written to audit_log from here,

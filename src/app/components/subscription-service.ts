@@ -35,13 +35,29 @@ export interface SubscriptionInfo {
   labelAr: string;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// FIX 2026-04-24 (pre-launch audit #6): TIER_CONFIG is now the
+// AUTHORITATIVE SOURCE for all per-tier limits. Previously
+// MAX_CONTACTS_BY_TIER was hardcoded separately in
+// sos-server-trigger.ts (free:1, basic:3, elite:999) and in
+// sos-alert/index.ts TIER_CAP (free:1, basic:3, elite:999) —
+// three different numbers for the same thing.
+//
+// Post-launch v1.1 moves this whole table to a DB table so prices
+// and limits can be changed without a redeploy. Until then,
+// sos-alert keeps its own local copy (Deno can't import src/) —
+// keep both in sync.
+// ═══════════════════════════════════════════════════════════════
 const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
   free: {
     tier: "free",
     maxContacts: 1,
-    callDurationSec: 30,    // 30 seconds per contact
-    recordingMaxSec: 30,    // 30 seconds recording
-    maxPhotos: 1,           // 1 photo
+    // FIX pre-launch: 30s was cutting off before contacts could answer.
+    // Twilio ring + answer detection takes ~10-15s, leaving <15s for
+    // the SOS message. 45s gives a usable window while staying cheap.
+    callDurationSec: 45,
+    recordingMaxSec: 30,
+    maxPhotos: 1,
     features: {
       walkMe: false,
       smsFallback: false,
@@ -59,9 +75,9 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
   basic: {
     tier: "basic",
     maxContacts: 6,
-    callDurationSec: 60,    // 1 minute per contact
-    recordingMaxSec: 60,    // 1 minute recording
-    maxPhotos: 6,           // 6 photos
+    callDurationSec: 60,
+    recordingMaxSec: 60,
+    maxPhotos: 6,
     features: {
       walkMe: true,
       smsFallback: true,
@@ -79,9 +95,13 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
   elite: {
     tier: "elite",
     maxContacts: 10,
-    callDurationSec: 300,   // 5 minutes per contact
-    recordingMaxSec: 90,    // 1.5 minutes recording
-    maxPhotos: 999,         // Unlimited photos
+    // FIX pre-launch: 300s (5 min) was overkill. Real emergency
+    // responders answer + understand in 30-60s; 5-minute calls just
+    // burn ~$0.60 of Twilio billing per contact per SOS with zero
+    // UX benefit. 120s is generous and keeps margins healthy.
+    callDurationSec: 120,
+    recordingMaxSec: 90,
+    maxPhotos: 999,
     features: {
       walkMe: true,
       smsFallback: true,
@@ -96,6 +116,19 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
     label: "Elite Shield — $14/mo",
     labelAr: "الدرع النخبوي — $14/شهر",
   },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Per-tier SOS trigger rate limits — anti-abuse + cost protection.
+// Applied server-side in sos-alert edge function (Fix #6).
+// A real emergency in someone's life is rare (2-3/year typical);
+// these caps allow genuine emergencies even in very bad days while
+// blocking pattern-based abuse (bot hammering the endpoint).
+// ─────────────────────────────────────────────────────────────
+export const TIER_SOS_RATE_LIMITS: Record<SubscriptionTier, { perHour: number; perDay: number }> = {
+  free:  { perHour: 1, perDay: 3  },   // Free also has 3/month via INDIVIDUAL_PLANS
+  basic: { perHour: 3, perDay: 15 },
+  elite: { perHour: 5, perDay: 30 },
 };
 
 const STORAGE_KEY = "sosphere_subscription";
