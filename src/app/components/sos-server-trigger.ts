@@ -71,14 +71,25 @@ function isValidE164Phone(p: string | undefined | null): boolean {
   return /^\+?[1-9]\d{7,14}$/.test(s);
 }
 
-// E-M4: tier-bounded emergency-contact cap. Free = 1, Basic = 3,
-// Elite effectively unbounded (hard 999 cap). Matches subscription
-// UI copy and stops a Free user from accidentally queuing 20
-// contacts offline and having them all dialed once the queue drains.
+// E-M4: tier-bounded emergency-contact cap.
+//
+// FIX 2026-04-24 (pre-launch #6): previously hardcoded here as
+// {free:1, basic:3, elite:999} — DIFFERENT from subscription-service
+// which had {free:1, basic:6, elite:10}. Two sources of truth for
+// one concept was a latent bug: "Basic user saves 6 contacts, only
+// 3 get called". Now ALIGNED with subscription-service.ts TIER_CONFIG.
+//
+// If you change these numbers, update the SAME 3 places together:
+//   1. src/app/components/subscription-service.ts  (TIER_CONFIG)
+//   2. src/app/components/sos-server-trigger.ts    (this block)
+//   3. supabase/functions/sos-alert/index.ts       (TIER_CAP)
+//
+// Post-launch v1.1 moves this to a DB table so these 3 locations
+// collapse into one Supabase row.
 const MAX_CONTACTS_BY_TIER: Record<string, number> = {
-  free: 1,
-  basic: 3,
-  elite: 999,
+  free:  1,
+  basic: 6,
+  elite: 10,
 };
 
 // E-C5: replay queue pacing. Each attempt is a real Twilio dial
