@@ -505,14 +505,46 @@ export function MobileApp() {
         const savedProfile = loadJSONSync<{ name: string; phone: string; registeredAt: number } | null>("sosphere_individual_profile", null);
 
         if (session?.user && consentDone && savedProfile?.registeredAt) {
-          // Fully completed user — go straight to home
+          // FIX 2026-04-25 (#11): age-gate guard for EXISTING users.
+          // The age_verified_at column was added 2026-04-24 — every
+          // pre-existing user has it NULL. Routing them straight home
+          // would let them bypass the COPPA / GDPR Art. 8 check.
+          // Calling the SECURITY-DEFINER RPC `is_age_verified()` is
+          // the single authoritative gate. We DON'T trust localStorage
+          // for this — a tampered client could set a flag locally.
+          //
+          // Outcomes:
+          //   verified  → restore home as before
+          //   not yet   → route to individual-register (its first
+          //               render is the DOB picker; existing profile
+          //               data fills the rest of the form afterward)
+          //   error/offline → fail-OPEN (let them through). The age
+          //               gate at first SOS attempt would still catch
+          //               an unverified user since trigger paths
+          //               could later add a check too. We prefer
+          //               openness here because RPC failure shouldn't
+          //               block a legitimate emergency user.
+          let ageVerified = true;
+          try {
+            const { data, error } = await supabase.rpc("is_age_verified");
+            if (!error && data === false) ageVerified = false;
+          } catch (verifyErr) {
+            console.warn("[Auth] is_age_verified check failed (proceeding):", verifyErr);
+          }
+
           setLoginName(savedProfile.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "");
           setLoginPhone(savedProfile.phone || "");
           setLoginMode("individual");
           screenHistoryRef.current = [];
           setIsRestoring(false);
-          navigate("individual-home");
-          console.log("[Auth] Fully restored user:", savedProfile.name);
+
+          if (!ageVerified) {
+            console.log("[Auth] User exists but age not verified → forcing register flow");
+            navigate("individual-register");
+          } else {
+            navigate("individual-home");
+            console.log("[Auth] Fully restored user:", savedProfile.name);
+          }
           return;
         }
 
