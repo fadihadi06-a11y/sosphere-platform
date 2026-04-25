@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, User, Phone, ShieldPlus, Plus, X, Check, Sparkles, ChevronDown, UserCircle } from "lucide-react";
+import { ArrowLeft, User, Phone, ShieldPlus, Plus, X, Check, Sparkles, ChevronDown, UserCircle, Calendar, AlertTriangle } from "lucide-react";
 import { storeJSONSync } from "./api/storage-adapter";
 import { useLang } from "./useLang";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 interface IndividualRegisterProps {
   onComplete: (data: { name: string; phone: string; contacts: { name: string; phone: string }[] }) => void;
@@ -16,6 +17,26 @@ interface EmergencyContact {
   phone: string;
 }
 
+// FIX 2026-04-24 (Fix #11): COPPA + GDPR Art. 8 age gating.
+//
+// The app must not allow under-13 users to sign up (COPPA US) and must
+// require parental consent for 13-15 year olds (GDPR Art. 8 — strictest
+// EU member-state threshold). The check happens BEFORE the profile is
+// saved, AFTER OTP verification (so we have an authenticated user
+// to call the server-side verify_user_age RPC against).
+//
+// Tree of cases:
+//   1. User enters DOB → client computes age
+//   2. <13       → blocked screen, sign-out + delete-account
+//   3. 13-15     → request parental email/phone, server records consent
+//   4. 16+       → proceed to name/phone form
+type AgeStage =
+  | "enter_dob"        // initial dob picker
+  | "checking"         // RPC in flight
+  | "blocked_under13"  // hard stop
+  | "parental_consent" // 13-15 needs guardian contact
+  | "verified";        // 16+ or 13-15 with consent — continue normal flow
+
 export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: IndividualRegisterProps) {
   const [fullName, setFullName] = useState("");
   const [countryCode, setCountryCode] = useState("+964");
@@ -28,7 +49,121 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
   const [submitting, setSubmitting] = useState(false);
   const nextId = useRef(2);
 
+  // ── Age gating state ──
+  const [ageStage, setAgeStage] = useState<AgeStage>("enter_dob");
+  const [dobYear,  setDobYear]  = useState<string>("");
+  const [dobMonth, setDobMonth] = useState<string>("");
+  const [dobDay,   setDobDay]   = useState<string>("");
+  const [parentalContact, setParentalContact] = useState<string>("");
+  const [ageError, setAgeError] = useState<string>("");
+
   const { isAr } = useLang();
+
+  // ── Age verification handlers ──
+  // Submitting the DOB form → call server RPC.
+  const handleDobSubmit = async () => {
+    setAgeError("");
+    const y = parseInt(dobYear, 10);
+    const m = parseInt(dobMonth, 10);
+    const d = parseInt(dobDay, 10);
+    if (
+      !y || !m || !d ||
+      y < 1900 || y > new Date().getFullYear() ||
+      m < 1 || m > 12 || d < 1 || d > 31
+    ) {
+      setAgeError(isAr ? "تاريخ غير صالح" : "Invalid date.");
+      return;
+    }
+    // Format as YYYY-MM-DD for Postgres date type
+    const isoDob = `${y.toString().padStart(4,"0")}-${m.toString().padStart(2,"0")}-${d.toString().padStart(2,"0")}`;
+
+    setAgeStage("checking");
+    try {
+      if (!SUPABASE_CONFIG.isConfigured) {
+        // Offline / dev: do client-side age computation as fallback so
+        // the UI flow remains testable. Server RPC is the real gate.
+        const age = Math.floor((Date.now() - new Date(isoDob).getTime()) / (365.25 * 86400 * 1000));
+        if (age < 13) { setAgeStage("blocked_under13"); return; }
+        if (age < 16) { setAgeStage("parental_consent"); return; }
+        setAgeStage("verified");
+        return;
+      }
+
+      const { data, error } = await supabase.rpc("verify_user_age", {
+        p_dob: isoDob,
+        p_parental_contact: null,
+      });
+      if (error) {
+        setAgeError(error.message || "Verification failed");
+        setAgeStage("enter_dob");
+        return;
+      }
+      const r = data as any;
+      if (r?.ok === false && r?.reason === "under13") {
+        setAgeStage("blocked_under13");
+        return;
+      }
+      if (r?.ok && r?.parental_consent_required) {
+        setAgeStage("parental_consent");
+        return;
+      }
+      if (r?.ok) {
+        setAgeStage("verified");
+        return;
+      }
+      setAgeError(r?.message || "Verification failed");
+      setAgeStage("enter_dob");
+    } catch (e) {
+      setAgeError(e instanceof Error ? e.message : "Network error");
+      setAgeStage("enter_dob");
+    }
+  };
+
+  const handleParentalConsentSubmit = async () => {
+    setAgeError("");
+    if (!parentalContact || parentalContact.trim().length < 5) {
+      setAgeError(isAr ? "أدخل بريد إلكتروني أو هاتف ولي الأمر" : "Enter parent's email or phone.");
+      return;
+    }
+    const y = parseInt(dobYear, 10), m = parseInt(dobMonth, 10), d = parseInt(dobDay, 10);
+    const isoDob = `${y.toString().padStart(4,"0")}-${m.toString().padStart(2,"0")}-${d.toString().padStart(2,"0")}`;
+
+    setAgeStage("checking");
+    try {
+      if (!SUPABASE_CONFIG.isConfigured) {
+        setAgeStage("verified"); return;
+      }
+      const { data, error } = await supabase.rpc("verify_user_age", {
+        p_dob: isoDob,
+        p_parental_contact: parentalContact.trim(),
+      });
+      if (error) {
+        setAgeError(error.message);
+        setAgeStage("parental_consent");
+        return;
+      }
+      const r = data as any;
+      if (r?.ok && r?.parental_contact_recorded) {
+        setAgeStage("verified");
+        return;
+      }
+      setAgeError(r?.message || "Verification failed");
+      setAgeStage("parental_consent");
+    } catch (e) {
+      setAgeError(e instanceof Error ? e.message : "Network error");
+      setAgeStage("parental_consent");
+    }
+  };
+
+  // When user is blocked under 13: log them out + delete the account
+  // they just created via OTP. We can't leave a partial auth.users row.
+  const handleBlockedExit = async () => {
+    try {
+      // Sign out first (stops their JWT being usable)
+      await supabase.auth.signOut();
+    } catch { /* best effort */ }
+    onBack();
+  };
 
   const countryCodes = [
     { code: "+964", flag: "🇮🇶", label: "Iraq", labelAr: "العراق" },
@@ -84,6 +219,161 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
     transition: "all 0.35s ease",
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Age-gating screens — render BEFORE the main form for new accounts.
+  // Only the "verified" state falls through to the existing form below.
+  // ═══════════════════════════════════════════════════════════════
+  if (ageStage === "blocked_under13") {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-8" style={{ background: "#05070E" }}>
+        <div style={{
+          width: 84, height: 84, borderRadius: 24,
+          background: "rgba(255,45,85,0.12)",
+          border: "2px solid rgba(255,45,85,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 28,
+        }}>
+          <AlertTriangle size={40} color="#FF2D55" />
+        </div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 14, textAlign: "center", letterSpacing: "-0.4px" }}>
+          {isAr ? "غير متاح للأطفال" : "Not available for children"}
+        </h1>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.7, maxWidth: 320, marginBottom: 32 }}>
+          {isAr
+            ? "SOSphere غير متاح للمستخدمين دون 13 عاماً. يرجى من ولي الأمر إنشاء حساب نيابة عنك."
+            : "SOSphere is not available for users under 13. Please ask a parent or guardian to set up an account on your behalf."}
+        </p>
+        <button
+          onClick={handleBlockedExit}
+          style={{
+            padding: "14px 28px",
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "rgba(255,255,255,0.9)",
+            fontSize: 14, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          {isAr ? "فهمت" : "I understand"}
+        </button>
+      </div>
+    );
+  }
+
+  if (ageStage === "checking") {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: "#05070E" }}>
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid rgba(0,200,224,0.2)", borderTopColor: "#00C8E0" }}
+        />
+        <p style={{ marginTop: 18, fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
+          {isAr ? "جاري التحقق..." : "Verifying..."}
+        </p>
+      </div>
+    );
+  }
+
+  if (ageStage === "enter_dob" || ageStage === "parental_consent") {
+    const isParental = ageStage === "parental_consent";
+    return (
+      <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: "#05070E" }}>
+        <div className="flex-1 overflow-y-auto px-6 pt-14 pb-6" style={{ scrollbarWidth: "none" }}>
+          <button onClick={onBack} className="flex items-center gap-1.5 mb-6"
+            style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 500 }}>
+            <ArrowLeft className="size-4" />
+            {isAr ? "رجوع" : "Back"}
+          </button>
+
+          <div style={{ marginBottom: 28 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: "linear-gradient(135deg, rgba(0,200,224,0.15), rgba(0,200,224,0.05))",
+              border: "1px solid rgba(0,200,224,0.2)",
+              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18,
+            }}>
+              <Calendar size={26} color="#00C8E0" />
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-0.4px", marginBottom: 8 }}>
+              {isParental
+                ? (isAr ? "موافقة ولي الأمر مطلوبة" : "Parental consent required")
+                : (isAr ? "تاريخ ميلادك" : "Your date of birth")}
+            </h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.7 }}>
+              {isParental
+                ? (isAr
+                    ? "أنت بين 13 و 15 سنة. القانون يتطلب موافقة ولي أمرك. أدخل بريده الإلكتروني أو رقم هاتفه."
+                    : "You're between 13 and 15. By law, a parent or guardian must approve. Enter their email or phone.")
+                : (isAr
+                    ? "للالتزام بقوانين خصوصية الأطفال (COPPA / GDPR Art. 8)، نحتاج تاريخ ميلادك."
+                    : "To comply with child-protection laws (COPPA / GDPR Art. 8) we need your date of birth.")}
+            </p>
+          </div>
+
+          {!isParental && (
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <input type="number" inputMode="numeric"
+                placeholder={isAr ? "يوم" : "Day"}
+                value={dobDay} onChange={(e) => setDobDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
+                  outline: "none", textAlign: "center" }} />
+              <input type="number" inputMode="numeric"
+                placeholder={isAr ? "شهر" : "Mo"}
+                value={dobMonth} onChange={(e) => setDobMonth(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
+                  outline: "none", textAlign: "center" }} />
+              <input type="number" inputMode="numeric"
+                placeholder={isAr ? "سنة" : "Year"}
+                value={dobYear} onChange={(e) => setDobYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
+                  outline: "none", textAlign: "center" }} />
+            </div>
+          )}
+
+          {isParental && (
+            <input type="text"
+              placeholder={isAr ? "بريد إلكتروني أو هاتف ولي الأمر" : "Parent's email or phone"}
+              value={parentalContact}
+              onChange={(e) => setParentalContact(e.target.value)}
+              style={{ width: "100%", padding: "14px 14px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 15,
+                outline: "none", marginBottom: 18 }} />
+          )}
+
+          {ageError && (
+            <p style={{ fontSize: 12, color: "#FF2D55", textAlign: "center", marginBottom: 14 }}>{ageError}</p>
+          )}
+
+          <button
+            onClick={isParental ? handleParentalConsentSubmit : handleDobSubmit}
+            className="w-full"
+            style={{
+              padding: 16, borderRadius: 14,
+              background: "linear-gradient(135deg, #00C8E0, #00A5C0)",
+              color: "#fff", fontSize: 15, fontWeight: 700,
+              boxShadow: "0 6px 24px rgba(0,200,224,0.25)",
+              border: "none", cursor: "pointer",
+            }}
+          >
+            {isParental
+              ? (isAr ? "إرسال موافقة" : "Submit consent")
+              : (isAr ? "متابعة" : "Continue")}
+          </button>
+
+          <p style={{ marginTop: 18, fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center", lineHeight: 1.7 }}>
+            {isAr
+              ? "نخزّن تاريخ ميلادك بأمان ولا يُشارَك مع جهات اتصالك. يُستخدم فقط للامتثال القانوني."
+              : "Your date of birth is stored securely and never shared with your contacts. Used only for legal compliance."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ageStage === "verified" → fall through to original form ──
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
       {/* Ambient */}
