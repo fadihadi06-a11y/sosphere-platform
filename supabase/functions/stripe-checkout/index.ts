@@ -139,6 +139,31 @@ serve(async (req: Request) => {
     });
   }
 
+  // E-16 / W3 TIER 2 (B-20, 2026-04-26): allowlist successUrl + cancelUrl
+  // origins so Stripe can't be coerced into redirecting to attacker-controlled
+  // domains. Pre-fix: client could send `successUrl: "https://evil.com"` →
+  // Stripe redirects user post-payment with session_id leaking to attacker.
+  // Post-fix: any custom URL must share origin with ALLOWED_ORIGINS;
+  // mismatched origins fall back silently to the default success/cancel URL.
+  function isAllowedRedirect(url: string | undefined | null): boolean {
+    if (!url || typeof url !== "string") return false;
+    try {
+      const u = new URL(url);
+      const allowedOrigins = ALLOWED_ORIGINS.map((o) => {
+        try { return new URL(o).origin; } catch { return null; }
+      }).filter(Boolean);
+      return allowedOrigins.includes(u.origin);
+    } catch { return false; }
+  }
+  const safeSuccess = isAllowedRedirect(successUrl) ? successUrl : `${BASE_URL}/billing?ok=1`;
+  const safeCancel  = isAllowedRedirect(cancelUrl)  ? cancelUrl  : `${BASE_URL}/billing?cancelled=1`;
+  if (successUrl && safeSuccess !== successUrl) {
+    console.warn(`[stripe-checkout] successUrl rejected (off-allowlist): ${successUrl}`);
+  }
+  if (cancelUrl && safeCancel !== cancelUrl) {
+    console.warn(`[stripe-checkout] cancelUrl rejected (off-allowlist): ${cancelUrl}`);
+  }
+
   // ── Resolve the Stripe price id for this plan+cycle ──
   const priceId = Deno.env.get(priceEnvKey(planId, cycle));
   if (!priceId) {
@@ -167,8 +192,8 @@ serve(async (req: Request) => {
     "metadata[userId]": userId,
     "metadata[planId]": planId,
     "metadata[cycle]": cycle,
-    success_url: (successUrl || `${BASE_URL}/billing?ok=1`) + "&session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: cancelUrl || `${BASE_URL}/billing?cancelled=1`,
+    success_url: safeSuccess + (safeSuccess.includes("?") ? "&" : "?") + "session_id={CHECKOUT_SESSION_ID}",
+    cancel_url: safeCancel,
     allow_promotion_codes: "true",
   };
 
