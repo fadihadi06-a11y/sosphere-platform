@@ -1318,12 +1318,38 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     })();
                     const planId = selectedPlan ?? recommendedPlan.id;
 
-                    // 1. Save company
-                    const { data: company, error: companyError } = await supabase
+                    // 1. Save company via canonical SECDEF RPC.
+                    //
+                    // W3-16 (B-20, 2026-04-26): pre-fix the client did a direct
+                    // `upsert` with only `owner_id` (the LEGACY column). After
+                    // W3-38 consolidated the companies RLS policies to require
+                    // `owner_user_id = auth.uid()`, the upsert started failing
+                    // RLS — and even before that, the legacy ownership model
+                    // didn't add a company_memberships row, so the new owner
+                    // wasn't actually a "member" of their own company by
+                    // is_company_member() checks.
+                    //
+                    // Now: call create_company_v2(p_name) — SECDEF RPC that:
+                    //   • inserts companies row (owner_user_id = auth.uid())
+                    //   • deactivates any prior active membership for this user
+                    //   • inserts company_memberships row (role='owner')
+                    // Then UPDATE the row with the extra registration fields,
+                    // which goes through the new W3-38 admin/owner UPDATE
+                    // policy (the just-created owner is allowed).
+                    const { data: newCompanyId, error: rpcErr } = await supabase
+                      .rpc("create_company_v2", { p_name: companyName });
+                    if (rpcErr || !newCompanyId) {
+                      console.error("[Register] create_company_v2 RPC failed:", rpcErr);
+                      toast.error("Failed to register company. Please try again.");
+                      return;
+                    }
+                    const companyId = newCompanyId as string;
+
+                    // 1b. Populate the rest of the registration fields.
+                    // RLS allows this UPDATE because the caller is now owner.
+                    const { error: updErr } = await supabase
                       .from("companies")
-                      .upsert({
-                        owner_id: userId,
-                        name: companyName,
+                      .update({
                         plan: planId,
                         billing_cycle: billing,
                         invite_code: inviteCode,
@@ -1333,16 +1359,12 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                         has_zones: hasZones ?? false,
                         is_active: true,
                         trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                      }, { onConflict: "owner_id" })
-                      .select("id").single();
-
-                    if (companyError || !company) {
-                      console.error("[Register] Company save failed:", companyError);
-                      toast.error("Failed to save company. Please try again.");
-                      return;
+                      })
+                      .eq("id", companyId);
+                    if (updErr) {
+                      console.error("[Register] Company metadata update failed (non-fatal):", updErr);
+                      // Continue — the company exists, just with default metadata.
                     }
-
-                    const companyId = company.id;
 
                     // 2. Save zones
                     if (zones.length > 0) {
