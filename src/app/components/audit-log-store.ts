@@ -287,47 +287,71 @@ function applyServerActor(row: Record<string, any>, serverActorId: string | null
  * never await or throw from this function — compliance should be durable
  * but must not block the UI.
  */
+// ──────────────────────────────────────────────────────────────────
+// G-35 (B-20, 2026-04-26): persistToSupabase write-lock + diff-clear.
+//
+// Pre-fix: two concurrent calls (two tabs, or replay-watcher + UI) could
+// race the read-then-clear pattern. Tab A reads queue=[old1], builds
+// batch=[old1, entry1], upserts. Tab B between Tab A's upsert success
+// and Tab A's saveRetryQueue([]) enqueues entry2 → queue=[old1, entry2].
+// Tab A then clears the queue, deleting entry2 forever.
+//
+// Now: serialised through `auditWriteLock` (same pattern as B-04 evidence-
+// vault G-26). Inside the lock we use DIFF-CLEAR — we remove ONLY the ids
+// we actually upserted, not the entire queue. A new entry that arrived
+// between read and clear stays in the queue.
+// ──────────────────────────────────────────────────────────────────
+let auditWriteLock: Promise<void> = Promise.resolve();
+
 async function persistToSupabase(entry: AuditEntry): Promise<void> {
   const companyId = getCompanyId();
   if (!companyId) {
-    // No company context yet (e.g. pre-login events). Park in retry queue
-    // so we can flush once a company is bound.
     enqueueForRetry(entry);
     return;
   }
 
-  try {
-    // D-H6: resolve the authoritative actor id once per batch. A single
-    // auth.getUser() per upsert keeps the overhead negligible; the
-    // Supabase client caches the response aggressively.
-    const serverActorId = await verifiedServerActorId();
+  // Serialise through the lock — concurrent persistToSupabase / flush
+  // calls run one at a time so the read-then-clear pair is atomic.
+  auditWriteLock = auditWriteLock.then(async () => {
+    try {
+      const serverActorId = await verifiedServerActorId();
+      const queue = loadRetryQueue();
+      // Capture the exact ids we are about to upsert. After success we
+      // remove ONLY these from the queue; anything enqueued during the
+      // upsert by another path is preserved for the next flush.
+      const upsertedIds = new Set<string>([...queue.map((e) => e.id), entry.id]);
+      const batch = queue.length > 0
+        ? [
+            ...queue.map((e) => applyServerActor(toDbRow(e, companyId), serverActorId)),
+            applyServerActor(toDbRow(entry, companyId), serverActorId),
+          ]
+        : [applyServerActor(toDbRow(entry, companyId), serverActorId)];
 
-    // Drain retry queue first — if it fails we'll re-enqueue below.
-    const queue = loadRetryQueue();
-    const batch = queue.length > 0
-      ? [
-          ...queue.map((e) => applyServerActor(toDbRow(e, companyId), serverActorId)),
-          applyServerActor(toDbRow(entry, companyId), serverActorId),
-        ]
-      : [applyServerActor(toDbRow(entry, companyId), serverActorId)];
+      const { error } = await supabase
+        .from("audit_log")
+        .upsert(batch, { onConflict: "id" });
 
-    const { error } = await supabase
-      .from("audit_log")
-      .upsert(batch, { onConflict: "id" });
+      if (error) {
+        console.warn("[audit] Supabase insert failed, queued for retry:", error.message);
+        enqueueForRetry(entry);
+        return;
+      }
 
-    if (error) {
-      // Supabase rejected the write — keep it local and retry next time.
-      console.warn("[audit] Supabase insert failed, queued for retry:", error.message);
+      // G-35 diff-clear: re-read the queue (it may have grown during the
+      // upsert) and keep only ids we did NOT just persist.
+      const queueAfter = loadRetryQueue();
+      const remaining = queueAfter.filter((e) => !upsertedIds.has(e.id));
+      saveRetryQueue(remaining);
+    } catch (err) {
+      console.warn("[audit] Supabase insert exception, queued for retry:", err);
       enqueueForRetry(entry);
-      return;
     }
+  }).catch((chainErr) => {
+    // Chain must continue even if a prior link rejected.
+    console.error("[audit] persistToSupabase chain error:", chainErr);
+  });
 
-    // Success — clear the retry queue.
-    if (queue.length > 0) saveRetryQueue([]);
-  } catch (err) {
-    console.warn("[audit] Supabase insert exception, queued for retry:", err);
-    enqueueForRetry(entry);
-  }
+  return auditWriteLock;
 }
 
 function enqueueForRetry(entry: AuditEntry): void {

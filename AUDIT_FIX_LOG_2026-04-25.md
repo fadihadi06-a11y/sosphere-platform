@@ -84,11 +84,29 @@
 
 ## RUNNING TEST INVENTORY
 
-11 test suites green (192 scenarios total):
+18 test suites green (≈340 scenarios total):
 - B-03/04, B-06, B-08, B-14, B-17 (×2), B-18, F-B, F-C, F-E
-- G-3/G-4 (NEW, 18 scenarios)
+- G-3/G-4, G-5, G-12, G-17, G-26/27, G-29, G-35/36/40/41, G-37 (NEW)
 
 `tsc --noEmit` zero code errors.
+
+---
+
+## ✅ PHASE 4..9 — full closure of the 44-finding deep audit (DONE 2026-04-26)
+
+| Phase | Findings | Disposition |
+|---|---|---|
+| 4 | G-13, G-14, G-18, G-20, G-22, G-23, G-24, G-25, G-28 | source + deploy |
+| 5 | G-5 admin-incoming-call real Twilio | tested, deployed |
+| 6 | G-12, G-17, G-26, G-27 | tested, deployed |
+| 7 | G-29 stripe dedup, G-31 RLS, G-32 search_path, G-33 SECDEF view, G-34 (owner action) | migrations applied |
+| 8 | G-35 audit-log lock, G-36 replay watcher, G-40 checkin retry, G-41 AbortSignal | tested, deployed |
+| 9 | G-37 useEffect cleanup, G-38/G-39 copy precision, G-42 typing, G-43 catalog, G-44 storage bucket (owner action) | tested, documented |
+
+**Owner-side actions remaining (cannot be done from sandbox):**
+- G-34 — enable HaveIBeenPwned in Supabase Auth dashboard
+- G-44 — delete legacy `super_admin_dashboard.html` bucket via Supabase Storage UI
+- Run `npm run build` locally to verify Vite production bundle (sandbox uses Linux, your node_modules are Windows)
 
 ---
 
