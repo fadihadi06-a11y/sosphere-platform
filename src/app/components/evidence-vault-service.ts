@@ -220,10 +220,14 @@ export async function createVault(params: {
     createdAt: now,
   };
 
-  // Compute integrity hash over the entire package (excluding the hash itself)
+  // W3-12 Phase C (B-20, 2026-04-26): hash MUST exclude the SAME fields
+  // that verify() excludes — otherwise every freshly-created vault fails
+  // verify before it has ever been locked. lockedAt is set asynchronously
+  // and must not be part of the immutable integrity hash.
   const hashInput = JSON.stringify({
     ...vault,
     integrityHash: undefined,
+    lockedAt: undefined,
     synced: undefined,
     shareUrl: undefined,
   });

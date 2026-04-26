@@ -863,6 +863,73 @@ export function MobileApp() {
     };
   }, [userPlan]);
 
+  // ─────────────────────────────────────────────────────────────
+  // Phase C P4 (W3-12, B-20, 2026-04-26): evidence vault sync + auto-lock.
+  //
+  // Vaults are created locally on every SOS end (Phase C P1). To make them
+  // legal-grade we need:
+  //   (1) Upload to Supabase Storage when network is available — police can
+  //       still access via the share URL even if the user's phone is dead.
+  //   (2) Auto-lock at 24h — finalises the SHA-256 hash so any future edit
+  //       is provably tampered.
+  //
+  // Triggers:
+  //   • on app mount: sync any pending uploads + lock anything past 24h
+  //   • on `online` event: retry uploads
+  //   • Capacitor `resume`: sync + lock
+  //   • every 30 min while app is foreground: sync + lock
+  //
+  // Throttled to once per 60s. All errors are non-fatal (vault stays local).
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let lastVaultSyncAt = 0;
+    const VAULT_SYNC_THROTTLE_MS = 60 * 1000;
+    const VAULT_PERIODIC_MS = 30 * 60 * 1000;
+    const runVaultMaintenance = async (reason: string) => {
+      const now = Date.now();
+      if (now - lastVaultSyncAt < VAULT_SYNC_THROTTLE_MS) return;
+      lastVaultSyncAt = now;
+      try {
+        const { syncPendingVaults, autoLockExpiredVaults } = await import("./evidence-vault-service");
+        const synced = await syncPendingVaults();
+        const locked = await autoLockExpiredVaults();
+        if (synced > 0 || locked > 0) {
+          console.log(`[vault] maintenance (${reason}) synced=${synced} locked=${locked}`);
+        }
+      } catch (e) {
+        console.warn(`[vault] maintenance (${reason}) failed:`, e);
+      }
+    };
+
+    // (a) on mount
+    runVaultMaintenance("mount");
+
+    // (b) on online event
+    const onlineHandler = () => runVaultMaintenance("network_online");
+    if (typeof window !== "undefined") window.addEventListener("online", onlineHandler);
+
+    // (c) Capacitor resume
+    let removeResumeListener: (() => Promise<void>) | null = null;
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const handle = await App.addListener("appStateChange", (state: { isActive: boolean }) => {
+          if (state.isActive) runVaultMaintenance("capacitor_resume");
+        });
+        removeResumeListener = () => handle.remove();
+      } catch { /* web mode — skip */ }
+    })();
+
+    // (d) Periodic
+    const periodic = setInterval(() => runVaultMaintenance("periodic_30min"), VAULT_PERIODIC_MS);
+
+    return () => {
+      try { (removeResumeListener as any)?.(); } catch {}
+      if (typeof window !== "undefined") window.removeEventListener("online", onlineHandler);
+      clearInterval(periodic);
+    };
+  }, []);
+
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
