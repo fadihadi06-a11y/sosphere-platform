@@ -615,3 +615,423 @@ function evidenceToReport(ev: EvidenceEntry): IncidentPhotoReport {
     reviewedBy: ev.reviewedBy,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// IncidentReportsTab — Main component (restored 2026-04-27 after
+//   security commit e06e970 truncated this function. Re-imported from
+//   initial commit. Build was broken until now; build error: 
+//   "IncidentReportsTab not exported by hub-incident-reports")
+// ═══════════════════════════════════════════════════════════════
+export function IncidentReportsTab({ webMode = false, onEscalateToInvestigation }: { webMode?: boolean; onEscalateToInvestigation?: (inv: any) => void }) {
+  const [reports, setReports] = useState<IncidentPhotoReport[]>(() => {
+    // Start with local evidence-store entries
+    const realEvidence = getAllEvidence();
+    const realReports = realEvidence.map(evidenceToReport);
+    const realIds = new Set(realReports.map(r => r.emergencyId));
+    // Only fill with mock reports that don't overlap with real data
+    const mockFiltered = MOCK_REPORTS.filter(m => !realIds.has(m.emergencyId));
+    return [...realReports, ...mockFiltered];
+  });
+  const [selectedReport, setSelectedReport] = useState<IncidentPhotoReport | null>(null);
+  const [filter, setFilter] = useState<"all" | "new" | "reviewed" | "broadcast">("all");
+  const [evidenceEntries, setEvidenceEntries] = useState<EvidenceEntry[]>([]);
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceEntry | null>(null);
+
+  // Load evidence from vault + sync reports from real evidence
+  const refreshEvidence = useCallback(() => {
+    const allEvidence = getAllEvidence();
+    setEvidenceEntries(allEvidence);
+    setReports(prev => {
+      const existingIds = new Set(prev.map(r => r.id));
+      const newRealReports = allEvidence
+        .filter(ev => !existingIds.has(ev.id))
+        .map(evidenceToReport);
+      if (newRealReports.length === 0) return prev;
+      return [...newRealReports, ...prev];
+    });
+  }, []);
+
+  // Fetch real incident reports from Supabase on mount
+  useEffect(() => {
+    fetchIncidentReports().then((supabaseReports: any[]) => {
+      if (!supabaseReports?.length) return;
+      setReports(prev => {
+        const existingIds = new Set(prev.map(r => r.id));
+        // Remove mock entries that are now covered by real Supabase data
+        const withoutMock = prev.filter(r => !MOCK_REPORTS.find(m => m.id === r.id));
+        const newFromSupabase = supabaseReports
+          .filter((sr: any) => !existingIds.has(sr.id))
+          .map((sr: any): IncidentPhotoReport => ({
+            id: sr.id,
+            emergencyId: sr.id,
+            employeeName: sr.employee_name || sr.employeeName || "Unknown",
+            employeeRole: sr.employee_role || "Field Worker",
+            employeeDept: sr.department || "Operations",
+            employeePhone: sr.phone || "",
+            zone: sr.zone || "Unknown Zone",
+            severity: sr.severity || "medium",
+            incidentType: sr.incident_type || sr.type || "General",
+            comment: sr.comment || sr.description || "",
+            photos: sr.photo_count ?? 0,
+            photoUrls: sr.photo_urls || [],
+            submittedAt: new Date(sr.created_at || sr.submittedAt),
+            status: sr.status === "resolved" ? "reviewed" : sr.status === "active" ? "new" : "new",
+          }));
+        if (newFromSupabase.length === 0) return prev;
+        return [...newFromSupabase, ...withoutMock].sort(
+          (a, b) => b.submittedAt.getTime() - a.submittedAt.getTime()
+        );
+      });
+    }).catch(() => {/* Supabase unavailable — local + mock data shown */});
+  }, []);
+
+  useEffect(() => {
+    refreshEvidence();
+    const handler = (e: StorageEvent) => {
+      if (e.key === "sosphere_evidence_event") refreshEvidence();
+    };
+    window.addEventListener("storage", handler);
+    const timer = setInterval(refreshEvidence, 5000);
+    return () => { clearInterval(timer); window.removeEventListener("storage", handler); };
+  }, [refreshEvidence]);
+
+  const filtered = filter === "all" ? reports : reports.filter(r => r.status === filter);
+  const newCount = reports.filter(r => r.status === "new").length;
+
+  const handleBroadcast = (report: IncidentPhotoReport, scope: string) => {
+    console.log("[SUPABASE_READY] incident_report_update: " + report.id);
+    setReports(prev => prev.map(r =>
+      r.id === report.id ? { ...r, status: "broadcast", broadcastTo: scope, reviewedBy: "Admin" } : r
+    ));
+  };
+
+  const handleForwardToOwner = (report: IncidentPhotoReport) => {
+    console.log("[SUPABASE_READY] incident_report_update: " + report.id);
+    setReports(prev => prev.map(r =>
+      r.id === report.id ? { ...r, status: "forwarded", reviewedBy: "Admin" } : r
+    ));
+  };
+
+  const handleMarkReviewed = (id: string) => {
+    console.log("[SUPABASE_READY] incident_report_update: " + id);
+    setReports(prev => prev.map(r =>
+      r.id === id ? { ...r, status: "reviewed", reviewedBy: "Admin" } : r
+    ));
+  };
+
+  const handleEscalateToInvestigation = (report: IncidentPhotoReport) => {
+    const newInvestigation = {
+      id: "INV-" + Date.now(),
+      incidentId: report.emergencyId,
+      title: `Investigation: ${report.incidentType} — ${report.zone}`,
+      description: report.comment,
+      severity: report.severity === "low" ? "low" : report.severity === "medium" ? "medium" : report.severity === "high" ? "high" : "critical",
+      zone: report.zone,
+      incidentDate: report.submittedAt,
+      reportedBy: report.employeeName,
+      investigator: "Unassigned",
+      status: "investigating" as const,
+      rootCauses: [],
+      actions: [],
+      timeline: [{ date: new Date(), event: `Escalated from report ${report.id}`, by: "Admin" }],
+      affectedWorkers: [report.employeeName],
+      isoReference: "ISO 45001 §10.2",
+      source: report.id,
+    };
+    onEscalateToInvestigation?.(newInvestigation);
+    setReports(prev => prev.map(r =>
+      r.id === report.id ? { ...r, status: "forwarded" as const, reviewedBy: "Admin" } : r
+    ));
+    console.log("[SUPABASE_READY] report_escalated: " + JSON.stringify({ reportId: report.id, investigationId: newInvestigation.id }));
+    toast.success(`Report ${report.id} escalated to investigation ${newInvestigation.id}`);
+  };
+
+  return (
+    <div className="px-4 pt-4 pb-6 space-y-4">
+
+      {/* ── Evidence Vault Banner ── */}
+      {evidenceEntries.length > 0 && (
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: "linear-gradient(135deg, rgba(123,94,255,0.08), rgba(175,82,222,0.04))", border: "1px solid rgba(123,94,255,0.15)" }}>
+          <div className="px-4 py-3 flex items-center justify-between"
+            style={{ borderBottom: "1px solid rgba(123,94,255,0.1)" }}>
+            <div className="flex items-center gap-2">
+              <Layers className="size-4" style={{ color: "#7B5EFF" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF" }}>
+                Evidence Vault
+              </span>
+              <span className="px-1.5 py-0.5 rounded-full"
+                style={{ fontSize: 9, fontWeight: 700, background: "rgba(123,94,255,0.2)", color: "#AF52DE" }}>
+                {evidenceEntries.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {evidenceEntries.filter(e => e.status === "pending").length > 0 && (
+                <motion.span
+                  animate={{ opacity: [1, 0.5, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  className="px-2 py-0.5 rounded-full"
+                  style={{ fontSize: 8, fontWeight: 700, background: "#FF2D55", color: "#fff" }}>
+                  {evidenceEntries.filter(e => e.status === "pending").length} PENDING
+                </motion.span>
+              )}
+            </div>
+          </div>
+          <div className="px-3 py-2.5 flex gap-2 overflow-x-auto">
+            {evidenceEntries.slice(0, 6).map(evd => {
+              const sevC: Record<string, string> = { low: "#00C853", medium: "#FF9500", high: "#FF6B00", critical: "#FF2D55" };
+              const c = sevC[evd.severity] || "#FF9500";
+              return (
+                <motion.button
+                  key={evd.id}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setSelectedEvidence(evd)}
+                  className="flex-shrink-0 p-2.5 rounded-xl text-left"
+                  style={{
+                    width: 140, background: "rgba(255,255,255,0.03)",
+                    border: evd.status === "pending" ? `1px solid ${c}30` : "1px solid rgba(255,255,255,0.06)",
+                  }}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Camera className="size-3" style={{ color: c }} />
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c }}>{evd.photos.length} photos</span>
+                    {evd.audioMemo && <Mic className="size-2.5" style={{ color: "#7B5EFF" }} />}
+                  </div>
+                  <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>
+                    {evd.submittedBy}
+                  </p>
+                  <p style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
+                    {evd.incidentType} · {evd.zone.split(" - ")[0]}
+                  </p>
+                  <div className="mt-2">
+                    <EvidencePipelineVisual entry={evd} compact />
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Stats Strip */}
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: "Total", value: reports.length, color: "#00C8E0" },
+          { label: "New", value: reports.filter(r => r.status === "new").length, color: "#FF2D55" },
+          { label: "Broadcast", value: reports.filter(r => r.status === "broadcast").length, color: "#00C853" },
+          { label: "Forwarded", value: reports.filter(r => r.status === "forwarded").length, color: "#9B59B6" },
+        ].map(s => (
+          <div key={s.label} className="p-3 rounded-2xl text-center"
+            style={{ background: `${s.color}08`, border: `1px solid ${s.color}14` }}>
+            <p style={{ fontSize: 20, fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>{s.value}</p>
+            <p style={{ fontSize: 9, color: `${s.color}90`, marginTop: 2, fontWeight: 600 }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* How Admin Calls — always visible explainer banner */}
+      <div className="p-3.5 rounded-2xl"
+        style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.1)" }}>
+        <div className="flex items-center gap-2.5 mb-2">
+          <PhoneCall className="size-4" style={{ color: "#00C8E0" }} />
+          <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,200,224,0.85)" }}>
+            How Admin Calls an Employee
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-start gap-2 p-2.5 rounded-xl"
+            style={{ background: "rgba(255,255,255,0.03)" }}>
+            <Monitor className="size-3.5 flex-shrink-0 mt-0.5" style={{ color: "#00C8E0" }} />
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>Desktop Browser</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", lineHeight: 1.4, marginTop: 2 }}>
+                "Call" button opens Skype / Teams / FaceTime (whichever is your default). OR use "Copy Number" and dial from your desk phone.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 p-2.5 rounded-xl"
+            style={{ background: "rgba(255,255,255,0.03)" }}>
+            <Smartphone className="size-3.5 flex-shrink-0 mt-0.5" style={{ color: "#00C853" }} />
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>Mobile Browser</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", lineHeight: 1.4, marginTop: 2 }}>
+                "Call" opens your native phone dialer instantly. WhatsApp works via WiFi if employee has no cellular signal.
+              </p>
+            </div>
+          </div>
+        </div>
+        <p className="mt-2 px-1" style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>
+          💡 Tap the phone number on any employee report below to see call options.
+        </p>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-1.5 p-1 rounded-2xl"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        {(["all", "new", "reviewed", "broadcast"] as const).map(f => (
+          <button key={f}
+            onClick={() => setFilter(f)}
+            className="flex-1 py-1.5 rounded-xl capitalize"
+            style={{
+              background: filter === f ? "rgba(0,200,224,0.1)" : "transparent",
+              border: filter === f ? "1px solid rgba(0,200,224,0.2)" : "1px solid transparent",
+              color: filter === f ? "#00C8E0" : "rgba(255,255,255,0.35)",
+              fontSize: 11,
+              fontWeight: filter === f ? 700 : 500,
+            }}>
+            {f === "all" ? `All (${reports.length})` : f === "new" ? `New (${newCount})` : f}
+          </button>
+        ))}
+      </div>
+
+      {/* Reports List */}
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="size-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.1)" }} />
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>No reports yet</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
+              Employee photo reports appear here after an emergency
+            </p>
+          </div>
+        ) : (
+          filtered.map(report => {
+            const sev = SEV[report.severity];
+            const statusCfg = STATUS_CONFIG[report.status];
+            const timeAgo = Math.round((Date.now() - report.submittedAt.getTime()) / 60000);
+
+            return (
+              <motion.button
+                key={report.id}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setSelectedReport(report)}
+                className="w-full text-left rounded-2xl overflow-hidden"
+                style={{
+                  background: report.status === "new"
+                    ? "linear-gradient(135deg, rgba(255,45,85,0.06), rgba(255,45,85,0.02))"
+                    : "rgba(255,255,255,0.02)",
+                  border: report.status === "new"
+                    ? "1px solid rgba(255,45,85,0.15)"
+                    : "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                {/* Top */}
+                <div className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {/* Avatar */}
+                      <div className="size-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: `${sev.color}18`, border: `1px solid ${sev.color}25` }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: sev.color }}>
+                          {report.employeeName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                        </span>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>
+                            {report.employeeName}
+                          </p>
+                          {report.status === "new" && (
+                            <motion.div
+                              animate={{ opacity: [1, 0.4, 1] }}
+                              transition={{ duration: 1.2, repeat: Infinity }}
+                              className="px-1.5 py-0.5 rounded-full"
+                              style={{ background: "#FF2D55", fontSize: 8, fontWeight: 800, color: "#fff" }}>
+                              NEW
+                            </motion.div>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                          {report.employeeRole} · {report.zone.split(" - ")[0]}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="px-2 py-0.5 rounded-full"
+                            style={{ fontSize: 9, fontWeight: 700, background: sev.bg, color: sev.color }}>
+                            {sev.label}
+                          </span>
+                          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{report.incidentType}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span style={{ fontSize: 9, color: statusCfg.color, fontWeight: 700 }}>
+                        {statusCfg.label}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Clock className="size-3" style={{ color: "rgba(255,255,255,0.2)" }} />
+                        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>
+                          {timeAgo < 60 ? `${timeAgo}m ago` : `${Math.round(timeAgo / 60)}h ago`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Comment preview */}
+                  <p style={{
+                    fontSize: 11, color: "rgba(255,255,255,0.45)", marginTop: 10,
+                    lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical" as any, overflow: "hidden",
+                  }}>
+                    "{report.comment}"
+                  </p>
+                </div>
+
+                {/* Bottom strip */}
+                <div className="px-4 py-2 flex items-center gap-3 border-t"
+                  style={{ borderColor: "rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.01)" }}>
+                  {/* Photo count */}
+                  <div className="flex items-center gap-1.5">
+                    <Camera className="size-3" style={{ color: "rgba(255,255,255,0.25)" }} />
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                      {report.photos} photo{report.photos !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="size-3" style={{ color: "rgba(255,255,255,0.2)" }} />
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{report.zone}</span>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1"
+                    style={{ color: "#00C8E0", fontSize: 10, fontWeight: 600 }}>
+                    <span>View</span>
+                    <ChevronRight className="size-3" />
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Report Detail Drawer */}
+      <AnimatePresence>
+        {selectedReport && (
+          <ReportDetailDrawer
+            report={selectedReport}
+            onClose={() => setSelectedReport(null)}
+            onBroadcast={(r, scope) => { handleBroadcast(r, scope); setSelectedReport(null); }}
+            onForwardToOwner={(r) => { handleForwardToOwner(r); setSelectedReport(null); }}
+            onMarkReviewed={handleMarkReviewed}
+            onEscalate={onEscalateToInvestigation}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Evidence Detail Panel */}
+      <AnimatePresence>
+        {selectedEvidence && (
+          <EvidenceDetailPanel
+            entry={selectedEvidence}
+            onClose={() => { setSelectedEvidence(null); refreshEvidence(); }}
+            onRefresh={() => {
+              refreshEvidence();
+              // Re-read the selected evidence
+              const updated = getAllEvidence().find(e => e.id === selectedEvidence.id);
+              if (updated) setSelectedEvidence(updated);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
