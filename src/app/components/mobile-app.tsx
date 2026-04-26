@@ -229,6 +229,37 @@ export function MobileApp() {
   const [recordingEnabled, setRecordingEnabled] = useState(false);
   const [timerActive, setTimerActive] = useState(false);
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "employee">("free");
+  // W3-25 (B-20, 2026-04-26): centralised per-user PII wipe on logout.
+  // Pre-fix: sosphere_gps_trail (and others) lingered across user switches
+  // on shared devices — user B logging in could SEE user A's GPS trail,
+  // medical ID, emergency contacts, incident history, subscription tier,
+  // audit retry queue, etc. Now wiped atomically on logout.
+  function clearUserDataOnLogout(): void {
+    const PII_KEYS = [
+      "sosphere_individual_profile",
+      "sosphere_admin_profile",
+      "sosphere_tos_consent",
+      "sosphere_gps_consent",
+      "sosphere_gps_trail",          // W3-25 main target
+      "sosphere_medical_id",
+      "sosphere_emergency_contacts",
+      "sosphere_packet_modules",
+      "sosphere_active_sos",
+      "sosphere_incident_history",
+      "sosphere_subscription",
+      "sosphere_audit_retry_queue",   // tied to W3-41 / G-35
+      "sosphere_checkin_retry_queue", // tied to G-40
+      "sosphere_evidence_vaults",     // tied to W3-12
+      "sosphere_employee_avatar",
+      "sosphere_employee_sync",
+      "sosphere_neighbor_alert_settings",
+      "sosphere_dashboard_pin",
+      "sosphere_dashboard_pin_salt",  // tied to W3-49
+    ];
+    for (const k of PII_KEYS) {
+      try { localStorage.removeItem(k); } catch {}
+    }
+  }
   const [loginName, setLoginName] = useState("");
   const [loginPhone, setLoginPhone] = useState("");
   const [loginMode, setLoginMode] = useState<"employee" | "individual" | "demo">("individual");
@@ -1733,10 +1764,9 @@ export function MobileApp() {
                   const { signOut, clearDeviceFingerprint } = await import("./api/supabase-client");
                   await signOut();
                   clearDeviceFingerprint();
-                  localStorage.removeItem("sosphere_individual_profile");
-                  localStorage.removeItem("sosphere_tos_consent");
-                  localStorage.removeItem("sosphere_gps_consent");
-                  resetBiometricSession(); // re-arm gate for next user on this device
+                  // W3-25: wipe ALL per-user PII before next user can log in.
+                  clearUserDataOnLogout();
+                  resetBiometricSession();
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
@@ -1777,10 +1807,9 @@ export function MobileApp() {
                 onLogout={async () => {
                   const { signOut } = await import("./api/supabase-client");
                   await signOut();
-                  localStorage.removeItem("sosphere_individual_profile");
-                  localStorage.removeItem("sosphere_tos_consent");
-                  localStorage.removeItem("sosphere_gps_consent");
-                  resetBiometricSession(); // re-arm gate for next user on this device
+                  // W3-25: wipe ALL per-user PII before next user can log in.
+                  clearUserDataOnLogout();
+                  resetBiometricSession();
                   setUserPlan("free");
                   setLoginName("");
                   setLoginPhone("");
