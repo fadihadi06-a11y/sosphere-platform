@@ -37,6 +37,84 @@ type AgeStage =
   | "parental_consent" // 13-15 needs guardian contact
   | "verified";        // 16+ or 13-15 with consent — continue normal flow
 
+// ─────────────────────────────────────────────────────────────────────
+// B-07 (2026-04-25): strict shape for the verify_user_age RPC response.
+// The prior code cast the response with `as any` and trusted the fields
+// blindly — meaning a tampered or MITM'd response could bypass the
+// under-13 path. The migration in supabase/migrations/...age_gating.sql
+// returns one of these discriminated shapes:
+//
+//   { ok: true,  category: "16plus",  verified_at: ... }
+//   { ok: true,  category: "13to15",  parental_consent_required: true, message }
+//   { ok: true,  category: "13to15",  parental_contact_recorded: true, verified_at }
+//   { ok: false, reason: "under13",   message }
+//   { ok: false, reason: "invalid_dob" | "unauthenticated", message? }
+//
+// `parseVerifyAgeResponse` returns one of these typed shapes or `null`
+// when the payload doesn't match the contract — which we treat as a
+// security event (not a usability bug). Falling back to "enter_dob"
+// on parse failure means a malicious response can NEVER move the user
+// into the "verified" state.
+// ─────────────────────────────────────────────────────────────────────
+type VerifyAgeOk16Plus = { ok: true; category: "16plus"; verified_at: string };
+type VerifyAgeNeedsParent = { ok: true; category: "13to15"; parental_consent_required: true; message?: string };
+type VerifyAgeRecorded = { ok: true; category: "13to15"; parental_contact_recorded: true; verified_at: string };
+type VerifyAgeUnder13 = { ok: false; reason: "under13"; message?: string };
+type VerifyAgeInvalid = { ok: false; reason: "invalid_dob" | "unauthenticated"; message?: string };
+type VerifyAgeResponse =
+  | VerifyAgeOk16Plus
+  | VerifyAgeNeedsParent
+  | VerifyAgeRecorded
+  | VerifyAgeUnder13
+  | VerifyAgeInvalid;
+
+function parseVerifyAgeResponse(raw: unknown): VerifyAgeResponse | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.ok !== "boolean") return null;
+
+  if (r.ok === false) {
+    const reason = r.reason;
+    if (reason === "under13" || reason === "invalid_dob" || reason === "unauthenticated") {
+      return { ok: false, reason, message: typeof r.message === "string" ? r.message : undefined };
+    }
+    return null; // unknown reason — fail safe
+  }
+  // ok === true paths
+  const category = r.category;
+  if (category === "16plus") {
+    if (typeof r.verified_at !== "string") return null;
+    return { ok: true, category: "16plus", verified_at: r.verified_at };
+  }
+  if (category === "13to15") {
+    if (r.parental_consent_required === true) {
+      return {
+        ok: true, category: "13to15",
+        parental_consent_required: true,
+        message: typeof r.message === "string" ? r.message : undefined,
+      };
+    }
+    if (r.parental_contact_recorded === true && typeof r.verified_at === "string") {
+      return {
+        ok: true, category: "13to15",
+        parental_contact_recorded: true,
+        verified_at: r.verified_at,
+      };
+    }
+  }
+  return null;
+}
+
+async function confirmServerAgeVerified(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("is_age_verified");
+    if (error) return false;
+    return data === true;
+  } catch {
+    return false;
+  }
+}
+
 export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: IndividualRegisterProps) {
   const [fullName, setFullName] = useState("");
   const [countryCode, setCountryCode] = useState("+964");
@@ -98,20 +176,47 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
         setAgeStage("enter_dob");
         return;
       }
-      const r = data as any;
-      if (r?.ok === false && r?.reason === "under13") {
+      // B-07 (2026-04-25): validate response shape strictly. Any
+      // payload that doesn't match the documented contract is treated
+      // as a verification failure — never as a pass.
+      const parsed = parseVerifyAgeResponse(data);
+      if (!parsed) {
+        console.warn("[individual-register] verify_user_age returned unexpected shape:", data);
+        setAgeError(isAr ? "تعذّر التحقق. حاول مرة أخرى." : "Verification failed. Please try again.");
+        setAgeStage("enter_dob");
+        return;
+      }
+      if (!parsed.ok && parsed.reason === "under13") {
         setAgeStage("blocked_under13");
         return;
       }
-      if (r?.ok && r?.parental_consent_required) {
+      if (!parsed.ok) {
+        setAgeError(parsed.message || (isAr ? "تعذّر التحقق." : "Verification failed."));
+        setAgeStage("enter_dob");
+        return;
+      }
+      // ok branch: 13-15 needs parental consent
+      if (parsed.category === "13to15" && "parental_consent_required" in parsed) {
         setAgeStage("parental_consent");
         return;
       }
-      if (r?.ok) {
+      // ok branch: 16+ → confirm with the server flag before continuing.
+      // The RPC response is the FIRST gate; is_age_verified() is the
+      // canonical SECOND gate that the rest of the app reads on every
+      // session restore. Both must agree to mark the user verified.
+      if (parsed.category === "16plus") {
+        const confirmed = await confirmServerAgeVerified();
+        if (!confirmed) {
+          console.warn("[individual-register] verify_user_age returned 16plus but is_age_verified() was false");
+          setAgeError(isAr ? "تعذّر التحقق على الخادم." : "Server could not confirm verification.");
+          setAgeStage("enter_dob");
+          return;
+        }
         setAgeStage("verified");
         return;
       }
-      setAgeError(r?.message || "Verification failed");
+      // Defensive: any unhandled shape lands here — never pass.
+      setAgeError(isAr ? "تعذّر التحقق." : "Verification failed.");
       setAgeStage("enter_dob");
     } catch (e) {
       setAgeError(e instanceof Error ? e.message : "Network error");
@@ -142,12 +247,30 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
         setAgeStage("parental_consent");
         return;
       }
-      const r = data as any;
-      if (r?.ok && r?.parental_contact_recorded) {
+      // B-07 (2026-04-25): same strict validation + server-confirmation
+      // pattern as handleDobSubmit. We never trust the raw RPC response
+      // shape on its own.
+      const parsed = parseVerifyAgeResponse(data);
+      if (!parsed) {
+        console.warn("[individual-register] verify_user_age (parental) unexpected shape:", data);
+        setAgeError(isAr ? "تعذّر التحقق. حاول مرة أخرى." : "Verification failed. Please try again.");
+        setAgeStage("parental_consent");
+        return;
+      }
+      if (parsed.ok && "parental_contact_recorded" in parsed) {
+        const confirmed = await confirmServerAgeVerified();
+        if (!confirmed) {
+          console.warn("[individual-register] parental contact recorded but is_age_verified() returned false");
+          setAgeError(isAr ? "تعذّر التحقق على الخادم." : "Server could not confirm verification.");
+          setAgeStage("parental_consent");
+          return;
+        }
         setAgeStage("verified");
         return;
       }
-      setAgeError(r?.message || "Verification failed");
+      // Anything else → keep them on the parental-consent screen.
+      const msg = (parsed.ok === false ? parsed.message : undefined) || "Verification failed";
+      setAgeError(msg);
       setAgeStage("parental_consent");
     } catch (e) {
       setAgeError(e instanceof Error ? e.message : "Network error");

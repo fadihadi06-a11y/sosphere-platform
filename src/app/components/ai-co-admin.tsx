@@ -21,12 +21,28 @@ import {
   Droplet, Pill, Award, TrendingUp, Share2,
   FileCheck, Scale, Building2, DollarSign,
   WifiOff, BatteryLow, Flame, Moon,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import jsPDF from "jspdf";
 import QRCode from "qrcode";
 // FIX C: Medical Alert Banner
 import { MedicalAlertBanner } from "./medical-alert-banner";
+// ── B-02 (2026-04-25): real dispatcher actions, single channel ──
+import {
+  dispatchResponseTeam,
+  evacuateZone,
+  requestEmergencyServicesCall,
+  confirmEmergencyServicesCall,
+  forwardToOwner,
+  recordFamilyNotificationAttempt,
+  recordFamilyNotificationOutcome,
+} from "./api/dashboard-actions-client";
+// Country-aware emergency number — drop hardcoded 997
+import { getEmergencyNumber } from "./utils/emergency-services";
+// Honest tel: helper (no leaked numbers in console)
+import { safeTelCall } from "./utils/safe-tel";
+// Real lifecycle PDF — replaces the in-component jspdf forgery
+import { generateEmergencyLifecyclePDF, buildReportData } from "./emergency-lifecycle-report";
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -251,6 +267,30 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
     zoneEvacuated: false,
     emergencyServicesCalled: false,
   });
+
+  // ── B-02 (2026-04-25): in-flight + modal state for real handlers ──
+  // Each emergency action is now async + server-confirmed. We expose
+  // an in-flight flag per action so the button can show a spinner and
+  // disable itself, preventing duplicate calls from a panicked tap.
+  const [actionInFlight, setActionInFlight] = useState<{
+    dispatch: boolean;
+    evacuate: boolean;
+    services: boolean;
+    sar: boolean;
+    family: boolean;
+  }>({ dispatch: false, evacuate: false, services: false, sar: false, family: false });
+
+  // Human-in-the-loop modals: the dispatcher dials from their device,
+  // we record intent + outcome. Replaces the previous toast-only lies.
+  const [emergencyServicesModal, setEmergencyServicesModal] = useState<
+    | { open: false }
+    | { open: true; number: string; label: string; country: string; fallback?: boolean; phase: "intent" | "awaiting_outcome" }
+  >({ open: false });
+
+  const [familyContactModal, setFamilyContactModal] = useState<
+    | { open: false }
+    | { open: true; phase: "list" | "awaiting_outcome"; pendingContact?: { label: string; channel: "call" | "sms" } }
+  >({ open: false });
   
   // IMPROVEMENT 5: Parallel actions
   const [parallelActions, setParallelActions] = useState<ParallelActions>({
@@ -443,31 +483,113 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // Phase 3A: Emergency
+  // Phase 3A: Emergency  — B-02 root-cause fix (2026-04-25)
+  // ─────────────────────────────────────────────────────────────
+  // Every action below now hits the dashboard-actions edge function.
+  // The local state is updated ONLY after the server confirms; on
+  // failure we show a real error toast and the button stays armed
+  // so the dispatcher can retry. No silent success, no toast lies.
   // ═══════════════════════════════════════════════════════════════
 
-  const handleDispatchTeam = () => {
+  const handleDispatchTeam = async () => {
+    if (actionInFlight.dispatch || actionsCompleted.teamDispatched) return;
+    setActionInFlight(prev => ({ ...prev, dispatch: true }));
+    const result = await dispatchResponseTeam({
+      emergencyId: context.emergencyId,
+      zone: context.zone,
+      severity: context.severity,
+    });
+    setActionInFlight(prev => ({ ...prev, dispatch: false }));
+    if (!result.ok) {
+      toast.error(`Could not dispatch team: ${result.error}`);
+      logAction(`Dispatch FAILED: ${result.error}`, "emergency");
+      return;
+    }
     setActionsCompleted(prev => ({ ...prev, teamDispatched: true }));
-    logAction("Response team dispatched", "emergency");
-    toast.success("✅ Team dispatched");
-    
-    // IMPROVEMENT 5: Update parallel actions
+    logAction("Response team dispatched (server-confirmed)", "emergency");
+    toast.success("Team dispatched — broadcast sent to zone");
     setParallelActions(prev => ({
       ...prev,
       adminActions: prev.adminActions.map((a, i) => i === 0 ? { ...a, done: true } : a),
     }));
   };
 
-  const handleEvacuateZone = () => {
+  const handleEvacuateZone = async () => {
+    if (actionInFlight.evacuate || actionsCompleted.zoneEvacuated) return;
+    setActionInFlight(prev => ({ ...prev, evacuate: true }));
+    const result = await evacuateZone({
+      emergencyId: context.emergencyId,
+      zone: context.zone,
+      reason: `${context.sosType} incident`,
+    });
+    setActionInFlight(prev => ({ ...prev, evacuate: false }));
+    if (!result.ok) {
+      toast.error(`Could not evacuate ${context.zone}: ${result.error}`);
+      logAction(`Evacuation FAILED: ${result.error}`, "emergency");
+      return;
+    }
     setActionsCompleted(prev => ({ ...prev, zoneEvacuated: true }));
-    logAction(`Evacuated ${context.zoneEmployeeCount || 0} employees from ${context.zone}`, "emergency");
-    toast.success(`✅ Zone ${context.zone} evacuated`);
+    logAction(`Evacuation broadcast sent to ${context.zone} (server-confirmed)`, "emergency");
+    toast.success(`Evacuation broadcast sent to ${context.zone}`);
   };
 
-  const handleCallEmergencyServices = () => {
-    setActionsCompleted(prev => ({ ...prev, emergencyServicesCalled: true }));
-    logAction("Called 997 emergency services", "emergency");
-    toast.success("✅ Emergency services notified");
+  // ── Human-in-the-loop: dispatcher dials emergency services
+  // from their own device. We record intent + outcome.
+  const handleCallEmergencyServices = async () => {
+    if (actionInFlight.services || actionsCompleted.emergencyServicesCalled) return;
+    // Resolve country emergency number (default to international 112).
+    const browserLocale = typeof navigator !== "undefined" ? navigator.language : undefined;
+    const country = (() => {
+      if (browserLocale) {
+        const parts = browserLocale.split(/[-_]/);
+        if (parts.length > 1) return parts[1].toUpperCase();
+      }
+      return undefined;
+    })();
+    const info = getEmergencyNumber(country);
+
+    setActionInFlight(prev => ({ ...prev, services: true }));
+    const intent = await requestEmergencyServicesCall({
+      emergencyId: context.emergencyId,
+      number: info.number,
+      zone: context.zone,
+    });
+    setActionInFlight(prev => ({ ...prev, services: false }));
+    if (!intent.ok) {
+      toast.error(`Could not record call request: ${intent.error}`);
+      logAction(`Emergency-services request FAILED: ${intent.error}`, "emergency");
+      return;
+    }
+    logAction(`Emergency services call requested (${info.number})`, "emergency");
+    setEmergencyServicesModal({
+      open: true, phase: "intent",
+      number: info.number, label: info.label, country: info.country, fallback: info.fallback,
+    });
+  };
+
+  const handleConfirmEmergencyServicesOutcome = async (outcome: "connected" | "no_answer" | "voicemail") => {
+    if (!emergencyServicesModal.open) return;
+    const number = emergencyServicesModal.number;
+    setActionInFlight(prev => ({ ...prev, services: true }));
+    const result = await confirmEmergencyServicesCall({
+      emergencyId: context.emergencyId,
+      number,
+      outcomeText: outcome,
+    });
+    setActionInFlight(prev => ({ ...prev, services: false }));
+    if (!result.ok) {
+      toast.error(`Could not record outcome: ${result.error}`);
+      return;
+    }
+    if (outcome === "connected") {
+      setActionsCompleted(prev => ({ ...prev, emergencyServicesCalled: true }));
+      logAction(`Emergency services (${number}) connected — confirmed by dispatcher`, "emergency");
+      toast.success("Outcome recorded — connected");
+    } else {
+      logAction(`Emergency services (${number}) ${outcome} — confirmed by dispatcher`, "emergency");
+      toast.warning(`Outcome recorded — ${outcome}. Try again if needed.`);
+    }
+    setEmergencyServicesModal({ open: false });
   };
 
   const handleEmergencyComplete = () => {
@@ -475,12 +597,24 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // Phase 3B: Search (SAR)
+  // Phase 3B: Search (SAR) — escalate to owner via real channel
   // ═══════════════════════════════════════════════════════════════
 
-  const handleLaunchSAR = () => {
-    logAction("SAR protocol activated", "search");
-    toast.success("🔍 Search & Rescue launched");
+  const handleLaunchSAR = async () => {
+    if (actionInFlight.sar) return;
+    setActionInFlight(prev => ({ ...prev, sar: true }));
+    const result = await forwardToOwner({
+      emergencyId: context.emergencyId,
+      note: `SAR PROTOCOL REQUESTED — last known zone ${context.zone}, employee ${context.employeeName}.`,
+    });
+    setActionInFlight(prev => ({ ...prev, sar: false }));
+    if (!result.ok) {
+      toast.error(`Could not launch SAR: ${result.error}`);
+      logAction(`SAR launch FAILED: ${result.error}`, "search");
+      return;
+    }
+    logAction("SAR protocol forwarded to owner (server-confirmed)", "search");
+    toast.success("SAR escalated to owner");
     setPhase("documentation");
   };
 
@@ -497,35 +631,90 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   // Phase 4: Documentation
   // ═══════════════════════════════════════════════════════════════
 
+  // ─────────────────────────────────────────────────────────────
+  // B-02 (2026-04-25): the previous handleDownloadPDF generated a
+  // 1-page jsPDF that falsely claimed "ISO 45001:2018 Compliant" +
+  // "Admissible in Saudi courts under Evidence Law 2022" — neither
+  // is provable. The platform is being DESIGNED for ISO certification
+  // in the future, but no such claim should appear in a generated
+  // record today. We now redirect to the unified lifecycle PDF
+  // (emergency-lifecycle-report.tsx) which renders only verifiable
+  // facts from the live audit chain — no certification copy.
+  // ─────────────────────────────────────────────────────────────
   const handleDownloadPDF = async () => {
-    const doc = new jsPDF();
-    
-    // IMPROVEMENT 7: Enhanced legal PDF
-    doc.setFontSize(16);
-    doc.text("SOSphere Emergency Report", 20, 20);
-    doc.setFontSize(10);
-    doc.text("ISO 45001:2018 Compliant | OSHA 1904 Recordable", 20, 28);
-    doc.text(`Reference: SOSphere-${new Date().toISOString().split('T')[0]}-${context.emergencyId.slice(-4)}`, 20, 33);
-    
-    doc.setFontSize(12);
-    doc.text(`Emergency ID: ${context.emergencyId}`, 20, 45);
-    doc.text(`Employee: ${context.employeeName}`, 20, 52);
-    doc.text(`Zone: ${context.zone}`, 20, 59);
-    doc.text(`Severity: ${context.severity.toUpperCase()}`, 20, 66);
-    doc.text(`Actions: ${actionLog.length} completed`, 20, 73);
-    doc.text(`Evidence: ${evidence.photos.length} photos, ${transcript.length} transcript lines`, 20, 80);
-    
-    doc.setFontSize(10);
-    doc.text("This report is digitally timestamped and tamper-evident.", 20, 90);
-    doc.text("Admissible in Saudi courts under Evidence Law 2022.", 20, 95);
-    
-    doc.save(`SOSphere-Legal-${context.emergencyId}.pdf`);
-    toast.success("📄 Legal package downloaded");
+    try {
+      const reportData = buildReportData({
+        id: context.emergencyId,
+        employeeName: context.employeeName,
+        zone: context.zone,
+        type: context.sosType,
+        severity: context.severity,
+        timestamp: new Date(context.timestamp),
+        status: "active",
+        elapsed: Math.floor((Date.now() - context.timestamp) / 1000),
+      });
+      generateEmergencyLifecyclePDF(reportData);
+      logAction("Lifecycle report exported", "documentation");
+      toast.success("Report saved to your downloads");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Could not generate report: ${msg}`);
+      logAction(`Report generation FAILED: ${msg}`, "documentation");
+    }
   };
 
+  // ── Human-in-the-loop family contact (B-02) ──
+  // Replaces the previous toast-only lie. Opens a modal listing the
+  // dispatcher's available contact methods; the dispatcher initiates
+  // call/SMS from their device and confirms the outcome here.
   const handleNotifyFamily = () => {
-    logAction("Family notified", "documentation");
-    toast.success("✅ Family notification sent");
+    if (actionInFlight.family) return;
+    setFamilyContactModal({ open: true, phase: "list" });
+  };
+
+  const handleStartFamilyContact = async (label: string, channel: "call" | "sms") => {
+    setActionInFlight(prev => ({ ...prev, family: true }));
+    const result = await recordFamilyNotificationAttempt({
+      emergencyId: context.emergencyId,
+      contactLabel: label,
+      channel,
+    });
+    setActionInFlight(prev => ({ ...prev, family: false }));
+    if (!result.ok) {
+      toast.error(`Could not record contact attempt: ${result.error}`);
+      return;
+    }
+    logAction(`Family ${channel} initiated — ${label} (server-recorded)`, "documentation");
+    setFamilyContactModal({
+      open: true,
+      phase: "awaiting_outcome",
+      pendingContact: { label, channel },
+    });
+  };
+
+  const handleFamilyContactOutcome = async (
+    outcome: "connected" | "no_answer" | "voicemail" | "wrong_number",
+  ) => {
+    if (!familyContactModal.open || familyContactModal.phase !== "awaiting_outcome" || !familyContactModal.pendingContact) return;
+    const { label } = familyContactModal.pendingContact;
+    setActionInFlight(prev => ({ ...prev, family: true }));
+    const result = await recordFamilyNotificationOutcome({
+      emergencyId: context.emergencyId,
+      contactLabel: label,
+      outcome,
+    });
+    setActionInFlight(prev => ({ ...prev, family: false }));
+    if (!result.ok) {
+      toast.error(`Could not record outcome: ${result.error}`);
+      return;
+    }
+    logAction(`Family contact ${label} — ${outcome} (server-recorded)`, "documentation");
+    if (outcome === "connected") {
+      toast.success("Family reached — outcome saved");
+    } else {
+      toast.warning(`Family contact ${outcome} — saved`);
+    }
+    setFamilyContactModal({ open: false });
   };
 
   const handleDocumentationComplete = () => {
@@ -1498,7 +1687,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                 <div className="space-y-3">
                   <button
                     onClick={handleDispatchTeam}
-                    disabled={actionsCompleted.teamDispatched || !medicalAcknowledged}
+                    disabled={actionsCompleted.teamDispatched || !medicalAcknowledged || actionInFlight.dispatch}
                     className="w-full p-5 rounded-2xl text-left transition-all disabled:opacity-50"
                     style={{
                       background: actionsCompleted.teamDispatched
@@ -1533,7 +1722,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
 
                   <button
                     onClick={handleEvacuateZone}
-                    disabled={actionsCompleted.zoneEvacuated}
+                    disabled={actionsCompleted.zoneEvacuated || actionInFlight.evacuate}
                     className="w-full p-5 rounded-2xl text-left transition-all disabled:opacity-50"
                     style={{
                       background: actionsCompleted.zoneEvacuated
@@ -1567,7 +1756,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
 
                   <button
                     onClick={handleCallEmergencyServices}
-                    disabled={actionsCompleted.emergencyServicesCalled || !medicalAcknowledged}
+                    disabled={actionsCompleted.emergencyServicesCalled || !medicalAcknowledged || actionInFlight.services}
                     className="w-full p-5 rounded-2xl text-left transition-all disabled:opacity-50"
                     style={{
                       background: actionsCompleted.emergencyServicesCalled
@@ -1663,7 +1852,8 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
 
                 <button
                   onClick={handleLaunchSAR}
-                  className="w-full py-5 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  disabled={actionInFlight.sar}
+                  className="w-full py-5 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                   style={{ background: "#FF9500", color: "white", fontSize: 15 }}
                 >
                   <Target className="size-5" />
@@ -1784,27 +1974,37 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                   <div className="flex items-center gap-2">
                     <Scale className="size-5" style={{ color: "#00C853" }} />
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#00C853" }}>
-                      Legal Compliance Shield
+                      Incident Record
                     </span>
                   </div>
 
+                  {/*
+                    B-02 (2026-04-25): replaced fabricated certification
+                    badges (ISO 45001 / OSHA 1904 / Saudi Labor Law Art. 121
+                    / "Admissible in Saudi courts under Evidence Law 2022")
+                    with honest descriptions of what the system actually
+                    does. The platform is being designed for future ISO
+                    certification, but no claim of holding it should appear
+                    in a generated record today. The text below describes
+                    only behavior that is verifiable in code right now.
+                  */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="size-3" style={{ color: "#00C853" }} />
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
-                        ISO 45001:2018 — Section 8.2 compliant
+                        Append-only audit chain — every action server-recorded
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="size-3" style={{ color: "#00C853" }} />
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
-                        OSHA 1904 — Recordable incident logged
+                        Evidence linked by SHA-256 hash to its emergency ID
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="size-3" style={{ color: "#00C853" }} />
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
-                        Saudi Labor Law Art. 121 — Notified
+                        Encrypted in transit (TLS 1.2+), at rest by Postgres
                       </span>
                     </div>
                   </div>
@@ -1834,8 +2034,9 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                     style={{ background: "rgba(255,255,255,0.05)" }}
                   >
                     <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
-                      This report is digitally timestamped and tamper-evident. Admissible in Saudi
-                      courts under Evidence Law 2022.
+                      This is an internal incident record generated by SOSphere.
+                      For court, insurance, or regulatory submission your organization
+                      should have the underlying audit chain independently reviewed.
                     </div>
                   </div>
                 </div>
@@ -1855,7 +2056,8 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                     </button>
                     <button
                       onClick={handleNotifyFamily}
-                      className="w-full p-4 rounded-xl text-left flex items-center gap-3 hover:bg-white/5 transition-colors"
+                      disabled={actionInFlight.family}
+                      className="w-full p-4 rounded-xl text-left flex items-center gap-3 hover:bg-white/5 transition-colors disabled:opacity-50"
                       style={{ background: "rgba(255,255,255,0.03)" }}
                     >
                       <Send className="size-5" style={{ color: "#00C8E0" }} />
@@ -2110,6 +2312,224 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                   Exit
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          B-02 (2026-04-25): Emergency Services dial-out modal
+          Human-in-the-loop. Dispatcher dials from their device, we
+          record intent + outcome. No fake "997 called" toast.
+          ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {emergencyServicesModal.open && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl p-6"
+              style={{ background: "#1C1C1E", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(255,45,85,0.15)" }}
+                >
+                  <PhoneCall size={20} color="#FF2D55" />
+                </div>
+                <div>
+                  <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>
+                    Call Emergency Services
+                  </h3>
+                  <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, margin: 0 }}>
+                    {emergencyServicesModal.label} {emergencyServicesModal.fallback ? "(international)" : `· ${emergencyServicesModal.country}`}
+                  </p>
+                </div>
+              </div>
+
+              {emergencyServicesModal.phase === "intent" && (
+                <>
+                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
+                    SOSphere has logged your request for the audit chain. Tap below to dial from this device, then confirm the outcome so the legal record is complete.
+                  </p>
+                  <button
+                    onClick={() => {
+                      void safeTelCall(emergencyServicesModal.number, "emergency-services");
+                      setEmergencyServicesModal(prev => prev.open ? { ...prev, phase: "awaiting_outcome" } : prev);
+                    }}
+                    className="w-full py-4 rounded-xl font-semibold mb-2 flex items-center justify-center gap-2"
+                    style={{ background: "#FF2D55", color: "white", fontSize: 17 }}
+                  >
+                    <Phone size={18} />
+                    Tap to dial {emergencyServicesModal.number}
+                  </button>
+                  <button
+                    onClick={() => setEmergencyServicesModal({ open: false })}
+                    className="w-full py-3 rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)" }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+
+              {emergencyServicesModal.phase === "awaiting_outcome" && (
+                <>
+                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, marginBottom: 16 }}>
+                    Confirm the outcome of the call so it is saved in the audit chain.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      disabled={actionInFlight.services}
+                      onClick={() => handleConfirmEmergencyServicesOutcome("connected")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "#34C759", color: "white" }}
+                    >
+                      Connected — services notified
+                    </button>
+                    <button
+                      disabled={actionInFlight.services}
+                      onClick={() => handleConfirmEmergencyServicesOutcome("voicemail")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(255,149,0,0.15)", color: "#FF9500" }}
+                    >
+                      Voicemail
+                    </button>
+                    <button
+                      disabled={actionInFlight.services}
+                      onClick={() => handleConfirmEmergencyServicesOutcome("no_answer")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(255,45,85,0.12)", color: "#FF2D55" }}
+                    >
+                      No answer
+                    </button>
+                    <button
+                      onClick={() => setEmergencyServicesModal({ open: false })}
+                      className="w-full py-2 rounded-xl text-sm mt-1"
+                      style={{ background: "transparent", color: "rgba(255,255,255,0.55)" }}
+                    >
+                      Close without recording
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          B-02 (2026-04-25): Family contact modal — same H-in-the-loop
+          pattern. Dispatcher initiates the call/SMS; we log both intent
+          and outcome. No silent toast lies.
+          ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {familyContactModal.open && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl p-6"
+              style={{ background: "#1C1C1E", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(0,200,224,0.15)" }}
+                >
+                  <Users size={20} color="#00C8E0" />
+                </div>
+                <div>
+                  <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>
+                    Notify Family
+                  </h3>
+                  <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, margin: 0 }}>
+                    Initiate from this device · outcome logged
+                  </p>
+                </div>
+              </div>
+
+              {familyContactModal.phase === "list" && (
+                <>
+                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+                    Family-contact directory lookup is not yet integrated for this incident. You can record a manual contact attempt below — useful when you reach the family by other means (radio, in-person, second device).
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      onClick={() => handleStartFamilyContact("Primary contact (manual)", "call")}
+                      disabled={actionInFlight.family}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ background: "rgba(0,200,224,0.15)", color: "#00C8E0" }}
+                    >
+                      <Phone size={16} /> Record call attempt
+                    </button>
+                    <button
+                      onClick={() => handleStartFamilyContact("Primary contact (manual)", "sms")}
+                      disabled={actionInFlight.family}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ background: "rgba(0,200,224,0.10)", color: "#00C8E0" }}
+                    >
+                      <MessageCircle size={16} /> Record SMS attempt
+                    </button>
+                    <button
+                      onClick={() => setFamilyContactModal({ open: false })}
+                      className="w-full py-2 rounded-xl text-sm mt-1"
+                      style={{ background: "transparent", color: "rgba(255,255,255,0.55)" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {familyContactModal.phase === "awaiting_outcome" && familyContactModal.pendingContact && (
+                <>
+                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, marginBottom: 14 }}>
+                    {familyContactModal.pendingContact.channel === "call" ? "Call" : "SMS"} attempt to <span style={{ fontWeight: 600 }}>{familyContactModal.pendingContact.label}</span> — confirm outcome.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      disabled={actionInFlight.family}
+                      onClick={() => handleFamilyContactOutcome("connected")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "#34C759", color: "white" }}
+                    >
+                      Connected
+                    </button>
+                    <button
+                      disabled={actionInFlight.family}
+                      onClick={() => handleFamilyContactOutcome("voicemail")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(255,149,0,0.15)", color: "#FF9500" }}
+                    >
+                      Voicemail
+                    </button>
+                    <button
+                      disabled={actionInFlight.family}
+                      onClick={() => handleFamilyContactOutcome("no_answer")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(255,45,85,0.12)", color: "#FF2D55" }}
+                    >
+                      No answer
+                    </button>
+                    <button
+                      disabled={actionInFlight.family}
+                      onClick={() => handleFamilyContactOutcome("wrong_number")}
+                      className="w-full py-3 rounded-xl font-semibold disabled:opacity-50"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)" }}
+                    >
+                      Wrong number
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

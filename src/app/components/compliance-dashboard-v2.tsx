@@ -74,10 +74,14 @@ export function ComplianceDashboard() {
             margin: "0 0 24px",
           },
         },
-        "This portal exposes the SOC 2 / ISO 27001 control evidence " +
-          "catalogue, risk register, and incident investigation summaries " +
-          "for enrolled SOSphere tenants. It is currently being rebuilt " +
-          "following a core infrastructure migration.",
+        // B-18 (2026-04-25): the prior copy implied SOSphere holds SOC 2 /
+        // ISO 27001 today. It does not. Truthful framing only.
+        "This portal exposes the internal security-controls catalogue, " +
+          "risk register, and incident investigation summaries for " +
+          "enrolled SOSphere tenants — structured for future SOC 2 / " +
+          "ISO 27001 audit readiness, but no certification has yet been " +
+          "awarded. It is currently being rebuilt following a core " +
+          "infrastructure migration.",
       ),
       createElement(
         "div",

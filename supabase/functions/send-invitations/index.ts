@@ -92,6 +92,70 @@ serve(async (req) => {
       });
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // B-12 (2026-04-25): the prior code accepted `inviteCode` from the
+    // request body without verifying it belonged to the caller's
+    // company — meaning any authenticated user could blast invitation
+    // emails using ANY company's brand + invite code. The fix:
+    //   - Require inviteCode in every request.
+    //   - Verify it exists in `company_invites` (canonical) OR
+    //     `invites` (legacy) and that its `created_by` is the caller.
+    //   - Use the caller-scoped client (`sb`) so RLS provides a second
+    //     layer of defense.
+    // We also pass a non-empty inviteCode to the email body so the
+    // template doesn't need to handle the "N/A" branch on a path we
+    // now know is unreachable.
+    // ──────────────────────────────────────────────────────────────
+    if (!inviteCode || typeof inviteCode !== "string" || inviteCode.length < 4) {
+      return new Response(
+        JSON.stringify({ error: "inviteCode is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    {
+      // Try the canonical table first.
+      const { data: ciRow, error: ciErr } = await sb
+        .from("company_invites")
+        .select("invite_code, company_id, created_by")
+        .eq("invite_code", inviteCode)
+        .eq("created_by", user.id)
+        .limit(1)
+        .maybeSingle();
+      let verified = !ciErr && !!ciRow;
+
+      if (!verified) {
+        // Legacy fallback to the `invites` table (older schema).
+        const { data: invRow, error: invErr } = await sb
+          .from("invites")
+          .select("invite_code, company_id")
+          .eq("invite_code", inviteCode)
+          .limit(1)
+          .maybeSingle();
+        if (!invErr && invRow?.company_id) {
+          // No created_by column on the legacy table — verify caller
+          // owns the company instead.
+          const { data: ownedCo } = await sb
+            .from("companies")
+            .select("id")
+            .eq("id", invRow.company_id)
+            .eq("owner_id", user.id)
+            .limit(1)
+            .maybeSingle();
+          verified = !!ownedCo?.id;
+        }
+      }
+
+      if (!verified) {
+        console.warn(
+          `[send-invitations] invite-code authorization FAILED user=${user.id} code=${inviteCode}`,
+        );
+        return new Response(
+          JSON.stringify({ error: "Invalid or unauthorized inviteCode" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // Rate limit: max 500 per request
     const batch = employees.slice(0, Math.min(batchSize, 500));
     const results = { sent: 0, failed: 0, errors: [] as string[] };

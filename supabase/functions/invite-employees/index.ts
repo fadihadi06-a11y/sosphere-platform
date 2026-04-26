@@ -97,22 +97,48 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Verify caller owns the company ────────────────────────
-    const companyId = employees[0]?.company_id;
-    if (companyId) {
-      const { data: company } = await supabaseAdmin
-        .from("companies")
-        .select("id")
-        .eq("id", companyId)
-        .eq("owner_id", user.id)
-        .single();
-
-      if (!company) {
+    // ──────────────────────────────────────────────────────────
+    // B-11 (2026-04-25): the prior code validated ownership of
+    // employees[0].company_id only. Any subsequent row could target
+    // a different company, letting any tenant owner spam invites
+    // under another tenant's branding. The fix:
+    //   1. Require every row to declare a company_id.
+    //   2. Require ALL rows to use the SAME company_id (no mixing).
+    //   3. Verify the caller owns that company.
+    // ──────────────────────────────────────────────────────────
+    const declaredCompanyIds = new Set<string>();
+    for (const e of employees) {
+      if (!e.company_id) {
         return new Response(
-          JSON.stringify({ error: "You do not own this company" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Every employee row must declare a company_id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      declaredCompanyIds.add(e.company_id);
+    }
+    if (declaredCompanyIds.size !== 1) {
+      return new Response(
+        JSON.stringify({
+          error: "Mixed company_id values are not allowed in a single invite batch",
+          companies: Array.from(declaredCompanyIds),
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const companyId = Array.from(declaredCompanyIds)[0];
+
+    const { data: company } = await supabaseAdmin
+      .from("companies")
+      .select("id")
+      .eq("id", companyId)
+      .eq("owner_id", user.id)
+      .single();
+
+    if (!company) {
+      return new Response(
+        JSON.stringify({ error: "You do not own this company" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // ── Send invitations in batches of 10 ────────────────────

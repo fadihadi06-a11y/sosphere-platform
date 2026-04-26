@@ -790,12 +790,16 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
         >
           <div className="flex items-center gap-5 flex-wrap justify-center">
+            {/* B-18 (2026-04-25): truthful capability badges. PCI DSS is held
+                by Stripe (our processor); GDPR alignment is designed-in but
+                not externally audited; SLA targets are operational, not
+                contractual until a published SLA exists. */}
             {[
-              { icon: Lock, label: "SSL / TLS 1.3", sublabel: "End-to-End Encrypted" },
-              { icon: BadgeCheck, label: "PCI DSS Level 1", sublabel: "via Stripe (coming soon)" },
-              { icon: ShieldCheck, label: "AES-256", sublabel: "Data at Rest" },
-              { icon: Globe, label: "GDPR Compliant", sublabel: "Data Sovereignty" },
-              { icon: LifeBuoy, label: "99.9% Uptime", sublabel: "SLA Guaranteed" },
+              { icon: Lock, label: "TLS 1.3", sublabel: "Transport Encryption" },
+              { icon: BadgeCheck, label: "PCI DSS via Stripe", sublabel: "Payments handled by Stripe" },
+              { icon: ShieldCheck, label: "AES-256 at Rest", sublabel: "Encrypted Storage" },
+              { icon: Globe, label: "GDPR-Aligned", sublabel: "Data Sovereignty Controls" },
+              { icon: LifeBuoy, label: "99.9% Uptime Target", sublabel: "Operational Goal" },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-2.5">
                 <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.12)" }}>

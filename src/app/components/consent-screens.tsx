@@ -3,6 +3,28 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Shield, MapPin, FileText, Lock, Eye, CheckCircle, AlertTriangle, ChevronRight, ExternalLink } from "lucide-react";
 import { useLang } from "./useLang";
+// B-08 (2026-04-25): mirror local consent to server when a session exists.
+// The consent screens fire BEFORE auth in the typical flow, so most calls
+// to fireServerMirror() will short-circuit at "no session" — but if a
+// re-consent happens post-login (version bump, settings page, etc.) the
+// server record is updated immediately.
+import { mirrorConsentToServer } from "./utils/consent-server";
+
+async function fireServerMirror(kind: "tos" | "gps", opts: { version?: string; decision?: "granted" | "declined" }): Promise<void> {
+  try {
+    const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+    if (!SUPABASE_CONFIG.isConfigured) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await mirrorConsentToServer(
+      async (name, args) => await supabase.rpc(name, args as any),
+      kind,
+      opts,
+    );
+  } catch {
+    // Best-effort — never block the UI on a server mirror failure.
+  }
+}
 
 const TOS_CONSENT_KEY = "sosphere_tos_consent";
 const GPS_CONSENT_KEY = "sosphere_gps_consent";
@@ -88,6 +110,8 @@ export function TermsConsentScreen({ onAccept }: TermsConsentScreenProps) {
   const handleAccept = () => {
     if (!checked) return;
     try { localStorage.setItem(TOS_CONSENT_KEY, JSON.stringify({ accepted: true, timestamp: Date.now(), version: "1.0" })); } catch {}
+    // B-08: fire-and-forget mirror to server so GDPR Art. 7 has a record.
+    void fireServerMirror("tos", { version: "1.0" });
     onAccept();
   };
 
@@ -233,11 +257,13 @@ export function GpsConsentScreen({ onComplete }: GpsConsentScreenProps) {
 
   const handleAllow = () => {
     try { localStorage.setItem(GPS_CONSENT_KEY, JSON.stringify({ allowed: true, timestamp: Date.now(), declinedWarningShown: false })); } catch {}
+    void fireServerMirror("gps", { decision: "granted" });
     onComplete(true);
   };
   const handleDecline = () => {
     if (!showDeclinedWarning) { setShowDeclinedWarning(true); return; }
     try { localStorage.setItem(GPS_CONSENT_KEY, JSON.stringify({ allowed: false, timestamp: Date.now(), declinedWarningShown: true })); } catch {}
+    void fireServerMirror("gps", { decision: "declined" });
     onComplete(false);
   };
 

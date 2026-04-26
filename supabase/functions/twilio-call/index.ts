@@ -1,36 +1,25 @@
-// ═══════════════════════════════════════════════════════════════
-// SOSphere — Twilio PSTN Call (Edge Function) — HARDENED
-// ─────────────────────────────────────────────────────────────
-// Calls admin's REAL phone number when browser call unanswered.
-// Level 3 of the escalation chain. Cost: ~$0.013/min — a 3-min
-// call is ~$0.04. An unprotected endpoint is a direct path to
-// uncapped Twilio bill when an attacker has the anon key.
-//
-// Hardening (parity with twilio-sms):
-//   • JWT gate — anon key alone is no longer sufficient.
-//   • Rate limit (api tier, SOS priority lane on emergency calls).
-//   • X-RateLimit-* headers on every response.
-//
-// Required Supabase Secrets:
-//   TWILIO_ACCOUNT_SID
-//   TWILIO_AUTH_TOKEN
-//   SOSPHERE_BASE_URL
-//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
-// ═══════════════════════════════════════════════════════════════
-
+// SOSphere twilio-call edge function
+// v9 (B-09 2026-04-25): emits gtok in <Gather>
+// v10 (B-20 2026-04-25): fixes G-15 (client-supplied `from` -> caller-ID
+//                        spoof) and G-16 (TwiML injection via unescaped
+//                        employeeName/companyName/zoneName).
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  checkRateLimit,
-  markSosPriority,
-  getRateLimitHeaders,
-} from "../_shared/rate-limiter.ts";
+import { checkRateLimit, markSosPriority, getRateLimitHeaders } from "../_shared/rate-limiter.ts";
+import { signGatherToken } from "../_shared/gather-token.ts";
 
-// B-M1: origin allowlist via ALLOWED_ORIGINS env
+function escapeXml(unsafe: string | null | undefined): string {
+  if (unsafe === null || unsafe === undefined) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+  .split(",").map(s => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
   const origin = req.headers.get("origin") || "";
   return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -63,14 +52,9 @@ async function authenticate(req: Request): Promise<string | null> {
 }
 
 serve(async (req) => {
-  // B-M1: origin allowlist via ALLOWED_ORIGINS env
   const corsHeaders = buildCorsHeaders(req);
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    // ── Auth gate (SECURITY-CRITICAL) ────────────────────────
     const userId = await authenticate(req);
     if (!userId) {
       return new Response(
@@ -79,36 +63,32 @@ serve(async (req) => {
       );
     }
 
-    const {
-      to,           // Admin's phone: "+966XXXXXXXXX"
-      from,         // Twilio number: "+1XXXXXXXXXX"
-      callId,       // Emergency ID
-      employeeName, // "Ahmed Ali"
-      companyName,  // "SOSphere"
-      zoneName,     // "Zone B - North Tower"
-    } = await req.json();
+    const { to, callId, employeeName, companyName, zoneName } = await req.json();
 
-    if (!to || !from || !callId) {
+    // G-15 (B-20): `from` is server-side only.
+    const from = Deno.env.get("TWILIO_FROM_NUMBER") || "";
+    if (!from) {
+      console.error("[twilio-call] TWILIO_FROM_NUMBER env not configured");
       return new Response(
-        JSON.stringify({ error: "Missing required fields: to, from, callId" }),
+        JSON.stringify({ error: "Twilio sender number not configured on server" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (!to || !callId) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: to, callId" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // ── Rate limit ──────────────────────────────────────────
-    // Every twilio-call invocation carries a callId (the emergencyId)
-    // so it is by definition part of an active emergency. Mark the
-    // user as SOS priority and check with isSosRequest=true — the
-    // call is never blocked by the limiter, we just emit the headers
-    // and keep the counter accurate for observability.
     markSosPriority(userId);
     const rl = checkRateLimit(userId, "api", true);
 
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
+    const authToken  = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const baseUrl    = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-
     if (!accountSid || !authToken) {
       return new Response(
         JSON.stringify({ error: "Twilio credentials not configured" }),
@@ -116,75 +96,52 @@ serve(async (req) => {
       );
     }
 
-    // Build TwiML — what the admin hears when they answer
+    const gtok = await signGatherToken(callId);
+
+    // G-16 (B-20): escape user-controlled strings before TwiML interpolation.
+    const safeEmployee = escapeXml(employeeName || "an employee");
+    const safeCompany  = escapeXml(companyName  || "your company");
+    const safeZone     = escapeXml(zoneName     || "unknown zone");
+
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna" language="en-US">
-    Emergency S.O.S. alert from ${employeeName || "an employee"} at ${companyName || "your company"}.
-    Location: ${zoneName || "unknown zone"}.
+    Emergency S.O.S. alert from ${safeEmployee} at ${safeCompany}.
+    Location: ${safeZone}.
     Press 1 to connect to the emergency dashboard.
     Press 2 to hear the alert again.
   </Say>
-  <Gather numDigits="1" action="${supabaseUrl}/functions/v1/twilio-status?action=gather&amp;callId=${callId}&amp;baseUrl=${encodeURIComponent(baseUrl)}" method="POST" timeout="10">
+  <Gather numDigits="1" action="${supabaseUrl}/functions/v1/twilio-status?action=gather&amp;callId=${callId}&amp;baseUrl=${encodeURIComponent(baseUrl)}&amp;gtok=${encodeURIComponent(gtok)}" method="POST" timeout="10">
     <Play loop="2">https://api.twilio.com/cowbell.mp3</Play>
   </Gather>
   <Say voice="Polly.Joanna">No response received. The emergency team has been notified. Goodbye.</Say>
 </Response>`;
 
-    // Status callback URL for tracking call progress
     const statusCallback = `${supabaseUrl}/functions/v1/twilio-status?callId=${callId}`;
-
-    // Initiate PSTN call via Twilio REST API
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
     const auth = btoa(`${accountSid}:${authToken}`);
-
     const formData = new URLSearchParams({
-      To: to,
-      From: from,
-      Twiml: twiml,
-      StatusCallback: statusCallback,
+      To: to, From: from, Twiml: twiml, StatusCallback: statusCallback,
       StatusCallbackEvent: "initiated ringing answered completed",
-      StatusCallbackMethod: "POST",
-      Timeout: "30",        // Ring for 30 seconds max
-      MachineDetection: "Enable", // Detect voicemail
+      StatusCallbackMethod: "POST", Timeout: "30", MachineDetection: "Enable",
     });
-
     const response = await fetch(twilioUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: formData.toString(),
     });
-
     const result = await response.json();
-
     if (!response.ok) {
       console.error("[twilio-call] Twilio API error:", result);
       return new Response(
         JSON.stringify({ error: "Twilio call failed", detail: result.message || result }),
-        {
-          status: response.status,
-          headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
-        },
+        { status: response.status, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
       );
     }
-
-    console.log(`[twilio-call] Call initiated: ${result.sid} → ${to} (callId: ${callId}, user=${userId})`);
-
+    console.log(`[twilio-call] Call initiated: ${result.sid} -> ${to} (callId: ${callId}, user=${userId})`);
     return new Response(
-      JSON.stringify({
-        callSid: result.sid,
-        status: result.status,
-        to: result.to,
-        from: result.from,
-        callId,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
-      },
+      JSON.stringify({ callSid: result.sid, status: result.status, to: result.to, from: result.from, callId }),
+      { status: 200, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("[twilio-call] Error:", err);

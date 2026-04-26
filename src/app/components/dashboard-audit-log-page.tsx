@@ -1396,14 +1396,16 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
 
     doc.setFontSize(8);
     doc.setTextColor(C.cyan[0], C.cyan[1], C.cyan[2]);
-    doc.text("APPLICABLE STANDARDS & REGULATIONS", 22, y + 6);
+    // B-18 (2026-04-25): truthful framing — these are standards the log is
+    // DESIGNED to align with, not certifications SOSphere has been audited for.
+    doc.text("STANDARDS THIS LOG IS DESIGNED FOR ALIGNMENT WITH", 22, y + 6);
     doc.setTextColor(70);
     doc.setFontSize(7.5);
     const standards = [
       "- OSHA 29 CFR 1904 -- Recording and Reporting Occupational Injuries",
       "- ISO 45001:2018 -- Occupational Health and Safety Management Systems",
       "- GDPR Art. 30 -- Records of Processing Activities",
-      "- SOC 2 Type II -- Security, Availability & Confidentiality",
+      "- SOC 2 CC7 event-logging principles (audit not yet undertaken)",
     ];
     standards.forEach((s, i) => {
       doc.text(s, 24, y + 12 + i * 4);

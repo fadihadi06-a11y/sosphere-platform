@@ -75,7 +75,10 @@ interface Investigation {
   status: InvestigationStatus;
   rootCauses: RootCause[];
   actions: CorrectiveAction[];
-  timeline: { date: Date; event: string; by: string }[];
+  // F-E (2026-04-25): `signed` reflects whether this entry has a real
+  // SHA-256 signature from the smart-timeline-tracker. Mock investigations
+  // and dispatcher-typed entries omit it (treated as signed).
+  timeline: { date: Date; event: string; by: string; signed?: boolean }[];
   affectedWorkers: string[];
   isoReference: string; // e.g., "ISO 45001 §10.2"
   finalReportDate?: Date;
@@ -119,6 +122,10 @@ function createInvestigationFromEmergency(emg: {
           date: new Date(te.timestamp),
           event: te.event,
           by: te.actor,
+          // F-E: propagate the cryptographic-signature flag so the
+          // dashboard can show an "Unsigned" badge on entries that
+          // didn't make it through the async crypto.subtle path.
+          signed: te.signed,
         }))
       : [
           { date: emg.timestamp, event: `Emergency triggered: ${emg.type}`, by: emg.employeeName },
@@ -1068,20 +1075,59 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                 <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>INVESTIGATION TIMELINE</h3>
                 <div className="relative pl-5">
                   <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: "linear-gradient(180deg, rgba(0,200,224,0.2), rgba(0,200,224,0.03))" }} />
-                  {selected.timeline.map((entry, i) => (
-                    <div key={i} className="relative flex items-start gap-3 mb-3">
-                      <div className="absolute -left-5 mt-1 size-4 rounded-full flex items-center justify-center"
-                        style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
-                        <CircleDot className="size-2" style={{ color: "#00C8E0" }} />
+                  {/* F-E (2026-04-25): show count of unsigned entries above the list. */}
+                  {(() => {
+                    const unsignedCount = selected.timeline.filter(e => e.signed === false).length;
+                    if (unsignedCount === 0) return null;
+                    return (
+                      <div style={{
+                        marginBottom: 10,
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        background: "rgba(255,149,0,0.08)",
+                        border: "1px solid rgba(255,149,0,0.2)",
+                        fontSize: 10,
+                        color: "rgba(255,149,0,0.9)",
+                      }}>
+                        ⚠ {unsignedCount} unsigned event{unsignedCount === 1 ? "" : "s"} below — recorded in fallback mode without crypto.subtle. Excluded from any tamper-evidence claim.
                       </div>
-                      <div>
-                        <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{entry.event}</p>
-                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
-                          {entry.date.toLocaleString()} &bull; {entry.by}
-                        </p>
+                    );
+                  })()}
+                  {selected.timeline.map((entry, i) => {
+                    const unsigned = entry.signed === false;
+                    return (
+                      <div key={i} className="relative flex items-start gap-3 mb-3">
+                        <div className="absolute -left-5 mt-1 size-4 rounded-full flex items-center justify-center"
+                          style={{
+                            background: unsigned ? "rgba(255,149,0,0.1)" : "rgba(0,200,224,0.1)",
+                            border: unsigned ? "1px solid rgba(255,149,0,0.3)" : "1px solid rgba(0,200,224,0.2)",
+                          }}>
+                          <CircleDot className="size-2" style={{ color: unsigned ? "#FF9500" : "#00C8E0" }} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{entry.event}</p>
+                            {unsigned && (
+                              <span style={{
+                                fontSize: 8,
+                                padding: "1px 5px",
+                                borderRadius: 3,
+                                background: "rgba(255,149,0,0.15)",
+                                color: "#FF9500",
+                                fontWeight: 700,
+                                letterSpacing: 0.5,
+                              }} title="Recorded without cryptographic signature — not part of the tamper-evidence chain.">
+                                UNSIGNED
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
+                            {entry.date.toLocaleString()} &bull; {entry.by}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

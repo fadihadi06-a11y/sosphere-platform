@@ -16,6 +16,7 @@ import type {
   ProviderType,
 } from "./voice-call-types";
 import { LocalWebRTCProvider } from "./voice-provider-local";
+import { DisposeGuard } from "./utils/lifecycle-guards";
 import { TwilioClientProvider, TwilioVoiceProvider } from "./voice-provider-twilio";
 
 // ── Escalation Stage ─────────────────────────────────────────
@@ -43,6 +44,14 @@ export class HybridProvider implements VoiceProvider {
   private callId = "";
   private _callActive = false;  // [FIX #10] Guard against post-endCall escalation
   private _disposed = false;     // [FIX #10] Guard against post-dispose operations
+  // ──────────────────────────────────────────────────────────────
+  // B-03 (2026-04-25): a synchronous abort signal so dispose() not
+  // only sets a flag but actively cancels in-flight fetches, Realtime
+  // subscriptions, and any awaited timer. Combined with the existing
+  // _disposed flag (kept for back-compat with the many `if (this._disposed) return`
+  // sites), this guarantees no post-dispose status events.
+  // ──────────────────────────────────────────────────────────────
+  private _disposeGuard = new DisposeGuard();
   private _wasConnected = false; // [FIX #19] Track if call was ever connected (to distinguish hangup from failure)
 
   // Available providers (ordered by priority)
@@ -102,6 +111,12 @@ export class HybridProvider implements VoiceProvider {
   }
 
   dispose(): void {
+    // B-03 (2026-04-25): abort first — any awaited fetch / Realtime
+    // subscription resumes synchronously and bails out at its next
+    // signal.aborted check. Then the legacy _disposed flag handles
+    // call sites that haven't been ported to the signal-checking
+    // pattern yet.
+    this._disposeGuard.dispose();
     this._disposed = true;  // [FIX #10] Set FIRST to block pending operations
     this._callActive = false;
     this.clearEscalationTimeout();
@@ -118,6 +133,9 @@ export class HybridProvider implements VoiceProvider {
     this.callId = callId;
     this._callActive = true;  // [FIX #10]
     this._wasConnected = false; // [FIX #19]
+    // B-03: fresh AbortSignal for this call lifecycle. Any leftover
+    // signal from a previous call is aborted by begin().
+    this._disposeGuard.begin();
     this.resetEscalation();
 
     // Stage 1: Try browser call

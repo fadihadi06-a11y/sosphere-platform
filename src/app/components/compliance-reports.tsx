@@ -495,15 +495,23 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   console.log("[SUPABASE_READY] pdf_generated: " + JSON.stringify({sections: selectedSections, timestamp: new Date().toISOString()}));
   await ensureAutoTable();
 
-  // ── Resolve data: use provided (Supabase) or fall back to mock ──
-  const kpi = data?.kpi ?? MOCK_KPI_DATA;
-  const incidents = data?.incidents ?? MOCK_INCIDENT_TABLE;
-  const correctiveActions = data?.correctiveActions ?? MOCK_CORRECTIVE_ACTIONS;
-  const zoneRisk = data?.zoneRisk ?? MOCK_ZONE_RISK;
-  const employeeRoster = data?.employeeRoster ?? MOCK_EMPLOYEE_ROSTER;
-  const checkinCompliance = data?.checkinCompliance ?? MOCK_CHECKIN_COMPLIANCE;
-  const journeyLog = data?.journeyLog ?? MOCK_JOURNEY_LOG;
-  const playbookData = data?.playbookData ?? MOCK_PLAYBOOK_DATA;
+  // G-22 (B-20, 2026-04-26): in production NEVER fall back to MOCK_*
+  // for an empty tenant. Pre-fix, an empty company generated a PDF
+  // listing fabricated incidents under their REAL company name —
+  // false-document liability. Mocks remain available only in DEV.
+  const useMockFallback = !!import.meta.env.DEV;
+  const EMPTY_KPI = {
+    tableRows: [["No data yet", "—", "—", "Pending first incident"]],
+    chartBars: [{ label: "—", value: 0, color: "#cccccc" }],
+  } as typeof MOCK_KPI_DATA;
+  const kpi               = data?.kpi               ?? (useMockFallback ? MOCK_KPI_DATA : EMPTY_KPI);
+  const incidents         = data?.incidents         ?? (useMockFallback ? MOCK_INCIDENT_TABLE : []);
+  const correctiveActions = data?.correctiveActions ?? (useMockFallback ? MOCK_CORRECTIVE_ACTIONS : []);
+  const zoneRisk          = data?.zoneRisk          ?? (useMockFallback ? MOCK_ZONE_RISK : []);
+  const employeeRoster    = data?.employeeRoster    ?? (useMockFallback ? MOCK_EMPLOYEE_ROSTER : []);
+  const checkinCompliance = data?.checkinCompliance ?? (useMockFallback ? MOCK_CHECKIN_COMPLIANCE : []);
+  const journeyLog        = data?.journeyLog        ?? (useMockFallback ? MOCK_JOURNEY_LOG : []);
+  const playbookData      = data?.playbookData      ?? (useMockFallback ? MOCK_PLAYBOOK_DATA : []);
 
   // Build jsPDF options — apply encryption if configured, with fallback
   const baseOpts: any = { orientation: "p", unit: "mm", format: "a4" };

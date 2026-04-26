@@ -634,7 +634,7 @@ function Step0Method({ onSelect }: { onSelect: (m: ImportMethod) => void }) {
         style={{ background: "rgba(74,144,217,0.05)", border: "1px solid rgba(74,144,217,0.12)" }}>
         <Shield className="size-4 flex-shrink-0 mt-0.5" style={{ color: "#4A90D9" }} />
         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>
-          All employee data is encrypted at rest and in transit. SOSphere complies with PDPL (Saudi Arabia), GDPR, and ISO 27001 standards. Employee phone numbers are used solely for emergency communications.
+          All employee data is encrypted at rest and in transit. SOSphere is designed to align with PDPL (Saudi Arabia), GDPR, and ISO 27001 principles — full third-party certification is on the roadmap, not yet awarded. Employee phone numbers are used solely for emergency communications.
         </p>
       </div>
     </motion.div>
