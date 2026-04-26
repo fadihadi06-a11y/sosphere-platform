@@ -425,6 +425,86 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
               PDF
             </span>
           </motion.button>
+
+          {/* Phase C P2 (W3-12, B-20, 2026-04-26): Police evidence package.
+              Generates a tamper-evident SHA-256-locked vault and copies a
+              share URL the user can hand to police / lawyer / insurer.
+              The vault was already created in sos-emergency.doEnd; this
+              button just exposes the share URL. */}
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            onClick={async () => {
+              try {
+                const vaultModule = await import("./evidence-vault-service");
+                const { getVaultForEmergency, lockVault, generateShareUrl } = vaultModule;
+                let vault = getVaultForEmergency(record.id);
+                if (!vault) {
+                  // Fallback — vault wasn't created (e.g., legacy incident
+                  // before Phase C). Create one now from the record.
+                  const recordedPhotos = (record.photos ?? []).map((p: any) => ({ id: p.id || `photo-${Date.now()}` }));
+                  vault = await vaultModule.createVault({
+                    emergencyId: record.id,
+                    userId: record.userId || "",
+                    userName: record.userName || "",
+                    startTime: new Date(record.startTime).getTime(),
+                    endTime: (record.endTime ? new Date(record.endTime).getTime() : Date.now()),
+                    contactsNotified: (record.contacts || []).map((c: any) => ({
+                      name: c.name, phone: c.phone, method: "twilio",
+                    })),
+                    recordingDurationSec: record.recordingSeconds || 0,
+                    recordingFormat: "webm",
+                    photos: recordedPhotos,
+                  });
+                }
+                // Lock the vault — finalize hash, prevent edits
+                if (!vault.lockedAt) {
+                  await lockVault(vault.vaultId);
+                  vault = getVaultForEmergency(record.id) || vault;
+                }
+                const shareUrl = generateShareUrl(vault.vaultId);
+                if (!shareUrl) {
+                  const { toast } = await import("sonner");
+                  toast.error("Could not generate share URL");
+                  return;
+                }
+                try {
+                  await navigator.clipboard?.writeText(shareUrl);
+                  const { toast } = await import("sonner");
+                  toast.success("Police package URL copied to clipboard", {
+                    description: "Hash: " + (vault.integrityHash || "").slice(0, 16) + " · Lock: 24h",
+                    duration: 5000,
+                  });
+                } catch {
+                  // Native share fallback
+                  if ((navigator as any).share) {
+                    await (navigator as any).share({
+                      title: "SOSphere Evidence Package",
+                      text: `Forensic evidence package for incident ${record.id}`,
+                      url: shareUrl,
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error("[police-package] failed:", e);
+                const { toast } = await import("sonner");
+                toast.error("Could not create police package", {
+                  description: String((e as any)?.message || e).slice(0, 80),
+                });
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-2"
+            style={{
+              borderRadius: 10,
+              background: "rgba(255,45,85,0.08)",
+              border: "1px solid rgba(255,45,85,0.25)",
+              marginLeft: 6,
+            }}
+          >
+            <Shield style={{ width: 13, height: 13, color: "#FF2D55" }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#FF2D55", fontFamily: "inherit" }}>
+              Police
+            </span>
+          </motion.button>
         </div>
 
         {/* Incident summary card */}

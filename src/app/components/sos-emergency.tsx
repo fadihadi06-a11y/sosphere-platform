@@ -1871,6 +1871,40 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // ── STOP any active voice recording on SOS end ──
     stopRealRecording();
     onEnd(record);
+
+    // ─────────────────────────────────────────────────────────────
+    // Phase C P1 (W3-12, B-20, 2026-04-26): create the evidence vault.
+    //
+    // The vault bundles every artefact of this emergency (GPS trail, photos,
+    // audio metadata, contacts, durations) into a single SHA-256-locked
+    // package. After 24 hours it auto-locks and becomes legal-grade evidence.
+    // Police / lawyer can be handed ONE link instead of N artefacts.
+    //
+    // Fire-and-forget: the user is already routing to debrief; vault creation
+    // must not block the UI. We dynamic-import to avoid bundle cost for any
+    // path that doesn't reach SOS end.
+    // ─────────────────────────────────────────────────────────────
+    (async () => {
+      try {
+        const { createVault } = await import("./evidence-vault-service");
+        await createVault({
+          emergencyId: errIdRef.current,
+          userId: userId,
+          userName: userName,
+          startTime: record.startTime.getTime(),
+          endTime: (record.endTime ?? new Date()).getTime(),
+          contactsNotified: contactsRef.current
+            .filter(c => c.status === "answered" || c.status === "calling" || c.status === "queued")
+            .map(c => ({ name: c.name, phone: c.phone, method: "twilio" })),
+          recordingDurationSec: q.current.recordingSec,
+          recordingFormat: "webm",
+          photos: docPhotosRef.current?.map(p => ({ id: (p as any).id || `photo-${Date.now()}` })) ?? [],
+        });
+      } catch (e) {
+        console.warn("[evidence-vault] createVault failed (non-fatal):", e);
+      }
+    })();
+
     // ── GAP FIX: Emit SOS_CANCELLED so dashboard resolves the emergency ──
     // This allows the cluster engine to re-evaluate when a worker cancels SOS
     // [SUPABASE_READY] sos_cancel: update sos_events set status='cancelled' + realtime
