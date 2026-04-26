@@ -39,8 +39,6 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// ── Twilio request signature validation ──────────────────────
-// Twilio signs webhooks with HMAC-SHA1(url + sorted params, AuthToken)
 async function validateTwilioSignature(
   req: Request,
   url: string,
@@ -48,21 +46,14 @@ async function validateTwilioSignature(
 ): Promise<boolean> {
   const sigHeader = req.headers.get("X-Twilio-Signature");
   if (!sigHeader) return false;
-
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   if (!authToken) {
-    // B-H2: signature verification is mandatory (no skip flag).
-    // If token is unset we fail closed — a misconfigured deploy must
-    // not be exploitable as an unsigned-webhook bypass.
     console.error("[twilio-status] TWILIO_AUTH_TOKEN missing — rejecting request (fail closed)");
     return false;
   }
-
-  // Twilio signature = HMAC-SHA1(url + sortedParams, authToken), base64
   const sortedKeys = Object.keys(params).sort();
   let dataToSign = url;
   for (const k of sortedKeys) dataToSign += k + params[k];
-
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(authToken),
@@ -72,11 +63,9 @@ async function validateTwilioSignature(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-
   return sigB64 === sigHeader;
 }
 
-// ── End a Twilio conference via REST API ─────────────────────
 async function endConference(conferenceSid: string): Promise<void> {
   const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
   const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -99,61 +88,33 @@ async function endConference(conferenceSid: string): Promise<void> {
 }
 
 serve(async (req) => {
-  // B-M1: origin allowlist via ALLOWED_ORIGINS env
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-
   try {
     const url = new URL(req.url);
     const callId = url.searchParams.get("callId") || "";
     const action = url.searchParams.get("action") || "status";
-    const type = url.searchParams.get("type") || "call"; // "call" or "sms"
-
-    // Parse form data from Twilio webhook
+    const type = url.searchParams.get("type") || "call";
     const formData = await req.formData();
     const data: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      data[key] = String(value);
-    });
+    formData.forEach((value, key) => { data[key] = String(value); });
 
-    // ── Validate request authenticity ───────────────────────────
-    // B-09 (2026-04-25): the prior code skipped signature validation
-    // for action=gather entirely, leaving a public path that an
-    // attacker could POST to with arbitrary `Digits`, `From`, `Called`
-    // and reroute escalation calls/SMS. The fix:
-    //
-    //   action == "gather"   → require a valid `gtok` (HMAC-SHA256
-    //                          token bound to callId + expiry, minted
-    //                          by twilio-call when issuing the TwiML).
-    //                          Twilio's own signature is also validated
-    //                          when present, as defense in depth.
-    //   action != "gather"   → mandatory Twilio signature, as before.
-    //
-    // For gather we treat `gtok` as the primary gate; the Twilio
-    // signature is checked but not strictly required (Twilio's URL
-    // signing of dynamic gather callbacks has historically been
-    // unreliable in this stack — see B-H2 comment).
+    // B-09: gather requires gtok; other actions require Twilio signature
     if (action === "gather") {
       const gtok = url.searchParams.get("gtok");
       const tokRes = await verifyGatherToken(gtok, callId);
       if (!tokRes.ok) {
-        console.warn(
-          `[twilio-status] gather token verification FAILED reason=${tokRes.reason} callId=${callId} — rejecting`,
-        );
+        console.warn(`[twilio-status] gather token verification FAILED reason=${tokRes.reason} callId=${callId} — rejecting`);
         return new Response(JSON.stringify({ error: "Invalid gather token" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Defense in depth: also try Twilio's own signature; log on
-      // mismatch but do not reject (gtok is the binding gate).
       const twilioOk = await validateTwilioSignature(req, req.url, data);
       if (!twilioOk) {
-        console.warn(
-          `[twilio-status] gather: Twilio signature did not validate (callId=${callId}) — gtok was OK so proceeding`,
-        );
+        console.warn(`[twilio-status] gather: Twilio signature did not validate (callId=${callId}) — gtok was OK so proceeding`);
       }
     } else {
       const valid = await validateTwilioSignature(req, req.url, data);
@@ -167,32 +128,22 @@ serve(async (req) => {
     }
 
     console.log(`[twilio-status] ${action} | type=${type} | callId=${callId} | status=${data.CallStatus || data.MessageStatus || data.StatusCallbackEvent || "unknown"}`);
-
-    // Initialize Supabase client for logging
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ── Handle Conference status events (Elite bridge) ───────
     if (type === "conference") {
-      const event = data.StatusCallbackEvent; // start, end, join, leave
+      const event = data.StatusCallbackEvent;
       const conferenceSid = data.ConferenceSid;
-
       console.log(`[twilio-status] Conference event: ${event} conf=${conferenceSid} callId=${callId}`);
-
       await logCallEvent(supabase, callId, `conf_${event}`, data);
-
-      // When a participant leaves, check if conference is empty → kill it
       if (event === "participant-leave" && conferenceSid) {
         try {
-          // Fetch live participants for this conference
           const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
           const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
           const partsRes = await fetch(
             `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Conferences/${conferenceSid}/Participants.json`,
-            {
-              headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}` },
-            }
+            { headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}` } }
           );
           const partsData = await partsRes.json();
           const count = partsData.participants?.length ?? 0;
@@ -204,106 +155,59 @@ serve(async (req) => {
           console.error("[twilio-status] Failed to check conference participants:", err);
         }
       }
-
       return new Response(JSON.stringify({ received: true, event, conferenceSid }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ── Handle Gather (admin pressed a key) ──────────────────
     if (action === "gather") {
       const digit = data.Digits;
       const baseUrl = url.searchParams.get("baseUrl") || Deno.env.get("SOSPHERE_BASE_URL") || "";
-
       if (digit === "1") {
-        // Admin accepted — redirect to TwiML that connects them
-        // or simply tell them to open the dashboard
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">
-    Thank you. Opening the emergency dashboard now.
-    The dashboard link has been sent to your phone.
-    Stay on the line for updates.
-  </Say>
-  <Pause length="60"/>
-  <Say voice="Polly.Joanna">The call has ended. Please check the dashboard for updates.</Say>
-</Response>`;
-
-        // Also send SMS with dashboard link
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">\n    Thank you. Opening the emergency dashboard now.\n    The dashboard link has been sent to your phone.\n    Stay on the line for updates.\n  </Say>\n  <Pause length="60"/>\n  <Say voice="Polly.Joanna">The call has ended. Please check the dashboard for updates.</Say>\n</Response>`;
         if (data.From && baseUrl) {
           await sendEscalationSMS(supabaseUrl, data.Called || data.From, callId, baseUrl);
         }
-
-        // Log acceptance
         await logCallEvent(supabase, callId, "accepted", data);
-
-        // Broadcast to dashboard that admin answered
         await supabase.channel(`call-${callId}`).send({
           type: "broadcast",
           event: "call_status",
           payload: { callId, status: "accepted", adminPhone: data.Called },
         });
-
-        return new Response(twiml, {
-          headers: { ...corsHeaders, "Content-Type": "text/xml" },
-        });
+        return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
       } else if (digit === "2") {
-        // Replay the alert
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Redirect>${supabaseUrl}/functions/v1/twilio-call?replay=true&amp;callId=${callId}</Redirect>
-</Response>`;
-        return new Response(twiml, {
-          headers: { ...corsHeaders, "Content-Type": "text/xml" },
-        });
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Redirect>${supabaseUrl}/functions/v1/twilio-call?replay=true&amp;callId=${callId}</Redirect>\n</Response>`;
+        return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
       } else {
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">Invalid input. Goodbye.</Say>
-</Response>`;
-        return new Response(twiml, {
-          headers: { ...corsHeaders, "Content-Type": "text/xml" },
-        });
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">Invalid input. Goodbye.</Say>\n</Response>`;
+        return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
       }
     }
 
-    // ── Handle call status updates ──────────────────────────
     if (type === "call") {
-      const callStatus = data.CallStatus; // initiated, ringing, answered, completed, busy, no-answer, failed, canceled
+      const callStatus = data.CallStatus;
       const callSid = data.CallSid;
-      const answeredBy = data.AnsweredBy; // human, machine_start, fax, unknown
-
+      const answeredBy = data.AnsweredBy;
       await logCallEvent(supabase, callId, callStatus, data);
-
-      // Broadcast status to dashboard
       if (callId) {
         try {
           const channel = supabase.channel(`call-${callId}`);
           await channel.send({
             type: "broadcast",
             event: "call_status",
-            payload: {
-              callId,
-              callSid,
-              status: callStatus,
-              answeredBy,
-              timestamp: new Date().toISOString(),
-            },
+            payload: { callId, callSid, status: callStatus, answeredBy, timestamp: new Date().toISOString() },
           });
           setTimeout(() => supabase.removeChannel(channel), 3000);
         } catch (e) {
           console.warn("[twilio-status] Broadcast failed:", e);
         }
       }
-
-      // ── Escalation: if unanswered/voicemail → send SMS ──
       const shouldEscalateToSMS =
         callStatus === "no-answer" ||
         callStatus === "busy" ||
         callStatus === "failed" ||
         (callStatus === "completed" && answeredBy === "machine_start");
-
       if (shouldEscalateToSMS && callId) {
         console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus})`);
         const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "";
@@ -314,9 +218,8 @@ serve(async (req) => {
       }
     }
 
-    // ── Handle SMS status updates ───────────────────────────
     if (type === "sms") {
-      const messageStatus = data.MessageStatus; // queued, sent, delivered, undelivered, failed
+      const messageStatus = data.MessageStatus;
       await logCallEvent(supabase, callId, `sms_${messageStatus}`, data);
     }
 
@@ -333,7 +236,6 @@ serve(async (req) => {
   }
 });
 
-// ── Helper: Log call event to Supabase ──────────────────────
 async function logCallEvent(
   supabase: any,
   callId: string,
@@ -358,7 +260,6 @@ async function logCallEvent(
   }
 }
 
-// ── Helper: Send escalation SMS ─────────────────────────────
 async function sendEscalationSMS(
   supabaseUrl: string,
   adminPhone: string,
@@ -369,12 +270,10 @@ async function sendEscalationSMS(
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
     const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER") || "";
-
     if (!twilioFrom) {
       console.warn("[twilio-status] No TWILIO_FROM_NUMBER set, skipping SMS escalation");
       return;
     }
-
     const smsBody = [
       `🚨 SOSphere Emergency Alert`,
       ``,
@@ -382,90 +281,18 @@ async function sendEscalationSMS(
       `Open the dashboard immediately:`,
       `${baseUrl}/emergency/${callId}`,
     ].join("\n");
-
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     const auth = btoa(`${accountSid}:${authToken}`);
-
     await fetch(twilioUrl, {
       method: "POST",
       headers: {
         Authorization: `Basic ${auth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        To: adminPhone,
-        From: twilioFrom,
-        Body: smsBody,
-      }).toString(),
+      body: new URLSearchParams({ To: adminPhone, From: twilioFrom, Body: smsBody }).toString(),
     });
-
     console.log(`[twilio-status] Escalation SMS sent to ${adminPhone}`);
   } catch (e) {
     console.error("[twilio-status] Escalation SMS failed:", e);
   }
-}
-      status,
-      call_sid: rawData.CallSid || rawData.MessageSid || null,
-      from_number: rawData.From || null,
-      to_number: rawData.To || rawData.Called || null,
-      duration: rawData.CallDuration ? parseInt(rawData.CallDuration) : null,
-      answered_by: rawData.AnsweredBy || null,
-      raw_data: rawData,
-      created_at: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.warn("[twilio-status] Failed to log event:", e);
-  }
-}
-
-// ── Helper: Send escalation SMS ─────────────────────────────
-async function sendEscalationSMS(
-  supabaseUrl: string,
-  adminPhone: string,
-  callId: string,
-  baseUrl: string,
-) {
-  try {
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-    const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER") || "";
-
-    if (!twilioFrom) {
-      console.warn("[twilio-status] No TWILIO_FROM_NUMBER set, skipping SMS escalation");
-      return;
-    }
-
-    const smsBody = [
-      `🚨 SOSphere Emergency Alert`,
-      ``,
-      `A call was made but not answered.`,
-      `Open the dashboard immediately:`,
-      `${baseUrl}/emergency/${callId}`,
-    ].join("\n");
-
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-    const auth = btoa(`${accountSid}:${authToken}`);
-
-    await fetch(twilioUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        To: adminPhone,
-        From: twilioFrom,
-        Body: smsBody,
-      }).toString(),
-    });
-
-    console.log(`[twilio-status] Escalation SMS sent to ${adminPhone}`);
-  } catch (e) {
-    console.error("[twilio-status] Escalation SMS failed:", e);
-  }
-}
-catch (e) {
-    console.error("[twilio-status] Escalation SMS failed:", e);
-  }
-}
 }

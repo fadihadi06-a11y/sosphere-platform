@@ -1,18 +1,16 @@
 // SOSphere twilio-call edge function
-// v9 (B-09 2026-04-25): emits gtok in <Gather>
-// v10 (B-20 2026-04-25): fixes G-15 (client-supplied `from` -> caller-ID
-//                        spoof) and G-16 (TwiML injection via unescaped
-//                        employeeName/companyName/zoneName).
-// v11 (B-20 G-12 2026-04-26): server-side `to` derivation. Pre-fix any
-//                              authenticated user could supply any E.164
-//                              number and Twilio would dial it on our bill
-//                              (toll fraud + harassment vector). Now `to`
-//                              must match an admin/owner phone in the
-//                              company that owns the emergency referenced
-//                              by `callId` (resolved via sos_sessions).
-//                              The function is for company SOS only;
-//                              civilian SOS uses twilio-sms (which has
-//                              its own G-13 contact-list check).
+// v9 (B-09):  emits gtok in <Gather>
+// v10 (G-15/G-16): server-side `from` + escapeXml on TwiML.
+// v11 (G-12): server-side `to` derivation against admin/owner phones.
+// v12 (G-5  B-20 2026-04-26): adds mode parameter:
+//   - mode="admin" (default): the SOS escalation path. `to` must be an
+//     admin/owner phone of the emergency's company. (existing G-12 logic)
+//   - mode="employee_callback": admin-clicks-Callback path. `to` must be
+//     the SOS owner's own phone (resolved via sos_sessions.user_id ->
+//     profiles.phone). The CALLER (JWT user) must be an admin/owner of
+//     the emergency's company — a worker cannot use this path to call
+//     other workers. Pre-fix the admin UI used a setTimeout simulation
+//     and never actually called Twilio.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, markSosPriority, getRateLimitHeaders } from "../_shared/rate-limiter.ts";
@@ -21,15 +19,10 @@ import { signGatherToken } from "../_shared/gather-token.ts";
 function escapeXml(unsafe: string | null | undefined): string {
   if (unsafe === null || unsafe === undefined) return "";
   return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
-// G-12 helper: normalise phones for E.164 comparison.
-// Matches the equivalent in twilio-sms so the two stay in lockstep.
 function normalizePhone(p: string | null | undefined): string {
   if (!p) return "";
   const trimmed = String(p).trim();
@@ -71,53 +64,73 @@ async function authenticate(req: Request): Promise<string | null> {
   }
 }
 
-/**
- * G-12 (B-20): resolve the set of phone numbers we are allowed to dial
- * for a given emergency `callId`. The contract:
- *   - callId resolves to a sos_sessions row (the emergency).
- *   - The session must have a company_id (this function is company-only;
- *     civilian SOS uses twilio-sms).
- *   - We collect every admin/owner phone for that company from BOTH
- *     profiles (via company_memberships) AND employees (some companies
- *     populate employees but not profiles for org members).
- */
-async function resolveAllowedToPhones(
+// G-12: admin/owner phones for `mode=admin` (escalation direction).
+async function resolveAdminPhones(
   admin: ReturnType<typeof createClient>,
   callId: string,
 ): Promise<{ companyId: string | null; phones: Set<string> }> {
   const phones = new Set<string>();
-
   const { data: session } = await admin
-    .from("sos_sessions")
-    .select("company_id")
-    .eq("id", callId)
-    .maybeSingle();
+    .from("sos_sessions").select("company_id").eq("id", callId).maybeSingle();
   const companyId = (session as any)?.company_id ?? null;
   if (!companyId) return { companyId: null, phones };
-
   const { data: profileRows } = await admin
     .from("company_memberships")
     .select("user_id, role, active, profiles:profiles!company_memberships_user_id_fkey(phone)")
-    .eq("company_id", companyId)
-    .in("role", ["admin", "owner"])
-    .eq("active", true);
+    .eq("company_id", companyId).in("role", ["admin", "owner"]).eq("active", true);
   for (const r of (profileRows as any[]) || []) {
     const ph = normalizePhone(r?.profiles?.phone);
     if (ph) phones.add(ph);
   }
-
   const { data: empRows } = await admin
-    .from("employees")
-    .select("phone, role, status")
-    .eq("company_id", companyId)
-    .in("role", ["admin", "owner"])
-    .eq("status", "active");
+    .from("employees").select("phone, role, status")
+    .eq("company_id", companyId).in("role", ["admin", "owner"]).eq("status", "active");
   for (const r of (empRows as any[]) || []) {
     const ph = normalizePhone(r?.phone);
     if (ph) phones.add(ph);
   }
-
   return { companyId, phones };
+}
+
+// G-5: SOS owner's phone for `mode=employee_callback` (admin -> employee).
+// Returns the owner phone PLUS the company_id so the caller-authorisation
+// check can confirm the caller is admin/owner of the same company.
+async function resolveEmployeeCallbackTarget(
+  admin: ReturnType<typeof createClient>,
+  callId: string,
+): Promise<{ companyId: string | null; ownerPhone: string | null }> {
+  const { data: session } = await admin
+    .from("sos_sessions")
+    .select("user_id, company_id").eq("id", callId).maybeSingle();
+  if (!session) return { companyId: null, ownerPhone: null };
+  const userId = (session as any).user_id as string | null;
+  const companyId = (session as any).company_id as string | null;
+  if (!userId) return { companyId, ownerPhone: null };
+  // Try profiles.phone first, fall back to employees.phone (per company schema).
+  const { data: profile } = await admin
+    .from("profiles").select("phone").eq("id", userId).maybeSingle();
+  let ph = normalizePhone((profile as any)?.phone);
+  if (!ph) {
+    const { data: emp } = await admin
+      .from("employees").select("phone").eq("user_id", userId).maybeSingle();
+    ph = normalizePhone((emp as any)?.phone);
+  }
+  return { companyId, ownerPhone: ph || null };
+}
+
+// G-5: caller must be admin/owner of the emergency's company to use
+// the employee_callback mode. A regular employee CANNOT use this path
+// to call other employees — prevents harassment + toll-fraud variants.
+async function callerIsCompanyAdmin(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  companyId: string,
+): Promise<boolean> {
+  const { data: m } = await admin
+    .from("company_memberships")
+    .select("role").eq("company_id", companyId).eq("user_id", userId)
+    .eq("active", true).maybeSingle();
+  return !!m && ["admin", "owner"].includes((m as any).role);
 }
 
 serve(async (req) => {
@@ -132,9 +145,10 @@ serve(async (req) => {
       );
     }
 
-    const { to, callId, employeeName, companyName, zoneName } = await req.json();
+    const body = await req.json();
+    const { to, callId, employeeName, companyName, zoneName } = body;
+    const mode: "admin" | "employee_callback" = body.mode === "employee_callback" ? "employee_callback" : "admin";
 
-    // G-15 (B-20): `from` is server-side only.
     const from = Deno.env.get("TWILIO_FROM_NUMBER") || "";
     if (!from) {
       console.error("[twilio-call] TWILIO_FROM_NUMBER env not configured");
@@ -143,7 +157,6 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
     if (!to || !callId) {
       return new Response(
         JSON.stringify({ error: "Missing required fields: to, callId" }),
@@ -151,28 +164,55 @@ serve(async (req) => {
       );
     }
 
-    // G-12 (B-20): server-side validation of `to` against the emergency's
-    // company admin/owner phones. This blocks toll-fraud and harassment
-    // by ensuring an authenticated user can only dial a phone that is
-    // legitimately part of the emergency they are attempting to escalate.
     const admin = createClient(SUPA_URL, SUPA_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { companyId, phones: allowedPhones } = await resolveAllowedToPhones(admin, callId);
-    if (!companyId) {
-      console.warn(`[twilio-call] callId=${callId} has no company_id - twilio-call is for company SOS only`);
-      return new Response(
-        JSON.stringify({ error: "Emergency is not company-scoped or does not exist" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    const targetNorm = normalizePhone(to);
-    if (!targetNorm || !allowedPhones.has(targetNorm)) {
-      console.warn(`[twilio-call] target=${to} not in admin/owner phones for company=${companyId} (callId=${callId}, user=${userId})`);
-      return new Response(
-        JSON.stringify({ error: "Recipient not authorised for this emergency" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+
+    // G-12 + G-5: per-mode `to` validation.
+    let companyIdForLog: string | null = null;
+    if (mode === "admin") {
+      const { companyId, phones } = await resolveAdminPhones(admin, callId);
+      if (!companyId) {
+        return new Response(
+          JSON.stringify({ error: "Emergency is not company-scoped or does not exist" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const targetNorm = normalizePhone(to);
+      if (!targetNorm || !phones.has(targetNorm)) {
+        console.warn(`[twilio-call] mode=admin target=${to} not in admin/owner phones for company=${companyId}`);
+        return new Response(
+          JSON.stringify({ error: "Recipient not authorised for this emergency" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      companyIdForLog = companyId;
+    } else {
+      // mode=employee_callback
+      const { companyId, ownerPhone } = await resolveEmployeeCallbackTarget(admin, callId);
+      if (!companyId) {
+        return new Response(
+          JSON.stringify({ error: "Emergency is not company-scoped or does not exist" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const isAdmin = await callerIsCompanyAdmin(admin, userId, companyId);
+      if (!isAdmin) {
+        console.warn(`[twilio-call] mode=employee_callback caller=${userId} not admin/owner of company=${companyId}`);
+        return new Response(
+          JSON.stringify({ error: "Only company admins/owners may call back the SOS owner" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const targetNorm = normalizePhone(to);
+      if (!targetNorm || !ownerPhone || targetNorm !== ownerPhone) {
+        console.warn(`[twilio-call] mode=employee_callback target=${to} != owner-phone=${ownerPhone} for callId=${callId}`);
+        return new Response(
+          JSON.stringify({ error: "Recipient is not the SOS owner for this emergency" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      companyIdForLog = companyId;
     }
 
     markSosPriority(userId);
@@ -190,27 +230,16 @@ serve(async (req) => {
     }
 
     const gtok = await signGatherToken(callId);
-
-    // G-16 (B-20): escape user-controlled strings before TwiML interpolation.
     const safeEmployee = escapeXml(employeeName || "an employee");
     const safeCompany  = escapeXml(companyName  || "your company");
     const safeZone     = escapeXml(zoneName     || "unknown zone");
 
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna" language="en-US">
-    Emergency S.O.S. alert from ${safeEmployee} at ${safeCompany}.
-    Location: ${safeZone}.
-    Press 1 to connect to the emergency dashboard.
-    Press 2 to hear the alert again.
-  </Say>
-  <Gather numDigits="1" action="${supabaseUrl}/functions/v1/twilio-status?action=gather&amp;callId=${callId}&amp;baseUrl=${encodeURIComponent(baseUrl)}&amp;gtok=${encodeURIComponent(gtok)}" method="POST" timeout="10">
-    <Play loop="2">https://api.twilio.com/cowbell.mp3</Play>
-  </Gather>
-  <Say voice="Polly.Joanna">No response received. The emergency team has been notified. Goodbye.</Say>
-</Response>`;
+    // Two TwiML scripts — admin escalation vs employee callback.
+    const twiml = mode === "admin"
+      ? `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna" language="en-US">\n    Emergency S.O.S. alert from ${safeEmployee} at ${safeCompany}.\n    Location: ${safeZone}.\n    Press 1 to connect to the emergency dashboard.\n    Press 2 to hear the alert again.\n  </Say>\n  <Gather numDigits="1" action="${supabaseUrl}/functions/v1/twilio-status?action=gather&amp;callId=${callId}&amp;baseUrl=${encodeURIComponent(baseUrl)}&amp;gtok=${encodeURIComponent(gtok)}" method="POST" timeout="10">\n    <Play loop="2">https://api.twilio.com/cowbell.mp3</Play>\n  </Gather>\n  <Say voice="Polly.Joanna">No response received. The emergency team has been notified. Goodbye.</Say>\n</Response>`
+      : `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna" language="en-US">\n    This is a callback from ${safeCompany}. Your supervisor is checking on your safety after the recent S.O.S. alert. Please stay on the line.\n  </Say>\n  <Pause length="1"/>\n  <Say voice="Polly.Joanna">Connecting you now. The call may be recorded for safety.</Say>\n</Response>`;
 
-    const statusCallback = `${supabaseUrl}/functions/v1/twilio-status?callId=${callId}`;
+    const statusCallback = `${supabaseUrl}/functions/v1/twilio-status?callId=${callId}&type=${mode}`;
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
     const auth = btoa(`${accountSid}:${authToken}`);
     const formData = new URLSearchParams({
@@ -226,20 +255,18 @@ serve(async (req) => {
     const result = await response.json();
     if (!response.ok) {
       console.error("[twilio-call] Twilio API error:", result);
-      // G-30: do not leak twilio response detail in client response.
       return new Response(
         JSON.stringify({ error: "Twilio call failed" }),
         { status: response.status, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
       );
     }
-    console.log(`[twilio-call] Call initiated: ${result.sid} -> ${to} (callId: ${callId}, user=${userId}, company=${companyId})`);
+    console.log(`[twilio-call] mode=${mode} call initiated: ${result.sid} -> ${to} (callId=${callId}, user=${userId}, company=${companyIdForLog})`);
     return new Response(
-      JSON.stringify({ callSid: result.sid, status: result.status, to: result.to, from: result.from, callId }),
+      JSON.stringify({ callSid: result.sid, status: result.status, to: result.to, from: result.from, callId, mode }),
       { status: 200, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("[twilio-call] Error:", err);
-    // G-30: generic 500.
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },

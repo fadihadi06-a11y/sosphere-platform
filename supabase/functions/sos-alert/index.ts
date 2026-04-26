@@ -886,13 +886,16 @@ serve(async (req: Request) => {
     // Shape-validate aiScript early (tier gate applied after resolveTier below).
     const aiScriptShape = sanitizeAiScript(payload.aiScript);
 
-    // Security: payload.userId must match JWT-derived userId
+    // W3-1 (B-20, 2026-04-26): payload.userId can be a human-readable
+    // EMP-* identifier from the civilian flow OR the auth UUID — both are
+    // tolerated. The JWT (authUserId) is the source of truth used for
+    // all DB writes. We log a notice when they differ so legacy callers
+    // get cleaned up, but we do NOT fail the request — that 403 silently
+    // broke every civilian server-side SOS leg pre-fix.
     if (payload.userId && payload.userId !== authUserId) {
-      console.warn(`[sos-alert] userId mismatch: payload=${payload.userId} jwt=${authUserId}`);
-      return new Response(JSON.stringify({ error: "userId mismatch" }), {
-        status: 403, headers: cors,
-      });
+      console.log(`[sos-alert] userId differs from JWT (using JWT): payload=${payload.userId} jwt=${authUserId}`);
     }
+    // From here on every reference uses authUserId (JWT-derived UUID).
 
     if (!emergencyId || !contacts?.length) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
