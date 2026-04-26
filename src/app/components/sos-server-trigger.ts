@@ -1112,12 +1112,31 @@ async function replayOneSOS(rec: SOSRecord): Promise<{ ok: boolean; status: numb
  *      (phone rebooted mid-emergency, app was launched after a period
  *      offline, etc.).
  */
+// ──────────────────────────────────────────────────────────────────
+// G-36 (B-20, 2026-04-26): named handlers + removeEventListener idempotency.
+//
+// Pre-fix: a module-level boolean (`replayListenerAttached`) gated the
+// add/remove. HMR (dev) or Capacitor resume can reset the module while
+// the document still holds the previously-registered anonymous handler,
+// resulting in two listeners on the same event. When the user returns
+// from background both handlers fire `replayPendingSOS()` simultaneously.
+// The replay watcher's own in-flight guard catches *most* of those
+// races, but a tight micro-task ordering can still slip through and
+// cause a duplicate Twilio call.
+//
+// Now: handlers are NAMED (closure-stored module references), and we
+// removeEventListener the previous handler before adding the new one.
+// Even if startSOSReplayWatcher() is called 1000 times across HMR
+// cycles, the document/window has at most ONE of each listener.
+// ──────────────────────────────────────────────────────────────────
+let onlineHandler:     ((this: Window) => void) | null = null;
+let visibilityHandler: ((this: Document) => void) | null = null;
+
 export function startSOSReplayWatcher(): void {
   if (replayListenerAttached) return;
   replayListenerAttached = true;
 
   const fire = (source: string) => {
-    // small debounce — network flaps fire online/offline rapidly
     setTimeout(() => {
       if (navigator.onLine) {
         console.log(`[SOS-Replay] trigger: ${source}`);
@@ -1126,25 +1145,21 @@ export function startSOSReplayWatcher(): void {
     }, 1500);
   };
 
-  // Trigger 1: browser-native online event
-  window.addEventListener("online", () => fire("online"));
+  // Trigger 1: browser-native online event — named handler.
+  if (onlineHandler) window.removeEventListener("online", onlineHandler);
+  onlineHandler = () => fire("online");
+  window.addEventListener("online", onlineHandler);
 
-  // Trigger 2: visibility restore (covers the Android app-resume path
-  // where `online` may fire while the WebView is backgrounded and
-  // not-yet-repainted — effectively lost).
+  // Trigger 2: visibility restore — named handler.
   if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
+    if (visibilityHandler) document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = () => {
       if (document.visibilityState === "visible") fire("visibility");
-    });
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
   }
 
-  // Trigger 3: auth session available. replayPendingSOS is auth-gated
-  // (the Edge Function requires a Bearer token for tier enforcement),
-  // so the moment Supabase reports a session is restored/refreshed we
-  // get a fresh chance to drain the queue. Without this, a user who
-  // starts the app offline and then signs in would have to wait for
-  // the next `online`/`visibility` event before their queued SOS
-  // records actually replay.
+  // Trigger 3: auth session available.
   try {
     supabase.auth.onAuthStateChange((event, session) => {
       if (session) fire(`auth:${event.toLowerCase()}`);
@@ -1159,4 +1174,20 @@ export function startSOSReplayWatcher(): void {
   }
 
   console.log("[SOS-Replay] watcher installed (online + visibility + auth + startup)");
+}
+
+/**
+ * Stop and de-register the replay watcher. Useful for tests + HMR.
+ * Idempotent — safe to call multiple times.
+ */
+export function stopSOSReplayWatcher(): void {
+  if (onlineHandler) {
+    window.removeEventListener("online", onlineHandler);
+    onlineHandler = null;
+  }
+  if (visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+  replayListenerAttached = false;
 }

@@ -644,36 +644,51 @@ export function IntelligentGuide({
   }, [scanComplete, phase]);
 
   // ── Auto-execute actions when entering a phase ──────────────
+  // G-37: cancellation flag + tracked timeouts so phase change cancels
+  // pending auto-executes (no stale-closure completion of old-phase actions).
   useEffect(() => {
     if (phase === "scanning" || phase === "complete") return;
     const actions = phaseActions[phase];
     if (!actions) return;
+    let cancelled = false;
+    const phaseAtStart = phase;
+    const timers: ReturnType<typeof setTimeout>[] = [];
     actions.forEach((action, i) => {
       if (action.autoExecute && !action.completed && !action.executing) {
-        setTimeout(() => {
+        const startT = setTimeout(() => {
+          if (cancelled) return;
           setPhaseActions(prev => {
+            if (prev[phaseAtStart] === undefined) return prev;
             const next = { ...prev };
-            const list = [...(next[phase] || [])];
+            const list = [...(next[phaseAtStart] || [])];
+            if (list[i]?.completed) return prev;
             list[i] = { ...list[i], executing: true };
-            next[phase] = list;
+            next[phaseAtStart] = list;
             return next;
           });
           addLog("AUTO-EXECUTING: " + action.label, action.color);
-          // Simulate execution
-          setTimeout(() => {
+          const completeT = setTimeout(() => {
+            if (cancelled) return;
             setPhaseActions(prev => {
+              if (prev[phaseAtStart] === undefined) return prev;
               const next = { ...prev };
-              const list = [...(next[phase] || [])];
+              const list = [...(next[phaseAtStart] || [])];
               list[i] = { ...list[i], executing: false, completed: true };
-              next[phase] = list;
+              next[phaseAtStart] = list;
               return next;
             });
             addLog("COMPLETED: " + action.label, "#00C853");
             setResponseScore(p => Math.min(100, p + 3));
           }, 1500 + i * 800);
+          timers.push(completeT);
         }, 600 + i * 1200);
+        timers.push(startT);
       }
     });
+    return () => {
+      cancelled = true;
+      timers.forEach(t => clearTimeout(t));
+    };
   }, [phase, phaseActions]);
 
   // ── Manual Action Handler ───────────────────────────────────

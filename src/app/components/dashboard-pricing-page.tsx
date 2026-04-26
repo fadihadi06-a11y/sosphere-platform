@@ -797,7 +797,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
             {[
               { icon: Lock, label: "TLS 1.3", sublabel: "Transport Encryption" },
               { icon: BadgeCheck, label: "PCI DSS via Stripe", sublabel: "Payments handled by Stripe" },
-              { icon: ShieldCheck, label: "AES-256 at Rest", sublabel: "Encrypted Storage" },
+              { icon: ShieldCheck, label: "At-Rest Encryption", sublabel: "AES-256 via Supabase platform" },
               { icon: Globe, label: "GDPR-Aligned", sublabel: "Data Sovereignty Controls" },
               { icon: LifeBuoy, label: "99.9% Uptime Target", sublabel: "Operational Goal" },
             ].map((item, i) => (

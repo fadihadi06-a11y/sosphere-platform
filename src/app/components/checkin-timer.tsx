@@ -28,7 +28,18 @@ function syncCheckinEvent(event: {
   remainingSec?: number;
 }) {
   if (!SUPABASE_CONFIG.isConfigured) return;
-  supabase.from("checkin_events").insert({
+  // ──────────────────────────────────────────────────────────────────
+  // G-40 (B-20, 2026-04-26): silent failure was a safety blind spot.
+  // Pre-fix: a failed Supabase INSERT just emitted console.warn(). The
+  // worker's device showed "Checked in" while the dispatcher dashboard
+  // showed "Missed Check-in" — the dispatcher could escalate to a
+  // false SOS, OR ignore a real missed check-in thinking the device
+  // was just offline.
+  // Now: failed inserts are queued in localStorage and re-flushed on
+  // next successful insert (similar to the audit-log retry pattern).
+  // The user also sees a persistent toast confirming the queue state.
+  // ──────────────────────────────────────────────────────────────────
+  const row = {
     employee_id: event.employeeId,
     employee_name: event.employeeName,
     zone: event.zone,
@@ -36,7 +47,42 @@ function syncCheckinEvent(event: {
     duration_min: event.durationMin || null,
     remaining_sec: event.remainingSec || null,
     created_at: new Date().toISOString(),
-  }).then(() => {}).catch((e: any) => console.warn("[CheckIn] Supabase sync failed:", e));
+  };
+  const queueKey = "sosphere_checkin_retry_queue";
+  const enqueue = () => {
+    try {
+      const q = JSON.parse(localStorage.getItem(queueKey) || "[]");
+      q.push(row);
+      // Cap at 100 to avoid unbounded growth.
+      localStorage.setItem(queueKey, JSON.stringify(q.slice(-100)));
+    } catch (e) { console.error("[CheckIn] retry-queue persist failed:", e); }
+  };
+
+  // Try to drain the retry queue along with this insert.
+  let pending: any[] = [];
+  try { pending = JSON.parse(localStorage.getItem(queueKey) || "[]"); } catch {}
+  const batch = pending.length > 0 ? [...pending, row] : [row];
+
+  supabase.from("checkin_events").insert(batch)
+    .then(({ error }) => {
+      if (error) {
+        console.warn("[CheckIn] Supabase sync failed, queued:", error.message);
+        enqueue();
+        try {
+          // Visible — dispatchers should know if our local cache differs.
+          if (typeof window !== "undefined" && (window as any).__sosphereToast) {
+            (window as any).__sosphereToast("Check-in queued — will retry when online");
+          }
+        } catch {}
+        return;
+      }
+      // Success — clear queue (we just upserted everything in pending+row).
+      try { localStorage.removeItem(queueKey); } catch {}
+    })
+    .catch((e: any) => {
+      console.warn("[CheckIn] Supabase sync exception, queued:", e);
+      enqueue();
+    });
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

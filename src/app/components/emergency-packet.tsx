@@ -585,10 +585,10 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
             <Shield style={{ width: 12, height: 12, color: "rgba(0,200,224,0.3)", flexShrink: 0, marginTop: 1 }} />
             <div>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.6 }}>
-                Emergency Packet is automatically sent via SMS with a secure link when SOS activates. Data is encrypted end-to-end and expires after 24 hours.
+                Emergency Packet is automatically sent via SMS with a secure link when SOS activates. The link is unguessable, served over HTTPS, and expires after 24 hours.
               </p>
               <p style={{ fontSize: 9, color: "rgba(0,200,224,0.2)", marginTop: 4 }}>
-                AES-256 encrypted · GDPR-aligned
+                Secure link · Expires 24h · GDPR-aligned
               </p>
             </div>
           </div>

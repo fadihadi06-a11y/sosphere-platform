@@ -17,6 +17,8 @@
 
 // ── Backend Types ─────────────────────────────────────────────────
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export type StorageBackend = "localStorage" | "supabase";
 
 let activeBackend: StorageBackend = "localStorage";
@@ -30,9 +32,10 @@ export function getStorageBackend(): StorageBackend {
 }
 
 // ── Supabase Config (filled when connected) ─────────────────────
+// G-42: client now strongly typed (was `any` pre-fix).
 
 interface SupabaseStorageConfig {
-  client: any; // SupabaseClient — typed `any` until connected
+  client: SupabaseClient;
   bucketName: string; // For file storage (photos, audio)
 }
 
@@ -275,14 +278,17 @@ export async function getFile(id: string): Promise<StoredFile | null> {
 // Maps to: StorageEvent → Supabase Realtime Broadcast
 // =================================================================
 
-export type BroadcastCallback = (data: any) => void;
+// G-42: Broadcast payloads are JSON-serializable values; we narrow from `any`
+// to `unknown` so callers must validate before use.
+export type BroadcastPayload = unknown;
+export type BroadcastCallback = (data: BroadcastPayload) => void;
 
 /**
  * Broadcast a message to all connected clients.
  * Currently: Uses localStorage StorageEvent (same browser only)
  * Production: Uses Supabase Realtime Broadcast (cross-device)
  */
-export function broadcast(channel: string, data: any): void {
+export function broadcast(channel: string, data: BroadcastPayload): void {
   if (activeBackend === "supabase" && supabaseConfig) {
     try {
       supabaseConfig.client
@@ -299,7 +305,11 @@ export function broadcast(channel: string, data: any): void {
   }
 
   // localStorage mode
-  const payload = JSON.stringify({ ...data, _channel: channel, _ts: Date.now() });
+  const wrap =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? { ...(data as Record<string, unknown>), _channel: channel, _ts: Date.now() }
+      : { value: data, _channel: channel, _ts: Date.now() };
+  const payload = JSON.stringify(wrap);
   localStorage.setItem(`sosphere_broadcast_${channel}`, payload);
   window.dispatchEvent(new StorageEvent("storage", {
     key: `sosphere_broadcast_${channel}`,
@@ -315,7 +325,7 @@ export function onBroadcast(channel: string, callback: BroadcastCallback): () =>
     try {
       const ch = supabaseConfig.client
         .channel(channel)
-        .on("broadcast", { event: "message" }, (payload: any) => {
+        .on("broadcast", { event: "message" }, (payload: { payload: BroadcastPayload }) => {
           callback(payload.payload);
         })
         .subscribe();
@@ -361,8 +371,9 @@ export function listAllLocalKeys(): string[] {
  * Export all localStorage data as a JSON object.
  * Can be imported into Supabase during migration.
  */
-export function exportAllLocalData(): Record<string, any> {
-  const data: Record<string, any> = {};
+// G-42: tightened from any → unknown
+export function exportAllLocalData(): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
   listAllLocalKeys().forEach(key => {
     try {
       data[key] = JSON.parse(localStorage.getItem(key) || "null");
