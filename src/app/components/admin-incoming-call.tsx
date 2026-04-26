@@ -20,6 +20,7 @@ import {
 } from "./shared-store";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
 import { trackEventSync } from "./smart-timeline-tracker";
+import { supabase } from "./api/supabase-client";
 
 // ── Pulse ring animation ──────────────────────────────────────
 function PulseRings({ color }: { color: string }) {
@@ -506,18 +507,70 @@ function OutgoingCallbackOverlay({ signal, onDismiss }: { signal: CallSignal; on
   const endedRef = useRef(false);
   const initials = signal.employeeName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
 
-  // Simulate: dialing → connecting → connected
+  // ──────────────────────────────────────────────────────────────────
+  // G-5 (B-20, 2026-04-26): replace setTimeout simulation with a REAL
+  // Twilio call invocation. Pre-fix: dialing → connecting → connected
+  // progressed via hardcoded timeouts and started a LOCAL voice engine
+  // that was never bridged to PSTN. The admin saw "Connected" while
+  // the employee's phone never rang. Now: invoke twilio-call with
+  // mode="employee_callback"; the v12 edge function verifies the caller
+  // is admin/owner of the emergency's company AND that `to` matches
+  // the SOS owner's phone before placing the call.
+  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const t1 = setTimeout(() => setCallState("connecting"), 2000);
-    const t2 = setTimeout(() => {
-      setCallState("connected");
-      const callId = `callback-${signal.employeeId}`;
-      voiceUnsubRef.current = voiceCallEngine.subscribe((info) => {
-        if (info.state === "ended" && !endedRef.current) handleEndCall();
-      });
-      voiceCallEngine.startCall(callId, 120);
-    }, 4000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    let cancelled = false;
+    const callId = (signal.data?.emergencyId as string) || `callback-${signal.employeeId}`;
+
+    (async () => {
+      try {
+        const employeePhone = (signal.data as any)?.employeePhone as string | undefined;
+        if (!employeePhone) {
+          console.warn("[admin-callback] no employeePhone in signal — cannot place real call");
+          if (!cancelled) {
+            setCallState("ended");
+            setTimeout(onDismiss, 2000);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke("twilio-call", {
+          body: {
+            mode: "employee_callback",
+            to: employeePhone,
+            callId,
+            employeeName: signal.employeeName,
+            companyName: (signal.data as any)?.companyName ?? undefined,
+            zoneName: signal.zone ?? undefined,
+          },
+        });
+
+        if (cancelled) return;
+
+        if (error || !(data as any)?.callSid) {
+          console.warn("[admin-callback] twilio-call invocation failed:", error?.message);
+          setCallState("ended");
+          setTimeout(onDismiss, 2000);
+          return;
+        }
+
+        // Twilio queued the dial. UI advances to connecting; the voice
+        // engine takes over for the in-app local audio side.
+        setCallState("connecting");
+        voiceUnsubRef.current = voiceCallEngine.subscribe((info) => {
+          if (info.state === "ended" && !endedRef.current) handleEndCall();
+          if (info.state === "active") setCallState("connected");
+        });
+        voiceCallEngine.startCall(callId, 120);
+      } catch (err) {
+        console.error("[admin-callback] unexpected error:", err);
+        if (!cancelled) {
+          setCallState("ended");
+          setTimeout(onDismiss, 2000);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   // Timer for connected state
