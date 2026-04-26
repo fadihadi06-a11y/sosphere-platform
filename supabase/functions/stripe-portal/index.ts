@@ -15,6 +15,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getRateLimitHeaders } from "../_shared/rate-limiter.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
@@ -75,6 +76,29 @@ serve(async (req: Request) => {
     });
   }
   const userId = userData.user.id;
+
+  // E-15 / W3 TIER 2 (B-20, 2026-04-26): rate-limit per-user.
+  // Pre-fix: stripe-portal had no rate limit — an attacker with one
+  // valid JWT could hammer the endpoint, generating endless billing
+  // portal sessions and eating Stripe API quota. Stripe's own rate
+  // limits would eventually kick in but only after the abuser had
+  // burned hundreds of requests against our budget.
+  // Post-fix: standard "api" tier limit (10/min default). Returns 429
+  // with retry-after when exceeded. SOS priority lane does NOT apply
+  // to billing operations.
+  const rl = checkRateLimit(userId, "api", false);
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: "Rate limit exceeded",
+        retryAfterSeconds: Math.ceil(rl.retryAfterMs / 1000),
+      }),
+      {
+        status: 429,
+        headers: { ...cors, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
+      },
+    );
+  }
 
   // Look up the stripe customer id we stashed during checkout. If the
   // user has never subscribed there's nothing to manage — tell them.

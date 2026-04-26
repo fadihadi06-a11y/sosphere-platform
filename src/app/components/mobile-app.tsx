@@ -498,20 +498,54 @@ export function MobileApp() {
           const activeSos = localStorage.getItem("sosphere_active_sos");
           if (activeSos) {
             const sos = JSON.parse(activeSos);
-            // Only resume if SOS was triggered within the last 30 minutes
-            if (sos.active && Date.now() - sos.timestamp < 30 * 60 * 1000) {
-              const savedProfile = loadJSONSync<{ name: string } | null>("sosphere_individual_profile", null);
-              if (savedProfile?.name) setLoginName(savedProfile.name);
-              setLoginMode("individual");
-              setSourceScreen(sos.source || "individual-home");
-              sosInProgressRef.current = true;
-              setIsRestoring(false);
-              navigate("sos-emergency");
-              console.log("[SOS] RESUMED active emergency after app restart");
-              return;
-            } else {
-              // Stale SOS state — clean up
+            // C-8 / W3 TIER 2 (B-20, 2026-04-26): server-side validation
+            // before resume. Pre-fix: 30-minute time window was the only
+            // gate. But the server-side session could have been:
+            //   - resolved from dashboard (admin clicked "Resolve")
+            //   - timed out by watchdog (B-06 phase-timeout escalator)
+            //   - expired naturally
+            // The local key would still be set, so the user re-entered an
+            // SOS UI for an already-finished emergency — confusing + privacy
+            // concern (showed contact list / GPS for a closed incident).
+            // Post-fix: hit sos_sessions to check current server state.
+            // Only resume if BOTH: time window OK AND server status='active'.
+            const withinWindow = sos.active && Date.now() - sos.timestamp < 30 * 60 * 1000;
+            if (!withinWindow) {
               localStorage.removeItem("sosphere_active_sos");
+            } else {
+              // Server-side check
+              let shouldResume = false;
+              try {
+                const { supabase: supa } = await import("./api/supabase-client");
+                const { data: session } = await supa
+                  .from("sos_sessions")
+                  .select("status").eq("id", sos.emergencyId || "").maybeSingle();
+                // Resume only if explicitly active. NULL session (not yet
+                // server-projected) is also OK — user just triggered locally.
+                if (!session || session.status === "active" || session.status === "prewarm" || session.status === "escalated") {
+                  shouldResume = true;
+                } else {
+                  console.log(`[SOS] server says session ${sos.emergencyId} is ${session.status} — clearing stale local`);
+                  localStorage.removeItem("sosphere_active_sos");
+                }
+              } catch (e) {
+                // Network failure → fail-OPEN (resume locally) since the
+                // user may genuinely still be in an emergency. They can
+                // dismiss locally if it's a phantom.
+                console.warn("[SOS] server check failed, resuming locally (fail-open):", e);
+                shouldResume = true;
+              }
+              if (shouldResume) {
+                const savedProfile = loadJSONSync<{ name: string } | null>("sosphere_individual_profile", null);
+                if (savedProfile?.name) setLoginName(savedProfile.name);
+                setLoginMode("individual");
+                setSourceScreen(sos.source || "individual-home");
+                sosInProgressRef.current = true;
+                setIsRestoring(false);
+                navigate("sos-emergency");
+                console.log("[SOS] RESUMED active emergency after app restart");
+                return;
+              }
             }
           }
         } catch {}
