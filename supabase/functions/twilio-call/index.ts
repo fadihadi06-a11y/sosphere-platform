@@ -31,6 +31,28 @@ function normalizePhone(p: string | null | undefined): string {
   return hasPlus ? `+${digits}` : digits;
 }
 
+// W3-47 (B-20, 2026-04-26): yield equivalence variants of a phone number
+// so allowlist comparison matches no matter which form the client sends
+// or DB stores. Pre-fix: server kept "07728..." (no plus); client emits
+// "+447728..." (E.164) → Set lookup failed → legitimate admin callback
+// rejected as toll-fraud. Post-fix: variants() returns digits-only,
+// with-plus, original-with-plus, and strip-leading-zero. Adding all
+// forms to the Set + checking each form of the target preserves the
+// allowlist's security while tolerating either side's formatting.
+function normalizePhoneVariants(p: string | null | undefined): string[] {
+  if (!p) return [];
+  const trimmed = String(p).trim();
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return [];
+  const v = new Set<string>();
+  v.add(digits);
+  v.add(`+${digits}`);
+  if (hasPlus) v.add(trimmed);
+  if (digits.startsWith("0") && digits.length > 1) v.add(digits.slice(1));
+  return [...v];
+}
+
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
   .split(",").map(s => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
@@ -79,15 +101,14 @@ async function resolveAdminPhones(
     .select("user_id, role, active, profiles:profiles!company_memberships_user_id_fkey(phone)")
     .eq("company_id", companyId).in("role", ["admin", "owner"]).eq("active", true);
   for (const r of (profileRows as any[]) || []) {
-    const ph = normalizePhone(r?.profiles?.phone);
-    if (ph) phones.add(ph);
+    // W3-47: add ALL equivalence variants so client form matches.
+    for (const v of normalizePhoneVariants(r?.profiles?.phone)) phones.add(v);
   }
   const { data: empRows } = await admin
     .from("employees").select("phone, role, status")
     .eq("company_id", companyId).in("role", ["admin", "owner"]).eq("status", "active");
   for (const r of (empRows as any[]) || []) {
-    const ph = normalizePhone(r?.phone);
-    if (ph) phones.add(ph);
+    for (const v of normalizePhoneVariants(r?.phone)) phones.add(v);
   }
   return { companyId, phones };
 }
@@ -178,9 +199,11 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const targetNorm = normalizePhone(to);
-      if (!targetNorm || !phones.has(targetNorm)) {
-        console.warn(`[twilio-call] mode=admin target=${to} not in admin/owner phones for company=${companyId}`);
+      // W3-47: check ALL variants of the target against the allowlist
+      const targetVariants = normalizePhoneVariants(to);
+      const targetMatches = targetVariants.some((vv) => phones.has(vv));
+      if (targetVariants.length === 0 || !targetMatches) {
+        console.warn(`[twilio-call] mode=admin target=${to} (variants=${targetVariants.join(",")}) not in admin/owner phones for company=${companyId}`);
         return new Response(
           JSON.stringify({ error: "Recipient not authorised for this emergency" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -204,7 +227,9 @@ serve(async (req) => {
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const targetNorm = normalizePhone(to);
+      // W3-47: variants check for employee callback target as well
+      const targetVariants2 = normalizePhoneVariants(to);
+      const targetNorm = targetVariants2[1] || targetVariants2[0] || ""; // prefer +-form
       if (!targetNorm || !ownerPhone || targetNorm !== ownerPhone) {
         console.warn(`[twilio-call] mode=employee_callback target=${to} != owner-phone=${ownerPhone} for callId=${callId}`);
         return new Response(

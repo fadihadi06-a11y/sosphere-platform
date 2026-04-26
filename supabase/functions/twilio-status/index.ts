@@ -184,8 +184,16 @@ serve(async (req) => {
         });
         return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
       } else if (digit === "2") {
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Redirect>${supabaseUrl}/functions/v1/twilio-call?replay=true&amp;callId=${callId}</Redirect>\n</Response>`;
-        return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
+        // W3-26 (B-20, 2026-04-26): the previous Redirect to twilio-call?replay
+        // hit a JWT-required endpoint and 401'd — IVR Press-2 was effectively
+        // dead. Twilio doesn't carry our Supabase JWT, and the replay path was
+        // never wired to accept the signed Twilio webhook in lieu of JWT.
+        // Inline a graceful response: acknowledge + hang up. The dispatcher
+        // dashboard already has a "call again" affordance for the operator
+        // side; the IVR repeat-message flow is a nice-to-have we can wire
+        // properly post-launch via a public Twilio-signed endpoint.
+        const replayTwiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">If you need to hear the alert again, please call back. Goodbye.</Say>\n  <Hangup/>\n</Response>`;
+        return new Response(replayTwiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
       } else {
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">Invalid input. Goodbye.</Say>\n</Response>`;
         return new Response(twiml, { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
