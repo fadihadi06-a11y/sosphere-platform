@@ -1252,6 +1252,34 @@ serve(async (req: Request) => {
     // SMS fires non-blocking first (always delivered)
     // Call awaits (may take 15-30s to connect)
     // ══════════════════════════════════════════════════════════
+    // W3-28 (B-20, 2026-04-26): early "sos_dispatch_started" audit row.
+    // Pre-fix: if Promise.all (line below) throws partway, or if the rich
+    // post-fanout audit (further down) also fails, we lose ALL evidence
+    // that the SOS was even dispatched. Forensic black hole.
+    // Post-fix: write a barebones checkpoint BEFORE the fanout starts, so
+    // there is always at least one breadcrumb proving the trigger was
+    // received, even when the fanout silently dies. Wrapped in try/catch
+    // — if THIS fails, we still try the fanout (audit failure must never
+    // block emergency dispatch).
+    try {
+      await supabase.rpc("log_sos_audit", {
+        p_action: "sos_dispatch_started",
+        p_actor: authUserId,
+        p_actor_level: "worker",
+        p_operation: "sos_trigger",
+        p_target: emergencyId,
+        p_target_name: userName,
+        p_metadata: {
+          tier,
+          contactCount: contacts.length,
+          checkpoint: "pre_fanout",
+          severity: "info",
+        },
+      });
+    } catch (e) {
+      console.warn("[sos-alert] pre-fanout audit checkpoint failed (non-fatal):", e);
+    }
+
     const fanoutResults = await Promise.all(contacts.map(async (c, idx) => {
       // E.164 normalization is STRICT: Twilio rejects anything else with
       // 21211 ("Invalid 'To' phone number"). A national-format string
