@@ -206,16 +206,20 @@ serve(async (req) => {
       const answeredBy = data.AnsweredBy;
       await logCallEvent(supabase, callId, callStatus, data);
       if (callId) {
+        // A-17 / W3 TIER 2 (B-20, 2026-04-26): use try/finally so the
+        // channel cleanup fires even if .send() rejects. Pre-fix: rejected
+        // channel.send() left the handle leaked (setTimeout was inside try).
+        const channel = supabase.channel(`call-${callId}`);
         try {
-          const channel = supabase.channel(`call-${callId}`);
           await channel.send({
             type: "broadcast",
             event: "call_status",
             payload: { callId, callSid, status: callStatus, answeredBy, timestamp: new Date().toISOString() },
           });
-          setTimeout(() => supabase.removeChannel(channel), 3000);
         } catch (e) {
           console.warn("[twilio-status] Broadcast failed:", e);
+        } finally {
+          setTimeout(() => supabase.removeChannel(channel), 3000);
         }
       }
       const shouldEscalateToSMS =
