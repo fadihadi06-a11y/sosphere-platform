@@ -793,6 +793,76 @@ export function MobileApp() {
     };
   }, [resetBiometricSession]);
 
+  // ─────────────────────────────────────────────────────────────
+  // W3-11 (B-20, 2026-04-26): server-tier re-sync on resume + focus.
+  //
+  // Pre-fix: fetchCivilianTier ran ONLY on auth-restore. After that, the
+  // local userPlan went stale — Stripe webhook updates to subscriptions
+  // weren't observed until logout/login. Customer paid → still on Free.
+  //
+  // Post-fix: re-run fetchCivilianTier on:
+  //   (a) Capacitor App resume (background → foreground)
+  //   (b) window focus (web tab switch)
+  //   (c) every 5 minutes as a safety net
+  //   (d) explicit `sosphere_tier_refresh` event (post-checkout hook)
+  //
+  // Throttled to once per 30 seconds. FAIL-SECURE: errors keep current tier.
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let tierLastSyncedAt = 0;
+    const TIER_SYNC_THROTTLE_MS = 30 * 1000;
+    const TIER_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+    const refreshTier = async (reason: string) => {
+      const now = Date.now();
+      if (now - tierLastSyncedAt < TIER_SYNC_THROTTLE_MS) return;
+      tierLastSyncedAt = now;
+      try {
+        const { fetchCivilianTier } = await import("./utils/subscription-server");
+        const { supabase } = await import("./api/supabase-client");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const tierRes = await fetchCivilianTier(
+          async () => await supabase.rpc("get_my_subscription_tier"),
+          userPlan,
+        );
+        if (tierRes.plan !== userPlan) {
+          console.log(`[Tier] resync (${reason}) ${userPlan} -> ${tierRes.plan} (${tierRes.reason})`);
+          setUserPlan(tierRes.plan);
+        }
+      } catch (e) {
+        console.warn(`[Tier] resync (${reason}) failed:`, e);
+      }
+    };
+
+    let removeResumeListener: (() => Promise<void>) | null = null;
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const handle = await App.addListener("appStateChange", (state: { isActive: boolean }) => {
+          if (state.isActive) refreshTier("capacitor_resume");
+        });
+        removeResumeListener = () => handle.remove();
+      } catch { /* web mode — skip */ }
+    })();
+
+    const focusHandler = () => refreshTier("window_focus");
+    if (typeof window !== "undefined") window.addEventListener("focus", focusHandler);
+
+    const periodic = setInterval(() => refreshTier("periodic_5min"), TIER_SYNC_INTERVAL_MS);
+
+    const explicitHandler = () => refreshTier("explicit_event");
+    if (typeof window !== "undefined") window.addEventListener("sosphere_tier_refresh", explicitHandler);
+
+    return () => {
+      try { (removeResumeListener as any)?.(); } catch {}
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", focusHandler);
+        window.removeEventListener("sosphere_tier_refresh", explicitHandler);
+      }
+      clearInterval(periodic);
+    };
+  }, [userPlan]);
+
   // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];

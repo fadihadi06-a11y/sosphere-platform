@@ -390,32 +390,100 @@ async function authenticateBodyOrHeader(
 }
 
 // ── Tier Resolver: DB-based, subscription-status aware ───────
+// W3-14 (B-20, 2026-04-26): tier resolution is now company-aware.
+//
+// Pre-fix: resolveTier only looked at `subscriptions.user_id = JWT subject`.
+// In a B2B deployment, the OWNER pays for the company plan; employees
+// don't have their own subscription row. So every paying B2B employee
+// resolved to "free" — no TTS, no conference bridge, no recording.
+// Direct violation of paid contract.
+//
+// Post-fix: resolution order
+//   1. Personal subscription (civilian path) — existing
+//   2. If none / free / inactive: profiles.active_company_id
+//   3. companies.owner_user_id
+//   4. Owner's subscription → mapped to civilian tier
+//
+// Mapping company tiers → civilian tiers:
+//   starter / growth / business / enterprise → all unlock "elite" features
+//   (B2B always gets the strongest fanout; HR/insurance contracts demand it).
+//
+// FAIL-SECURE: any DB error keeps the previous behavior. We never silently
+// upgrade — only when the chain reaches a real active company subscription.
+
+const ACTIVE_STATUSES = ["active", "trialing"];
+const COMPANY_TIERS = new Set(["starter", "growth", "business", "enterprise"]);
+
+function mapTierString(raw: string): "free" | "basic" | "elite" {
+  const t = (raw || "").toLowerCase();
+  if (t === "elite" || t === "premium") return "elite";
+  if (t === "basic" || t === "standard") return "basic";
+  if (COMPANY_TIERS.has(t)) return "elite";  // B2B → strongest fanout
+  return "free";
+}
+
+function isStatusActive(status: string | null | undefined, periodEnd: string | null | undefined): boolean {
+  if (!status || !ACTIVE_STATUSES.includes(status)) return false;
+  if (periodEnd) {
+    const expiresAt = new Date(periodEnd).getTime();
+    if (expiresAt < Date.now()) return false;
+  }
+  return true;
+}
+
 async function resolveTier(userId: string, supabase: any): Promise<"free" | "basic" | "elite"> {
+  // Step 1: personal subscription
   try {
     const { data } = await supabase
       .from("subscriptions")
       .select("tier, status, current_period_end")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (!data) return "free";
-
-    // Check status is active (not cancelled/past_due/unpaid)
-    const activeStatuses = ["active", "trialing"];
-    if (!activeStatuses.includes(data.status)) return "free";
-
-    // Check not expired (if current_period_end is set)
-    if (data.current_period_end) {
-      const expiresAt = new Date(data.current_period_end).getTime();
-      if (expiresAt < Date.now()) return "free";
+    if (data && isStatusActive(data.status, data.current_period_end)) {
+      const personal = mapTierString(data.tier || "");
+      if (personal !== "free") return personal;
     }
+  } catch (err) {
+    console.warn("[sos-alert] personal tier lookup failed:", err);
+    // continue to company path
+  }
 
-    const tier = (data.tier || "").toLowerCase();
-    if (tier === "elite" || tier === "premium") return "elite";
-    if (tier === "basic" || tier === "standard") return "basic";
+  // Step 2: resolve user's active company
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("active_company_id")
+      .eq("id", userId)
+      .maybeSingle();
+    const companyId = profile?.active_company_id;
+    if (!companyId) return "free";
+
+    // Step 3: company owner
+    const { data: company } = await supabase
+      .from("companies")
+      .select("owner_user_id")
+      .eq("id", companyId)
+      .maybeSingle();
+    const ownerId = company?.owner_user_id;
+    if (!ownerId) return "free";
+
+    // Step 4: owner's subscription
+    const { data: ownerSub } = await supabase
+      .from("subscriptions")
+      .select("tier, status, current_period_end")
+      .eq("user_id", ownerId)
+      .maybeSingle();
+    if (ownerSub && isStatusActive(ownerSub.status, ownerSub.current_period_end)) {
+      const tier = mapTierString(ownerSub.tier || "");
+      if (tier !== "free") {
+        console.log(`[sos-alert] tier resolved via company chain: user=${userId} company=${companyId} owner=${ownerId} tier=${tier}`);
+        return tier;
+      }
+    }
     return "free";
   } catch (err) {
-    console.warn("[sos-alert] Tier lookup failed, defaulting to free:", err);
+    console.warn("[sos-alert] company-chain tier lookup failed:", err);
     return "free";
   }
 }
@@ -1379,8 +1447,30 @@ serve(async (req: Request) => {
     }
 
     // ── Broadcast SOS to dashboard via Realtime ──
+    // W3-3 (B-20, 2026-04-26): tenant-scoped channel.
+    // Pre-fix: `sos-live` was a GLOBAL channel — every authenticated
+    // Realtime subscriber received every tenant's SOS payload (employee
+    // name, lat/lng, contact names, blood-typed). Cross-tenant PHI leak.
+    // Post-fix: channel is `sos-live:${companyId}` for B2B, or
+    // `sos-live:civilian:${userId}` for civilian (so the user's own
+    // dashboard can subscribe but no one else can). The civilian channel
+    // name can only be guessed by knowing the user's UUID, and Supabase
+    // Realtime Authorization (post-launch hardening) will further gate
+    // subscriptions by JWT claim.
     try {
-      const ch = supabase.channel(`sos-live`);
+      // Resolve company for this SOS — look up user's active_company_id
+      let scopedChannel: string;
+      try {
+        const { data: prof } = await supabase
+          .from("profiles").select("active_company_id").eq("id", authUserId).maybeSingle();
+        const companyId = prof?.active_company_id;
+        scopedChannel = companyId
+          ? `sos-live:${companyId}`
+          : `sos-live:civilian:${authUserId}`;
+      } catch {
+        scopedChannel = `sos-live:civilian:${authUserId}`;
+      }
+      const ch = supabase.channel(scopedChannel);
       await ch.send({
         type: "broadcast",
         event: "sos_triggered",
@@ -1395,6 +1485,7 @@ serve(async (req: Request) => {
           ts: Date.now(),
         },
       });
+      console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
       setTimeout(() => supabase.removeChannel(ch), 2000);
     } catch (e) {
       console.warn("[sos-alert] Realtime broadcast failed:", e);
