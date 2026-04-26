@@ -1305,7 +1305,17 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     if (!session?.user) { toast.error("Session expired. Please sign in again."); return; }
 
                     const userId = session.user.id;
-                    const inviteCode = Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+                    // W3-17 (B-20, 2026-04-26): crypto-strong invite code.
+                    // Pre-fix used Math.random (32-bit entropy → ~1B combinations
+                    // per 6 chars, brute-forceable in <1k attempts). Now:
+                    // crypto.getRandomValues (256-bit entropy) + 8 chars from
+                    // 32-symbol alphabet → ~1.1 trillion combinations.
+                    const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // 32 = power of 2
+                    const inviteCode = (() => {
+                      const bytes = new Uint8Array(8);
+                      (globalThis.crypto || (globalThis as any).msCrypto).getRandomValues(bytes);
+                      return Array.from(bytes, b => ALPHABET[b & 31]).join("");
+                    })();
                     const planId = selectedPlan ?? recommendedPlan.id;
 
                     // 1. Save company

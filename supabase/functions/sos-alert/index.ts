@@ -610,13 +610,38 @@ serve(async (req: Request) => {
       const hbRl = checkRateLimit(hbAuth.userId, "sos", true);
       markSosPriority(hbAuth.userId);
 
-      await supabase.from("sos_sessions").update({
+      // W3-31 (B-20, 2026-04-26): validate GPS + battery + elapsed.
+      // Pre-fix accepted attacker-chosen lat=999, lng=-999, battery=42,
+      // elapsed=999999 — corrupts the forensic timeline of a real
+      // emergency. Now: clamp to physical ranges, drop invalid fields.
+      const hbLat = (typeof hb.location?.lat === "number" && Number.isFinite(hb.location.lat)
+        && hb.location.lat >= -90 && hb.location.lat <= 90) ? hb.location.lat : null;
+      const hbLng = (typeof hb.location?.lng === "number" && Number.isFinite(hb.location.lng)
+        && hb.location.lng >= -180 && hb.location.lng <= 180) ? hb.location.lng : null;
+      // batteryLevel is 0..1 by Capacitor convention; allow 0..100 too (older clients).
+      const rawBat = hb.batteryLevel;
+      const hbBat = (typeof rawBat === "number" && Number.isFinite(rawBat) && rawBat >= 0 && rawBat <= 100)
+        ? (rawBat > 1 ? rawBat / 100 : rawBat)
+        : null;
+      // elapsed_sec: must be a non-negative finite number under 86400 (1 day).
+      const hbElapsed = (typeof hb.elapsedSec === "number" && Number.isFinite(hb.elapsedSec)
+        && hb.elapsedSec >= 0 && hb.elapsedSec <= 86400) ? Math.floor(hb.elapsedSec) : null;
+
+      if (hb.location && (hbLat === null || hbLng === null)) {
+        console.warn(`[sos-alert] heartbeat: invalid GPS rejected eid=${hb.emergencyId} lat=${hb.location?.lat} lng=${hb.location?.lng}`);
+      }
+
+      // Build update object — only include fields that passed validation
+      // so we don't overwrite valid earlier values with NULLs from junk.
+      const hbUpdate: Record<string, any> = {
         last_heartbeat: new Date().toISOString(),
-        last_lat: hb.location?.lat,
-        last_lng: hb.location?.lng,
-        battery_level: hb.batteryLevel,
-        elapsed_sec: hb.elapsedSec,
-      }).eq("id", hb.emergencyId);
+      };
+      if (hbLat !== null) hbUpdate.last_lat = hbLat;
+      if (hbLng !== null) hbUpdate.last_lng = hbLng;
+      if (hbBat !== null) hbUpdate.battery_level = hbBat;
+      if (hbElapsed !== null) hbUpdate.elapsed_sec = hbElapsed;
+
+      await supabase.from("sos_sessions").update(hbUpdate).eq("id", hb.emergencyId);
 
       // Broadcast location to dashboard via Realtime
       try {
