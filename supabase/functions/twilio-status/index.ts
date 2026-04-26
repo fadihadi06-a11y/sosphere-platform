@@ -166,8 +166,15 @@ serve(async (req) => {
       const baseUrl = url.searchParams.get("baseUrl") || Deno.env.get("SOSPHERE_BASE_URL") || "";
       if (digit === "1") {
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">\n    Thank you. Opening the emergency dashboard now.\n    The dashboard link has been sent to your phone.\n    Stay on the line for updates.\n  </Say>\n  <Pause length="60"/>\n  <Say voice="Polly.Joanna">The call has ended. Please check the dashboard for updates.</Say>\n</Response>`;
-        if (data.From && baseUrl) {
-          await sendEscalationSMS(supabaseUrl, data.Called || data.From, callId, baseUrl);
+        // W3-29: validate target phone against DB allowlist
+        if (data.From && baseUrl && callId) {
+          const target = String(data.Called || data.From).replace(/[^+\d]/g, "");
+          const allowed = await resolveAllowedEscalationPhones(supabase, callId);
+          if (allowed.has(target)) {
+            await sendEscalationSMS(supabaseUrl, target, callId, baseUrl);
+          } else {
+            console.warn(`[twilio-status] gather: phone ${target} not in allowlist for callId=${callId} — refusing escalation SMS`);
+          }
         }
         await logCallEvent(supabase, callId, "accepted", data);
         await supabase.channel(`call-${callId}`).send({
@@ -211,9 +218,16 @@ serve(async (req) => {
       if (shouldEscalateToSMS && callId) {
         console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus})`);
         const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "";
-        const adminPhone = data.Called || data.To;
-        if (adminPhone && baseUrl) {
-          await sendEscalationSMS(supabaseUrl, adminPhone, callId, baseUrl);
+        const adminPhoneRaw = data.Called || data.To;
+        if (adminPhoneRaw && baseUrl) {
+          // W3-29: validate against DB allowlist before SMS
+          const target = String(adminPhoneRaw).replace(/[^+\d]/g, "");
+          const allowed = await resolveAllowedEscalationPhones(supabase, callId);
+          if (allowed.has(target)) {
+            await sendEscalationSMS(supabaseUrl, target, callId, baseUrl);
+          } else {
+            console.warn(`[twilio-status] escalate: phone ${target} not in allowlist for callId=${callId} — refusing SMS`);
+          }
         }
       }
     }
@@ -291,6 +305,51 @@ async function logCallEvent(
   }
 }
 
+// W3-29 (B-20, 2026-04-26): resolve allowed escalation phones for callId
+// from the DB instead of trusting the (signed but attacker-controlled)
+// Twilio From/Called payload. Pre-fix: an attacker who calls our Twilio
+// number triggered a webhook with their own number in `From`; we then
+// fired escalation SMS to that attacker's phone — phishing seed.
+// Post-fix: only phones that exist in either:
+//   • profiles.phone for sos_sessions.user_id (the SOS owner)
+//   • company_memberships → profiles.phone for the SOS company's admins
+// are accepted. Caller phone (data.From / data.Called) is matched against
+// this allowlist; mismatch → escalation skipped + warned.
+async function resolveAllowedEscalationPhones(
+  supabase: any,
+  callId: string,
+): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  try {
+    const { data: session } = await supabase.from("sos_sessions")
+      .select("user_id, company_id").eq("id", callId).maybeSingle();
+    if (!session?.user_id) return allowed;
+    // SOS owner
+    const { data: ownerProfile } = await supabase.from("profiles")
+      .select("phone").eq("id", session.user_id).maybeSingle();
+    if (ownerProfile?.phone) allowed.add(String(ownerProfile.phone).replace(/[^+\d]/g, ""));
+    // Company admins
+    if (session.company_id) {
+      const { data: members } = await supabase.from("company_memberships")
+        .select("user_id, role")
+        .eq("company_id", session.company_id)
+        .eq("active", true)
+        .in("role", ["owner", "super_admin", "admin"]);
+      const adminIds = (members || []).map((m: any) => m.user_id);
+      if (adminIds.length > 0) {
+        const { data: adminProfiles } = await supabase.from("profiles")
+          .select("phone").in("id", adminIds);
+        for (const p of adminProfiles || []) {
+          if (p.phone) allowed.add(String(p.phone).replace(/[^+\d]/g, ""));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[twilio-status] resolveAllowedEscalationPhones failed:", e);
+  }
+  return allowed;
+}
+
 async function sendEscalationSMS(
   supabaseUrl: string,
   adminPhone: string,
@@ -327,4 +386,3 @@ async function sendEscalationSMS(
     console.error("[twilio-status] Escalation SMS failed:", e);
   }
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
