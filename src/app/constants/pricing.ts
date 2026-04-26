@@ -106,7 +106,10 @@ export const UNIFIED_PLANS: PlanDefinition[] = [
     features: [
       "Unlimited everything",
       "White-label complete",
-      "SLA 99.99% guaranteed",
+      // B-18 (2026-04-25): "guaranteed" creates contractual liability
+      // before any SLA is published. "Target" is the truthful framing —
+      // a contractual SLA can be added in the Enterprise contract itself.
+      "99.99% uptime target",
       "Dedicated server option",
       "Custom integrations",
       "Dedicated Account Manager",

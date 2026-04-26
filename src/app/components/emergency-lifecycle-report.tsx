@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Emergency Lifecycle Report (Full PDF)
-// Generates a comprehensive incident report from SOS → Resolution
-// ISO 45001 · ISO 27001 · Professional Enterprise Format
+// Generates a comprehensive incident report from SOS → Resolution.
+// Designed for alignment with ISO 45001 / ISO 27001 (no certification
+// has yet been awarded — see B-18 in the launch changelog).
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from "jspdf";
@@ -10,7 +11,7 @@ import { toast } from "sonner";
 import {
   getTimelineEntries, getRealResponseTimeSec, getRealDurationMin,
   getRealResponders, getTimelineForReport, getCommsLog, getGPSTrail,
-  verifyChainIntegrity, type TimelineEntry
+  verifyChainIntegrity, quickIntegrityCheck, type TimelineEntry
 } from "./smart-timeline-tracker";
 import { getEvidenceForEmergency } from "./evidence-store";
 
@@ -631,7 +632,10 @@ export function generateEmergencyLifecyclePDF(data: EmergencyReportData) {
     // ═════════════════════════════════════════════════════════════
 
     const trackedEventCount = (data.timeline || []).length;
-    const chainIntegrityStatus = verifyChainIntegrity(data.emergencyId);
+    // F-E (2026-04-25): use the SYNC quickIntegrityCheck helper instead of
+    // awaiting the full async verifyChainIntegrity in the render path — keeps
+    // PDF generation off the main thread and prevents hangs on large chains.
+    const chainIntegrityStatus = quickIntegrityCheck(data.emergencyId);
     const dataSourceLabel = trackedEventCount > 3 ? "Real Timeline Tracker" : "Metadata Only";
 
     y = sectionTitle(doc, y, "8c", "DATA INTEGRITY VERIFICATION", [80, 80, 80]);
@@ -724,7 +728,9 @@ export function generateEmergencyLifecyclePDF(data: EmergencyReportData) {
       doc.setFontSize(6.5);
       doc.setTextColor(150, 150, 150);
       doc.text(`SOSphere Emergency Lifecycle Report | ${data.emergencyId} | ${data.companyName}`, margin, ph - 9);
-      doc.text(`Generated: ${data.reportGeneratedAt.toLocaleString()} | ISO 45001:2018 Compliant`, margin, ph - 5.5);
+      // B-18 (2026-04-25): ISO 45001:2018 Compliant claim removed — the
+      // platform is designed for alignment with that standard, not certified.
+      doc.text(`Generated: ${data.reportGeneratedAt.toLocaleString()} | Internal incident record — verify chain via SOSphere audit log`, margin, ph - 5.5);
 
       // Footer right — page number
       doc.setTextColor(0, 200, 224);

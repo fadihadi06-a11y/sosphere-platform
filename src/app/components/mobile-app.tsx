@@ -501,45 +501,121 @@ export function MobileApp() {
         // 2. Consent screens completed (terms + GPS)
         // 3. Profile registration completed (local profile saved)
         const session = await getSession();
-        const consentDone = hasCompletedConsent() && hasCompletedGpsConsent();
         const savedProfile = loadJSONSync<{ name: string; phone: string; registeredAt: number } | null>("sosphere_individual_profile", null);
 
-        if (session?.user && consentDone && savedProfile?.registeredAt) {
-          // FIX 2026-04-25 (#11): age-gate guard for EXISTING users.
-          // The age_verified_at column was added 2026-04-24 — every
-          // pre-existing user has it NULL. Routing them straight home
-          // would let them bypass the COPPA / GDPR Art. 8 check.
-          // Calling the SECURITY-DEFINER RPC `is_age_verified()` is
-          // the single authoritative gate. We DON'T trust localStorage
-          // for this — a tampered client could set a flag locally.
-          //
-          // Outcomes:
-          //   verified  → restore home as before
-          //   not yet   → route to individual-register (its first
-          //               render is the DOB picker; existing profile
-          //               data fills the rest of the form afterward)
-          //   error/offline → fail-OPEN (let them through). The age
-          //               gate at first SOS attempt would still catch
-          //               an unverified user since trigger paths
-          //               could later add a check too. We prefer
-          //               openness here because RPC failure shouldn't
-          //               block a legitimate emergency user.
-          let ageVerified = true;
-          try {
-            const { data, error } = await supabase.rpc("is_age_verified");
-            if (!error && data === false) ageVerified = false;
-          } catch (verifyErr) {
-            console.warn("[Auth] is_age_verified check failed (proceeding):", verifyErr);
+        // ──────────────────────────────────────────────────────────────
+        // B-08 (2026-04-25): server-authoritative consent verification.
+        // Pre-fix: trusted localStorage exclusively — an attacker (or
+        // tampered local cache from a shared browser) could write the
+        // local consent flags and bypass the consent flow entirely.
+        // GDPR Art. 7 needs DEMONSTRABLE consent — that means a server
+        // record. When a session exists we query `get_consent_state()`
+        // and treat its answer as authoritative. Local cache is only
+        // trusted in the pre-auth window where we have no choice.
+        // ──────────────────────────────────────────────────────────────
+        let consentDone = false;
+        try {
+          const { verifyConsentDone, fetchServerConsent, rehydrateLocalConsent } =
+            await import("./utils/consent-server");
+          let serverState: Awaited<ReturnType<typeof fetchServerConsent>> = null;
+          const verdict = await verifyConsentDone({
+            hasSession: !!session?.user,
+            hasLocalTos: hasCompletedConsent,
+            hasLocalGps: hasCompletedGpsConsent,
+            fetchServer: async () => {
+              if (!session?.user) return null;
+              serverState = await fetchServerConsent(
+                async () => await supabase.rpc("get_consent_state"),
+              );
+              return serverState;
+            },
+          });
+          consentDone = verdict.done;
+          if (consentDone && serverState) {
+            // Cross-device login or fresh install on a verified account —
+            // rehydrate the local cache from the server record so the
+            // legacy hasCompletedConsent() probes still report true.
+            rehydrateLocalConsent(serverState);
           }
+          if (!consentDone) {
+            console.log(`[Auth] consent verification: ${verdict.reason} → consent flow needed`);
+          }
+        } catch (e) {
+          console.warn("[Auth] consent server check failed; falling back to local for this restore:", e);
+          consentDone = hasCompletedConsent() && hasCompletedGpsConsent();
+        }
+
+        if (session?.user && consentDone && savedProfile?.registeredAt) {
+          // ──────────────────────────────────────────────────────────────
+          // F-B (2026-04-25): age-gate guard for EXISTING users — fail-SECURE.
+          //
+          // The age_verified_at column was added 2026-04-24 — every
+          // pre-existing user has it NULL until they pass through the
+          // verify_user_age RPC once. The is_age_verified() RPC is the
+          // single authoritative gate (we do NOT trust localStorage; a
+          // tampered client could set any local flag).
+          //
+          // Prior bug: defaulted ageVerified=true and only flipped it to
+          // false on `data === false`. Any RPC error / network failure /
+          // unexpected shape silently let the user through — the same
+          // fail-OPEN bug fixed for sos-alert in B-10.
+          //
+          // New behavior (via checkAgeVerifiedFailSecure):
+          //   verified       → home
+          //   not_verified   → register (its first screen is the DOB picker)
+          //   no_profile     → register (no profiles row yet)
+          //   rpc_error      → register (server briefly unreachable)
+          //
+          // The user is NOT logged out in any case — register is a
+          // friendly continuation that pre-fills name/phone from the
+          // local profile and sends the user back home once verified.
+          // ──────────────────────────────────────────────────────────────
+          const { checkAgeVerifiedFailSecure } = await import("./utils/age-verification");
+          const ageRes = await checkAgeVerifiedFailSecure({
+            // supabase.rpc returns a PostgrestFilterBuilder that is
+            // PromiseLike — it resolves to {data, error} when awaited.
+            // The async wrapper coerces it to a real Promise so the
+            // helper signature stays decoupled from supabase-js.
+            rpcFn: async () => await supabase.rpc("is_age_verified"),
+          });
 
           setLoginName(savedProfile.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "");
           setLoginPhone(savedProfile.phone || "");
           setLoginMode("individual");
           screenHistoryRef.current = [];
+
+          // ──────────────────────────────────────────────────────────────
+          // B-17 (2026-04-25): server-authoritative civilian tier sync.
+          //
+          // Pre-fix: userPlan was pure React state set by callbacks like
+          // onUpgrade("pro") — a tampered local cache (or a Stripe redirect
+          // that never completed) could leave the user on 'pro' without
+          // ever paying. Cross-device login also reset everyone to 'free'
+          // even if they had an active server-side subscription.
+          //
+          // Now: read the active tier from `subscriptions` via the
+          // get_my_subscription_tier() SECURITY DEFINER RPC and use that
+          // as the source of truth. If the RPC fails, FAIL-SECURE to free
+          // (same pattern as F-B age-verification). Server is canonical;
+          // local React state mirrors it but never overrides it.
+          // ──────────────────────────────────────────────────────────────
+          try {
+            const { fetchCivilianTier } = await import("./utils/subscription-server");
+            const tierRes = await fetchCivilianTier(
+              async () => await supabase.rpc("get_my_subscription_tier"),
+              userPlan,
+            );
+            setUserPlan(tierRes.plan);
+            console.log(`[Auth] tier sync: server="${tierRes.rawTier}" → userPlan=${tierRes.plan} (${tierRes.reason})`);
+          } catch (e) {
+            console.warn("[Auth] tier sync failed; defaulting to free fail-secure:", e);
+            setUserPlan("free");
+          }
+
           setIsRestoring(false);
 
-          if (!ageVerified) {
-            console.log("[Auth] User exists but age not verified → forcing register flow");
+          if (!ageRes.verified) {
+            console.log(`[Auth] age-verification ${ageRes.reason} → routing to register`);
             navigate("individual-register");
           } else {
             navigate("individual-home");
@@ -1723,10 +1799,6 @@ export function MobileApp() {
 
             {screen === "language" && (
               <LanguageScreen onBack={() => navigate(sourceScreen, -1)} lang={lang} onChangeLang={handleLangChange} />
-            )}
-
-            {screen === "privacy" && (
-              <PrivacyScreen onBack={() => navigate(sourceScreen, -1)} />
             )}
 
             {screen === "connected-devices" && (

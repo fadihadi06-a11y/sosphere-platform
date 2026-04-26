@@ -26,55 +26,16 @@ import {
 } from "./evidence-pipeline-panel";
 import { toast } from "sonner";
 import { fetchIncidentReports } from "./api/data-layer";
-import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ═══════════════════════════════════════════════════════════════
 // FIX 2026-04-24 (Point 3): dispatcher action wire to real endpoint
 // ─────────────────────────────────────────────────────────────
-// Previously handleBroadcast / handleForwardToOwner / handleMarkReviewed
-// only updated local React state and logged a [SUPABASE_READY] comment.
-// The server NEVER knew the dispatcher took the action — so the audit
-// chain, evidence vault, and any cross-device dashboard view stayed
-// unaware. Legally unusable.
-//
-// callDispatcherAction() sends the request to the dashboard-actions
-// edge function (v3, deployed 2026-04-24). That function:
-//   1. Verifies the caller's JWT + looks up the sos_queue row.
-//   2. Updates tamper-evident columns (broadcast_by/at/scope, etc.).
-//   3. Writes an audit_log row via log_sos_audit RPC.
-//   4. For broadcast: fans out to employees in scope via sos_messages.
-//   5. For forward_to_owner: resolves the owner and DM's them.
-//
-// The function returns { success, action, emergencyId, ...details }.
-// On any failure we keep the local UI state unchanged and show a toast —
-// the user is never misled about whether the action actually happened.
+// 2026-04-25 (B-02): the local callDispatcherAction was extracted to
+//   ./api/dashboard-actions-client so AI Co-Admin + Intelligent Guide
+//   share the SAME single channel ("behave like a beehive"). The
+//   contract is unchanged — { ok:true, data } | { ok:false, error }.
 // ═══════════════════════════════════════════════════════════════
-type DispatcherAction =
-  | { action: "broadcast";        emergencyId: string; scope: "zone"|"dept"|"all"; message: string }
-  | { action: "forward_to_owner"; emergencyId: string; note?: string }
-  | { action: "mark_reviewed";    emergencyId: string; note?: string };
-
-async function callDispatcherAction(req: DispatcherAction): Promise<
-  { ok: true; data: any } | { ok: false; error: string }
-> {
-  if (!SUPABASE_CONFIG.isConfigured) {
-    return { ok: false, error: "Supabase not configured" };
-  }
-  try {
-    const { data, error } = await supabase.functions.invoke("dashboard-actions", {
-      body: req,
-    });
-    if (error) {
-      // Try to surface the structured JSON error from the function.
-      const detail = (error as any)?.message ?? String(error);
-      return { ok: false, error: detail };
-    }
-    if (data?.error) return { ok: false, error: String(data.error) };
-    return { ok: true, data };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
+import { callDispatcherAction } from "./api/dashboard-actions-client";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface IncidentPhotoReport {

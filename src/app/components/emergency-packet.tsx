@@ -245,7 +245,8 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
         { label: "Events", value: "All SOS events logged with UTC timestamps" },
         { label: "Integrity", value: "Audit trail recorded", color: "#00C853" },
         { label: "Export", value: "PDF with digital signature", color: "#00C8E0" },
-        { label: "Legal", value: "Court-admissible format" },
+        // B-18 (2026-04-25): admissibility is a courtroom call, not ours.
+        { label: "Legal", value: "Structured for legal review (admissibility depends on jurisdiction)" },
       ],
     },
   ];
@@ -587,7 +588,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 Emergency Packet is automatically sent via SMS with a secure link when SOS activates. Data is encrypted end-to-end and expires after 24 hours.
               </p>
               <p style={{ fontSize: 9, color: "rgba(0,200,224,0.2)", marginTop: 4 }}>
-                AES-256 encrypted · GDPR compliant
+                AES-256 encrypted · GDPR-aligned
               </p>
             </div>
           </div>

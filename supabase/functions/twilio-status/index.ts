@@ -17,6 +17,9 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// B-09 (2026-04-25): self-signed gather-token to close the
+// signature-bypass hole the prior code left open for action=gather.
+import { verifyGatherToken } from "../_shared/gather-token.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
@@ -115,10 +118,44 @@ serve(async (req) => {
       data[key] = String(value);
     });
 
-    // ── Validate Twilio signature (reject spoofed webhooks) ──
-    // B-H2: signature verification is mandatory (no skip flag)
-    // Only gather action is exempt (Twilio redirects with user-facing URL that cannot be signed).
-    if (action !== "gather") {
+    // ── Validate request authenticity ───────────────────────────
+    // B-09 (2026-04-25): the prior code skipped signature validation
+    // for action=gather entirely, leaving a public path that an
+    // attacker could POST to with arbitrary `Digits`, `From`, `Called`
+    // and reroute escalation calls/SMS. The fix:
+    //
+    //   action == "gather"   → require a valid `gtok` (HMAC-SHA256
+    //                          token bound to callId + expiry, minted
+    //                          by twilio-call when issuing the TwiML).
+    //                          Twilio's own signature is also validated
+    //                          when present, as defense in depth.
+    //   action != "gather"   → mandatory Twilio signature, as before.
+    //
+    // For gather we treat `gtok` as the primary gate; the Twilio
+    // signature is checked but not strictly required (Twilio's URL
+    // signing of dynamic gather callbacks has historically been
+    // unreliable in this stack — see B-H2 comment).
+    if (action === "gather") {
+      const gtok = url.searchParams.get("gtok");
+      const tokRes = await verifyGatherToken(gtok, callId);
+      if (!tokRes.ok) {
+        console.warn(
+          `[twilio-status] gather token verification FAILED reason=${tokRes.reason} callId=${callId} — rejecting`,
+        );
+        return new Response(JSON.stringify({ error: "Invalid gather token" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Defense in depth: also try Twilio's own signature; log on
+      // mismatch but do not reject (gtok is the binding gate).
+      const twilioOk = await validateTwilioSignature(req, req.url, data);
+      if (!twilioOk) {
+        console.warn(
+          `[twilio-status] gather: Twilio signature did not validate (callId=${callId}) — gtok was OK so proceeding`,
+        );
+      }
+    } else {
       const valid = await validateTwilioSignature(req, req.url, data);
       if (!valid) {
         console.warn("[twilio-status] Signature validation FAILED — rejecting request");
@@ -366,4 +403,69 @@ async function sendEscalationSMS(
   } catch (e) {
     console.error("[twilio-status] Escalation SMS failed:", e);
   }
+}
+      status,
+      call_sid: rawData.CallSid || rawData.MessageSid || null,
+      from_number: rawData.From || null,
+      to_number: rawData.To || rawData.Called || null,
+      duration: rawData.CallDuration ? parseInt(rawData.CallDuration) : null,
+      answered_by: rawData.AnsweredBy || null,
+      raw_data: rawData,
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn("[twilio-status] Failed to log event:", e);
+  }
+}
+
+// ── Helper: Send escalation SMS ─────────────────────────────
+async function sendEscalationSMS(
+  supabaseUrl: string,
+  adminPhone: string,
+  callId: string,
+  baseUrl: string,
+) {
+  try {
+    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+    const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER") || "";
+
+    if (!twilioFrom) {
+      console.warn("[twilio-status] No TWILIO_FROM_NUMBER set, skipping SMS escalation");
+      return;
+    }
+
+    const smsBody = [
+      `🚨 SOSphere Emergency Alert`,
+      ``,
+      `A call was made but not answered.`,
+      `Open the dashboard immediately:`,
+      `${baseUrl}/emergency/${callId}`,
+    ].join("\n");
+
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+    const auth = btoa(`${accountSid}:${authToken}`);
+
+    await fetch(twilioUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        To: adminPhone,
+        From: twilioFrom,
+        Body: smsBody,
+      }).toString(),
+    });
+
+    console.log(`[twilio-status] Escalation SMS sent to ${adminPhone}`);
+  } catch (e) {
+    console.error("[twilio-status] Escalation SMS failed:", e);
+  }
+}
+catch (e) {
+    console.error("[twilio-status] Escalation SMS failed:", e);
+  }
+}
 }

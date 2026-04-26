@@ -524,6 +524,62 @@ export function IntelligentGuide({
     return () => { if (phaseCountdownRef.current) clearInterval(phaseCountdownRef.current); };
   }, [phase, assessment?.level]);
 
+  // ──────────────────────────────────────────────────────────────
+  // B-06 (2026-04-25): auto-escalate on phaseTimedOut + battery panic.
+  //
+  // Pre-fix: phaseTimedOut went true and the response score decayed,
+  // but no transition fired. A user stuck in `evidence` while the
+  // battery dropped to 5% would never be escalated. Now:
+  //
+  //   • phaseTimedOut + non-terminal phase → call advancePhase() once.
+  //   • batteryLevel ≤ 10 + early phase    → fast-path to emergency.
+  //   • Both pathways write an audit log entry via addLog so the
+  //     investigator sees AUTO_ADVANCED markers in the timeline.
+  //
+  // Idempotent: an internal ref guards against double-fire if a
+  // re-render tries to re-evaluate the same timeout state.
+  // ──────────────────────────────────────────────────────────────
+  const autoAdvancedRef = useRef<string>("");
+  useEffect(() => {
+    if (phase === "scanning" || phase === "complete") return;
+    const battery = context.batteryLevel ?? 100;
+    const isEarly = phase !== "complete" && phase !== "scanning";
+    const fastPathReason = battery <= 5
+      ? `battery_critical_${battery}pct`
+      : (battery <= 10 && isEarly)
+        ? `battery_low_${battery}pct`
+        : null;
+
+    // Re-fire guard: same (phase, reason) pair fires only once.
+    const reasonKey = fastPathReason ?? (phaseTimedOut ? "phase_timeout" : "");
+    if (!reasonKey) return;
+    const fingerprint = `${phase}::${reasonKey}`;
+    if (autoAdvancedRef.current === fingerprint) return;
+    autoAdvancedRef.current = fingerprint;
+
+    if (fastPathReason) {
+      addLog(`AUTO ${fastPathReason} — fast-path to escalate`, "#FF2D55");
+      // Jump straight to the `escalate` phase (the IRE analogue of "emergency")
+      // if we are not already past it.
+      const escalateIdx = ALL_PHASES.indexOf("escalate");
+      const currentIdx  = ALL_PHASES.indexOf(phase);
+      if (escalateIdx >= 0 && currentIdx < escalateIdx) {
+        setCompletedPhases(p => p.includes(phase) ? p : [...p, phase]);
+        setPhase("escalate");
+        playUISound("phaseComplete");
+        hapticSuccess();
+      }
+      return;
+    }
+
+    // phaseTimedOut path
+    if (phaseTimedOut) {
+      addLog(`AUTO phase_budget_exceeded — advancing from ${PHASE_META[phase]?.label ?? phase}`, "#FF9500");
+      advancePhase();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, phaseTimedOut, context.batteryLevel]);
+
   // ── Elapsed Timer ────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setElapsed(p => p + 1), 1000);

@@ -225,23 +225,43 @@ async function fetchSOS(
 
     let res = await doFetch();
 
-    // 429 defence-in-depth. The server puts SOS endpoints on the
-    // priority lane (never rejected), so in theory we never hit this
-    // branch for `trigger` / `heartbeat` / `escalate` / `end`. We
-    // keep the branch anyway because:
-    //   • the priority lane is a server invariant, not a client one
-    //     — if it ever breaks silently, we want the retry to mask
-    //     single hiccups instead of dropping an emergency.
-    //   • non-SOS callers of fetchSOS (none today, but the helper is
-    //     shared-shaped) would inherit the correct behaviour.
-    // One retry only; looping on a 429 would defeat the rate limit.
+    // ──────────────────────────────────────────────────────────────
+    // F-C (2026-04-25): unified retry path for two recoverable
+    // statuses, one retry only.
+    //
+    //   429 (Too Many Requests) — defence-in-depth. SOS endpoints
+    //   sit on the server's priority lane and should never be
+    //   throttled, but if the priority invariant ever breaks silently
+    //   we want the retry to mask single hiccups instead of dropping
+    //   an emergency.
+    //
+    //   503 + body.error === "rate_limit_check_failed" — the new
+    //   fail-secure response from sos-alert (B-10). The metering RPC
+    //   was momentarily unreachable so the server refused to bypass
+    //   its own rate-limit check. A single retry after a brief wait
+    //   resolves the typical case (transient DB latency).
+    //
+    // Looping on either would defeat the corresponding server
+    // protection, so we cap at exactly one retry across BOTH classes.
+    // ──────────────────────────────────────────────────────────────
     if (res.status === 429) {
       const info = parseRateLimit(res);
       logRateLimit(`sos-alert?action=${action ?? "root"}`, info);
-      // Read+discard body so the connection can be reused.
       try { await res.clone().text(); } catch {}
       const ok = await waitForRetry(info);
       if (ok) res = await doFetch();
+    } else if (res.status === 503) {
+      // Inspect body without consuming the original response.
+      let body: { error?: string; retry_after_sec?: number } | null = null;
+      try { body = await res.clone().json(); } catch { body = null; }
+      if (body?.error === "rate_limit_check_failed") {
+        // Cap the wait so a misbehaving server can't stall the SOS path.
+        const waitMs = Math.min(Math.max((body?.retry_after_sec ?? 1) * 1000, 250), 3000);
+        await new Promise(r => setTimeout(r, waitMs));
+        res = await doFetch();
+      }
+      // Any other 503 (real server error, missing function, etc.) is
+      // surfaced as-is — retrying would not help.
     }
 
     return res;
@@ -255,19 +275,28 @@ async function fetchSOS(
 // Fires BEFORE the main trigger so server has at least minimal data
 // even if the device dies mid-handshake.
 // ═══════════════════════════════════════════════════════════════
-function firePrewarm(opts: {
+async function firePrewarm(opts: {
   emergencyId: string;
   userId: string;
   userName: string;
   tier: "free" | "basic" | "elite";
   location: { lat: number; lng: number; accuracy: number } | null;
-}): void {
+}): Promise<void> {
+  // ─────────────────────────────────────────────────────────────
+  // G-4 (B-20, 2026-04-25): include the JWT in the body so the server
+  // can authenticate the prewarm. sendBeacon cannot set Authorization
+  // headers, so the server accepts a body-token fallback. The token is
+  // verified server-side via supabase.auth.getUser(token); we never
+  // trust the userId field alone.
+  // ─────────────────────────────────────────────────────────────
+  const accessToken = await getAuthToken();
   const payload = JSON.stringify({
     emergencyId: opts.emergencyId,
     userId: opts.userId,
     userName: opts.userName,
     tier: opts.tier,
     location: opts.location,
+    accessToken,                    // ← server reads this if no Authorization header
     ts: Date.now(),
   });
 
@@ -289,11 +318,16 @@ function firePrewarm(opts: {
     );
   } catch {}
 
-  // Path 3: If sendBeacon failed, fallback to fetch keepalive
+  // Path 3: If sendBeacon failed, fallback to fetch keepalive WITH header.
   if (!beaconOk) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+    };
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
     fetch(`${SOS_ALERT_URL}?action=prewarm`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+      headers,
       body: payload,
       keepalive: true,
     }).catch(() => {});

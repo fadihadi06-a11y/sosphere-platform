@@ -566,12 +566,32 @@ export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolea
   // E-C4: start the staleness watchdog so we recover from silent hangs
   _startStalenessWatchdog();
 
-  // Flush GPS buffer on app close/background
+  // G-25 (B-20, 2026-04-26): on Capacitor WebView (Android) the
+  // `beforeunload` event NEVER fires when the app is backgrounded or
+  // killed — only `visibilitychange` and Capacitor App.appStateChange
+  // do. Pre-fix the final GPS positions before app death were lost.
+  // Register all THREE listeners; whichever fires first calls flushGPSSync().
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", () => flushGPSSync());
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") flushGPSSync();
     });
+    try {
+      const w = window as any;
+      const Capacitor = w.Capacitor;
+      if (Capacitor?.isNativePlatform?.()) {
+        import("@capacitor/app").then((mod) => {
+          mod.App.addListener("appStateChange", (state: { isActive: boolean }) => {
+            if (!state.isActive) flushGPSSync();
+          });
+          mod.App.addListener("pause", () => flushGPSSync());
+        }).catch((err) => {
+          console.warn("[GPSTracker] Capacitor App listener registration failed (non-fatal):", err);
+        });
+      }
+    } catch (err) {
+      console.warn("[GPSTracker] Capacitor detection failed (non-fatal):", err);
+    }
   }
 
   _startingLock = false;

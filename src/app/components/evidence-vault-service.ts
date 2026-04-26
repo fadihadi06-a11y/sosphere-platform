@@ -1,7 +1,9 @@
 /**
  * SOSphere — Evidence Vault Service
  * ══════════════════════════════════
- * Creates a tamper-proof, encrypted evidence package for each SOS incident.
+ * Creates a tamper-EVIDENT, encrypted evidence package for each SOS incident.
+ * (B-18 2026-04-25: "tamper-proof" was too strong — a SHA-256 hash makes
+ * tampering DETECTABLE, not impossible. Aligned with the rest of the chain.)
  * The package bundles:
  *   • Audio recording(s)
  *   • Photos captured during the incident

@@ -147,7 +147,9 @@ async function upsertSubscription(
 
 function lookupPlanByPriceEnv(priceId: string | undefined): string | null {
   if (!priceId) return null;
-  const plans = ["starter", "growth", "business", "enterprise"];
+  // B-17 (2026-04-25): added civilian plans so the webhook resolves
+  // basic/elite priceIds without falling through to UnmappedPriceError.
+  const plans = ["starter", "growth", "business", "enterprise", "basic", "elite"];
   const cycles = ["monthly", "annual"];
   for (const p of plans) {
     for (const c of cycles) {
@@ -298,15 +300,74 @@ serve(async (req: Request) => {
         break;
     }
   } catch (err) {
-    // B-H3: differentiate recoverable vs idempotent errors
+    // ─────────────────────────────────────────────────────────────
+    // B-13 (2026-04-25): the prior implementation returned 400 here,
+    // which made Stripe stop retrying. The customer paid, our DB
+    // never recorded the subscription. The fix is two-fold:
+    //   1. Persist the raw event to stripe_unmapped_events for
+    //      forensic recovery + ops visibility (idempotent on event_id).
+    //   2. Return 503 so Stripe RETRIES for ~3 days. Once the operator
+    //      adds the missing STRIPE_PRICE_* env mapping the next retry
+    //      succeeds and a normal subscriptions row is upserted.
+    // The prior 'unmapped_price = bad config = 400' framing was wrong:
+    // the customer is paying NOW; downtime/misconfig is OUR problem,
+    // not theirs. Treat it as a recoverable server condition.
+    // ─────────────────────────────────────────────────────────────
     if (err instanceof UnmappedPriceError) {
-      // B-H4: reject unmapped price IDs — bad config, Stripe retrying
-      // won't help. 400 surfaces the issue in the Stripe dashboard.
-      console.error(`[stripe-webhook] ${evtType} id=${evtId} unmapped price:`, err.message);
-      return new Response(JSON.stringify({ error: "unmapped_price", priceId: err.priceId }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      // Best-effort persist; even if this fails we still 5xx so Stripe
+      // retries. Idempotent on event_id.
+      try {
+        const userId = (event?.data?.object?.client_reference_id as string | undefined)
+          || (event?.data?.object?.metadata?.userId as string | undefined)
+          || null;
+        const customerId = (event?.data?.object?.customer as string | undefined) || null;
+        // F-D (2026-04-25): use the SECURITY DEFINER RPC so retry_count
+        // actually increments on conflict. supabase-js .upsert overwrites
+        // and never increments computed columns.
+        const { data: persistData, error: persistErr } = await supabase.rpc(
+          "record_stripe_unmapped_event",
+          {
+            p_event_id: evtId,
+            p_event_type: evtType,
+            p_price_id: err.priceId ?? null,
+            p_user_id: userId,
+            p_customer_id: customerId,
+            p_raw_event: event,
+            p_reason: "unmapped_price",
+          },
+        );
+        if (persistErr) {
+          console.error(
+            `[stripe-webhook] CRITICAL: persist of unmapped_price failed id=${evtId}:`,
+            persistErr,
+          );
+        } else {
+          // Surface the live retry_count + last_seen so ops dashboards
+          // can correlate "Stripe is still retrying this event".
+          const row = Array.isArray(persistData) ? persistData[0] : persistData;
+          console.warn(
+            `[stripe-webhook] UNMAPPED_PRICE persisted id=${evtId} ` +
+            `retry_count=${row?.out_retry_count ?? "?"} ` +
+            `last_seen=${row?.out_last_seen ?? "?"}`,
+          );
+        }
+      } catch (persistEx) {
+        console.error(
+          `[stripe-webhook] CRITICAL: stripe_unmapped_events persist threw id=${evtId}:`,
+          persistEx,
+        );
+      }
+      // 503 Service Unavailable — Stripe will retry on 5xx. We do NOT
+      // return 400 anymore: a paying customer must never be silently
+      // dropped because of our config gap.
+      return new Response(
+        JSON.stringify({
+          error: "unmapped_price_pending_recovery",
+          priceId: err.priceId,
+          message: "Event persisted for forensic recovery. Webhook will retry.",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
     }
     // Recoverable network / runtime / Supabase errors — let Stripe retry.
     console.error(`[stripe-webhook] ${evtType} id=${evtId} handler error (recoverable):`, err);

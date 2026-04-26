@@ -1,12 +1,16 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — Smart Timeline Tracker (Legal-Grade Event Log)
+// SOSphere — Smart Timeline Tracker (Tamper-Evident Event Log)
 // ─────────────────────────────────────────────────────────────
 // Auto-documents EVERY step from SOS → Rescue → Resolution.
-// Each entry is hashed (SHA-256) for legal admissibility.
+// Each entry is hashed (SHA-256) so any post-hoc edit is DETECTABLE.
 // UTC timestamps only. Chain of custody maintained.
 //
-// This replaces the fabricated timeline in buildReportData().
-// Now every event is REAL, TRACKED, and COURT-ADMISSIBLE.
+// B-18 (2026-04-25): the prior header said "Legal-Grade … COURT-
+// ADMISSIBLE" — that's a courtroom call, not ours. Admissibility
+// depends on jurisdiction, on the discovery process, and on the
+// evidentiary chain holding up under cross-examination at trial.
+// What we DO provide is a cryptographically tamper-evident chain;
+// the report header now reflects that and stops over-promising.
 // ═══════════════════════════════════════════════════════════════
 
 // ── Types ────────────────────────────────────────────────────────
@@ -56,9 +60,20 @@ export interface TimelineEntry {
   actor: string;            // Who did this (system/person name)
   actorRole?: string;       // "Employee", "Admin", "System", "Responder"
   metadata?: Record<string, unknown>; // Extra data (GPS coords, phone number, etc.)
-  hash: string;             // SHA-256 of (prevHash + entry data)
+  hash: string;             // SHA-256 of (prevHash + entry data) when signed:true; otherwise an "UNSIGNED:" placeholder
   prevHash: string;         // Previous entry's hash (blockchain-style chain)
   sequence: number;         // Sequential number within this emergency
+  // ──────────────────────────────────────────────────────────────
+  // B-05 (2026-04-25): explicit signature flag. The previous design
+  // wrote a 32-bit FNV-1a fingerprint with the prefix "NONCRYPTO:" and
+  // STILL counted those entries in the chain — meaning the legal claim
+  // "tamper-evident" became false the moment crypto.subtle was missing.
+  // Now every entry must declare whether it is cryptographically signed.
+  // PDF / legal exports must include only signed:true entries when
+  // making any tamper-evidence claim. signed:false entries are kept
+  // for operator visibility but are never part of the integrity chain.
+  // ──────────────────────────────────────────────────────────────
+  signed: boolean;
 }
 
 export interface EmergencyTimeline {
@@ -75,7 +90,28 @@ const TIMELINE_KEY = "sosphere_smart_timeline";
 
 function loadTimelines(): Record<string, EmergencyTimeline> {
   try {
-    return JSON.parse(localStorage.getItem(TIMELINE_KEY) || "{}");
+    const raw = JSON.parse(localStorage.getItem(TIMELINE_KEY) || "{}") as Record<string, EmergencyTimeline>;
+    // ─────────────────────────────────────────────────────────────
+    // B-05 (2026-04-25): the new TimelineEntry shape has a required
+    // `signed` flag. Older cached entries (created before this fix)
+    // do not have that field. We back-fill conservatively: any entry
+    // whose hash is the prior fake NONCRYPTO: form, OR is missing,
+    // OR is not a 64-char hex string is treated as signed:false.
+    // Real SHA-256 hashes (64 hex chars) get signed:true so the
+    // legitimate chain history is preserved.
+    // ─────────────────────────────────────────────────────────────
+    for (const tlKey of Object.keys(raw)) {
+      const tl = raw[tlKey];
+      if (!tl?.entries) continue;
+      for (const e of tl.entries) {
+        if (typeof (e as TimelineEntry).signed !== "boolean") {
+          const h = e.hash ?? "";
+          const looksLikeRealSha256 = /^[a-f0-9]{64}$/.test(h);
+          (e as TimelineEntry).signed = looksLikeRealSha256;
+        }
+      }
+    }
+    return raw;
   } catch {
     return {};
   }
@@ -94,40 +130,40 @@ async function sha256(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// FIX 2026-04-23: This "sync fallback" was previously disguised as SHA-256
-// but used a 32-bit integer hash that was NEITHER cryptographic NOR
-// collision-resistant. Repeating an 8-hex block × 8 to "look like" SHA-256
-// was actively deceptive — audit logs signed with this can be tampered with
-// trivially (any attacker can find a collision in milliseconds).
+// ──────────────────────────────────────────────────────────────────
+// B-05 (2026-04-25): the prior code shipped a "sha256Sync" function
+// that returned a 32-bit FNV-1a fingerprint with the prefix "NONCRYPTO:"
+// and let the caller record that entry in the chain. The "tamper-evident"
+// claim therefore became false the moment crypto.subtle was missing
+// (a motivated attacker can collide a 32-bit hash in milliseconds).
 //
-// Rather than silently lying, we now:
-//  1. Return a clearly-marked NON-CRYPTOGRAPHIC fingerprint prefixed with
-//     "NONCRYPTO:" so every downstream reader knows not to trust it.
-//  2. Log a warning (visible, not silent) when this path is taken.
-//  3. Anyone inspecting the audit trail sees the prefix and understands the
-//     entry was recorded in a fallback environment without real hashing.
+// The new contract:
+//   - We NEVER claim a signed hash without crypto.subtle.
+//   - The sync recorder uses an `UNSIGNED:` placeholder hash and sets
+//     entry.signed = false. PDF/legal exports must filter on signed.
+//   - The async recorder awaits sha256() and sets entry.signed = true.
+//     If crypto.subtle is unavailable in async mode, we throw and let
+//     the caller decide whether to retry or fall back to unsigned.
+//   - verifyChainIntegrity ignores signed:false entries and reports
+//     them separately so operators see the gap explicitly.
 //
-// The proper solution is to ensure ALL callers await the async sha256()
-// function (which uses crypto.subtle). This fallback exists only for
-// environments where that API is unavailable (very old WebViews). In those
-// cases we'd rather fail honestly than fake integrity.
-function sha256Sync(message: string): string {
-  // Simple FNV-1a style fingerprint — readable but NOT cryptographic
-  let hash = 2166136261 >>> 0;
-  for (let i = 0; i < message.length; i++) {
-    hash ^= message.charCodeAt(i);
-    hash = Math.imul(hash, 16777619) >>> 0;
+// `unsignedPlaceholderHash` exists ONLY to give signed:false entries
+// a unique deterministic id so client-side dedupe works. It is NOT
+// represented as a hash anywhere in the public API; the prefix and
+// the `signed:false` flag together signal "do not trust for integrity".
+// ──────────────────────────────────────────────────────────────────
+function unsignedPlaceholderHash(emergencyId: string, sequence: number, timestampMs: number): string {
+  // FNV-1a fingerprint over (emergencyId, sequence, timestamp) — the
+  // smallest amount of state that makes each entry uniquely addressable
+  // without pretending to be SHA-256. The "UNSIGNED:" prefix is the
+  // single source of truth that downstream code MUST observe.
+  let h = 2166136261 >>> 0;
+  const m = `${emergencyId}|${sequence}|${timestampMs}`;
+  for (let i = 0; i < m.length; i++) {
+    h ^= m.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
   }
-  const fingerprint = hash.toString(16).padStart(8, "0");
-  // Log once per session so the fallback is visible in the console
-  if (typeof console !== "undefined" && !(globalThis as { __sha256SyncWarned?: boolean }).__sha256SyncWarned) {
-    console.warn(
-      "[smart-timeline-tracker] crypto.subtle unavailable — falling back to NON-CRYPTOGRAPHIC fingerprint. Audit-log integrity downgraded for this session."
-    );
-    (globalThis as { __sha256SyncWarned?: boolean }).__sha256SyncWarned = true;
-  }
-  // Explicit prefix so every log reader knows this is not real SHA-256
-  return `NONCRYPTO:${fingerprint}`;
+  return `UNSIGNED:${h.toString(16).padStart(8, "0")}`;
 }
 
 // ── Core: Add Event to Timeline ─────────────────────────────────
@@ -174,11 +210,23 @@ export async function trackEvent(
     sequence,
   });
 
+  // B-05 (2026-04-25): no silent NONCRYPTO fallback — if crypto.subtle
+  // fails we mark the entry signed:false and use an UNSIGNED placeholder.
   let hash: string;
+  let signed: boolean;
   try {
     hash = await sha256(dataToHash);
-  } catch {
-    hash = sha256Sync(dataToHash);
+    signed = true;
+  } catch (e) {
+    if (typeof console !== "undefined" && !(globalThis as { __unsignedTimelineWarned?: boolean }).__unsignedTimelineWarned) {
+      console.warn(
+        "[smart-timeline-tracker] crypto.subtle unavailable — recording entry as UNSIGNED. Legal exports will exclude it.",
+        e,
+      );
+      (globalThis as { __unsignedTimelineWarned?: boolean }).__unsignedTimelineWarned = true;
+    }
+    hash = unsignedPlaceholderHash(emergencyId, sequence, timestampMs);
+    signed = false;
   }
 
   const entry: TimelineEntry = {
@@ -192,6 +240,7 @@ export async function trackEvent(
     actorRole,
     metadata,
     hash,
+    signed,
     prevHash,
     sequence,
   };
@@ -248,11 +297,18 @@ export function trackEventSync(
     prevHash, emergencyId, timestamp, timestampMs, type, event, actor, actorRole, metadata, sequence,
   });
 
-  const hash = sha256Sync(dataToHash);
+  // B-05 (2026-04-25): trackEventSync runs in non-async contexts. We
+  // CANNOT compute SHA-256 here (crypto.subtle is async-only). Instead
+  // we mark the entry signed:false with an UNSIGNED placeholder and
+  // rely on PDF/legal export filters to exclude it from any tamper-
+  // evident claim. Operators still see the event in dashboards.
+  const hash = unsignedPlaceholderHash(emergencyId, sequence, timestampMs);
 
   const entry: TimelineEntry = {
     id: `TL-${emergencyId}-${sequence.toString().padStart(4, "0")}`,
-    emergencyId, timestamp, timestampMs, type, event, actor, actorRole, metadata, hash, prevHash, sequence,
+    emergencyId, timestamp, timestampMs, type, event, actor, actorRole, metadata,
+    hash, prevHash, sequence,
+    signed: false,
   };
 
   entries.push(entry);
@@ -348,6 +404,7 @@ export function getTimelineForReport(emergencyId: string): {
     evidence_photo: "action",
     evidence_audio: "action",
     evidence_submitted: "action",
+    evidence_hashed: "system",
     escalation_triggered: "escalation",
     emergency_services_called: "escalation",
     zone_lockdown: "escalation",
@@ -378,7 +435,49 @@ export function getTimelineForReport(emergencyId: string): {
   }));
 }
 
-/** Verify chain integrity — checks all hashes */
+/**
+ * B-05 (2026-04-25): synchronous integrity summary. Does NOT verify
+ * hashes (impossible without crypto.subtle which is async-only). Only
+ * checks that:
+ *   - the prevHash chain is contiguous (each entry's prevHash equals
+ *     the previous entry's hash)
+ *   - counts signed:true vs signed:false entries
+ * This is the function PDF generators should use because they run in
+ * sync render pipelines (jsPDF). For full async hash verification call
+ * `verifyChainIntegrity` from an async context.
+ */
+export function quickIntegrityCheck(emergencyId: string): {
+  totalEntries: number;
+  signedCount: number;
+  unsignedCount: number;
+  chainContiguous: boolean;
+  brokenAt?: number;
+} {
+  const entries = getTimelineEntries(emergencyId);
+  let signedCount = 0;
+  let unsignedCount = 0;
+  let chainContiguous = true;
+  let brokenAt: number | undefined;
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (e.signed) signedCount++;
+    else unsignedCount++;
+    const expectedPrev = i === 0 ? "GENESIS" : entries[i - 1].hash;
+    if (e.prevHash !== expectedPrev && chainContiguous) {
+      chainContiguous = false;
+      brokenAt = i;
+    }
+  }
+  return {
+    totalEntries: entries.length,
+    signedCount,
+    unsignedCount,
+    chainContiguous,
+    brokenAt,
+  };
+}
+
+/** Verify chain integrity — checks all hashes (ASYNC, requires crypto.subtle) */
 export async function verifyChainIntegrity(emergencyId: string): Promise<{
   valid: boolean;
   brokenAt?: number;
@@ -408,22 +507,27 @@ export async function verifyChainIntegrity(emergencyId: string): Promise<{
       sequence: entry.sequence,
     });
 
+    // B-05 (2026-04-25): only entries signed cryptographically participate
+    // in the integrity claim. Unsigned entries are still part of the visible
+    // log but DO NOT contribute to "tamper-evident" claims.
+    if (!entry.signed) continue;
     try {
       const expectedHash = await sha256(dataToHash);
       if (entry.hash !== expectedHash) {
-        // Check sync hash fallback
-        const syncHash = sha256Sync(dataToHash);
-        if (entry.hash !== syncHash) {
-          return { valid: false, brokenAt: i, totalEntries: entries.length };
-        }
+        return { valid: false, brokenAt: i, totalEntries: entries.length };
       }
     } catch {
-      // Can't verify in this environment
+      // crypto.subtle unavailable at verify time — we cannot prove anything
+      // either way. Conservatively report a broken chain so legal exports
+      // do not silently claim tamper-evidence.
+      return { valid: false, brokenAt: i, totalEntries: entries.length };
     }
   }
 
   return { valid: true, totalEntries: entries.length };
 }
+
+/** Get GPS trail from timeline */
 
 /** Get GPS trail from timeline */
 export function getGPSTrail(emergencyId: string): { lat: number; lng: number; timestamp: string }[] {

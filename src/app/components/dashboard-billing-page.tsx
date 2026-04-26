@@ -28,7 +28,10 @@ const CUSTOMER_RIGHTS = [
   { emoji: "💰", title: "Full Refund", description: "Not satisfied within the first 7 days of your subscription? We refund you in full, no questions asked.", badge: "7-day money-back guarantee", color: "#00C853" },
   { emoji: "📦", title: "Your Data Belongs to You", description: "Your company and employee data is 100% yours. Upon cancellation, get a full export within 30 days.", badge: "Full export on request", color: "#00C8E0" },
   { emoji: "🚫", title: "Cancel Anytime", description: "Cancel your subscription anytime from this page with one click. No calls, no complicated process.", badge: "Instant cancellation", color: "#FF9500" },
-  { emoji: "🔒", title: "Privacy Guaranteed", description: "We never sell your data to third parties. Employee data is fully deleted 30 days after cancellation.", badge: "No third-party sharing", color: "#7B5EFF" },
+  // B-18 (2026-04-25): "Guaranteed" replaced with "First". The contractual
+  // commitments live in the Privacy Policy + DPA — a banner describes them
+  // but cannot itself constitute the guarantee.
+  { emoji: "🔒", title: "Privacy First", description: "We never sell your data to third parties. Employee data is fully deleted 30 days after cancellation. See our Privacy Policy for the full commitment.", badge: "No third-party sharing", color: "#7B5EFF" },
   { emoji: "🔔", title: "Renewal Notice", description: "SOSphere sends you an email 7 days before every automatic renewal with full amount details.", badge: "7-day advance notice", color: "#F59E0B" },
   { emoji: "🆘", title: "SOS Always Works", description: "Even if your trial ends or payment is delayed, the SOS system never stops. Your team safety comes first.", badge: "SOS never blocked", color: "#FF2D55" },
 ];
@@ -232,12 +235,19 @@ export function BillingPage({ companyState, webMode = false }: {
         // startCheckout does window.location.assign — execution stops.
         return;
       } catch (err) {
-        // Stripe not configured (common in dev) or network failure:
-        // fall through to the legacy mock-invoice path so the UI
-        // still works. In production this should surface a toast and
-        // stop — but we don't want to break local testing.
-        console.warn("[billing] Stripe checkout unavailable, using local fallback:", err);
-        toast.error("Checkout unavailable — applying locally (dev mode)");
+        // G-21 (B-20, 2026-04-26): in production NEVER fall through to
+        // the legacy mock-invoice path. Pre-fix this catch granted the
+        // user the paid plan locally on any Stripe failure (or even a
+        // transient network blip) and showed "dev mode" string to real
+        // customers. Now: dev fallback gated on import.meta.env.DEV.
+        console.error("[billing] Stripe checkout failed:", err);
+        if (!import.meta.env.DEV) {
+          toast.error("Checkout temporarily unavailable. Please try again in a moment.");
+          hapticLight();
+          return;
+        }
+        console.warn("[billing] DEV-ONLY local fallback engaged.");
+        toast.error("Stripe unavailable — DEV fallback only.");
       }
     }
 

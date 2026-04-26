@@ -186,7 +186,12 @@ export function BuddySystemPage({ t, webMode }: { t: (k: string) => string; webM
             if (paired.length > 0) { syncPairsToStorage(paired); return; }
           }
         } catch { /* fall through */ }
-        syncPairsToStorage(MOCK_PAIRS);
+        // G-23 (B-20, 2026-04-26): NEVER persist MOCK_PAIRS to localStorage.
+        // Pre-fix, an empty tenant's first visit wrote fabricated employees
+        // ("Ahmed Khalil", etc.) to sosphere_employees, which other features
+        // (GPS fallback, checkin-timer, compliance roster) consumed as real.
+        // Now: empty tenants leave MOCK_PAIRS in component state only.
+        console.log("[buddy-system] empty tenant: showing demo pairs in-memory only (G-23)");
       })();
     }
   }, []);

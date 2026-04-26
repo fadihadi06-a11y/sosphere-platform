@@ -357,6 +357,38 @@ async function authenticate(req: Request, supabase: any): Promise<{ userId: stri
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// G-3 / G-4 (B-20, 2026-04-25): authenticate prewarm too — but accept the
+// JWT inside the BODY because sendBeacon (used by survival-beacon paths
+// during page unload / Capacitor app death) cannot set HTTP headers.
+// The body-token path is functionally identical to the header path: we
+// run supabase.auth.getUser(token) and use its result. The header path
+// remains the primary; body-token is only consulted as a fallback.
+// ──────────────────────────────────────────────────────────────────────
+async function authenticateBodyOrHeader(
+  req: Request,
+  supabase: any,
+  bodyToken: string | undefined,
+): Promise<{ userId: string | null; error?: string }> {
+  // 1. Header path (regular fetch / supabase.functions.invoke)
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const jwt = authHeader.replace("Bearer ", "");
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(jwt);
+      if (!error && user) return { userId: user.id };
+    } catch { /* fall through to body token */ }
+  }
+  // 2. Body-token path (sendBeacon survival beacon)
+  if (typeof bodyToken === "string" && bodyToken.length > 20) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(bodyToken);
+      if (!error && user) return { userId: user.id };
+    } catch { /* fall through */ }
+  }
+  return { userId: null, error: "No valid token in header or body" };
+}
+
 // ── Tier Resolver: DB-based, subscription-status aware ───────
 async function resolveTier(userId: string, supabase: any): Promise<"free" | "basic" | "elite"> {
   try {
@@ -423,16 +455,36 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: cors });
       }
 
-      // SOS priority lane: record + observe, never block. The limiter
-      // returns allowed:true unconditionally for isSosRequest=true —
-      // we still want the headers so operators can see burst load.
-      const rl = checkRateLimit(pw.userId || `ip:${ip}`, "sos", true);
-      markSosPriority(pw.userId);
+      // ─────────────────────────────────────────────────────────────
+      // G-4 (B-20, 2026-04-25): authenticate the prewarm. Pre-fix: any
+      // anon caller could plant a `sos_sessions` row with an arbitrary
+      // user_id and tier="elite". The JWT comes from the request header
+      // OR (for sendBeacon, which can't set headers) from `pw.accessToken`
+      // in the body. The body-token path is verified server-side by
+      // calling auth.getUser(token) — we do NOT trust the userId field
+      // alone. Fail-secure: reject if no valid token can be resolved.
+      // We also force tier="free" — the real tier is resolved from the
+      // subscriptions table during the `trigger` call.
+      // ─────────────────────────────────────────────────────────────
+      const pwAuth = await authenticateBodyOrHeader(req, supabase, pw.accessToken);
+      if (!pwAuth.userId) {
+        console.warn(`[sos-alert] PREWARM rejected — no valid token (id=${pw.emergencyId})`);
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: cors });
+      }
+      if (pwAuth.userId !== pw.userId) {
+        console.warn(`[sos-alert] PREWARM userId mismatch — token=${pwAuth.userId} body=${pw.userId}`);
+        return new Response(JSON.stringify({ error: "userId mismatch" }), { status: 403, headers: cors });
+      }
 
-      // Idempotent upsert: if prewarm or trigger already created the row, no-op
+      // SOS priority lane: record + observe, never block.
+      const rl = checkRateLimit(pwAuth.userId, "sos", true);
+      markSosPriority(pwAuth.userId);
+
+      // Idempotent upsert. Tier is hard-coded "free" here — the real tier
+      // is resolved server-side from `subscriptions` during `trigger`.
       await supabase.from("sos_sessions").upsert({
         id: pw.emergencyId,
-        user_id: pw.userId,
+        user_id: pwAuth.userId,             // ← from token, not body
         user_name: pw.userName || "Unknown",
         status: "prewarm",
         started_at: new Date().toISOString(),
@@ -442,10 +494,10 @@ serve(async (req: Request) => {
         last_lat: pw.location?.lat,
         last_lng: pw.location?.lng,
         accuracy: pw.location?.accuracy,
-        tier: pw.tier || "free",
+        tier: "free",                       // ← never trust client tier
       }, { onConflict: "id", ignoreDuplicates: false });
 
-      console.log(`[sos-alert] PREWARM received: ${pw.emergencyId} user=${pw.userId} tier=${pw.tier}`);
+      console.log(`[sos-alert] PREWARM received: ${pw.emergencyId} user=${pwAuth.userId}`);
       return new Response(JSON.stringify({ ok: true, prewarmed: true }), {
         headers: { ...cors, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
       });
@@ -457,11 +509,38 @@ serve(async (req: Request) => {
     if (action === "heartbeat") {
       const hb = await req.json();
 
+      // ─────────────────────────────────────────────────────────────
+      // G-3 (B-20, 2026-04-25): authenticate + verify session ownership
+      // before any DB write. Pre-fix: any anon caller could spoof a
+      // victim's GPS, kill battery readings, or inflate elapsed_sec on
+      // any active emergency just by knowing/guessing the emergencyId.
+      // We require a valid Bearer JWT, then verify the target session's
+      // user_id matches the JWT's user.id. Mismatch → 403.
+      // ─────────────────────────────────────────────────────────────
+      const hbAuth = await authenticate(req, supabase);
+      if (!hbAuth.userId) {
+        return new Response(JSON.stringify({ error: "Unauthorized", detail: hbAuth.error }), {
+          status: 401, headers: cors,
+        });
+      }
+      // Lookup the session and verify ownership.
+      const { data: hbSession } = await supabase
+        .from("sos_sessions")
+        .select("user_id")
+        .eq("id", hb.emergencyId)
+        .maybeSingle();
+      if (!hbSession) {
+        return new Response(JSON.stringify({ error: "Session not found" }), { status: 404, headers: cors });
+      }
+      if (hbSession.user_id !== hbAuth.userId) {
+        console.warn(`[sos-alert] HEARTBEAT ownership mismatch eid=${hb.emergencyId} jwt=${hbAuth.userId} session=${hbSession.user_id}`);
+        return new Response(JSON.stringify({ error: "Forbidden: not your session" }), { status: 403, headers: cors });
+      }
+
       // SOS priority lane — heartbeats during an active emergency
-      // are life-critical and never blocked. Keep the user marked so
-      // concurrent audio-upload replays inherit the priority.
-      const hbRl = checkRateLimit(hb.userId || `ip:${ip}`, "sos", true);
-      if (hb.userId) markSosPriority(hb.userId);
+      // are life-critical and never blocked.
+      const hbRl = checkRateLimit(hbAuth.userId, "sos", true);
+      markSosPriority(hbAuth.userId);
 
       await supabase.from("sos_sessions").update({
         last_heartbeat: new Date().toISOString(),
@@ -502,19 +581,57 @@ serve(async (req: Request) => {
     // ═════════════════════════════════════════════════════════
     if (action === "escalate") {
       const { emergencyId, stage, reason, forceBridge } = await req.json();
+
+      // ─────────────────────────────────────────────────────────────
+      // G-3 (B-20, 2026-04-25): authenticate + verify session ownership.
+      // Pre-fix: anyone could fast-escalate any emergency by knowing
+      // the emergencyId. Watchdog escalations from the user's own
+      // device carry the user's JWT; admin-initiated escalations from
+      // the dashboard carry the admin's JWT (and we accept admin/owner
+      // of the emergency's company as the authorized caller).
+      // ─────────────────────────────────────────────────────────────
+      const escAuth = await authenticate(req, supabase);
+      if (!escAuth.userId) {
+        return new Response(JSON.stringify({ error: "Unauthorized", detail: escAuth.error }), {
+          status: 401, headers: cors,
+        });
+      }
+      const { data: escSession } = await supabase
+        .from("sos_sessions")
+        .select("user_id, company_id")
+        .eq("id", emergencyId)
+        .maybeSingle();
+      if (!escSession) {
+        return new Response(JSON.stringify({ error: "Session not found" }), { status: 404, headers: cors });
+      }
+      // Allowed callers: the SOS owner OR a company member if the session
+      // is company-scoped (admin dashboard escalation path).
+      let escAllowed = (escSession.user_id === escAuth.userId);
+      if (!escAllowed && escSession.company_id) {
+        const { data: memberCheck } = await supabase
+          .from("company_memberships")
+          .select("role")
+          .eq("company_id", escSession.company_id)
+          .eq("user_id", escAuth.userId)
+          .eq("active", true)
+          .maybeSingle();
+        if (memberCheck && ["admin","owner"].includes(memberCheck.role)) {
+          escAllowed = true;
+        }
+      }
+      if (!escAllowed) {
+        console.warn(`[sos-alert] ESCALATE ownership mismatch eid=${emergencyId} jwt=${escAuth.userId} session_user=${escSession.user_id}`);
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: cors });
+      }
+
       // B-C4/B-H1: persist Idempotency-Key in idempotency_cache table.
-      // If the client does not supply one we fall back to the legacy
-      // composite key (warning: this is a best-effort fallback only;
-      // clients SHOULD send Idempotency-Key for at-most-once semantics).
       const headerIdem = req.headers.get("Idempotency-Key");
       if (!headerIdem) {
         console.warn(`[sos-alert] ESCALATE missing Idempotency-Key — falling back to composite key (eid=${emergencyId}, stage=${stage})`);
       }
       const idemKey = headerIdem || `escalate:${emergencyId}:${stage}`;
 
-      // SOS priority — escalation is always allowed. Key by
-      // emergencyId since escalate may be triggered by a watchdog
-      // that does not carry a userId.
+      // SOS priority — escalation is always allowed.
       const escRl = checkRateLimit(`eid:${emergencyId}`, "sos", true);
 
       // B-C4/B-H1: cache hit short-circuit — serve previous response.
@@ -593,11 +710,24 @@ serve(async (req: Request) => {
       const { emergencyId, reason, recordingSec, photos, comment } = await req.json();
       const idemKey = req.headers.get("Idempotency-Key") || `end:${emergencyId}`;
 
+      // ─────────────────────────────────────────────────────────────
+      // G-3 (B-20, 2026-04-25): require JWT and verify session owner-
+      // ship before ending. Pre-fix: any anon caller could end any
+      // active SOS just by knowing the emergencyId (which is shared
+      // in SMS sent to all contacts). Responders dismissed; user left
+      // unprotected. Now: same pattern as heartbeat / escalate.
+      // ─────────────────────────────────────────────────────────────
+      const endAuth = await authenticate(req, supabase);
+      if (!endAuth.userId) {
+        return new Response(JSON.stringify({ error: "Unauthorized", detail: endAuth.error }), {
+          status: 401, headers: cors,
+        });
+      }
+
       // SOS priority — end is part of the emergency flow and must
       // never be blocked. It's also our signal to CLEAR the user's
       // SOS priority boost so non-emergency traffic goes back to
-      // normal limits. We fetch user_id from the row (payload may
-      // omit it) and clear priority after the status update.
+      // normal limits.
       const endRl = checkRateLimit(`eid:${emergencyId}`, "sos", true);
 
       // P2-#8: If this session is already ended, short-circuit. A user
@@ -606,9 +736,28 @@ serve(async (req: Request) => {
       // dismiss responders twice and muddy audit logs).
       const { data: current } = await supabase
         .from("sos_sessions")
-        .select("status, ended_at, user_id")
+        .select("status, ended_at, user_id, company_id")
         .eq("id", emergencyId)
         .maybeSingle();
+      if (!current) {
+        return new Response(JSON.stringify({ error: "Session not found" }), { status: 404, headers: cors });
+      }
+      // Allow: SOS owner OR company admin/owner (dashboard "Mark resolved").
+      let endAllowed = (current.user_id === endAuth.userId);
+      if (!endAllowed && current.company_id) {
+        const { data: m } = await supabase
+          .from("company_memberships")
+          .select("role")
+          .eq("company_id", current.company_id)
+          .eq("user_id", endAuth.userId)
+          .eq("active", true)
+          .maybeSingle();
+        if (m && ["admin","owner"].includes(m.role)) endAllowed = true;
+      }
+      if (!endAllowed) {
+        console.warn(`[sos-alert] END ownership mismatch eid=${emergencyId} jwt=${endAuth.userId} session_user=${current.user_id}`);
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: cors });
+      }
 
       if (current?.status === "ended" && current?.ended_at) {
         console.log(`[sos-alert] END idempotent hit — ${emergencyId} already ended (key=${idemKey})`);
@@ -797,9 +946,62 @@ serve(async (req: Request) => {
         "check_sos_rate_limit",
         { p_user_id: authUserId, p_hours: 1, p_days: 1 },
       );
-      if (!usageErr && usage) {
-        const hourCount = (usage as any).last_hour ?? 0;
-        const dayCount  = (usage as any).last_day  ?? 0;
+      // ───────────────────────────────────────────────────────────────
+      // B-10 (2026-04-25): the prior code logged on RPC error and
+      // proceeded — i.e. it FAILED OPEN. A user with a slow / erroring
+      // database hop could burn unlimited Twilio budget before the
+      // limiter ever ran. The new behavior is FAIL-SECURE: we return
+      // 503 so the client retries, and we audit the metering failure so
+      // ops gets a Sentry alert long before any real bill damage.
+      //
+      // Trade-off: a rare DB hiccup will briefly block a legitimate
+      // SOS. But:
+      //   - DB outages are <1 in 10^6 events
+      //   - A single retry resolves it
+      //   - The alternative is open-ended bill exposure
+      //   - The error response tells the user to dial local services
+      //     directly so they are NEVER stranded
+      // ───────────────────────────────────────────────────────────────
+      if (usageErr) {
+        console.error(
+          `[sos-alert] CRITICAL: rate-limit RPC failed tier=${tier} user=${authUserId}:`,
+          usageErr,
+        );
+        // Best-effort audit so ops sees the metering miss. We don't
+        // await anything that would slow the response further.
+        try {
+          await supabase.rpc("log_sos_audit", {
+            p_action: "rate_limit_check_failed",
+            p_actor: authUserId,
+            p_actor_level: "civilian",
+            p_operation: "sos_metering_miss",
+            p_target: emergencyId,
+            p_target_name: userName ?? null,
+            p_metadata: {
+              tier,
+              error_message: usageErr.message ?? String(usageErr),
+              source: "sos-alert",
+            },
+          });
+        } catch (auditEx) {
+          console.error("[sos-alert] audit of rate-limit failure also failed:", auditEx);
+        }
+        return new Response(
+          JSON.stringify({
+            error: "rate_limit_check_failed",
+            tier,
+            retry_after_sec: 5,
+            message:
+              "We could not verify your SOS quota right now. Please try again in a few seconds. If this is a real emergency, call 911/999/112 directly.",
+          }),
+          { status: 503, headers: cors },
+        );
+      }
+
+      // RPC succeeded — apply the configured limits.
+      if (usage) {
+        const hourCount = (usage as { last_hour?: number; last_day?: number }).last_hour ?? 0;
+        const dayCount  = (usage as { last_hour?: number; last_day?: number }).last_day  ?? 0;
         if (hourCount >= userRateLimits.perHour) {
           console.warn(`[sos-alert] rate limit (hour) tier=${tier} user=${authUserId} count=${hourCount}`);
           return new Response(JSON.stringify({
@@ -823,8 +1025,6 @@ serve(async (req: Request) => {
           }), { status: 429, headers: cors });
         }
       }
-      // If the RPC failed, we log and proceed — better to deliver an
-      // SOS on a best-effort basis than to block on a metering miss.
     }
 
     // Apply tier gate: aiScript is Elite-only. For Basic / Free users

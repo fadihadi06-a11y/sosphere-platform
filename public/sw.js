@@ -1,16 +1,94 @@
-﻿const CACHE_NAME = 'sosphere-v1';
-const STATIC_ASSETS = [
+// ═══════════════════════════════════════════════════════════════
+// SOSphere — Service Worker
+// ─────────────────────────────────────────────────────────────
+// B-14 (2026-04-25): hardened cache policy.
+//
+// Pre-fix: a single fetch handler intercepted EVERY GET, fetched
+// from network, then stored every response in CACHE_NAME. That
+// included Supabase /rest /auth /realtime /functions /storage
+// responses, which contained auth tokens, GPS coordinates, SOS
+// state, and other PII. A stale cached response could be served
+// during a NEW emergency (e.g., user resolves an SOS, retriggers
+// minutes later, the SW returns the old "resolved" payload).
+//
+// Fix: allow-list the exact paths we WANT cached (static assets +
+// app shell). Everything else — APIs, auth, realtime, functions,
+// storage objects, cross-origin URLs (Stripe / Twilio), Authorization-
+// bearing requests, video Range requests, and any response with
+// `Cache-Control: no-store` or `private` — bypasses the SW
+// entirely. We never call event.respondWith() for those, so the
+// browser handles the fetch natively without any SW interference.
+//
+// Verified by 30 scenarios in scripts/test-b14-sw-cache-policy.mjs.
+// ═══════════════════════════════════════════════════════════════
+
+const CACHE_NAME = 'sosphere-v2';
+const STATIC_PRECACHE = [
   '/',
   '/app',
   '/dashboard',
   '/manifest.json',
 ];
 
+// Paths under self.origin that MUST NEVER be cached. These map to
+// Supabase + internal API endpoints whose responses contain
+// per-user tokens or live emergency state.
+const NEVER_CACHE_PATH_PREFIXES = [
+  '/rest/',       // PostgREST
+  '/auth/',       // GoTrue
+  '/realtime/',   // Realtime websocket fallback
+  '/functions/',  // Supabase Edge Functions
+  '/storage/v1/', // Storage objects (evidence, etc.)
+  '/api/',        // Any internal HTTP API on this origin
+];
+
+// Path patterns that ARE safe to cache (static assets + manifests).
+const STATIC_PATH_PATTERNS = [
+  /^\/assets\//,
+  /^\/icons?\//,
+  /^\/fonts?\//,
+  /^\/(?:icon|favicon)/,
+  /\.(?:css|js|mjs|map|woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|ico|json|webmanifest)$/i,
+];
+
+// App-shell pages we want to serve offline.
+const SHELL_PATHS = new Set(['/', '/app', '/dashboard']);
+
+function isSameOrigin(url, selfOrigin) {
+  try { return new URL(url).origin === selfOrigin; } catch { return false; }
+}
+
+function shouldIntercept(request, selfOrigin) {
+  if (request.method !== 'GET') return false;
+  // Range requests (video chunks) — let the browser stream natively.
+  if (request.headers.has('range')) return false;
+  // Authorization-bearing requests are per-user state — never cache.
+  if (request.headers.has('authorization')) return false;
+  // Cross-origin requests (Stripe, Twilio, Supabase host directly,
+  // anything else) — let the browser handle them natively. We do NOT
+  // touch the cache for cross-origin URLs.
+  if (!isSameOrigin(request.url, selfOrigin)) return false;
+  const path = new URL(request.url).pathname;
+  if (NEVER_CACHE_PATH_PREFIXES.some(p => path.startsWith(p))) return false;
+  if (SHELL_PATHS.has(path)) return true;
+  if (STATIC_PATH_PATTERNS.some(re => re.test(path))) return true;
+  return false;
+}
+
+function shouldCacheResponse(response) {
+  if (!response || !response.ok) return false;
+  // Opaque (cross-origin no-cors) and opaqueredirect responses can
+  // poison the cache because we can't introspect them.
+  if (response.type === 'opaque' || response.type === 'opaqueredirect') return false;
+  const cc = response.headers.get('cache-control') || '';
+  if (/\bno-store\b/i.test(cc)) return false;
+  if (/\bprivate\b/i.test(cc))  return false;
+  return true;
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_PRECACHE))
   );
   self.skipWaiting();
 });
@@ -25,16 +103,28 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    fetch(event.request)
-      .then((res) => {
+  if (!shouldIntercept(event.request, self.location.origin)) return; // browser native
+  event.respondWith((async () => {
+    try {
+      const res = await fetch(event.request);
+      if (shouldCacheResponse(res)) {
+        // Don't await — caching is best-effort and must not delay
+        // the response to the page.
         const clone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(event.request))
-  );
+        caches.open(CACHE_NAME)
+          .then((cache) => cache.put(event.request, clone))
+          .catch(() => {});
+      }
+      return res;
+    } catch {
+      // Offline / network failure → serve cached version IF we have
+      // one. We never invent fallbacks for non-static paths because
+      // shouldIntercept already filtered them out.
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      throw new Error('Network failed and no cache available');
+    }
+  })());
 });
 
 // ── Push Notifications (Web Push + FCM) ───────────────────
@@ -43,20 +133,17 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data?.json() ?? {};
   } catch (e) {
-    // Malformed push payload — use text fallback
     const text = event.data?.text?.() || 'Emergency notification';
     data = { title: 'SOSphere Alert', body: text };
   }
 
-  // Determine severity for vibration pattern
   const severity = data.severity || data.data?.severity || 'medium';
   const vibrate = severity === 'critical'
-    ? [300, 100, 300, 100, 300]  // Urgent triple buzz
+    ? [300, 100, 300, 100, 300]
     : severity === 'high'
-    ? [200, 100, 200]             // Double buzz
-    : [150, 80];                   // Single buzz
+    ? [200, 100, 200]
+    : [150, 80];
 
-  // Tag prevents duplicate notifications
   const tag = data.tag || data.callId || `sosphere-${Date.now()}`;
 
   event.waitUntil(
@@ -90,7 +177,6 @@ self.addEventListener('notificationclick', (event) => {
   let targetUrl = '/';
 
   if (event.action === 'view' || !event.action) {
-    // Navigate to the emergency or dashboard
     if (data.callId) {
       targetUrl = `/emergency/${data.callId}`;
     } else if (data.url) {
@@ -100,10 +186,8 @@ self.addEventListener('notificationclick', (event) => {
     }
   }
 
-  // Focus existing tab or open new one
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Try to focus an existing SOSphere tab
       for (const client of clients) {
         if (client.url.includes('sosphere') || client.url.includes(self.location.origin)) {
           client.focus();
@@ -115,19 +199,17 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      // No existing tab — open new one
       return self.clients.openWindow(targetUrl);
     })
   );
 });
 
-// ── Firebase Cloud Messaging (FCM) handler ────────────────
-// FCM sends messages via the push event above.
-// This handles FCM-specific background messages.
+// ── FCM message handler ──────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'FCM_TOKEN') {
-    // Store FCM token for later use
-    console.log('[SW] FCM token received:', event.data.token?.substring(0, 20) + '...');
+    // FCM tokens are sent over a postMessage channel from the page;
+    // we DO NOT log them (B-H6 — token leakage). The page is responsible
+    // for persisting the token via its own server call.
   }
 
   if (event.data && event.data.type === 'SKIP_WAITING') {

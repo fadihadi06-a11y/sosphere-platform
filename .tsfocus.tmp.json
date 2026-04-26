@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", "lib": ["ESNext","DOM"], "module": "ESNext",
+    "moduleResolution": "Bundler", "jsx": "preserve", "strict": true,
+    "skipLibCheck": true, "esModuleInterop": true, "noEmit": true,
+    "isolatedModules": true, "resolveJsonModule": true,
+    "ignoreDeprecations": "6.0", "types": ["vite/client","node"]
+  },
+  "include": ["src/app/components/ai-co-admin.tsx","src/app/components/api/dashboard-actions-client.ts","src/app/components/utils/emergency-services.ts","src/app/components/hub-incident-reports.tsx"]
+}

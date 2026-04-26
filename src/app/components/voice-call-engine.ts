@@ -27,6 +27,7 @@ import type {
   ProviderEvents,
 } from "./voice-call-types";
 import { LocalWebRTCProvider } from "./voice-provider-local";
+import { IntervalGuard } from "./utils/lifecycle-guards";
 import { TwilioClientProvider, TwilioVoiceProvider } from "./voice-provider-twilio";
 import { HybridProvider } from "./voice-provider-hybrid";
 
@@ -58,14 +59,25 @@ class VoiceCallEngine {
   private _error?: string;
   private _maxDuration = 60;
   private _callActive = false; // [FIX #5] guard against double endCall
+  // ──────────────────────────────────────────────────────────────
+  // B-04 (2026-04-25): wrap the two intervals in IntervalGuard so a
+  // tick scheduled before cleanup() can never run after cleanup().
+  // The guard uses a generation counter — every stop() bumps it; the
+  // captured-generation check inside each tick early-returns when
+  // stale. Replaces the prior `if (!this._callActive)` self-clear
+  // pattern which had a window where a stale analyser was sampled
+  // between flag-flip and clearInterval.
+  // ──────────────────────────────────────────────────────────────
+  private _levelGuard = new IntervalGuard();
+  private _timerGuard = new IntervalGuard();
 
   // ── Audio analysis ─────────────────────────────────────────
   private audioCtx: AudioContext | null = null;
   private analyserLocal: AnalyserNode | null = null;
   private analyserRemote: AnalyserNode | null = null;
   private localStream: MediaStream | null = null;
-  private levelInterval: ReturnType<typeof setInterval> | null = null;
-  private timerInterval: ReturnType<typeof setInterval> | null = null;
+  // (B-04 2026-04-25) legacy raw-interval fields removed; replaced by
+  // _levelGuard and _timerGuard above.
   private _timerStarted = false; // [FIX #15] prevent double timer start
 
   // [FIX #16] Eagerly initialize default provider so BroadcastChannel
@@ -428,9 +440,8 @@ class VoiceCallEngine {
 
   private setupAudioAnalysis(): void {
     if (!this.localStream) return;
-    // Clean previous if any (defensive)
-    if (this.levelInterval) { clearInterval(this.levelInterval); this.levelInterval = null; }
-
+    // B-04: IntervalGuard.start() implicitly stops + invalidates any
+    // previous interval, so no defensive clearInterval is needed.
     try {
       this.audioCtx = new AudioContext();
       const source = this.audioCtx.createMediaStreamSource(this.localStream);
@@ -438,11 +449,10 @@ class VoiceCallEngine {
       this.analyserLocal.fftSize = 256;
       source.connect(this.analyserLocal);
 
-      this.levelInterval = setInterval(() => {
-        if (!this._callActive) { // [FIX #5] Stop polling if call ended
-          if (this.levelInterval) { clearInterval(this.levelInterval); this.levelInterval = null; }
-          return;
-        }
+      this._levelGuard.start(() => {
+        // Defensive — even though the guard prevents stale ticks,
+        // _callActive may flip in the middle of legitimate runs.
+        if (!this._callActive) { this._levelGuard.stop(); return; }
         this._audioLevel = this.getLevel(this.analyserLocal);
         this._remoteAudioLevel = this.getLevel(this.analyserRemote);
         this.notify();
@@ -481,18 +491,16 @@ class VoiceCallEngine {
   // ══════════════════════════════════════════════════════════
 
   // [FIX #15] Prevent double timer from duplicate "connected" events (ICE + connection state)
+  // B-04 (2026-04-25): timer wrapped in IntervalGuard for the same
+  // race-safety reason as the audio level interval.
   private startTimer(): void {
-    if (this._timerStarted || this.timerInterval) return;
+    if (this._timerStarted || this._timerGuard.isActive()) return;
     this._timerStarted = true;
     this._elapsed = 0;
-    this.timerInterval = setInterval(() => {
-      if (!this._callActive) { // [FIX #5] Stop timer if call ended
-        if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
-        return;
-      }
+    this._timerGuard.start(() => {
+      if (!this._callActive) { this._timerGuard.stop(); return; }
       this._elapsed += 1;
       this.notify();
-      // Auto-end at max duration
       if (this._elapsed >= this._maxDuration) {
         this.endCall();
       }
@@ -517,8 +525,10 @@ class VoiceCallEngine {
   }
 
   private cleanup(): void {
-    if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
-    if (this.levelInterval) { clearInterval(this.levelInterval); this.levelInterval = null; }
+    // B-04: stop the guards FIRST so any in-flight tick that resumes
+    // after this cleanup sees a stale generation and bails out.
+    this._levelGuard.stop();
+    this._timerGuard.stop();
     this._timerStarted = false; // [FIX #15]
     if (this.localStream) {
       this.localStream.getTracks().forEach((t) => t.stop());

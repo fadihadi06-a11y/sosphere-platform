@@ -5,8 +5,14 @@ import {
   Users, Mic, Timer, FileText, Clock, MapPin,
   Heart, Star, Building2, ChevronRight, Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { INDIVIDUAL_PLANS } from "../constants/pricing";
 import { TrialCard } from "./trial-card";
+// B-17 (2026-04-25): real Stripe Checkout instead of the previous
+// 2-second fake animation. The supabase-client and edge function are
+// loaded lazily so the upgrade screen still mounts when offline /
+// unconfigured (it just shows the error toast on click).
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type BillingCycle = "monthly" | "yearly";
@@ -51,12 +57,75 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
   const yearlyMonthly = (yearlyPrice / 12).toFixed(2);
   const yearlySavings = Math.round(monthlyPrice * 12 - yearlyPrice);
 
-  const handleUpgrade = () => {
-    setShowSuccess(true);
-    setTimeout(() => {
-      onUpgrade?.("pro");
-      setShowSuccess(false);
-    }, 2000);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+
+  // ──────────────────────────────────────────────────────────────
+  // B-17 (2026-04-25): real upgrade flow.
+  //
+  // Pre-fix: setShowSuccess(true) → setTimeout 2s → onUpgrade("pro").
+  //   No money taken, no Stripe row, no audit. Pure UI lie.
+  //
+  // New flow:
+  //   1. Validate Supabase + active session (must be logged in to
+  //      attribute the subscription).
+  //   2. POST to the stripe-checkout edge function with
+  //      { planId: "elite", cycle }.
+  //   3. Receive { url } and redirect the browser to Stripe Checkout.
+  //   4. Stripe handles card collection + 3DS + success/cancel.
+  //   5. On success URL return, the webhook will have written the
+  //      subscriptions row server-side. The mobile-app's session
+  //      restore re-reads userPlan from there. We do NOT flip
+  //      userPlan locally — the server is the only source of truth.
+  // ──────────────────────────────────────────────────────────────
+  const handleUpgrade = async () => {
+    if (isUpgrading) return;
+    setUpgradeError(null);
+    if (!SUPABASE_CONFIG.isConfigured) {
+      setUpgradeError("Payments are not configured in this build. Please try again from a release build.");
+      return;
+    }
+    setIsUpgrading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setUpgradeError("Please sign in before upgrading.");
+        setIsUpgrading(false);
+        return;
+      }
+      const cycle = billing === "yearly" ? "annual" : "monthly";
+      const { data, error } = await supabase.functions.invoke("stripe-checkout", {
+        body: {
+          planId: "elite",
+          cycle,
+          // The success_url is observed by the webhook side via
+          // checkout.session.completed; we just need to land somewhere
+          // the app can pick up the new state on next session-restore.
+          successUrl: window.location.origin + "/billing?ok=1",
+          cancelUrl:  window.location.origin + "/billing?cancelled=1",
+        },
+      });
+      if (error) {
+        setUpgradeError(`Could not start checkout: ${error.message ?? "unknown error"}`);
+        setIsUpgrading(false);
+        return;
+      }
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) {
+        setUpgradeError("Checkout URL missing from server response.");
+        setIsUpgrading(false);
+        return;
+      }
+      // Hand off to Stripe. We do NOT flip userPlan locally — the
+      // webhook will update subscriptions on success.
+      toast.loading("Redirecting to secure checkout…", { id: "stripe-redirect" });
+      window.location.assign(url);
+      // Briefly keep the spinner visible in case the redirect is slow.
+      setTimeout(() => setIsUpgrading(false), 6000);
+    } catch (e) {
+      setUpgradeError(e instanceof Error ? e.message : "Unexpected error");
+      setIsUpgrading(false);
+    }
   };
 
   if (currentPlan === "employee") {

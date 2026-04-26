@@ -57,7 +57,11 @@ const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const STRIPE_API = "https://api.stripe.com/v1";
 const BASE_URL = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
 
-type PlanId = "starter" | "growth" | "business" | "enterprise";
+// B-17 (2026-04-25): added civilian plans (basic, elite). The webhook's
+// price→plan lookup is in sync; new STRIPE_PRICE_BASIC_* / STRIPE_PRICE_ELITE_*
+// env vars must be set in Supabase secrets before going live.
+type PlanId = "starter" | "growth" | "business" | "enterprise"
+            | "basic" | "elite";
 type Cycle = "monthly" | "annual";
 
 function priceEnvKey(plan: PlanId, cycle: Cycle): string {
@@ -126,7 +130,7 @@ serve(async (req: Request) => {
 
   // ── Payload validation ──
   const { planId, cycle, seats, successUrl, cancelUrl } = await req.json().catch(() => ({}));
-  const validPlans: PlanId[] = ["starter", "growth", "business", "enterprise"];
+  const validPlans: PlanId[] = ["starter", "growth", "business", "enterprise", "basic", "elite"];
   const validCycles: Cycle[] = ["monthly", "annual"];
   if (!validPlans.includes(planId) || !validCycles.includes(cycle)) {
     return new Response(JSON.stringify({ error: "Invalid plan or cycle" }), {
