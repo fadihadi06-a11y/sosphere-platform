@@ -106,6 +106,35 @@ function saveVaults(vaults: VaultPackage[]): void {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────
+// G-26 (B-20, 2026-04-26): write-lock around the read-modify-write
+// pattern. Pre-fix: three concurrent createVault() / updateVault() calls
+// each did `loadVaults() -> push -> saveVaults()`. All three saw the
+// same array, each pushed their own entry, and the last writer won —
+// the other two vault records were silently clobbered.
+// Now: every vault mutation must go through `mutateVaults(fn)` which
+// serialises through a promise chain. Because localStorage writes are
+// synchronous and the bug is intra-tab JS races (not multi-process),
+// a single in-memory promise chain is sufficient.
+// ──────────────────────────────────────────────────────────────────
+let vaultWriteLock: Promise<void> = Promise.resolve();
+async function mutateVaults(
+  fn: (current: VaultPackage[]) => VaultPackage[] | Promise<VaultPackage[]>,
+): Promise<VaultPackage[]> {
+  let nextOut: VaultPackage[] = [];
+  vaultWriteLock = vaultWriteLock.then(async () => {
+    const current = loadVaults();          // read INSIDE the lock
+    const next = await fn(current);
+    saveVaults(next);
+    nextOut = next;
+  }).catch((err) => {
+    console.error("[EvidenceVault] mutateVaults inner error (chain continues):", err);
+  });
+  await vaultWriteLock;
+  return nextOut;
+}
+
+
 // ── Hashing ─────────────────────────────────────────────────
 async function computeHash(data: string): Promise<string> {
   try {
@@ -200,10 +229,9 @@ export async function createVault(params: {
   });
   vault.integrityHash = await computeHash(hashInput);
 
-  // Save
-  const vaults = loadVaults();
-  vaults.push(vault);
-  saveVaults(vaults);
+  // G-26: serialise through write-lock so concurrent createVault calls
+  // (e.g. multi-photo capture firing in parallel) don't clobber each other.
+  await mutateVaults((current) => [...current, vault]);
 
   console.info(`[EvidenceVault] Created: ${vaultId} | Hash: ${vault.integrityHash.slice(0, 16)}... | Photos: ${vault.photoCount} | GPS: ${vault.gpsTrail.length} points`);
 
@@ -226,25 +254,27 @@ function maskPhone(phone: string): string {
  * Auto-called 24 hours after creation, or manually by the user.
  */
 export async function lockVault(vaultId: string): Promise<boolean> {
-  const vaults = loadVaults();
-  const vault = vaults.find(v => v.vaultId === vaultId);
-  if (!vault) return false;
-  if (vault.lockedAt) return true; // Already locked
-
-  // Re-compute hash to ensure nothing changed
-  const hashInput = JSON.stringify({
-    ...vault,
-    integrityHash: undefined,
-    lockedAt: undefined,
-    synced: undefined,
-    shareUrl: undefined,
+  // G-26: read-modify-write must run inside the vault write-lock so a
+  // parallel createVault/updateVault doesn't observe a stale array.
+  let didLock = false;
+  await mutateVaults(async (current) => {
+    const vault = current.find(v => v.vaultId === vaultId);
+    if (!vault) return current;
+    if (vault.lockedAt) { didLock = true; return current; } // Already locked
+    const hashInput = JSON.stringify({
+      ...vault,
+      integrityHash: undefined,
+      lockedAt: undefined,
+      synced: undefined,
+      shareUrl: undefined,
+    });
+    vault.integrityHash = await computeHash(hashInput);
+    vault.lockedAt = Date.now();
+    didLock = true;
+    return current;  // mutated in place inside the lock
   });
-  vault.integrityHash = await computeHash(hashInput);
-  vault.lockedAt = Date.now();
-
-  saveVaults(vaults);
-  console.info(`[EvidenceVault] Locked: ${vaultId}`);
-  return true;
+  if (didLock) console.info(`[EvidenceVault] Locked: ${vaultId}`);
+  return didLock;
 }
 
 /**
