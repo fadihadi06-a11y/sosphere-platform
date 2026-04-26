@@ -366,27 +366,46 @@ function enqueueForRetry(entry: AuditEntry): void {
  * Manually drain the retry queue. Safe to call on app init once the user
  * is logged in and a company id is bound — any backlogged events from
  * earlier sessions will be flushed.
+ *
+ * W3-41 (B-20, 2026-04-26): now serialised through `auditWriteLock` so
+ * it cannot race with `persistToSupabase`. Pre-fix: a tab restoration
+ * could call flushAuditRetryQueue() while persistToSupabase() was
+ * mid-upsert; both read the queue independently, and the slower one's
+ * `saveRetryQueue([])` would clobber the other's enqueue, silently
+ * dropping compliance events.
  */
 export async function flushAuditRetryQueue(): Promise<number> {
   const companyId = getCompanyId();
   if (!companyId) return 0;
-  const queue = loadRetryQueue();
-  if (queue.length === 0) return 0;
+  let drained = 0;
 
-  try {
-    const { error } = await supabase
-      .from("audit_log")
-      .upsert(queue.map((e) => toDbRow(e, companyId)), { onConflict: "id" });
-    if (error) {
-      console.warn("[audit] flushAuditRetryQueue failed:", error.message);
-      return 0;
+  // Same lock chain as persistToSupabase. Read queue INSIDE the lock so
+  // we see any newer enqueues that landed while we waited our turn.
+  auditWriteLock = auditWriteLock.then(async () => {
+    try {
+      const queue = loadRetryQueue();
+      if (queue.length === 0) return;
+      const drainedIds = new Set(queue.map((e) => e.id));
+      const { error } = await supabase
+        .from("audit_log")
+        .upsert(queue.map((e) => toDbRow(e, companyId)), { onConflict: "id" });
+      if (error) {
+        console.warn("[audit] flushAuditRetryQueue failed:", error.message);
+        return;
+      }
+      // Diff-clear: only remove the ids we actually flushed, preserving
+      // any newer enqueues that landed during the upsert.
+      const queueAfter = loadRetryQueue();
+      saveRetryQueue(queueAfter.filter((e) => !drainedIds.has(e.id)));
+      drained = queue.length;
+    } catch (err) {
+      console.warn("[audit] flushAuditRetryQueue exception:", err);
     }
-    saveRetryQueue([]);
-    return queue.length;
-  } catch (err) {
-    console.warn("[audit] flushAuditRetryQueue exception:", err);
-    return 0;
-  }
+  }).catch((chainErr) => {
+    console.error("[audit] flush chain error:", chainErr);
+  });
+  await auditWriteLock;
+  return drained;
 }
 
 // ── Common pre-built audit helpers ──────────────────────────────

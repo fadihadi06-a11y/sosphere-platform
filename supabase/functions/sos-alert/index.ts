@@ -544,6 +544,22 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "userId mismatch" }), { status: 403, headers: cors });
       }
 
+      // W3-30 (B-20, 2026-04-26): emergencyId ownership check.
+      // Pre-fix: upsert with `ignoreDuplicates: false` would OVERWRITE an
+      // existing sos_sessions row owned by another user — an attacker
+      // could plant a prewarm with the victim's emergencyId, hijacking
+      // the victim's active session (status flipped back to "prewarm",
+      // started_at reset, etc.).
+      // Post-fix: if a session already exists for this id and is owned
+      // by another user, reject 409. If it's owned by the same user,
+      // upsert is safe (idempotent retry by the legitimate user).
+      const { data: existing } = await supabase
+        .from("sos_sessions").select("user_id").eq("id", pw.emergencyId).maybeSingle();
+      if (existing && existing.user_id && existing.user_id !== pwAuth.userId) {
+        console.warn(`[sos-alert] PREWARM rejected — emergencyId already owned by ${existing.user_id}, caller=${pwAuth.userId}`);
+        return new Response(JSON.stringify({ error: "emergencyId conflict" }), { status: 409, headers: cors });
+      }
+
       // SOS priority lane: record + observe, never block.
       const rl = checkRateLimit(pwAuth.userId, "sos", true);
       markSosPriority(pwAuth.userId);
