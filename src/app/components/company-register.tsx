@@ -190,9 +190,15 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
   // Step 6: Success
+  // W3-17 (B-20, 2026-04-26): crypto-strong invite display code matching the
+  // submit-time generator at the bottom of this file. Pre-fix used Math.random
+  // (32-bit entropy → ~1B brute-force surface). Now: 8 chars × 32-symbol
+  // alphabet via getRandomValues = ~1.1T (1024x larger).
   const [inviteCode] = useState(() => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    const bytes = new Uint8Array(8);
+    (globalThis.crypto || (globalThis as any).msCrypto).getRandomValues(bytes);
+    return Array.from(bytes, b => chars[b & 31]).join("");
   });
   const [copied, setCopied] = useState(false);
 
