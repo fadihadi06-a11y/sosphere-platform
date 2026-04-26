@@ -74,7 +74,7 @@ function reportError(
   }
 }
 import { getSubscription, hasFeature, getCallDurationSec, getRecordingMaxSec, getMaxPhotos, getRecordingMode, type SubscriptionTier, type RecordingMode } from "./subscription-service";
-import { isDuressPin, isDuressFeatureAvailable } from "./duress-service";
+import { isDuressPin, isDuressFeatureAvailable, isDeactivationPin, isDeactivationPinSet } from "./duress-service";
 // ── Server-side SOS trigger (Path B — parallel to local dialer) ──
 import {
   triggerServerSOS, endServerSOS,
@@ -1458,13 +1458,10 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
-  const deactivationPin = useRef(() => {
-    try {
-      const stored = localStorage.getItem("sosphere_deactivation_pin");
-      if (stored) return stored;
-    } catch {}
-    return "1234"; // Default PIN — user should change in settings
-  });
+  // W3-10 (B-20, 2026-04-26): dead ref removed. The legacy code initialized
+  // a ref to a factory function that was never invoked (would need .current()
+  // call) and fell back to literal "1234". PIN verification now goes through
+  // isDeactivationPin() / isDeactivationPinSet() from duress-service.
   // Track if SMS tracking was already sent for each contact index
   const smsTrackingSentRef = useRef<number[]>([]);
 
@@ -2718,9 +2715,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   };
 
   function handleEndSOS() {
-    // If deactivation PIN is enabled (Elite feature or custom-set), require PIN entry
-    const storedPin = (() => { try { return localStorage.getItem("sosphere_deactivation_pin"); } catch { return null; } })();
-    if (storedPin) {
+    // W3-10 (B-20, 2026-04-26): use isDeactivationPinSet() — the legacy
+    // localStorage key holds "__legacy_pre_hash__" after migration, which
+    // is truthy and trapped users into a PIN modal they could only escape
+    // by guessing "1234". The hash-aware helper returns true only when a
+    // real PIN hash exists.
+    if (isDeactivationPinSet()) {
       setShowCancel(false);
       setShowPinEntry(true);
       setPinInput("");
@@ -2778,8 +2778,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       return;
     }
 
-    const storedPin = (() => { try { return localStorage.getItem("sosphere_deactivation_pin") || "1234"; } catch { return "1234"; } })();
-    if (pinInput === storedPin) {
+    // W3-10 (B-20, 2026-04-26): use the salt+hash helper which:
+    //   - skips the legacy "__legacy_pre_hash__" sentinel
+    //   - constant-time compares the SHA-256(salt||pin) digest
+    //   - never falls back to "1234" (the prior fallback let anyone who
+    //     typed 1234 deactivate any SOS)
+    const deactMatch = await isDeactivationPin(pinInput);
+    if (deactMatch) {
       setShowPinEntry(false);
       setShowDMS(false);
       doEnd("SOS ended by user (PIN verified)");
