@@ -1194,6 +1194,16 @@ serve(async (req: Request) => {
       blood_type: bloodType || null,
       zone: zone || null,
       contact_count: contacts.length,
+      // C-7 (2026-04-27): persist the exact list dialed at trigger
+      // time so retry/escalation/dispatcher manual-call paths can
+      // detect mid-SOS phone edits via get_emergency_contacts_with_drift.
+      // Forensic audit trail + retry stability in one row.
+      contact_snapshot: contacts.map((c: { name?: string; phone?: string; relation?: string }) => ({
+        name: c.name ?? "",
+        phone: c.phone ?? "",
+        relation: c.relation ?? "",
+        normalized_at: nowIso,
+      })),
       silent_mode: !!silent,
       // Elite-only personalised <Say> script (null for Basic/Free,
       // in which case sos-bridge-twiml uses its built-in announcement).
@@ -1222,6 +1232,16 @@ serve(async (req: Request) => {
         blood_type: bloodType || null,
         zone: zone || null,
         contact_count: contacts.length,
+        // C-7 (2026-04-27): same snapshot on the atomic-claim UPDATE
+        // path. Whichever invocation wins the claim writes its own
+        // contact_snapshot. Idempotent because contacts is the
+        // already-clamped, server-validated list.
+        contact_snapshot: contacts.map((c: { name?: string; phone?: string; relation?: string }) => ({
+          name: c.name ?? "",
+          phone: c.phone ?? "",
+          relation: c.relation ?? "",
+          normalized_at: nowIso,
+        })),
         silent_mode: !!silent,
         ai_script: aiScript,
         server_triggered_at: nowIso,
