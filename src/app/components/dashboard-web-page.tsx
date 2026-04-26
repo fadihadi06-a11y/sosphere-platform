@@ -277,16 +277,61 @@ export function DashboardWebPage() {
   const [pinStage, setPinStage] = useState<"enter" | "confirm">("enter");
   const [pinError, setPinError] = useState("");
   const PIN_KEY = "sosphere_dashboard_pin";
+  const PIN_SALT_KEY = "sosphere_dashboard_pin_salt";  // W3-49: per-install
+  const PIN_LEGACY_SALT = "sosphere_pin_salt_2026";    // for legacy hash recognition
   const getStoredPin = () => localStorage.getItem(PIN_KEY);
-  // SHA-256 hash instead of base64 — base64 is reversible and not secure
-  const hashPin = async (pin: string): Promise<string> => {
+
+  // W3-49 (B-20, 2026-04-26): per-install random salt instead of a single
+  // constant. Pre-fix used `"sosphere_pin_salt_2026"` for every install, so
+  // a single rainbow table cracked every dashboard PIN. Now: 16-byte random
+  // salt generated on first hash, stored alongside. Order is `salt + ":" +
+  // pin` to match the canonical pattern in duress-service.ts.
+  // Backward compat: if no per-install salt exists yet (first run after
+  // upgrade) and a legacy-hash matches, accept once and re-hash.
+  const getOrCreateSalt = (): string => {
+    try {
+      let salt = localStorage.getItem(PIN_SALT_KEY);
+      if (salt && /^[a-f0-9]{32}$/.test(salt)) return salt;
+      const bytes = new Uint8Array(16);
+      (globalThis.crypto || (globalThis as any).msCrypto).getRandomValues(bytes);
+      salt = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem(PIN_SALT_KEY, salt);
+      return salt;
+    } catch {
+      return "fallback-salt-00000000000000000";
+    }
+  };
+  const hashPinWithSalt = async (pin: string, salt: string): Promise<string> => {
     const encoder = new TextEncoder();
-    const data = encoder.encode(pin + "sosphere_pin_salt_2026");
+    const data = encoder.encode(salt + ":" + pin);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
   };
-  const storePin = async (pin: string) => localStorage.setItem(PIN_KEY, await hashPin(pin));
-  const checkPin = async (pin: string) => (await hashPin(pin)) === getStoredPin();
+  const hashPinLegacy = async (pin: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pin + PIN_LEGACY_SALT);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  };
+  const storePin = async (pin: string) => {
+    const salt = getOrCreateSalt();
+    localStorage.setItem(PIN_KEY, await hashPinWithSalt(pin, salt));
+  };
+  const checkPin = async (pin: string) => {
+    const stored = getStoredPin();
+    if (!stored) return false;
+    const salt = getOrCreateSalt();
+    const newHash = await hashPinWithSalt(pin, salt);
+    if (newHash === stored) return true;
+    // Backward compat: legacy hash check + re-hash on success.
+    const legacyHash = await hashPinLegacy(pin);
+    if (legacyHash === stored) {
+      // upgrade in place
+      try { await storePin(pin); } catch {}
+      return true;
+    }
+    return false;
+  };
   const [step, setStep] = useState<LoginStep>("loading");
   const [loginName, setLoginName] = useState("Admin");
   const [loginCompany, setLoginCompany] = useState("Your Company");

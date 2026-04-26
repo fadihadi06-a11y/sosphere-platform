@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
+import { getBatteryLevel } from "./offline-gps-tracker";
 import {
   type Mission, type MissionStatus,
   getActiveMission, getMission, onMissionEvent,
@@ -202,10 +203,14 @@ export function MissionTrackerScreen({ employeeId, onBack }: { employeeId: strin
         const lastPtNow = lastTrackNow?.[lastTrackNow.length - 1];
         // Determine real internet status and battery
         const isOnline = navigator.onLine;
-        const syncData = (() => { try { return JSON.parse(localStorage.getItem("sosphere_sync_data") || "{}"); } catch { return {}; } })();
-        const elapsed = Date.now() - (mission.departedAt || Date.now());
-        // Battery estimate: starts from last known, decreases 1% per 2 minutes
-        const batteryEstimate = Math.max(15, (syncData.batteryLevel ?? 90) - Math.floor(elapsed / 120000));
+        // W3-50 (B-20, 2026-04-26): real battery from offline-gps-tracker
+        // (which uses the Battery API). Pre-fix read sosphere_sync_data
+        // which was never written; result was a fake decay from 90%.
+        // Falls back to a conservative 50% if Battery API unavailable.
+        const _bat = getBatteryLevel();
+        const batteryEstimate = typeof _bat === "number"
+          ? Math.round(_bat * 100)
+          : 50;
         addHeartbeat(mission.id, {
           timestamp: Date.now(),
           gpsEnabled: !!navigator.geolocation,

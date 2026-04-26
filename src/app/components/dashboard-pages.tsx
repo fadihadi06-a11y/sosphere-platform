@@ -26,7 +26,7 @@ import {
 import { sortByPriority, getEmergencyStats } from "./priority-engine";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 import { useDashboardStore } from "./stores/dashboard-store";
-import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEvacuation, getActiveEvacuation, type AttendanceRecord, type AppActivity, type EmployeeStatusData, type ActiveEvacuation } from "./shared-store";
+import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEvacuation, getActiveEvacuation, getLastEmployeeSync, type AttendanceRecord, type AppActivity, type EmployeeStatusData, type ActiveEvacuation } from "./shared-store";
 import { CallTrigger } from "./call-panel";
 import { toast } from "sonner";
 // FIX J: Risk Scoring Engine
@@ -1709,11 +1709,15 @@ export function EmployeesPage({ employees, t, webMode = false, onEmployeeSelect 
               hasBuddy: !!(emp as any).buddyId,
               checkInInterval: (emp as any).checkInInterval || 120,
               batteryLevel: (() => {
-                try {
-                  const syncData = JSON.parse(localStorage.getItem("sosphere_sync_data") || "{}");
-                  return syncData.batteryLevel ?? 100;
-                } catch { return 100; }
-              })(), // reads from last sync
+                // W3-50 (B-20, 2026-04-26): real per-employee battery from
+                // employee-sync writer (saveEmployeeSync in sos-emergency.tsx
+                // and offline-gps-tracker). Pre-fix read `sosphere_sync_data`
+                // which was never written → battery permanently 100% in UI.
+                const sync = getLastEmployeeSync(emp.id);
+                return typeof sync?.battery === "number"
+                  ? Math.round(sync.battery * 100)
+                  : null; // honest "unknown" when no sync exists yet
+              })(), // reads real per-employee sync, or null if no sync yet
               isWorkingAlone: (() => {
                 try {
                   const gpsTrail: any[] = JSON.parse(localStorage.getItem("sosphere_gps_trail") || "[]");

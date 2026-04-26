@@ -954,9 +954,15 @@ export async function replayPendingSOS(): Promise<{
     console.log("[SOS-Replay] already running, skipping");
     return summary;
   }
-  if (!navigator.onLine) {
-    console.log("[SOS-Replay] offline, skipping");
-    return summary;
+  // W3-44 (B-20, 2026-04-26): navigator.onLine is unreliable.
+  // - Android WebView with captive portal: returns true with no real net
+  // - iOS background-fetch transitions: returns false on real connection
+  // - Capacitor cellular handoff: stale for ~5s
+  // We treat false as advisory — log it but still try the fetch. The
+  // auth-gate above + fetch's NetworkError short-circuit truly offline
+  // calls without burning retry quota.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    console.log("[SOS-Replay] navigator.onLine=false (advisory) — proceeding anyway");
   }
 
   // Auth gate — the Edge Function requires a valid Bearer token for

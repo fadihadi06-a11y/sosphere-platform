@@ -43,12 +43,19 @@ const NEVER_CACHE_PATH_PREFIXES = [
 ];
 
 // Path patterns that ARE safe to cache (static assets + manifests).
+//
+// W3-45 (B-20, 2026-04-26): `json` removed from extension regex.
+// Pre-fix: ANY .json (e.g. /flags.json, /version.json, /config.json) was
+// cached forever. A single transient bad response (MITM, misroute, stale
+// edge) could permanently lock the user on bad config. PWA manifests use
+// .webmanifest which is preserved below; for a specific .json that must
+// be cached, add a precise path pattern here.
 const STATIC_PATH_PATTERNS = [
   /^\/assets\//,
   /^\/icons?\//,
   /^\/fonts?\//,
   /^\/(?:icon|favicon)/,
-  /\.(?:css|js|mjs|map|woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|ico|json|webmanifest)$/i,
+  /\.(?:css|js|mjs|map|woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|ico|webmanifest)$/i,
 ];
 
 // App-shell pages we want to serve offline.
