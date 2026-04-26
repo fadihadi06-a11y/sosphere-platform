@@ -267,9 +267,13 @@ function ReportDetailDrawer({
 }: {
   report: IncidentPhotoReport;
   onClose: () => void;
-  onBroadcast: (report: IncidentPhotoReport, scope: string) => void;
-  onForwardToOwner: (report: IncidentPhotoReport) => void;
-  onMarkReviewed: (id: string) => void;
+  // 2026-04-27 (B-02 wiring complete): each handler returns Promise<boolean>
+  // — true on confirmed server success, false on failure. Drawer uses
+  // this to decide whether to flip into "delivered" UI. Beehive contract:
+  // never claim success without server confirmation.
+  onBroadcast: (report: IncidentPhotoReport, scope: "zone" | "dept" | "all", message: string) => Promise<boolean>;
+  onForwardToOwner: (report: IncidentPhotoReport) => Promise<boolean>;
+  onMarkReviewed: (id: string) => Promise<boolean>;
   onEscalate?: (report: IncidentPhotoReport) => void;
 }) {
   const [broadcastScope, setBroadcastScope] = useState<"zone" | "all" | "dept">("zone");
@@ -282,11 +286,18 @@ function ReportDetailDrawer({
   const sev = SEV[report.severity];
 
   const handleBroadcast = async () => {
+    // 2026-04-27: drawer no longer fakes a 1.5s delay then claims success.
+    // We await the real edge-function call. The parent's onBroadcast returns
+    // Promise<boolean> — true ONLY on confirmed server-side success. We
+    // flip to "delivered" only when that's true. On failure the parent
+    // already toasted; we stay in idle so the dispatcher can retry.
     setIsBroadcasting(true);
-    await new Promise(r => setTimeout(r, 1500));
-    onBroadcast(report, broadcastScope);
-    setIsBroadcasting(false);
-    setBroadcastDone(true);
+    try {
+      const ok = await onBroadcast(report, broadcastScope, broadcastMsg);
+      if (ok) setBroadcastDone(true);
+    } finally {
+      setIsBroadcasting(false);
+    }
   };
 
   return (
@@ -698,25 +709,75 @@ export function IncidentReportsTab({ webMode = false, onEscalateToInvestigation 
   const filtered = filter === "all" ? reports : reports.filter(r => r.status === filter);
   const newCount = reports.filter(r => r.status === "new").length;
 
-  const handleBroadcast = (report: IncidentPhotoReport, scope: string) => {
-    console.log("[SUPABASE_READY] incident_report_update: " + report.id);
+  // ═══════════════════════════════════════════════════════════════
+  // 2026-04-27 (B-02 wiring complete): all dispatcher actions now go
+  // through the dashboard-actions edge function via callDispatcherAction.
+  // The server validates JWT, scopes the row by company, updates
+  // tamper-evident columns, and writes audit_log. Local state is updated
+  // ONLY on confirmed server success — "the UI never claims success
+  // unless the server confirms it." (beehive contract)
+  //
+  // Failure path: toast.error + leave reports state unchanged so the
+  // dispatcher sees the unreviewed row again and can retry.
+  // ═══════════════════════════════════════════════════════════════
+  const handleBroadcast = async (
+    report: IncidentPhotoReport,
+    scope: "zone" | "dept" | "all",
+    message: string,
+  ): Promise<boolean> => {
+    const result = await callDispatcherAction({
+      action: "broadcast",
+      emergencyId: report.emergencyId,
+      scope,
+      message,
+    });
+    if (!result.ok) {
+      toast.error(`Broadcast failed: ${result.error}`);
+      return false;
+    }
     setReports(prev => prev.map(r =>
       r.id === report.id ? { ...r, status: "broadcast", broadcastTo: scope, reviewedBy: "Admin" } : r
     ));
+    toast.success(`Broadcast delivered (${scope})`);
+    return true;
   };
 
-  const handleForwardToOwner = (report: IncidentPhotoReport) => {
-    console.log("[SUPABASE_READY] incident_report_update: " + report.id);
+  const handleForwardToOwner = async (report: IncidentPhotoReport): Promise<boolean> => {
+    const result = await callDispatcherAction({
+      action: "forward_to_owner",
+      emergencyId: report.emergencyId,
+      note: `${report.incidentType} in ${report.zone} \u2014 severity ${report.severity}`,
+    });
+    if (!result.ok) {
+      toast.error(`Forward failed: ${result.error}`);
+      return false;
+    }
     setReports(prev => prev.map(r =>
       r.id === report.id ? { ...r, status: "forwarded", reviewedBy: "Admin" } : r
     ));
+    toast.success("Forwarded to owner");
+    return true;
   };
 
-  const handleMarkReviewed = (id: string) => {
-    console.log("[SUPABASE_READY] incident_report_update: " + id);
+  const handleMarkReviewed = async (id: string): Promise<boolean> => {
+    const report = reports.find(r => r.id === id);
+    if (!report) {
+      toast.error("Report not found");
+      return false;
+    }
+    const result = await callDispatcherAction({
+      action: "mark_reviewed",
+      emergencyId: report.emergencyId,
+    });
+    if (!result.ok) {
+      toast.error(`Mark reviewed failed: ${result.error}`);
+      return false;
+    }
     setReports(prev => prev.map(r =>
       r.id === id ? { ...r, status: "reviewed", reviewedBy: "Admin" } : r
     ));
+    toast.success("Marked reviewed");
+    return true;
   };
 
   const handleEscalateToInvestigation = (report: IncidentPhotoReport) => {
@@ -1009,8 +1070,21 @@ export function IncidentReportsTab({ webMode = false, onEscalateToInvestigation 
           <ReportDetailDrawer
             report={selectedReport}
             onClose={() => setSelectedReport(null)}
-            onBroadcast={(r, scope) => { handleBroadcast(r, scope); setSelectedReport(null); }}
-            onForwardToOwner={(r) => { handleForwardToOwner(r); setSelectedReport(null); }}
+            /* 2026-04-27 (B-02 wiring complete): wrappers now pass-through
+               the Promise<boolean> from the parent handler. The drawer
+               awaits it and only flips to "delivered" on confirmed server
+               success. We close the modal only after a successful action
+               so a failed broadcast leaves the drawer open for retry. */
+            onBroadcast={async (r, scope, message) => {
+              const ok = await handleBroadcast(r, scope, message);
+              if (ok) setSelectedReport(null);
+              return ok;
+            }}
+            onForwardToOwner={async (r) => {
+              const ok = await handleForwardToOwner(r);
+              if (ok) setSelectedReport(null);
+              return ok;
+            }}
             onMarkReviewed={handleMarkReviewed}
             onEscalate={onEscalateToInvestigation}
           />
