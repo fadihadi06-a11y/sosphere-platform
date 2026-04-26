@@ -1364,14 +1364,30 @@ serve(async (req: Request) => {
       }
       // Free tier: no call, just SMS
 
-      const [smsSid, callResult] = await Promise.all([smsPromise, callPromise]);
+      // W3-27 (B-20, 2026-04-26): per-contact timeout. Pre-fix one stuck
+      // Twilio API call (e.g., partial network partition with no TCP RST)
+      // would hang the inner Promise.all forever, which in turn hung the
+      // OUTER Promise.all over all contacts → entire SOS fanout stalled
+      // until Deno's 150s worker timeout. Now: race each leg with a 20s
+      // cap; on timeout we record null sid + a "timeout" method label
+      // and let the rest of the fanout finish normally.
+      const FANOUT_TIMEOUT_MS = 20000;
+      const smsTimed: Promise<string | null> = Promise.race([
+        smsPromise.then((v) => v ?? null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), FANOUT_TIMEOUT_MS)),
+      ]);
+      const callTimed: Promise<{ sid: string } | null> = Promise.race([
+        callPromise.then((v) => v ?? null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), FANOUT_TIMEOUT_MS)),
+      ]);
+      const [smsSid, callResult] = await Promise.all([smsTimed, callTimed]);
 
       const method =
         tier === "free" ? "sms_only" :
         tier === "basic" ? "tts_call_plus_sms" :
         "bridge_call_recorded_plus_sms";
 
-      console.log(`[sos-alert] ${tier.toUpperCase()} → ${c.name}: call=${callResult?.sid || "SKIP/FAIL"} sms=${smsSid || "FAIL"}`);
+      console.log(`[sos-alert] ${tier.toUpperCase()} → ${c.name}: call=${callResult?.sid || "SKIP/FAIL/TIMEOUT"} sms=${smsSid || "FAIL/TIMEOUT"}`);
 
       return {
         contactName: c.name,

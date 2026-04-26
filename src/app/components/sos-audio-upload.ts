@@ -290,10 +290,15 @@ export function startAudioReplayWatcher(): void {
   // closes the race where the watcher was already armed and the queue
   // had records, but Storage uploads would 401 because the JWT wasn't
   // loaded yet.
+  // W3-43 (B-20, 2026-04-26): capture + unsubscribe to prevent HMR/reload leak.
   try {
-    supabase.auth.onAuthStateChange((event, session) => {
+    if ((globalThis as any).__sosAudioAuthSub) {
+      try { (globalThis as any).__sosAudioAuthSub.unsubscribe(); } catch {}
+    }
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) fire(`auth:${event.toLowerCase()}`);
     });
+    (globalThis as any).__sosAudioAuthSub = data?.subscription ?? null;
   } catch {
     // Auth listener is best-effort; never fatal.
   }
