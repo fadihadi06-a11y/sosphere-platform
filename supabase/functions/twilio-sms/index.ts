@@ -215,9 +215,14 @@ serve(async (req) => {
     const result = await response.json();
 
     if (!response.ok) {
+      // W3-32 (B-20, 2026-04-26): redact Twilio raw response from client.
+      // Twilio errors leak account SID, sub-resources, and verbose messages
+      // that aid attacker reconnaissance. Log full detail server-side, but
+      // return a generic shape to caller. Status code mirrored so legit
+      // clients still see the error class.
       console.error("[twilio-sms] Twilio API error:", result);
       return new Response(
-        JSON.stringify({ error: "SMS send failed", detail: result.message || result }),
+        JSON.stringify({ error: "sms_send_failed", code: result?.code ?? null }),
         {
           status: response.status,
           headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },

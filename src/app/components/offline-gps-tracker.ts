@@ -524,6 +524,16 @@ function stopDeadReckoning(): void {
 
 let _startingLock = false; // Prevent concurrent startGPSTracking calls
 
+// W3-42 (B-20, 2026-04-26): named module-level handlers so each
+// startGPSTracking call removes prior bindings before adding new ones.
+// Pre-fix: each start/stop cycle added another anonymous beforeunload +
+// visibilitychange listener — after 10 cycles, every page-hide fired
+// flushGPSSync 10 times, multiplying writes + Supabase RPC load.
+let _gpsBeforeUnloadHandler: (() => void) | null = null;
+let _gpsVisibilityHandler: (() => void) | null = null;
+let _gpsCapacitorAppListener: { remove: () => void } | null = null;
+let _gpsCapacitorPauseListener: { remove: () => void } | null = null;
+
 export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolean {
   if (trackerState.isTracking || _startingLock) return true;
   _startingLock = true;
@@ -572,19 +582,31 @@ export function startGPSTracking(userConfig?: Partial<GPSTrackerConfig>): boolea
   // do. Pre-fix the final GPS positions before app death were lost.
   // Register all THREE listeners; whichever fires first calls flushGPSSync().
   if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", () => flushGPSSync());
-    document.addEventListener("visibilitychange", () => {
+    // W3-42: idempotent listener registration. Remove existing before adding.
+    if (_gpsBeforeUnloadHandler) window.removeEventListener("beforeunload", _gpsBeforeUnloadHandler);
+    _gpsBeforeUnloadHandler = () => flushGPSSync();
+    window.addEventListener("beforeunload", _gpsBeforeUnloadHandler);
+
+    if (_gpsVisibilityHandler) document.removeEventListener("visibilitychange", _gpsVisibilityHandler);
+    _gpsVisibilityHandler = () => {
       if (document.visibilityState === "hidden") flushGPSSync();
-    });
+    };
+    document.addEventListener("visibilitychange", _gpsVisibilityHandler);
+
     try {
       const w = window as any;
       const Capacitor = w.Capacitor;
       if (Capacitor?.isNativePlatform?.()) {
-        import("@capacitor/app").then((mod) => {
-          mod.App.addListener("appStateChange", (state: { isActive: boolean }) => {
+        // Tear down existing Capacitor listeners before re-registering
+        try { _gpsCapacitorAppListener?.remove(); } catch {}
+        try { _gpsCapacitorPauseListener?.remove(); } catch {}
+        _gpsCapacitorAppListener = null;
+        _gpsCapacitorPauseListener = null;
+        import("@capacitor/app").then(async (mod) => {
+          _gpsCapacitorAppListener = await mod.App.addListener("appStateChange", (state: { isActive: boolean }) => {
             if (!state.isActive) flushGPSSync();
           });
-          mod.App.addListener("pause", () => flushGPSSync());
+          _gpsCapacitorPauseListener = await mod.App.addListener("pause", () => flushGPSSync());
         }).catch((err) => {
           console.warn("[GPSTracker] Capacitor App listener registration failed (non-fatal):", err);
         });
@@ -619,6 +641,22 @@ export function stopGPSTracking(): void {
   }
   _batteryObj = null;
   _batteryHandler = null;
+
+  // W3-42 (B-20, 2026-04-26): release the lifecycle listeners we added in start.
+  if (typeof window !== "undefined") {
+    if (_gpsBeforeUnloadHandler) {
+      try { window.removeEventListener("beforeunload", _gpsBeforeUnloadHandler); } catch {}
+      _gpsBeforeUnloadHandler = null;
+    }
+    if (_gpsVisibilityHandler) {
+      try { document.removeEventListener("visibilitychange", _gpsVisibilityHandler); } catch {}
+      _gpsVisibilityHandler = null;
+    }
+    try { _gpsCapacitorAppListener?.remove(); } catch {}
+    try { _gpsCapacitorPauseListener?.remove(); } catch {}
+    _gpsCapacitorAppListener = null;
+    _gpsCapacitorPauseListener = null;
+  }
 
   updateState({
     isTracking: false,

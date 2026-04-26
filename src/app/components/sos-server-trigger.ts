@@ -1160,10 +1160,15 @@ export function startSOSReplayWatcher(): void {
   }
 
   // Trigger 3: auth session available.
+  // W3-43 (B-20, 2026-04-26): capture subscription so we can unsubscribe
+  // on stopSOSReplayWatcher / module reload. Pre-fix: every HMR / re-init
+  // accumulated another listener, multiplying replay calls per token-refresh.
   try {
-    supabase.auth.onAuthStateChange((event, session) => {
+    if (authSubscription) { try { authSubscription.unsubscribe(); } catch {} }
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) fire(`auth:${event.toLowerCase()}`);
     });
+    authSubscription = data?.subscription ?? null;
   } catch {
     // Auth listener is best-effort; never fatal.
   }

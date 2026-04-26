@@ -114,9 +114,14 @@ export async function initSentry(): Promise<void> {
       if (data.session?.user) {
         setSentryUser({ id: data.session.user.id, email: data.session.user.email ?? undefined });
       }
-      supabase.auth.onAuthStateChange((_event, session) => {
+// W3-43 (B-20, 2026-04-26): capture + unsubscribe to prevent leak.
+      if ((globalThis as any).__sentryAuthSub) {
+        try { (globalThis as any).__sentryAuthSub.unsubscribe(); } catch {}
+      }
+      const { data: __sentryAuthData } =       supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
           setSentryUser({ id: session.user.id, email: session.user.email ?? undefined });
+      (globalThis as any).__sentryAuthSub = __sentryAuthData?.subscription ?? null;
         } else {
           setSentryUser(null);
         }
