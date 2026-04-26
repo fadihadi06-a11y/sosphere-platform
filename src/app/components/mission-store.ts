@@ -7,8 +7,8 @@
 //   missions data       → supabase.from("missions") table
 //   GPS tracking        → supabase.from("mission_gps") table
 //   heartbeats          → supabase.from("mission_heartbeats") table
-//   Cross-tab events    → supabase.channel("missions").send({ type: "broadcast", ... })
-//   Real-time updates   → supabase.channel("missions").on("broadcast", ...)
+//   Cross-tab events    → supabase.channel("missions").send({ type: "broadcast", ... }) — lint-guard-allow:no-global-realtime-channel (doc only)
+//   Real-time updates   → supabase.channel("missions").on("broadcast", ...) — lint-guard-allow:no-global-realtime-channel (doc only)
 //   Schema defined in api/rls-policies.ts
 // ═══════════════════════════════════════════════════════════════
 

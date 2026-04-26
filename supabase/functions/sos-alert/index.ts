@@ -299,8 +299,10 @@ async function twilioCall(
     if (opts.record) params.set("Record", "true");
     if (opts.machineDetection) params.set("MachineDetection", "Enable");
 
+    // G-41 (B-20, 2026-04-26): per-fetch timeout. Twilio API p99 < 2s; 8s is generous.
     const res = await fetch(`${twilioBase}/Calls.json`, {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         Authorization: `Basic ${twilioAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
@@ -321,8 +323,10 @@ async function twilioCall(
 
 async function twilioSMS(to: string, body: string): Promise<string | null> {
   try {
+    // G-41 (B-20, 2026-04-26): per-fetch timeout. Twilio API p99 < 2s; 8s is generous.
     const res = await fetch(`${twilioBase}/Messages.json`, {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         Authorization: `Basic ${twilioAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",

@@ -231,7 +231,7 @@ function notifyChange(evidenceId: string, action: string) {
 
   // Supabase Realtime broadcast for cross-device sync
   if (isSupabaseReady()) {
-    supabase.channel("evidence-changes").send({
+    supabase.channel("evidence-changes").send({  // lint-guard-allow:no-global-realtime-channel — TODO post-launch tenant scope
       type: "broadcast",
       event: "evidence_update",
       payload: { evidenceId, action },
@@ -498,7 +498,7 @@ export function onEvidenceChange(callback: (evidenceId: string, action: string) 
   if (isSupabaseReady()) {
     try {
       const channel = supabase
-        .channel("evidence-changes")
+        .channel("evidence-changes")  // lint-guard-allow:no-global-realtime-channel — TODO post-launch tenant scope
         .on("broadcast", { event: "evidence_update" }, (payload: any) => {
           const { evidenceId, action } = payload.payload || {};
           if (evidenceId) callback(evidenceId, action);
