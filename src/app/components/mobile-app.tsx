@@ -858,6 +858,26 @@ export function MobileApp() {
         );
         if (tierRes.plan !== userPlan) {
           console.log(`[Tier] resync (${reason}) ${userPlan} -> ${tierRes.plan} (${tierRes.reason})`);
+          // W3-24 (B-20, 2026-04-26): if a tier UPGRADE happens during an
+          // active SOS, fire an event the SOS UI can pick up to show a
+          // "Upgrade detected — Elite features active from next emergency"
+          // banner. The CURRENT emergency keeps whatever tier was resolved
+          // at trigger time (server-side, from sos-alert resolveTier) —
+          // we don't try to escalate mid-flight. Next SOS gets the new tier.
+          const isUpgrade =
+            (userPlan === "free" && (tierRes.plan === "pro" || tierRes.plan === "employee")) ||
+            (userPlan === "pro"  && tierRes.plan === "employee");
+          if (isUpgrade) {
+            try {
+              const hasActiveSOS = !!localStorage.getItem("sosphere_active_sos");
+              if (hasActiveSOS && typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("sosphere_tier_upgraded_mid_sos", {
+                  detail: { from: userPlan, to: tierRes.plan, reason },
+                }));
+                console.log(`[Tier] mid-SOS upgrade detected: ${userPlan} -> ${tierRes.plan}`);
+              }
+            } catch { /* localStorage may be unavailable in some test envs */ }
+          }
           setUserPlan(tierRes.plan);
         }
       } catch (e) {
