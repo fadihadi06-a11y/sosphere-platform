@@ -1,5 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// W3-33 (B-20, 2026-04-26): escape attacker-controlled fields before HTML
+// interpolation. Pre-fix: companyName, emp.name, inviteCode were inlined
+// raw — a tenant registering with `<script src="evil.com/x"></script>` as
+// company name would inject XSS into every employee's invite email body.
+// Post-fix: escapeHtml() on every textual field, encodeURIComponent() on
+// the inviteCode used in the href URL.
+function escapeHtml(s: unknown): string {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 import {
   checkRateLimit,
   getRateLimitHeaders,
@@ -176,7 +192,8 @@ serve(async (req) => {
         body: JSON.stringify({
           from: "SOSphere <onboarding@resend.dev>",
           to: emp.email,
-          subject: `You have been invited to join ${companyName || "a company"} on SOSphere`,
+          // W3-33: escape every user-controlled field before HTML interpolation.
+          subject: `You have been invited to join ${escapeHtml(companyName || "a company")} on SOSphere`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="background: #0A1220; padding: 30px; border-radius: 16px; text-align: center;">
@@ -184,22 +201,22 @@ serve(async (req) => {
                 <p style="color: #ffffff; font-size: 14px;">Safety Intelligence Platform</p>
               </div>
               <div style="padding: 30px 0;">
-                <h2 style="color: #0A1220;">Hi ${emp.name || "there"},</h2>
+                <h2 style="color: #0A1220;">Hi ${escapeHtml(emp.name || "there")},</h2>
                 <p style="color: #444; line-height: 1.6;">
-                  <strong>${companyName || "Your company"}</strong> has invited you to join SOSphere.
+                  <strong>${escapeHtml(companyName || "Your company")}</strong> has invited you to join SOSphere.
                 </p>
                 <div style="background: #f5f5f5; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
                   <p style="color: #666; margin: 0 0 10px;">Your Invite Code</p>
-                  <h2 style="color: #00C8E0; letter-spacing: 8px; margin: 0;">${inviteCode || "N/A"}</h2>
+                  <h2 style="color: #00C8E0; letter-spacing: 8px; margin: 0;">${escapeHtml(inviteCode || "N/A")}</h2>
                 </div>
                 <ol style="color: #444; line-height: 2;">
                   <li>Download SOSphere app</li>
                   <li>Tap "Join My Company"</li>
-                  <li>Enter code: <strong>${inviteCode || "N/A"}</strong></li>
+                  <li>Enter code: <strong>${escapeHtml(inviteCode || "N/A")}</strong></li>
                   <li>Verify your phone number</li>
                 </ol>
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="https://sosphere.app/join/${inviteCode || ""}"
+                  <a href="https://sosphere.app/join/${encodeURIComponent(inviteCode || "")}"
                      style="background: #00C8E0; color: white; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: bold;">
                     Join Now
                   </a>
