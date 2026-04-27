@@ -1,18 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — completeLogout test suite (AUDIT-FIX verification)
 // ─────────────────────────────────────────────────────────────
-// Pins the new broad-prefix-sweep design so it can't regress into
-// the typo'd allowlist that caused the post-logout PII leak we
-// discovered on 2026-04-18. Every key the app actually writes gets
-// a positive test (must be removed) and every keep-list key gets
-// a negative test (must survive).
-//
-// CRIT-#1 (2026-04-27): also pins the IndexedDB hard-purge contract.
+// CRIT-#1 (2026-04-27): pins the IndexedDB hard-purge contract.
+// CRIT-#4 (2026-04-27): pins the dashboard-store reset + legacy
+// sos_reg_result removal contract.
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// --- localStorage shim (node env, no jsdom) ---------------------
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
   get length() { return this.store.size; }
@@ -23,7 +18,6 @@ class MemoryStorage implements Storage {
   key(i: number) { return Array.from(this.store.keys())[i] ?? null; }
 }
 
-// --- Shim globals BEFORE importing the module under test --------
 (globalThis as any).localStorage = (globalThis as any).localStorage ?? new MemoryStorage();
 (globalThis as any).window = (globalThis as any).window ?? {
   addEventListener: vi.fn(),
@@ -39,9 +33,6 @@ class MemoryStorage implements Storage {
   }
 };
 
-// --- Mock the supabase + cache-helper imports -------------------
-// vi.mock() is hoisted above ALL top-level code, so any spy referenced from
-// the factory must be created via vi.hoisted() to be reachable.
 const { signOutMock, clearDeviceFingerprintMock } = vi.hoisted(() => ({
   signOutMock: vi.fn().mockResolvedValue({ error: null }),
   clearDeviceFingerprintMock: vi.fn(),
@@ -61,8 +52,6 @@ vi.mock("../api/server-permission", () => ({ clearPermissionCache: vi.fn() }));
 vi.mock("../api/authenticated-role", () => ({ clearRoleCache: vi.fn() }));
 vi.mock("../api/tenant", () => ({ clearTenantCache: vi.fn() }));
 
-// CRIT-#1: completeLogout now also purges IndexedDB. Mock the helper so the
-// node test env (no real IndexedDB) doesn't error, and so we can spy on it.
 const { purgeMock } = vi.hoisted(() => ({
   purgeMock: vi.fn().mockResolvedValue({
     sosphere_offline: "deleted",
@@ -71,6 +60,10 @@ const { purgeMock } = vi.hoisted(() => ({
   }),
 }));
 vi.mock("../offline-database", () => ({ purgeAllOfflineData: purgeMock }));
+
+// CRIT-#4: completeLogout now also resets the Zustand dashboard store.
+const { clearStoreMock } = vi.hoisted(() => ({ clearStoreMock: vi.fn() }));
+vi.mock("../stores/dashboard-store", () => ({ clearDashboardStore: clearStoreMock }));
 
 import { completeLogout } from "../api/complete-logout";
 
@@ -85,41 +78,22 @@ describe("completeLogout — broad SOSphere-prefix sweep", () => {
     });
     signOutMock.mockClear();
     signOutMock.mockResolvedValue({ error: null });
+    clearStoreMock.mockClear();
+    clearStoreMock.mockReset();
   });
 
   it("removes ALL sosphere_-prefixed user keys (the actual keys in use)", async () => {
     const leakingKeys = [
-      "sosphere_individual_profile",
-      "sosphere_active_sos",
-      "sosphere_incident_history",
-      "sosphere_admin_profile",
-      "sosphere_admin_phone",
-      "sosphere_employee_profile",
-      "sosphere_employee_avatar",
-      "sosphere_company_id",
-      "sosphere_emergency_contacts",
-      "sosphere_dashboard_auth",
-      "sosphere_dashboard_pin",
-      "sosphere_tos_consent",
-      "sosphere_gps_consent",
-      "sosphere_onboarding_completed",
-      "sosphere_lang",
-      "sosphere_app_lang",
-      "sosphere_device_fp",
-      "sosphere_neighbor_alert_settings",
-      "sosphere_journeys",
-      "sosphere_investigations",
-      "sosphere_risks",
-      "sosphere_shifts",
-      "sosphere_timeline_event",
-      "sosphere_sensor_events",
-      "sosphere_totp_user-abc123",
-      "sosphere_audit_log",
-      "sosphere_audit_retry_queue",
-      "sosphere_sar_prefill",
-      "sosphere_new_investigation",
-      "sosphere_last_sync",
-      "sosphere_fp_grace_until",
+      "sosphere_individual_profile","sosphere_active_sos","sosphere_incident_history",
+      "sosphere_admin_profile","sosphere_admin_phone","sosphere_employee_profile",
+      "sosphere_employee_avatar","sosphere_company_id","sosphere_emergency_contacts",
+      "sosphere_dashboard_auth","sosphere_dashboard_pin","sosphere_tos_consent",
+      "sosphere_gps_consent","sosphere_onboarding_completed","sosphere_lang",
+      "sosphere_app_lang","sosphere_device_fp","sosphere_neighbor_alert_settings",
+      "sosphere_journeys","sosphere_investigations","sosphere_risks","sosphere_shifts",
+      "sosphere_timeline_event","sosphere_sensor_events","sosphere_totp_user-abc123",
+      "sosphere_audit_log","sosphere_audit_retry_queue","sosphere_sar_prefill",
+      "sosphere_new_investigation","sosphere_last_sync","sosphere_fp_grace_until",
     ];
     for (const k of leakingKeys) localStorage.setItem(k, "leak-me");
     await completeLogout();
@@ -192,9 +166,64 @@ describe("completeLogout — broad SOSphere-prefix sweep", () => {
 
   it("CRIT-#1: logout still completes even if IndexedDB purge fails", async () => {
     purgeMock.mockRejectedValueOnce(new Error("simulated DB explosion"));
-    // Must not throw — purge failure is logged-and-swallowed.
     await expect(completeLogout()).resolves.toBeUndefined();
-    // signOut should still run after a purge failure.
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ─── CRIT-#4 (2026-04-27) — dashboard store reset + legacy keys ──
+  it("CRIT-#4: removes the legacy non-prefixed sos_reg_result key", async () => {
+    localStorage.setItem("sos_reg_result", JSON.stringify({ plan: "elite", employeeCount: 50 }));
+    await completeLogout();
+    expect(localStorage.getItem("sos_reg_result")).toBeNull();
+  });
+
+  it("CRIT-#4: still does NOT touch other non-sosphere legacy keys (allowlist only)", async () => {
+    localStorage.setItem("sos_reg_result", "tenant-A");
+    localStorage.setItem("some_other_app_key", "must-survive");
+    localStorage.setItem("oauth_provider", "google");
+    await completeLogout();
+    expect(localStorage.getItem("sos_reg_result")).toBeNull();
+    expect(localStorage.getItem("some_other_app_key")).toBe("must-survive");
+    expect(localStorage.getItem("oauth_provider")).toBe("google");
+  });
+
+  it("CRIT-#4: invokes clearDashboardStore() exactly once on logout", async () => {
+    await completeLogout();
+    expect(clearStoreMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("CRIT-#4: store reset runs AFTER localStorage purge (so reset re-reads cleaned state)", async () => {
+    const order: string[] = [];
+    const orig = localStorage.removeItem.bind(localStorage);
+    let purgeFinished = false;
+    (localStorage as any).removeItem = (k: string) => {
+      orig(k);
+      if (!purgeFinished && k === "sos_reg_result") {
+        order.push("purge_localStorage");
+        purgeFinished = true;
+      }
+    };
+    clearStoreMock.mockImplementationOnce(() => { order.push("reset_store"); });
+    localStorage.setItem("sos_reg_result", "x");
+    await completeLogout();
+    (localStorage as any).removeItem = orig;
+    expect(order).toEqual(["purge_localStorage", "reset_store"]);
+  });
+
+  it("CRIT-#4: store reset runs BEFORE supabase.auth.signOut() so listeners observe an empty store", async () => {
+    const order: string[] = [];
+    clearStoreMock.mockImplementationOnce(() => { order.push("reset_store"); });
+    signOutMock.mockImplementationOnce(async () => {
+      order.push("signOut");
+      return { error: null };
+    });
+    await completeLogout();
+    expect(order).toEqual(["reset_store", "signOut"]);
+  });
+
+  it("CRIT-#4: logout still completes even if clearDashboardStore throws", async () => {
+    clearStoreMock.mockImplementationOnce(() => { throw new Error("zustand exploded"); });
+    await expect(completeLogout()).resolves.toBeUndefined();
     expect(signOutMock).toHaveBeenCalledTimes(1);
   });
 });
