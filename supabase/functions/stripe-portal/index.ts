@@ -116,9 +116,26 @@ serve(async (req: Request) => {
   }
 
   const { returnUrl } = await req.json().catch(() => ({}));
+
+  // DD-2 (2026-04-27): origin allowlist for return_url (mirrors E-16 on
+  // stripe-checkout). Without this, a client could set return_url to an
+  // attacker domain — Stripe would redirect users post-portal to that
+  // domain, leaking session_id in the query string. Default to BASE_URL/billing.
+  function isAllowedReturnUrl(u: string | undefined | null): boolean {
+    if (!u || typeof u !== "string") return false;
+    try {
+      const parsed = new URL(u);
+      const allowedOrigins = ALLOWED_ORIGINS
+        .map((o) => { try { return new URL(o).origin; } catch { return null; } })
+        .filter(Boolean) as string[];
+      return allowedOrigins.includes(parsed.origin);
+    } catch { return false; }
+  }
+  const safeReturnUrl = isAllowedReturnUrl(returnUrl) ? (returnUrl as string) : `${BASE_URL}/billing`;
+
   const form = new URLSearchParams({
     customer: row.stripe_customer_id as string,
-    return_url: returnUrl || `${BASE_URL}/billing`,
+    return_url: safeReturnUrl,
   });
 
   const res = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
@@ -132,8 +149,12 @@ serve(async (req: Request) => {
   const data = await res.json();
 
   if (!res.ok) {
-    console.error("[stripe-portal] Stripe error:", data?.error?.message);
-    return new Response(JSON.stringify({ error: data?.error?.message || "Stripe error" }), {
+    // DD-4 (2026-04-27): Stripe-internal error messages logged server-side
+    // ONLY. Client gets an opaque message + request id. Prevents
+    // observability hacking (probing which user/state Stripe rejects).
+    const reqId = "rq-" + Math.random().toString(36).slice(2, 10);
+    console.error(`[stripe-portal] [${reqId}] Stripe error:`, data?.error?.message);
+    return new Response(JSON.stringify({ error: "Billing portal unavailable", request_id: reqId }), {
       status: 502,
       headers: { ...cors, "Content-Type": "application/json" },
     });

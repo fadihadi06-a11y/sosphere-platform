@@ -143,7 +143,8 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
       return { session: null, error: error.message };
     }
 
-    console.log("[GoogleAuth] Success:", data.user?.email);
+    // DD-8 (2026-04-27): no email in production logs. Log uid suffix only.
+    console.log("[GoogleAuth] Success:", data.user?.id?.slice(0, 8) ? data.user.id.slice(0, 8) + "…" : "(no uid)");
     return { session: data.session, error: null };
   } catch (err: any) {
     const msg = err?.message || err?.toString() || "Unknown error";

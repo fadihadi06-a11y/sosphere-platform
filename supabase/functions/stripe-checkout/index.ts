@@ -198,10 +198,17 @@ serve(async (req: Request) => {
   };
 
   // Optional: per-seat line item if the plan supports extra seats.
+  // DD-7 (2026-04-27): seats must be a non-negative integer ≤ 1000.
+  // Without this, an attacker could pass `seats=999999999` and cause a
+  // huge Stripe invoice + billing surprise. Floats and negatives also
+  // rejected (Stripe accepts integers only).
   const seatPrice = Deno.env.get("STRIPE_EXTRA_SEAT_PRICE");
-  if (seatPrice && typeof seats === "number" && seats > 0) {
+  const safeSeats = (
+    typeof seats === "number" && Number.isInteger(seats) && seats > 0 && seats <= 1000
+  ) ? seats : 0;
+  if (seatPrice && safeSeats > 0) {
     form["line_items[1][price]"] = seatPrice;
-    form["line_items[1][quantity]"] = String(seats);
+    form["line_items[1][quantity]"] = String(safeSeats);
   }
 
   if (existing?.stripe_customer_id) {
@@ -213,8 +220,11 @@ serve(async (req: Request) => {
   const res = await stripePost("/checkout/sessions", form);
   const data = await res.json();
   if (!res.ok) {
-    console.error("[stripe-checkout] Stripe error:", data?.error?.message);
-    return new Response(JSON.stringify({ error: data?.error?.message || "Stripe error" }), {
+    // DD-5 (2026-04-27): Stripe-internal error logged server-side ONLY.
+    // Client receives opaque message + request id — same pattern as DD-4.
+    const reqId = "rq-" + Math.random().toString(36).slice(2, 10);
+    console.error(`[stripe-checkout] [${reqId}] Stripe error:`, data?.error?.message);
+    return new Response(JSON.stringify({ error: "Checkout unavailable", request_id: reqId }), {
       status: 502,
       headers: { ...cors, "Content-Type": "application/json" },
     });
