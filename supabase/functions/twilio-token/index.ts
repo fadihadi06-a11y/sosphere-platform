@@ -168,9 +168,12 @@ serve(async (req) => {
 
     const { identity } = await req.json();
 
-    if (!identity) {
+    // DD-6 (2026-04-27): identity length cap. Twilio identity is meant to
+    // be a short stable handle (typically the user's uid). Anything over
+    // 256 chars is a payload-fuzzing or DoS probe — reject early.
+    if (typeof identity !== "string" || identity.length === 0 || identity.length > 256) {
       return new Response(
-        JSON.stringify({ error: "identity is required" }),
+        JSON.stringify({ error: "identity is required (1..256 chars)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -205,7 +208,8 @@ serve(async (req) => {
       3600, // 1 hour
     );
 
-    console.log(`[twilio-token] Token generated for identity: ${identity} (user=${userId})`);
+    // DD-3 (2026-04-27): no identity / userId in production logs (PII guard).
+    console.log(`[twilio-token] Token generated (caller=${userId.slice(0,8)}…)`);
 
     return new Response(
       JSON.stringify({ token, expiresAt, identity }),
@@ -215,9 +219,13 @@ serve(async (req) => {
       },
     );
   } catch (err) {
-    console.error("[twilio-token] Error:", err);
+    // DD-1 (2026-04-27): full error logged server-side ONLY. Client gets
+    // an opaque message + a request id for support correlation. Stack
+    // traces / internal paths must never reach untrusted clients.
+    const reqId = "rq-" + Math.random().toString(36).slice(2, 10);
+    console.error(`[twilio-token] [${reqId}] Error:`, err);
     return new Response(
-      JSON.stringify({ error: "Internal server error", detail: String(err) }),
+      JSON.stringify({ error: "Internal server error", request_id: reqId }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
