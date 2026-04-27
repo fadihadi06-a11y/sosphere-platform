@@ -73,16 +73,22 @@ function priceEnvKey(plan: PlanId, cycle: Cycle): string {
  * Stripe SDK pulls in >100 KB of Node polyfills and the surface we
  * need is tiny.
  */
-async function stripePost(path: string, form: Record<string, string>): Promise<Response> {
+async function stripePost(
+  path: string,
+  form: Record<string, string>,
+  idempotencyKey?: string,
+): Promise<Response> {
   const body = new URLSearchParams(form).toString();
-  return fetch(`${STRIPE_API}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${STRIPE_SECRET}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
+  // CRIT-#19 (2026-04-27): Idempotency-Key prevents Stripe from creating
+  // duplicate sessions on network-retry of the same logical request.
+  // Caller passes a stable hash (e.g., user+plan+day) so retries map
+  // to the same Stripe-side request, avoiding double-charge.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${STRIPE_SECRET}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  return fetch(`${STRIPE_API}${path}`, { method: "POST", headers, body });
 }
 
 serve(async (req: Request) => {
@@ -217,7 +223,19 @@ serve(async (req: Request) => {
     form.customer_email = userEmail;
   }
 
-  const res = await stripePost("/checkout/sessions", form);
+  // CRIT-#19 (2026-04-27): Stripe idempotency token. Without this,
+  // a network flap during checkout creation causes the client to retry
+  // and Stripe creates DUPLICATE checkout sessions (same user paying
+  // twice for one cart). The idempotency-key is a stable hash of
+  // {userId, plan, tier, day} so retries within the same UX session
+  // map to the same Stripe-side request. Different retry windows
+  // (different days) get fresh keys — correct behavior.
+  const idemKey = "ck_" + (await crypto.subtle.digest("SHA-256",
+    new TextEncoder().encode(
+      `${userId}:${plan ?? ""}:${tier ?? ""}:${new Date().toISOString().slice(0,10)}`
+    )).then(buf => Array.from(new Uint8Array(buf)).slice(0, 16)
+      .map(b => b.toString(16).padStart(2, "0")).join("")));
+  const res = await stripePost("/checkout/sessions", form, idemKey);
   const data = await res.json();
   if (!res.ok) {
     // DD-5 (2026-04-27): Stripe-internal error logged server-side ONLY.
