@@ -265,6 +265,16 @@ export function MobileApp() {
   const [loginMode, setLoginMode] = useState<"employee" | "individual" | "demo">("individual");
   const [loginRole, setLoginRole] = useState("worker");
   const [selectedPath, setSelectedPath] = useState<"civilian" | "employee" | null>(null);
+  // CRIT-#8 (W3-1, 2026-04-27): cache the real Supabase auth UUID at login
+  // so SOS triggers carry the canonical user_id (not the cosmetic
+  // EMP-${name} we used to fabricate). The server already tolerates
+  // both — see W3-1 fix in sos-alert/index.ts:1047 — but sending the
+  // real UUID stops the per-call "userId differs from JWT" warning,
+  // makes evidence chains carry the correct identity, and unblocks
+  // any future server-side check that wants to require an exact match.
+  // Falls back to the EMP-${name} placeholder when no session exists
+  // (offline / pre-auth path) — see authUserIdOrPlaceholder() below.
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   // -- Profile restore loading state ---------------------------
   // Only show spinner if user completed ALL steps (session + consent + profile)
@@ -647,6 +657,9 @@ export function MobileApp() {
           setLoginName(savedProfile.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "");
           setLoginPhone(savedProfile.phone || "");
           setLoginMode("individual");
+          // CRIT-#8 (W3-1): cache the canonical Supabase auth UUID so SOS
+          // payloads carry the real user_id (not the cosmetic EMP-${name}).
+          setAuthUserId(session.user.id);
           screenHistoryRef.current = [];
 
           // ──────────────────────────────────────────────────────────────
@@ -694,6 +707,9 @@ export function MobileApp() {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
           setLoginName(meta.full_name || meta.name || session.user.email?.split("@")[0] || "");
+          // CRIT-#8 (W3-1): cache UUID even on partial sessions so a SOS
+          // triggered from the welcome screen still carries the real id.
+          setAuthUserId(session.user.id);
           console.log("[Auth] Partial session found, sending to welcome for full flow");
         }
 
@@ -1940,7 +1956,14 @@ export function MobileApp() {
                 isPremium={userPlan === "pro" || userPlan === "employee"}
                 onNavigateToSubscription={() => { navigate("subscription"); }}
                 userName={loginName}
-                userId={`EMP-${loginName.replace(/\s+/g, "")}`}
+                /* CRIT-#8 (W3-1, 2026-04-27): prefer the real Supabase auth UUID
+                   over the cosmetic EMP-${name} placeholder. Server tolerates
+                   both (W3-1 fix in sos-alert/index.ts:1047), but sending the
+                   real UUID keeps evidence chains, audit logs, and ownership
+                   checks aligned with the JWT — and stops the per-call
+                   "userId differs from JWT" warning. Falls back to EMP-${name}
+                   only when no session exists (offline / pre-auth path). */
+                userId={authUserId || `EMP-${loginName.replace(/\s+/g, "")}`}
                 // FIX FATAL-1: Read phone from stored profile, blood type from stored medical
                 // Never send fake phone in emergency context
                 userPhone={safeLoadJSON<{phone?:string}>("sosphere_individual_profile", {}).phone || ""}
