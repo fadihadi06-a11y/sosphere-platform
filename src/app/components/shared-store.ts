@@ -52,6 +52,24 @@ export function initRealtimeChannels(companyId: string) {
     return;
   }
   if (_companyId === companyId) return; // already initialized
+
+  // CRIT-#5 (2026-04-27): if we are SWITCHING from one company to another
+  // in the same browser tab (multi-company admin, or login-after-failed-
+  // logout race), wipe the previous company's tenant-scoped local state
+  // so its broadcasts / attendance / evac etc. cannot bleed into the
+  // new company's UI before fresh data arrives. First-time init
+  // (_companyId === null) is a no-op — there is nothing to leak yet.
+  if (_companyId !== null && _companyId !== companyId) {
+    try {
+      const removed = clearTenantLocalState();
+      if (removed > 0) {
+        console.log(`[Realtime] tenant switch ${_companyId} -> ${companyId}: purged ${removed} stale local key(s)`);
+      }
+    } catch (e) {
+      console.warn("[Realtime] clearTenantLocalState on tenant switch failed (non-fatal):", e);
+    }
+  }
+
   _companyId = companyId;
 
   // Cleanup old channels
@@ -202,6 +220,105 @@ const ADMIN_KEY = "sosphere_admin_signal"; // NEW: admin → employee channel
 // FIX 12: localStorage quota protection — prune stale data when approaching limit
 const KNOWN_KEYS_TO_PRUNE = [STORE_KEY, ACTIVITY_KEY, "sosphere_attendance", "sosphere_broadcasts", "sosphere_gps_zones"];
 const QUOTA_THRESHOLD = 4 * 1024 * 1024; // 4MB — prune before hitting 5-10MB hard limit
+
+// ═══════════════════════════════════════════════════════════════
+// CRIT-#5 (2026-04-27) — Tenant-scoped key registry.
+// ─────────────────────────────────────────────────────────────
+// Every key in this list holds COMPANY-scoped data (admin signals,
+// attendance, broadcasts, evac, employee status, etc.). When the
+// active companyId changes (login as different company in same tab,
+// or in-app company switcher) we must wipe these so company A data
+// does not bleed into company B's UI.
+//
+// The complete-logout.ts broad sweep already clears every sosphere_
+// prefix on sign-out — this list is the SAME set, exposed so that
+// switching companies WITHOUT a sign-out (e.g. multi-company admin
+// or a partial logout race) is also safe.
+//
+// MAINTENANCE: when adding a new sosphere_* tenant-scoped key in this
+// file, add it here too. The static-check script in __tests__ verifies
+// every key constant in this module is either listed below or
+// explicitly excluded.
+// ═══════════════════════════════════════════════════════════════
+const TENANT_SCOPED_KEYS: readonly string[] = [
+  // Core sync / activity / admin
+  STORE_KEY,                       // sosphere_sync
+  ACTIVITY_KEY,                    // sosphere_activity
+  ADMIN_KEY,                       // sosphere_admin_signal
+  // Connectivity / mode flags
+  "sosphere_connected",
+  "sosphere_hybrid_mode",
+  // Geofencing / zones
+  "sosphere_zone_gps",
+  "sosphere_gps_zones",            // legacy alias (referenced in KNOWN_KEYS_TO_PRUNE)
+  "sosphere_emp_zones",
+  // Evacuation
+  "sosphere_evac_points",
+  "sosphere_active_evacuation",
+  "sosphere_evacuation_history",
+  "sosphere_evac_status",
+  // Employee state
+  "sosphere_emp_status",
+  "sosphere_attendance",
+  // Compliance
+  "sosphere_compliance",
+  "sosphere_compliance_history",
+  // Broadcasts
+  "sosphere_broadcasts",
+  "sosphere_broadcast_notify",
+  "sosphere_scheduled_broadcasts",
+  "sosphere_escalation_log",
+  // Calls
+  "sosphere_call_signal",
+  "sosphere_admin_active_call",
+  // Invitations / join requests
+  "sosphere_invitations",
+  "sosphere_invite_signal",
+  "sosphere_join_requests",
+  // Chat / missed calls
+  "sosphere_emergency_chat",
+  "sosphere_missed_calls",
+  "sosphere_missed_call_notify",
+  // Audio evidence + trips
+  "sosphere_audio_evidence",
+  "sosphere_trip_history",
+  // Per-employee sync (battery / signal)
+  "sosphere_emp_sync",
+  // Buddy system (employee ↔ employee within company)
+  "sosphere_buddy_pairs",
+  // GPS trail — read in this file at lines 1230 & 2353 as a localStorage
+  // fallback for the IndexedDB-backed offline GPS store. The data is
+  // per-employee within a company, so it MUST be wiped on tenant switch
+  // to avoid showing the previous company's worker movements.
+  "sosphere_gps_trail",
+];
+
+/**
+ * CRIT-#5: clear every COMPANY-scoped key from localStorage. Used by
+ * `initRealtimeChannels()` when the active company changes, and exposed
+ * so callers can call it explicitly on demand. Never throws — this is a
+ * best-effort cleanup, not a barrier.
+ *
+ * Returns the number of keys that were actually present and removed.
+ */
+export function clearTenantLocalState(): number {
+  if (typeof localStorage === "undefined") return 0;
+  let removed = 0;
+  for (const k of TENANT_SCOPED_KEYS) {
+    try {
+      if (localStorage.getItem(k) !== null) {
+        localStorage.removeItem(k);
+        removed++;
+      }
+    } catch { /* ignore individual key failures */ }
+  }
+  return removed;
+}
+
+/** Test-only: read the registry — kept tiny so test pinning is cheap. */
+export function _getTenantScopedKeysForTest(): readonly string[] {
+  return TENANT_SCOPED_KEYS;
+}
 
 // ── Shared Zone Names (single source of truth across all files) ─
 export const ZONE_NAMES = {
