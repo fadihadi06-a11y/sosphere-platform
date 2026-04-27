@@ -10,6 +10,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  getRateLimitHeaders,
+} from "../_shared/rate-limiter.ts";
 
 const SUPA_URL          = Deno.env.get("SUPABASE_URL")!;
 const SUPA_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -61,6 +65,27 @@ Deno.serve(async (req) => {
 
   const userId = userData.user.id;
   const email  = userData.user.email ?? "(unknown)";
+
+  // ── DD-9 (2026-04-27): rate-limit account deletion ──────────────
+  // The endpoint validates JWT (above) but a stolen JWT could trigger
+  // repeated cascades, flooding the RPC queue and locking legitimate
+  // users out of their deletion experience during crisis moments.
+  // We use the AUTH tier (10/min) — account deletion is irreversible
+  // and a real user calls this exactly ONCE in their lifetime.
+  // SOS calls bypass any user-tier rate limit (this isn't an SOS).
+  const rl = checkRateLimit(userId, "auth", false);
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: "Rate limit exceeded",
+        retryAfterSeconds: Math.ceil(rl.retryAfterMs / 1000),
+      }),
+      {
+        status: 429,
+        headers: { ...CORS, ...getRateLimitHeaders(rl) },
+      },
+    );
+  }
 
   const admin = createClient(SUPA_URL, SUPA_SERVICE_ROLE, {
     auth: { autoRefreshToken: false, persistSession: false },
