@@ -120,12 +120,82 @@ export function setNeighborAlertSettings(patch: Partial<NeighborAlertSettings>):
     broadcast: patch.broadcast ?? current.broadcast,
     precision: (patch.precision ?? current.precision) as 4 | 5 | 6,
   };
-  // Elite gate — silently clamp broadcast off if user isn't Elite.
   if (merged.broadcast && !hasFeature("aiVoiceCalls")) {
     merged.broadcast = false;
   }
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+
+  // S-15 (2026-04-27): mirror the `receive` decision to server-side
+  // record_consent('neighbor_receive', ...). This satisfies GDPR Art. 7
+  // demonstrability: the server now has an authoritative timestamp +
+  // decision. Fire-and-forget so the UI toggle stays snappy; failures
+  // are logged but the local state still reflects the user's choice.
+  // If the receive flag DIDN'T change in this patch, skip the call.
+  if (patch.receive !== undefined && patch.receive !== current.receive) {
+    void mirrorNeighborReceiveConsent(merged.receive ? "granted" : "declined");
+  }
   return merged;
+}
+
+/**
+ * S-15: server-mirror the neighbor-receive consent. Idempotent —
+ * calling repeatedly with the same decision just refreshes the
+ * timestamp on the server. Returns true on confirmed mirror, false
+ * on any failure (offline, RPC rejection, network).
+ *
+ * UI toggles call setNeighborAlertSettings which fire-and-forgets
+ * this. Pages that need confirmation (e.g., onboarding consent flow)
+ * should call this directly and await the result.
+ */
+export async function mirrorNeighborReceiveConsent(
+  decision: "granted" | "declined",
+): Promise<boolean> {
+  if (!SUPABASE_CONFIG.isConfigured) return false;
+  try {
+    const { data, error } = await supabase.rpc("record_consent", {
+      p_kind: "neighbor_receive",
+      p_decision: decision,
+    });
+    if (error) {
+      console.warn("[S-15] record_consent rpc error:", error.message);
+      return false;
+    }
+    if (data && typeof data === "object" && (data as { ok?: boolean }).ok === false) {
+      console.warn("[S-15] record_consent rejected:", (data as { reason?: string }).reason);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("[S-15] record_consent threw:", e);
+    return false;
+  }
+}
+
+/**
+ * S-15: fetch the server-recorded neighbor-receive decision. Returns
+ * null when the user has not yet decided (NULL on the column).
+ * Listener / fan-out paths use this as the SOURCE OF TRUTH instead of
+ * trusting localStorage.
+ */
+export async function getServerNeighborReceiveConsent(): Promise<{
+  decision: "granted" | "declined" | null;
+  recorded_at: string | null;
+}> {
+  if (!SUPABASE_CONFIG.isConfigured) return { decision: null, recorded_at: null };
+  try {
+    const { data, error } = await supabase.rpc("get_consent_state");
+    if (error || !data || typeof data !== "object") {
+      return { decision: null, recorded_at: null };
+    }
+    const d = (data as Record<string, unknown>).neighbor_receive_decision;
+    const at = (data as Record<string, unknown>).neighbor_receive_at;
+    return {
+      decision: d === "granted" || d === "declined" ? d : null,
+      recorded_at: typeof at === "string" ? at : null,
+    };
+  } catch {
+    return { decision: null, recorded_at: null };
+  }
 }
 
 /** Elite check + opt-in — the publisher must satisfy both. */
