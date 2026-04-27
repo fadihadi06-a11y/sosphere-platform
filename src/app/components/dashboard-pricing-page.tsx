@@ -153,7 +153,15 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
   const [showLifecycle, setShowLifecycle] = useState<"trial" | "renewal" | null>(null);
   const [showSuspensionDetail, setShowSuspensionDetail] = useState(false);
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
-  const trialDays = trialDaysProp ?? 9;
+  // CRIT-#13 (2026-04-27): default was 9 — bug. Every other surface in
+  // this same page (lifecycle steps, FAQ, button labels, banner copy)
+  // talks about a 14-day trial. The mismatch leaked into the status
+  // banner ("9 days remaining" while UI promises 14) on any caller
+  // that did NOT pass trialDays explicitly. The single source of truth
+  // for the company trial is 14 days; civilian trial is separate
+  // (trial-service.ts:DEFAULT_TRIAL_DAYS = 7) and has its own UI.
+  const COMPANY_TRIAL_DAYS_DEFAULT = 14;
+  const trialDays = trialDaysProp ?? COMPANY_TRIAL_DAYS_DEFAULT;
 
   // Auto-detect best plan based on employee count
   const recommendedPlan = PLANS.find(p =>
