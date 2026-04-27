@@ -350,6 +350,15 @@ function openDB(): Promise<IDBDatabase> {
         dbInitPromise = null;
       };
 
+      // CRIT-#1 (logout): if `versionchange` fires (another tab / explicit
+      // deleteDatabase), close our handle so the deletion can proceed.
+      // Without this, deleteDatabase blocks indefinitely on the open handle.
+      dbInstance.onversionchange = () => {
+        try { dbInstance?.close(); } catch { /* ignore */ }
+        dbInstance = null;
+        dbInitPromise = null;
+      };
+
       // E-H7: fire-and-forget GPS prune + quota check on every open
       void pruneGPSTrail().catch(() => {});
 
@@ -980,6 +989,79 @@ export async function resetOfflineDatabase(): Promise<void> {
     dbClear("app_cache"),
     dbClear("pending_audio"),
   ]);
+}
+
+// CRIT-#1 (logout) — Hard purge for shared-device safety.
+// SOSphere uses three IDB databases:
+//   * sosphere_offline       (this file)
+//   * sosphere_discreet_audio (discreet-mode audio segments)
+//   * sosphere_emergency     (shared-store realtime cache)
+// Approach:
+//   1. Close any open handle on `sosphere_offline` (deleteDatabase blocks
+//      indefinitely while a tab holds the handle).
+//   2. Issue deleteDatabase() for each name in parallel, with per-DB timeout.
+//   3. Never throw — logout MUST complete even if one DB fails to delete.
+
+/** Close cached connection. Safe to call multiple times. */
+export function closeOfflineDatabase(): void {
+  try {
+    if (dbInstance) {
+      try { dbInstance.close(); } catch { /* ignore */ }
+    }
+  } finally {
+    dbInstance = null;
+    dbInitPromise = null;
+  }
+}
+
+const ALL_SOSPHERE_IDB_NAMES = [
+  "sosphere_offline",
+  "sosphere_discreet_audio",
+  "sosphere_emergency",
+] as const;
+
+function deleteOneDatabase(name: string, timeoutMs = 3000): Promise<"deleted" | "blocked" | "error"> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (reason: "deleted" | "blocked" | "error") => {
+      if (settled) return;
+      settled = true;
+      resolve(reason);
+    };
+
+    const t = setTimeout(() => {
+      console.warn(`[OfflineDB] purge timeout on ${name} (still blocked)`);
+      done("blocked");
+    }, timeoutMs);
+
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.deleteDatabase(name);
+    } catch (e) {
+      clearTimeout(t);
+      console.warn(`[OfflineDB] purge ${name} threw:`, e);
+      return done("error");
+    }
+
+    req.onsuccess = () => { clearTimeout(t); done("deleted"); };
+    req.onerror   = () => { clearTimeout(t); console.warn(`[OfflineDB] purge ${name} error:`, req.error); done("error"); };
+    req.onblocked = () => { clearTimeout(t); console.warn(`[OfflineDB] purge ${name} blocked`); done("blocked"); };
+  });
+}
+
+/**
+ * Hard-delete every SOSphere IndexedDB database. Used by completeLogout() to
+ * ensure the next user on a shared device starts from a clean slate.
+ * Never throws. Returns a per-DB outcome map.
+ */
+export async function purgeAllOfflineData(): Promise<Record<string, "deleted" | "blocked" | "error">> {
+  closeOfflineDatabase();
+  const results: Record<string, "deleted" | "blocked" | "error"> = {};
+  const outcomes = await Promise.all(
+    ALL_SOSPHERE_IDB_NAMES.map(async (name) => [name, await deleteOneDatabase(name)] as const),
+  );
+  for (const [name, outcome] of outcomes) results[name] = outcome;
+  return results;
 }
 
 // Initialize DB on import

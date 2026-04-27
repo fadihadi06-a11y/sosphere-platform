@@ -6,6 +6,8 @@
 // discovered on 2026-04-18. Every key the app actually writes gets
 // a positive test (must be removed) and every keep-list key gets
 // a negative test (must survive).
+//
+// CRIT-#1 (2026-04-27): also pins the IndexedDB hard-purge contract.
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -38,93 +40,104 @@ class MemoryStorage implements Storage {
 };
 
 // --- Mock the supabase + cache-helper imports -------------------
+// vi.mock() is hoisted above ALL top-level code, so any spy referenced from
+// the factory must be created via vi.hoisted() to be reachable.
+const { signOutMock, clearDeviceFingerprintMock } = vi.hoisted(() => ({
+  signOutMock: vi.fn().mockResolvedValue({ error: null }),
+  clearDeviceFingerprintMock: vi.fn(),
+}));
+
 vi.mock("../api/supabase-client", () => ({
   supabase: {
     auth: {
-      signOut: vi.fn().mockResolvedValue({ error: null }),
+      signOut: signOutMock,
       getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
       getUser: vi.fn().mockResolvedValue({ data: { user: null } }),
     },
   },
-  clearDeviceFingerprint: vi.fn(),
+  clearDeviceFingerprint: clearDeviceFingerprintMock,
 }));
 vi.mock("../api/server-permission", () => ({ clearPermissionCache: vi.fn() }));
 vi.mock("../api/authenticated-role", () => ({ clearRoleCache: vi.fn() }));
 vi.mock("../api/tenant", () => ({ clearTenantCache: vi.fn() }));
+
+// CRIT-#1: completeLogout now also purges IndexedDB. Mock the helper so the
+// node test env (no real IndexedDB) doesn't error, and so we can spy on it.
+const { purgeMock } = vi.hoisted(() => ({
+  purgeMock: vi.fn().mockResolvedValue({
+    sosphere_offline: "deleted",
+    sosphere_discreet_audio: "deleted",
+    sosphere_emergency: "deleted",
+  }),
+}));
+vi.mock("../offline-database", () => ({ purgeAllOfflineData: purgeMock }));
 
 import { completeLogout } from "../api/complete-logout";
 
 describe("completeLogout — broad SOSphere-prefix sweep", () => {
   beforeEach(() => {
     (globalThis as any).localStorage.clear();
+    purgeMock.mockClear();
+    purgeMock.mockResolvedValue({
+      sosphere_offline: "deleted",
+      sosphere_discreet_audio: "deleted",
+      sosphere_emergency: "deleted",
+    });
+    signOutMock.mockClear();
+    signOutMock.mockResolvedValue({ error: null });
   });
 
   it("removes ALL sosphere_-prefixed user keys (the actual keys in use)", async () => {
-    // Every key the app actually writes somewhere. If this list grows,
-    // add the key here so we pin the sweep coverage.
     const leakingKeys = [
-      "sosphere_individual_profile",      // PII
-      "sosphere_active_sos",              // active emergency state
-      "sosphere_incident_history",        // PII
-      "sosphere_admin_profile",           // PII
-      "sosphere_admin_phone",             // PII
-      "sosphere_employee_profile",        // PII
-      "sosphere_employee_avatar",         // PII
-      "sosphere_company_id",              // tenant leak
-      "sosphere_emergency_contacts",      // PII
-      "sosphere_dashboard_auth",          // session
-      "sosphere_dashboard_pin",           // admin PIN
-      "sosphere_tos_consent",             // consent (was wrong key name in old list!)
-      "sosphere_gps_consent",             // consent (was wrong key name in old list!)
-      "sosphere_onboarding_completed",    // flag
-      "sosphere_lang",                    // lang pref
-      "sosphere_app_lang",                // lang pref (duplicate)
-      "sosphere_device_fp",               // device fingerprint (was wrong key name!)
-      "sosphere_neighbor_alert_settings", // privacy
-      "sosphere_journeys",                // enterprise
-      "sosphere_investigations",          // enterprise
-      "sosphere_risks",                   // enterprise
-      "sosphere_shifts",                  // enterprise
-      "sosphere_timeline_event",          // enterprise
-      "sosphere_sensor_events",           // enterprise
-      "sosphere_totp_user-abc123",        // per-user
-      "sosphere_audit_log",               // audit
-      "sosphere_audit_retry_queue",       // audit
-      "sosphere_sar_prefill",             // search & rescue
-      "sosphere_new_investigation",       // enterprise
-      "sosphere_last_sync",               // sync
-      "sosphere_fp_grace_until",          // fingerprint grace (S-H1)
+      "sosphere_individual_profile",
+      "sosphere_active_sos",
+      "sosphere_incident_history",
+      "sosphere_admin_profile",
+      "sosphere_admin_phone",
+      "sosphere_employee_profile",
+      "sosphere_employee_avatar",
+      "sosphere_company_id",
+      "sosphere_emergency_contacts",
+      "sosphere_dashboard_auth",
+      "sosphere_dashboard_pin",
+      "sosphere_tos_consent",
+      "sosphere_gps_consent",
+      "sosphere_onboarding_completed",
+      "sosphere_lang",
+      "sosphere_app_lang",
+      "sosphere_device_fp",
+      "sosphere_neighbor_alert_settings",
+      "sosphere_journeys",
+      "sosphere_investigations",
+      "sosphere_risks",
+      "sosphere_shifts",
+      "sosphere_timeline_event",
+      "sosphere_sensor_events",
+      "sosphere_totp_user-abc123",
+      "sosphere_audit_log",
+      "sosphere_audit_retry_queue",
+      "sosphere_sar_prefill",
+      "sosphere_new_investigation",
+      "sosphere_last_sync",
+      "sosphere_fp_grace_until",
     ];
-    for (const k of leakingKeys) {
-      localStorage.setItem(k, "leak-me");
-    }
-
+    for (const k of leakingKeys) localStorage.setItem(k, "leak-me");
     await completeLogout();
-
     for (const k of leakingKeys) {
       expect(localStorage.getItem(k), `key ${k} should be removed`).toBeNull();
     }
   });
 
   it("KEEPS device-persistent keys that should survive logout", async () => {
-    // These MUST survive — losing them breaks features (PIN hashes,
-    // biometric preference) or forensic trails (migration errors).
     const keepKeys = [
       ["sosphere_pin_salt", "16-byte-random-salt"],
       ["sosphere_biometric_lock_enabled", "1"],
       ["sosphere_db_migration_errors", '{"version":4,"failed":[]}'],
     ];
-    for (const [k, v] of keepKeys) {
-      localStorage.setItem(k, v);
-    }
-
+    for (const [k, v] of keepKeys) localStorage.setItem(k, v);
     await completeLogout();
-
     for (const [k, expected] of keepKeys) {
-      expect(
-        localStorage.getItem(k),
-        `key ${k} should be preserved (device-persistent)`,
-      ).toBe(expected);
+      expect(localStorage.getItem(k), `key ${k} should be preserved`).toBe(expected);
     }
   });
 
@@ -132,19 +145,12 @@ describe("completeLogout — broad SOSphere-prefix sweep", () => {
     const foreignKeys = [
       ["google_oauth_redirect", "some-google-cookie"],
       ["my_other_app_pref", "foo"],
-      ["github-token", "ghp_abc"],  // simulate a different app's key
+      ["github-token", "ghp_abc"],
     ];
-    for (const [k, v] of foreignKeys) {
-      localStorage.setItem(k, v);
-    }
-
+    for (const [k, v] of foreignKeys) localStorage.setItem(k, v);
     await completeLogout();
-
     for (const [k, expected] of foreignKeys) {
-      expect(
-        localStorage.getItem(k),
-        `foreign key ${k} must not be touched`,
-      ).toBe(expected);
+      expect(localStorage.getItem(k), `foreign key ${k} must not be touched`).toBe(expected);
     }
   });
 
@@ -152,19 +158,43 @@ describe("completeLogout — broad SOSphere-prefix sweep", () => {
     localStorage.setItem("sosphere_individual_profile", "me");
     await completeLogout();
     expect(localStorage.getItem("sosphere_individual_profile")).toBeNull();
-
-    // Second call should succeed without throwing even though nothing to clean.
     await expect(completeLogout()).resolves.toBeUndefined();
   });
 
   it("fires sosphere:logged-out event exactly once", async () => {
     const dispatchSpy = vi.fn();
     (globalThis as any).window.dispatchEvent = dispatchSpy;
-
     await completeLogout();
-
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
     const evt = dispatchSpy.mock.calls[0][0];
     expect(evt.type).toBe("sosphere:logged-out");
+  });
+
+  // ─── CRIT-#1 (2026-04-27) — IndexedDB hard purge ──────────────
+  it("CRIT-#1: purges all SOSphere IndexedDB databases on logout", async () => {
+    await completeLogout();
+    expect(purgeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("CRIT-#1: purges IndexedDB BEFORE supabase.auth.signOut() so listeners cannot repopulate", async () => {
+    const order: string[] = [];
+    purgeMock.mockImplementationOnce(async () => {
+      order.push("purge");
+      return { sosphere_offline: "deleted", sosphere_discreet_audio: "deleted", sosphere_emergency: "deleted" };
+    });
+    signOutMock.mockImplementationOnce(async () => {
+      order.push("signOut");
+      return { error: null };
+    });
+    await completeLogout();
+    expect(order).toEqual(["purge", "signOut"]);
+  });
+
+  it("CRIT-#1: logout still completes even if IndexedDB purge fails", async () => {
+    purgeMock.mockRejectedValueOnce(new Error("simulated DB explosion"));
+    // Must not throw — purge failure is logged-and-swallowed.
+    await expect(completeLogout()).resolves.toBeUndefined();
+    // signOut should still run after a purge failure.
+    expect(signOutMock).toHaveBeenCalledTimes(1);
   });
 });

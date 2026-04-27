@@ -1,11 +1,15 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Complete Logout Helper  (S-H5)
+// ─────────────────────────────────────────────────────────────
+// CRIT-#1 (2026-04-27): also wipes IndexedDB so a shared device
+// cannot leak the previous user's queued SOS / GPS / audio / chat.
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from "./supabase-client";
 import { clearPermissionCache } from "./server-permission";
 import { clearRoleCache } from "./authenticated-role";
 import { clearTenantCache } from "./tenant";
+import { purgeAllOfflineData } from "../offline-database";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -43,6 +47,20 @@ export async function completeLogout(): Promise<void> {
     clearDeviceFingerprint();
   } catch {
     /* best effort */
+  }
+
+  // CRIT-#1: hard-purge IndexedDB BEFORE signOut. The signOut() dispatches
+  // sosphere:logged-out which may wake listeners that try to write — we want
+  // the DBs gone first so any such write fails loudly into a stale handle
+  // (caught by the listeners' own try/catch) instead of repopulating the DB.
+  try {
+    const outcomes = await purgeAllOfflineData();
+    const failed = Object.entries(outcomes).filter(([, v]) => v !== "deleted");
+    if (failed.length > 0) {
+      console.warn("[complete-logout] some offline DBs were not deleted cleanly:", outcomes);
+    }
+  } catch (err) {
+    console.warn("[complete-logout] purgeAllOfflineData failed (non-fatal):", err);
   }
 
   try {
