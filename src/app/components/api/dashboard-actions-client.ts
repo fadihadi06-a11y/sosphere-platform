@@ -14,6 +14,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./supabase-client";
+// A-16 (2026-04-27): wrap functions.invoke with one-shot 401-detect →
+// refresh → retry. If a dispatcher's JWT expires mid-action the server
+// returns 401; the wrapper transparently refreshes and re-fires once.
+// On refresh failure we bubble the original 401 honestly so the
+// caller's UI shows the real error instead of silently dropping.
+import { withAuthRefresh } from "./auth-refresh-wrapper";
 
 // ── Action shapes (one variant per supported edge-function action) ──
 export type DispatcherAction =
@@ -44,9 +50,10 @@ export async function callDispatcherAction(
     return { ok: false, error: "Supabase not configured (offline mode)" };
   }
   try {
-    const { data, error } = await supabase.functions.invoke("dashboard-actions", {
-      body: req,
-    });
+    const { data, error } = await withAuthRefresh(
+      () => supabase.functions.invoke("dashboard-actions", { body: req }),
+      { label: `dispatcher:${req.action}` },
+    );
     if (error) {
       const detail = (error as { message?: string })?.message ?? String(error);
       return { ok: false, error: detail };
