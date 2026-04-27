@@ -938,6 +938,64 @@ export function MobileApp() {
     const explicitHandler = () => refreshTier("explicit_event");
     if (typeof window !== "undefined") window.addEventListener("sosphere_tier_refresh", explicitHandler);
 
+    // ─────────────────────────────────────────────────────────────
+    // CRIT-#3 (2026-04-27) — Layer 1 of 3: post-checkout URL detection.
+    //
+    // Stripe Checkout's success_url is `${origin}/billing?ok=1` and cancel
+    // is `?cancelled=1`. When the user returns we must:
+    //   (a) trigger an immediate tier resync (do NOT wait for the 5-min
+    //       interval — the user is staring at the screen NOW)
+    //   (b) clean the URL so a refresh doesn't repeat the toast
+    //   (c) honor the throttle override so the resync actually fires even
+    //       if a periodic sync just happened.
+    // ─────────────────────────────────────────────────────────────
+    if (typeof window !== "undefined") {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const ok = sp.get("ok");
+        const cancelled = sp.get("cancelled");
+        if (ok === "1" || cancelled === "1") {
+          // Bypass throttle: force-fire by zeroing the cooldown.
+          tierLastSyncedAt = 0;
+          if (ok === "1") {
+            void refreshTier("post_checkout_success");
+            try { toast.success("Payment received — updating your plan…"); } catch { /* toast may not be available */ }
+          } else {
+            try { toast.message("Checkout cancelled."); } catch { /* */ }
+          }
+          // Clean the URL: remove `ok` / `cancelled` but keep other params.
+          try {
+            sp.delete("ok");
+            sp.delete("cancelled");
+            const cleanQuery = sp.toString();
+            const cleanUrl = window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "") + window.location.hash;
+            window.history.replaceState({}, "", cleanUrl);
+          } catch { /* history API may be unavailable */ }
+        }
+      } catch { /* URLSearchParams unavailable */ }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // CRIT-#3 — Layer 2 of 3: Realtime subscription on subscriptions table.
+    //
+    // When the Stripe webhook updates the user's row in
+    // public.subscriptions, postgres NOTIFY → Supabase Realtime → here.
+    // We dispatch `sosphere_tier_refresh` so the existing throttled refresh
+    // path runs. FAIL-SECURE: if Realtime fails to connect we still have
+    // the periodic 5-min interval + focus/resume hooks above.
+    // ─────────────────────────────────────────────────────────────
+    let cleanupRealtime: (() => void) | null = null;
+    (async () => {
+      try {
+        const { subscribeSubscriptionChanges } = await import("./api/subscription-realtime");
+        cleanupRealtime = await subscribeSubscriptionChanges(() => {
+          refreshTier("realtime_postgres_changes");
+        });
+      } catch (e) {
+        console.warn("[Tier] realtime subscription failed (will rely on polling):", e);
+      }
+    })();
+
     return () => {
       try { (removeResumeListener as any)?.(); } catch {}
       if (typeof window !== "undefined") {
@@ -945,6 +1003,7 @@ export function MobileApp() {
         window.removeEventListener("sosphere_tier_refresh", explicitHandler);
       }
       clearInterval(periodic);
+      try { cleanupRealtime?.(); } catch { /* ignore */ }
     };
   }, [userPlan]);
 
