@@ -107,6 +107,14 @@ export function initRealtimeChannels(companyId: string) {
   // Each INSERT/UPDATE fans out to the registered listeners (see subscribeCdc
   // above). A single channel keeps the websocket count low; Supabase
   // multiplexes the table filters server-side.
+  // CRIT-#6 (2026-04-27): every postgres_changes subscription on a table
+  // that HAS a company_id column MUST include `filter: company_id=eq.${cid}`.
+  // Without it the realtime server fans every row mutation out to every
+  // subscriber and only RLS-checks at delivery — that doubles cost and,
+  // if RLS ever has a hole, becomes a cross-tenant audit leak.
+  // Tables WITHOUT a company_id column (sos_messages.emergency_id,
+  // evidence_vaults.user_id) cannot use a server-side filter and rely
+  // strictly on their RLS policies; that fact is called out below.
   _cdcChannel = supabase.channel(`cdc:${companyId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "sos_queue",
          filter: `company_id=eq.${companyId}` },
@@ -114,13 +122,30 @@ export function initRealtimeChannels(companyId: string) {
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sos_queue",
          filter: `company_id=eq.${companyId}` },
       (payload) => _cdcListeners.get("sos_queue")?.forEach(l => l(payload.new as any, "UPDATE")))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "audit_log" },
+    // CRIT-#6: audit_log has a company_id column → filter MUST be present.
+    // Migration 20260415_p3_11_audit_log.sql line 4: `company_id uuid …`.
+    // Migration 20260426230000_w3_18_log_sos_audit_company_id.sql ensures
+    // log_sos_audit RPC always populates it.
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "audit_log",
+         filter: `company_id=eq.${companyId}` },
       (payload) => _cdcListeners.get("audit_log")?.forEach(l => l(payload.new as any, "INSERT")))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "gps_trail",
          filter: `company_id=eq.${companyId}` },
       (payload) => _cdcListeners.get("gps_trail")?.forEach(l => l(payload.new as any, "INSERT")))
+    // CRIT-#6: sos_messages has NO company_id column (only emergency_id +
+    // from_user_id, see migration 20260423_dashboard_actions.sql). Server-side
+    // company filter is impossible here. Tenant isolation comes ENTIRELY from
+    // the table's RLS policy `sos_messages_read_user_or_company` which joins
+    // through sos_queue.company_id. Realtime evaluates that RLS per-event
+    // before pushing — so the user never sees other tenants' messages, but
+    // the server pays the per-row RLS cost. Audited 2026-04-27.
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "sos_messages" },
       (payload) => _cdcListeners.get("sos_messages")?.forEach(l => l(payload.new as any, "INSERT")))
+    // CRIT-#6: evidence has NO company_id column (only user_id, see migration
+    // 20260416_evidence_vaults.sql) and the table itself may not exist on
+    // every project (migration 20260424125417 adds it conditionally).
+    // Tenant isolation here is a combination of RLS (`auth.uid()::text =
+    // user_id`) and the conditional publication. No server-side filter.
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "evidence" },
       (payload) => _cdcListeners.get("evidence")?.forEach(l => l(payload.new as any, "INSERT")))
     .subscribe((status) => {
