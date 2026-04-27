@@ -339,6 +339,13 @@ function buildInitialCompanyState(): CompanyState {
   return createCompanyState(); // defaults: starter, trial, 12
 }
 
+// CRIT-#4 (2026-04-27): the initialState used to be a const captured at
+// module load. That meant reset() reverted the store to the values that
+// existed when the JS bundle first ran — i.e. user A's company / trial /
+// lang — even AFTER user A's localStorage had been purged on logout.
+// Building it through a factory means reset() re-reads localStorage each
+// time it is called, so a fresh login on a shared device gets a clean
+// store with no carryover from the previous session.
 const _initialCompanyState = buildInitialCompanyState();
 const _initialTrialFields = computeTrialFields(_initialCompanyState);
 
@@ -867,9 +874,52 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       }
       return success;
     },
-    reset: () => set(initialState),
+    // CRIT-#4: reset re-builds initialState from the current localStorage
+    // (which complete-logout has just purged) so the store cannot carry the
+    // previous user's company / trial / lang across a sign-out + sign-in on
+    // a shared device.
+    reset: () => set(buildFreshInitialState()),
   })),
 );
+
+// =================================================================
+// CRIT-#4: factory used by reset() — re-reads any localStorage-derived
+// initial values (companyState, trial fields, lang) at CALL time so a
+// reset after logout sees the post-purge state, not the post-boot one.
+// =================================================================
+function buildFreshInitialState(): DashboardState {
+  const company = buildInitialCompanyState();
+  const trial = computeTrialFields(company);
+  return {
+    ...initialState,
+    companyState: company,
+    lang: loadInitialLang(),
+    trialEndsAt: trial.trialEndsAt,
+    trialDaysLeft: trial.trialDaysLeft,
+    isTrialActive: trial.isTrialActive,
+    isTrial: trial.isTrial,
+    // session-only flags — always reset to default on logout
+    trialBannerDismissed: false,
+    tenantBannerDismissed: true,
+    dismissedSosIds: new Set(),
+    auditLogs: [],
+  };
+}
+
+// =================================================================
+// CRIT-#4: clean public API for the logout flow.
+// Called by completeLogout() AFTER the localStorage / IndexedDB purge
+// so the in-memory dashboard state is also wiped before the next user
+// logs in on the same browser tab. Never throws — logout must always
+// complete even if the store has already been torn down (e.g. HMR).
+// =================================================================
+export function clearDashboardStore(): void {
+  try {
+    useDashboardStore.getState().reset();
+  } catch (e) {
+    console.warn("[dashboard-store] clearDashboardStore() failed (non-fatal):", e);
+  }
+}
 
 // =================================================================
 // Selectors (for performance â€” prevents unnecessary re-renders)

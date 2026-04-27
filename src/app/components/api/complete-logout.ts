@@ -3,6 +3,10 @@
 // ─────────────────────────────────────────────────────────────
 // CRIT-#1 (2026-04-27): also wipes IndexedDB so a shared device
 // cannot leak the previous user's queued SOS / GPS / audio / chat.
+// CRIT-#4 (2026-04-27): also resets the Zustand dashboard store and
+// removes the legacy non-prefixed `sos_reg_result` key so a tenant
+// switch on the same browser tab does not show the previous tenant's
+// company / employees / emergencies / zones.
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from "./supabase-client";
@@ -10,6 +14,7 @@ import { clearPermissionCache } from "./server-permission";
 import { clearRoleCache } from "./authenticated-role";
 import { clearTenantCache } from "./tenant";
 import { purgeAllOfflineData } from "../offline-database";
+import { clearDashboardStore } from "../stores/dashboard-store";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -19,6 +24,14 @@ const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
 
 const SOSPHERE_KEEP_PREFIXES: readonly string[] = [];
 const SOSPHERE_PREFIX = "sosphere_";
+
+// CRIT-#4: legacy keys that pre-date the sosphere_ prefix convention.
+// They carry tenant-scoped data (company plan, employee count, zones from
+// CSV) that the broad `sosphere_` sweep above misses. Add to this list
+// any future legacy key that holds per-tenant state.
+const LEGACY_TENANT_KEYS: readonly string[] = [
+  "sos_reg_result",
+];
 
 export async function completeLogout(): Promise<void> {
   try { clearPermissionCache(); } catch { /* best effort */ }
@@ -36,6 +49,12 @@ export async function completeLogout(): Promise<void> {
       toDelete.push(key);
     }
     for (const k of toDelete) {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+    }
+    // CRIT-#4: also remove legacy tenant keys that pre-date the sosphere_
+    // prefix convention. Without this, the dashboard store would re-seed
+    // companyState from sos_reg_result on the next login (cross-tenant leak).
+    for (const k of LEGACY_TENANT_KEYS) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
   } catch {
@@ -61,6 +80,17 @@ export async function completeLogout(): Promise<void> {
     }
   } catch (err) {
     console.warn("[complete-logout] purgeAllOfflineData failed (non-fatal):", err);
+  }
+
+  // CRIT-#4: clear the in-memory Zustand dashboard store. Order matters:
+  // localStorage is ALREADY purged above, so reset() (which re-builds
+  // initial state from localStorage) sees the post-purge state, not the
+  // stale module-load snapshot. Done before signOut() so the
+  // sosphere:logged-out listeners observe an empty store.
+  try {
+    clearDashboardStore();
+  } catch (err) {
+    console.warn("[complete-logout] clearDashboardStore failed (non-fatal):", err);
   }
 
   try {
