@@ -226,12 +226,32 @@ serve(async (req: Request) => {
     }
   } catch (err) {
     if (err instanceof UnmappedPriceError) {
-      // We already claimed the event_id but the actual processing failed.
-      // Roll back the dedup row so the next Stripe retry can re-attempt
-      // (operator may add the missing STRIPE_PRICE_* env mapping).
+      // CRIT-#9 (2026-04-27): previously this DELETEd the dedup row
+      // unconditionally — every Stripe retry (~24 over 3 days) re-attempted
+      // and got the same error, flooding logs and stripe_unmapped_events.
+      // Now we keep the dedup row after retry_count >= 24 so Stripe sees
+      // a clean 200 next time and stops retrying. The event remains in
+      // stripe_unmapped_events for ops reconciliation.
+      let shouldRollback = true;
       try {
-        await supabase.from("processed_stripe_events").delete().eq("event_id", evtId);
-      } catch { /* best-effort */ }
+        const { data: existing } = await supabase
+          .from("stripe_unmapped_events")
+          .select("retry_count")
+          .eq("event_id", evtId)
+          .maybeSingle();
+        const prevRetryCount = (existing?.retry_count as number | undefined) ?? 0;
+        if (prevRetryCount >= 24) {
+          // Stripe's effective retry budget exhausted — let the event
+          // sit in the recovery table and tell Stripe "OK" so it stops.
+          shouldRollback = false;
+          console.warn(`[stripe-webhook] event ${evtId} exceeded retry budget (${prevRetryCount}); breaking loop, leaving dedup row in place`);
+        }
+      } catch { /* probe is best-effort */ }
+      if (shouldRollback) {
+        try {
+          await supabase.from("processed_stripe_events").delete().eq("event_id", evtId);
+        } catch { /* best-effort */ }
+      }
       try {
         const userId = (event?.data?.object?.client_reference_id as string | undefined)
           || (event?.data?.object?.metadata?.userId as string | undefined) || null;
@@ -248,10 +268,14 @@ serve(async (req: Request) => {
       } catch (persistEx) {
         console.error(`[stripe-webhook] CRITICAL stripe_unmapped_events threw id=${evtId}:`, persistEx);
       }
-      return new Response(JSON.stringify({
-        error: "unmapped_price_pending_recovery",
-        priceId: err.priceId,
-      }), { status: 503, headers: { "Content-Type": "application/json" } });
+      // CRIT-#9: when retry budget exhausted, return 200 so Stripe
+      // doesn't keep retrying. Operator gets the row in stripe_unmapped_events.
+      const finalStatus = shouldRollback ? 503 : 200;
+      const finalBody = shouldRollback
+        ? { error: "unmapped_price_pending_recovery", priceId: err.priceId }
+        : { received: true, deferred: true, reason: "unmapped_price_retry_budget_exhausted", event_id: evtId };
+      return new Response(JSON.stringify(finalBody),
+        { status: finalStatus, headers: { "Content-Type": "application/json" } });
     }
     // Roll back dedup row so Stripe can retry against a healthy worker.
     try { await supabase.from("processed_stripe_events").delete().eq("event_id", evtId); } catch {}

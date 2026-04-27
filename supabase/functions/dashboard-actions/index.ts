@@ -164,6 +164,24 @@ Deno.serve(async (req) => {
         if (!payload.responderId) {
           return new Response(JSON.stringify({ error: "responderId required" }), { status: 400, headers: CORS });
         }
+        // CRIT-#4 (2026-04-27): cross-company assignment was previously
+        // possible — caller could pass a responderId belonging to
+        // company B while operating on company A's incident. Now we
+        // verify the responder is an active employee of the SAME
+        // company that owns the incident (resolved above as companyId).
+        if (!companyId) {
+          return new Response(JSON.stringify({ error: "incident has no company; cannot assign" }), { status: 400, headers: CORS });
+        }
+        const { data: respCheck, error: respErr } = await admin
+          .from("employees")
+          .select("user_id, company_id, status")
+          .eq("user_id", payload.responderId)
+          .eq("company_id", companyId)
+          .eq("status", "active")
+          .maybeSingle();
+        if (respErr || !respCheck) {
+          return new Response(JSON.stringify({ error: "responderId is not an active employee of this company" }), { status: 403, headers: CORS });
+        }
         await admin.from("sos_queue").update({
           assigned_to: payload.responderId,
           assigned_by: actorId, assigned_at: nowIso,
@@ -186,6 +204,17 @@ Deno.serve(async (req) => {
       case "broadcast": {
         const scope = payload.scope ?? "zone";
         const message = payload.message ?? payload.body ?? "";
+        // CRIT-#5 (2026-04-27): resolve the SOS owner's department once
+        // up-front so scope="dept" can target the correct employee
+        // group. employee_id on sos_queue is nullable — degrade to
+        // empty array of recipients if missing.
+        let queueOwnerDept: string | null = null;
+        if (queueRow?.employee_id) {
+          const { data: ownerEmp } = await admin.from("employees")
+            .select("department").eq("user_id", queueRow.employee_id)
+            .maybeSingle();
+          queueOwnerDept = (ownerEmp?.department as string | null) ?? null;
+        }
         if (!message) {
           return new Response(JSON.stringify({ error: "message required for broadcast" }), { status: 400, headers: CORS });
         }
@@ -208,7 +237,11 @@ Deno.serve(async (req) => {
             return e.department === queueZone || String(e.zone_id) === queueZone;
           }
           if (scope === "dept") {
-            return e.department && e.department === queueRow.zone;
+            // CRIT-#5 (2026-04-27): previously compared e.department to
+            // queueRow.zone (always false unless dept names match zone
+            // names). The correct join is the SOS-owner's department,
+            // resolved earlier as queueOwnerDept.
+            return e.department && queueOwnerDept && e.department === queueOwnerDept;
           }
           return false;
         });
@@ -238,14 +271,22 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: CORS });
       }
       case "forward_to_owner": {
+        // CRIT-#6 (2026-04-27): previously queried employees for
+        // role='owner' — fragile because: (a) employee row may be
+        // inactive/deleted, (b) employee.role isn't authoritative —
+        // companies.owner_id IS. Now we go directly to the canonical
+        // source. Owner name fetched from profiles for display.
         let ownerId: string | null = null;
         let ownerName: string | null = null;
         if (companyId) {
-          const { data: owner } = await admin.from("employees")
-            .select("user_id, name").eq("company_id", companyId).eq("role", "owner")
-            .limit(1).maybeSingle();
-          ownerId = (owner?.user_id as string | null) ?? null;
-          ownerName = (owner?.name as string | null) ?? null;
+          const { data: company } = await admin.from("companies")
+            .select("owner_id").eq("id", companyId).maybeSingle();
+          ownerId = (company?.owner_id as string | null) ?? null;
+          if (ownerId) {
+            const { data: prof } = await admin.from("profiles")
+              .select("full_name").eq("id", ownerId).maybeSingle();
+            ownerName = (prof?.full_name as string | null) ?? null;
+          }
         }
         await admin.from("sos_queue").update({
           status: "forwarded",

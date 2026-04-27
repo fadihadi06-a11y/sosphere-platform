@@ -367,9 +367,27 @@ export function startNeighborListener(
       const ch = supabase.channel(channelName(cell), {
         config: { broadcast: { self: false } },
       });
-      ch.on("broadcast", { event: "sos" }, (msg) => {
+      ch.on("broadcast", { event: "sos" }, async (msg) => {
         const payload = msg.payload as NeighborAlertPayload | undefined;
         if (!payload || !markSeen(payload.requestId)) return;
+        // CRIT-#3 (2026-04-27): GDPR Art. 7 enforcement at consumption.
+        // Channels are public-by-geohash so the broadcaster cannot
+        // pre-filter recipients. The receiver MUST check server-side
+        // consent before showing the alert. localStorage is UI cache
+        // only; server is the truth source. If consent != "granted" we
+        // drop silently — the user opted out at server level and we
+        // honor that even if their localStorage was tampered to enable.
+        try {
+          const consent = await getServerNeighborReceiveConsent();
+          if (consent.decision !== "granted") {
+            console.log("[neighbor-alert] alert suppressed: server consent != granted");
+            return;
+          }
+        } catch (e) {
+          // Defensive: if the server check fails, fall back to local
+          // (matches pre-fix behavior, doesn't break delivery on flap).
+          console.warn("[neighbor-alert] consent server-check failed; falling back to local:", e);
+        }
         const listener = getLastKnownPosition();
         const distanceKm = listener
           ? haversineKm(listener.lat, listener.lng, payload.lat, payload.lng)
