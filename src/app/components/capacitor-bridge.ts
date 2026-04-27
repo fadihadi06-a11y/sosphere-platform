@@ -163,23 +163,20 @@ export async function setStatusBarStyle(style: StatusBarStyle): Promise<void> {
     return;
   }
 
+  // CRIT-#22 (2026-04-27): @capacitor/status-bar IS installed (see
+  // package.json line 23). Dynamic import keeps the plugin code out
+  // of the web bundle and falls back gracefully if the plugin is
+  // missing at runtime (e.g. native build forgot to register it).
   try {
-    // TODO: Install @capacitor/status-bar
-    const capacitor = (window as any).Capacitor;
-    if (!capacitor?.plugins?.StatusBar) {
-      console.warn('[Capacitor] StatusBar plugin not available');
-      return;
-    }
-
+    const { StatusBar, Style } = await import('@capacitor/status-bar');
     const isDark = style === 'dark';
-
-    // Placeholder: would be:
-    // await capacitor.plugins.StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' });
-    // await capacitor.plugins.StatusBar.setBackgroundColor({ color: '#05070E' });
-
+    await StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+    // SOSphere brand background — keep status bar in sync with the app shell.
+    await StatusBar.setBackgroundColor({ color: '#05070E' });
     console.info(`[Capacitor] StatusBar style set to ${style}`);
   } catch (err) {
-    console.error('[Capacitor] Failed to set status bar style:', err);
+    // Plugin not installed / not registered on this build — non-fatal.
+    console.warn('[Capacitor] StatusBar setStyle skipped:', err);
   }
 }
 
@@ -217,17 +214,22 @@ export async function enableKeepAwake(): Promise<void> {
     return;
   }
 
+  // CRIT-#22 (2026-04-27): @capacitor-community/keep-awake is NOT in
+  // package.json yet — this is the highest-impact native gap because
+  // the screen will lock during a long SOS, hiding critical UI.
+  // To activate (one-time setup):
+  //   npm install @capacitor-community/keep-awake
+  //   npx cap sync
+  // Then this dynamic import will resolve and the call below will work.
+  // Until then we keep using the web Wake Lock API on web (already
+  // handled above) and silently no-op on native.
   try {
-    // TODO: Install @capacitor-community/keep-awake
-    const capacitor = (window as any).Capacitor;
-    if (!capacitor?.plugins?.KeepAwake) {
-      console.warn('[Capacitor] KeepAwake plugin not available');
+    const mod = await import(/* @vite-ignore */ '@capacitor-community/keep-awake').catch(() => null);
+    if (!mod?.KeepAwake) {
+      console.warn('[Capacitor] KeepAwake plugin missing — `npm i @capacitor-community/keep-awake` to enable');
       return;
     }
-
-    // Placeholder: would be:
-    // await capacitor.plugins.KeepAwake.keepAwake();
-
+    await mod.KeepAwake.keepAwake();
     keepAwakeActive = true;
     console.info('[Capacitor] Keep Awake enabled');
   } catch (err) {
@@ -252,17 +254,14 @@ export async function disableKeepAwake(): Promise<void> {
     return;
   }
 
+  // CRIT-#22: matching disable. Same install instructions in enableKeepAwake().
   try {
-    // TODO: Install @capacitor-community/keep-awake
-    const capacitor = (window as any).Capacitor;
-    if (!capacitor?.plugins?.KeepAwake) {
-      console.warn('[Capacitor] KeepAwake plugin not available');
+    const mod = await import(/* @vite-ignore */ '@capacitor-community/keep-awake').catch(() => null);
+    if (!mod?.KeepAwake) {
+      keepAwakeActive = false;
       return;
     }
-
-    // Placeholder: would be:
-    // await capacitor.plugins.KeepAwake.allowScreenToTurnOff();
-
+    await mod.KeepAwake.allowSleep();
     keepAwakeActive = false;
     console.info('[Capacitor] Keep Awake disabled');
   } catch (err) {
@@ -315,28 +314,31 @@ export async function triggerHapticFeedback(type: HapticFeedbackType): Promise<v
     return;
   }
 
+  // CRIT-#22 (2026-04-27): @capacitor/haptics IS installed (package.json
+  // line 21). Map our app-level types to the plugin's two surfaces:
+  //   • impact()       — physical button press feedback (light/medium/heavy)
+  //   • notification() — outcome feedback (success/warning/error)
   try {
-    // TODO: Install @capacitor/haptics
-    const capacitor = (window as any).Capacitor;
-    if (!capacitor?.plugins?.Haptics) {
-      console.debug('[Capacitor] Haptics plugin not available');
-      return;
+    const { Haptics, ImpactStyle, NotificationType } = await import('@capacitor/haptics');
+    if (type === 'success' || type === 'warning' || type === 'error') {
+      const notifMap = {
+        success: NotificationType.Success,
+        warning: NotificationType.Warning,
+        error:   NotificationType.Error,
+      } as const;
+      await Haptics.notification({ type: notifMap[type] });
+    } else {
+      const impactMap = {
+        light:  ImpactStyle.Light,
+        medium: ImpactStyle.Medium,
+        heavy:  ImpactStyle.Heavy,
+      } as const;
+      await Haptics.impact({ style: impactMap[type] });
     }
-
-    // Placeholder: would be:
-    // const styleMap = {
-    //   light: 'ImpactMedium',
-    //   medium: 'ImpactHeavy',
-    //   heavy: 'ImpactHeavy',
-    //   success: 'NotificationSuccess',
-    //   warning: 'NotificationWarning',
-    //   error: 'NotificationError',
-    // };
-    // await capacitor.plugins.Haptics.impact({ style: styleMap[type] });
-
     console.debug(`[Capacitor] Haptic feedback triggered: ${type}`);
   } catch (err) {
-    console.error('[Capacitor] Failed to trigger haptic feedback:', err);
+    // Plugin not installed / not registered on this build — non-fatal.
+    console.debug('[Capacitor] Haptics skipped:', err);
   }
 }
 
