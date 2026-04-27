@@ -36,6 +36,41 @@ WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='subscri
 ```
 **يجب**: يُرجع صف `subscriptions`. إذا فارغ → نفّذي migration `20260427160000`.
 
+### 0.4 — Migration CRIT-#10 / W3-8 (audit_log FORCE RLS)
+
+```sql
+-- في Supabase Dashboard → SQL Editor:
+
+-- 1) FORCE RLS مفعَّل على الجدولين؟
+SELECT relname, relforcerowsecurity
+FROM pg_class
+WHERE relname IN ('audit_log','audit_logs')
+  AND relnamespace = 'public'::regnamespace;
+-- يجب: relforcerowsecurity = TRUE لكلا الصفَّين
+
+-- 2) authenticated محروم من INSERT/UPDATE/DELETE؟
+SELECT grantee, privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema='public'
+  AND table_name IN ('audit_log','audit_logs')
+  AND grantee='authenticated'
+ORDER BY table_name, privilege_type;
+-- يجب أن يُرجع SELECT فقط (لا INSERT/UPDATE/DELETE)
+
+-- 3) service_role يحتفظ بكل الصلاحيات؟
+SELECT grantee, privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema='public'
+  AND table_name='audit_log'
+  AND grantee='service_role'
+ORDER BY privilege_type;
+-- يجب: SELECT, INSERT, UPDATE, DELETE (الأربعة)
+```
+
+**إذا أي من الـ3 فحوص رجع نتيجة مختلفة**: افتحي
+`supabase/migrations/20260426190000_w3_8_audit_log_grants_tighten.sql`،
+انسخي المحتوى كاملاً إلى SQL Editor، اضغطي **Run**.
+
 ---
 
 ## 🧪 مرحلة 1 — اختبارات الـ blockers (الأهم)
