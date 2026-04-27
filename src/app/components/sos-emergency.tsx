@@ -176,7 +176,21 @@ async function directCall(phone: string): Promise<boolean> {
     (window as any).Capacitor?.isNativePlatform?.() === true;
 
   if (isNativeShell) {
-    console.error("[SOS] directCall: native paths exhausted — refusing tel: fallback to avoid app chooser");
+    // CRIT-#2 (2026-04-27): for emergency-services short codes (3-4 digit
+    // numbers like 911 / 112 / 999 / 997 / 998 / 122 / 140 / 000) we MUST
+    // fall back to tel: even though the OS chooser may appear. A delayed,
+    // chooser-mediated emergency call is infinitely better than a silent
+    // failure. Personal contacts (8+ digits) keep the original behaviour.
+    if (/^\d{3,4}$/.test(cleaned)) {
+      try {
+        window.location.href = `tel:${cleaned}`;
+        console.warn("[SOS] directCall: native paths failed — using tel: fallback for emergency short code:", cleaned);
+        return true;
+      } catch (telErr) {
+        console.error("[SOS] tel: fallback failed for emergency code:", telErr);
+      }
+    }
+    console.error("[SOS] directCall: native paths exhausted — refusing tel: fallback for non-emergency contact (would surface app chooser)");
     return false;
   }
 
