@@ -8,12 +8,26 @@ import { testConnection, validateProductionEnvironment } from "./app/components/
 import { AppErrorBoundary } from "./app/components/error-boundary";
 import { initSentry } from "./app/components/sentry-client";
 import { initCapacitorBridge } from "./app/components/capacitor-bridge";
+import { runLegacyMigrations } from "./app/components/storage-keys";
 
 // MUST RUN FIRST: Initialize Environment Shield to prevent secret leakage
 initEnvShield();
 
 // Initialize Capacitor bridge for native platform features
 initCapacitorBridge();
+
+// CRIT-#2 (2026-04-27): migrate legacy localStorage keys to the canonical
+// sosphere_* prefix. Idempotent — safe to call on every cold start.
+// Without this, existing users coming from previous versions lose
+// biometric / audit state on first launch after deploy.
+try {
+  const { migrated } = runLegacyMigrations();
+  if (migrated.length > 0) {
+    console.log("[Startup] Migrated legacy storage keys:", migrated);
+  }
+} catch (e) {
+  console.warn("[Startup] runLegacyMigrations error (non-fatal):", e);
+}
 
 // Initialize application with async setup (Sentry, validation, connectivity)
 async function initializeApp() {

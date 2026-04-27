@@ -262,6 +262,32 @@ async function fetchSOS(
       }
       // Any other 503 (real server error, missing function, etc.) is
       // surfaced as-is — retrying would not help.
+    } else if (res.status === 401) {
+      // CRIT-#15 (2026-04-27, extends A-16): SOS path was using a token
+      // captured at the start of the request. If it expired between
+      // request-start and server-arrival, the request 401s and — pre-fix
+      // — silently dropped, leaving the user thinking SOS was sent.
+      // Now we await ONE supabase.auth.refreshSession() and re-issue
+      // with the new token. If refresh fails we bubble the original 401
+      // honestly so the offline retry queue can pick it up.
+      try {
+        const refreshed = await supabase.auth.refreshSession();
+        if (refreshed.data.session?.access_token) {
+          headers["Authorization"] = `Bearer ${refreshed.data.session.access_token}`;
+          res = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            keepalive: true,
+            signal: controller.signal,
+          });
+          console.log("[sos-server-trigger] 401 -> refreshed -> retry status:", res.status);
+        } else {
+          console.warn("[sos-server-trigger] 401 -> no session after refresh; bubbling original 401");
+        }
+      } catch (e) {
+        console.warn("[sos-server-trigger] 401 refresh path failed:", e);
+      }
     }
 
     return res;
