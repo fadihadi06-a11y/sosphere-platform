@@ -213,3 +213,82 @@ describe("#53 / promise-of-no-leak guards", () => {
     expect(pageSrc).not.toMatch(/supabase[\s\S]{0,40}\.from\("sos_sessions"\)/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// Polish fixes (2026-04-28) — append to existing 24-test suite.
+// ─────────────────────────────────────────────────────────────
+
+describe("Polish #9 / isPro derives from getTier (Elite trial fix)", () => {
+  it("isPro is computed from getTier(), not from the legacy userPlan prop", () => {
+    // Pre-fix: a Free-tier user with active Elite trial saw the lock badge
+    // even though getTier() would correctly hand them an elite report.
+    // The page MUST read isPro from the same source of truth as the
+    // download handler.
+    expect(pageSrc).toMatch(/const _effectiveTier = getTier\(\)/);
+    expect(pageSrc).toMatch(/const isPro = _effectiveTier !== "free"/);
+  });
+
+  it("legacy 'userPlan === \"pro\"' check no longer drives isPro", () => {
+    // Guard against a regression that re-introduces the dual-source
+    // bug. The exact legacy expression should not be on the isPro line.
+    expect(pageSrc).not.toMatch(/const isPro = userPlan === "pro"/);
+  });
+});
+
+describe("Polish #5 / retention-aware error path", () => {
+  it("loadRealIncidentsWithinRetention filters local cache by 90-day window", () => {
+    // The local cache must honour the same 90-day window the server
+    // sweeps, otherwise users see "available" incidents whose server
+    // data is gone.
+    expect(pageSrc).toMatch(/RETENTION_WINDOW_MS = 90 \* 24 \* 60 \* 60 \* 1000/);
+    expect(pageSrc).toMatch(/function loadRealIncidentsWithinRetention/);
+    expect(pageSrc).toMatch(/inc\.date\.getTime\(\) >= cutoff/);
+  });
+
+  it("useState initial value uses the retention-aware loader", () => {
+    expect(pageSrc).toMatch(
+      /useState<Incident\[\]>\(\(\) => loadRealIncidentsWithinRetention\(\)\)/,
+    );
+  });
+
+  it("download handler differentiates 410-Gone (retention) from generic errors", () => {
+    expect(pageSrc).toMatch(/retentionExpired/);
+    expect(pageSrc).toMatch(/Incident archived/);
+    expect(pageSrc).toMatch(/90 days/);
+  });
+
+  it("edge function returns retentionExpired sentinel + HTTP 410 when audit_log proves prior existence", () => {
+    expect(reportFnSrc).toMatch(/retentionExpired: true/);
+    expect(reportFnSrc).toMatch(/status: 410/);
+  });
+
+  it("edge function uses audit_log to differentiate retention from never-existed", () => {
+    // Critical safety: the sentinel must ONLY fire when there's actual
+    // historical evidence (audit_log entry the user authored). Otherwise
+    // a malicious caller could probe random UUIDs and learn whether
+    // they ever existed.
+    expect(reportFnSrc).toMatch(/auditTrace[\s\S]*?\.eq\("actor_id", userId\)/);
+  });
+});
+
+describe("Polish #3 / StorageEvent merges instead of overwriting", () => {
+  it("storage handler uses functional setState with Map-based merge", () => {
+    // Pre-fix: handler called setRealIncidents(loadRealIncidents()) which
+    // wiped server-merged entries. Post-fix: it composes prev + fresh
+    // through a Map keyed by id, preserving server history during local
+    // refreshes.
+    const handlerBlock = pageSrc.match(
+      /handler = \(e: StorageEvent\)[\s\S]*?window\.addEventListener/,
+    );
+    expect(handlerBlock).not.toBeNull();
+    expect(handlerBlock![0]).toMatch(/setRealIncidents\(\(prev\) =>/);
+    expect(handlerBlock![0]).toMatch(/new Map<string, Incident>\(\)/);
+  });
+
+  it("merged result is sorted descending by date (newest first)", () => {
+    expect(pageSrc).toMatch(
+      /Array\.from\(byId\.values\(\)\)\.sort\(\(a, b\) => b\.date\.getTime\(\) - a\.date\.getTime\(\)\)/,
+    );
+  });
+});
+

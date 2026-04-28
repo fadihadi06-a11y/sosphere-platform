@@ -97,6 +97,19 @@ function loadRealIncidents(): Incident[] {
   } catch { return []; }
 }
 
+// Polish #5 (2026-04-28): drop incidents older than the server retention
+// window (90 days) so the local list cannot show "available" rows whose
+// server-side data has been swept by the cleanup_sos_sessions cron.
+// Free users with localStorage history older than 90 days would otherwise
+// click Download and hit a confusing error. The retention promise is
+// public (privacy-page.tsx §5 — 90 days for emergency data); enforcing
+// it on the local cache keeps the UI honest with the server contract.
+const RETENTION_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+function loadRealIncidentsWithinRetention(): Incident[] {
+  const cutoff = Date.now() - RETENTION_WINDOW_MS;
+  return loadRealIncidents().filter(inc => inc.date.getTime() >= cutoff);
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function formatDuration(s: number) {
   const m = Math.floor(s / 60);
@@ -167,12 +180,26 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
   const [searchQuery, setSearchQuery] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
-  const [realIncidents, setRealIncidents] = useState<Incident[]>(() => loadRealIncidents());
+  const [realIncidents, setRealIncidents] = useState<Incident[]>(() => loadRealIncidentsWithinRetention());
 
-  // Re-load when localStorage changes (new SOS just ended in same session)
+  // Re-load when localStorage changes (new SOS just ended in same session).
+  // Polish #3 (2026-04-28): merge with existing state instead of overwriting.
+  // Pre-fix: a new SOS landing in another tab fired this handler, which
+  // called loadRealIncidents() and replaced state — wiping the server-
+  // merged incidents until the next page load. Now we re-merge on a per-id
+  // basis so the local refresh adds new entries without losing the server
+  // history. Local row wins on id collision (it carries the latest
+  // info from a just-finished SOS in the same session).
   useEffect(() => {
     const handler = (e: StorageEvent) => {
-      if (e.key === "sosphere_incident_history") setRealIncidents(loadRealIncidents());
+      if (e.key !== "sosphere_incident_history") return;
+      const fresh = loadRealIncidentsWithinRetention();
+      setRealIncidents((prev) => {
+        const byId = new Map<string, Incident>();
+        for (const inc of prev) byId.set(inc.id, inc);
+        for (const inc of fresh) byId.set(inc.id, inc);
+        return Array.from(byId.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
+      });
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
@@ -260,6 +287,21 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
       const { data, error } = await supabase.functions.invoke("incident-report-data", {
         body: { incidentId },
       });
+      // Polish #5 (2026-04-28): distinguish retention-expired from
+      // generic load failures. retentionExpired is a sentinel returned
+      // by the edge function (HTTP 410 Gone) when the incident was real
+      // but its sos_sessions row has been swept by the 90-day retention
+      // cron. We surface a clear bilingual explanation instead of the
+      // misleading generic "Could not load report" toast.
+      const retentionExpired = (data as { retentionExpired?: boolean } | null)?.retentionExpired === true
+        || (error as { context?: { status?: number } } | null)?.context?.status === 410;
+      if (retentionExpired) {
+        toast.error("Incident archived (>90 days). Per privacy policy, detailed records are deleted after 90 days.", {
+          id: tid,
+          duration: 6000,
+        });
+        return;
+      }
       if (error || !data?.data) {
         toast.error("Could not load report data", { id: tid });
         return;
@@ -305,7 +347,16 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
   // Real incidents only — no demo/mock fallback (cleaned 2026-04-23)
   const allIncidents: Incident[] = realIncidents;
 
-  const isPro = userPlan === "pro" || userPlan === "employee";
+  // Polish #9 (2026-04-28): isPro now derives from getTier() — the
+  // effective tier (basic/elite, including active Elite trial) — instead
+  // of the legacy userPlan prop which only knows pro/employee. Pre-fix:
+  // a Free-tier user with an active Elite trial saw the lock badge and
+  // could NOT download their retroactive PDFs, even though getTier()
+  // would correctly hand them an elite report. Now both the gating
+  // (button visibility / 7-day cap) AND the download handler read from
+  // the same source of truth (getTier).
+  const _effectiveTier = getTier();
+  const isPro = _effectiveTier !== "free";
 
   // Free users: 7 days
   const visibleIncidents = allIncidents

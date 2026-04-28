@@ -123,8 +123,43 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Query failed" }), { status: 500, headers: CORS });
     }
     if (!session) {
-      // Could be: incident doesn't exist, OR exists but RLS blocked it.
-      // Either way, return 404 — never reveal which (id-enumeration defence).
+      // Polish #5 (2026-04-28): differentiate "never existed" from
+      // "deleted by retention cron". Pre-fix: both returned a generic
+      // 404 and the client showed "Could not load report" — confusing
+      // for a user who can SEE the incident in their local history.
+      //
+      // Strategy: audit_log is NEVER deleted (CRIT-#16 explicitly
+      // excluded it from the retention sweep). So if the session row
+      // is gone but audit entries for the same incidentId still exist,
+      // we know with certainty that the incident WAS real and was
+      // archived by the 90-day retention policy. We return a sentinel
+      // {retentionExpired:true} that the client surfaces as a clear
+      // bilingual notice. If audit_log is also empty, this id was
+      // never a real incident — return the standard 404 (id enumeration
+      // defence still preserved: we don't reveal who owned it).
+      const adminEarly = createClient(SUPA_URL, SUPA_SERVICE_ROLE, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      // Bound the lookup to entries the requesting user authored —
+      // anonymous audit entries (system / service_role) are excluded
+      // so we don't leak existence of someone else's incident via the
+      // sentinel response.
+      const { data: auditTrace } = await adminEarly
+        .from("audit_log")
+        .select("created_at")
+        .or(`target.eq.${incidentId},target_id.eq.${incidentId}`)
+        .eq("actor_id", userId)
+        .limit(1);
+      if (auditTrace && auditTrace.length > 0) {
+        return new Response(
+          JSON.stringify({
+            retentionExpired: true,
+            error: "Incident archived by 90-day retention policy",
+          }),
+          { status: 410, headers: CORS },  // 410 Gone — semantic match
+        );
+      }
+      // Genuinely unknown id — keep id-enumeration defence (404, no detail).
       return new Response(JSON.stringify({ error: "Incident not found" }), { status: 404, headers: CORS });
     }
 
