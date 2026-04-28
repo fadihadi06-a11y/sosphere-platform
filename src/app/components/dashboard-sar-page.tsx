@@ -28,6 +28,8 @@ import {
   Compass, Gauge, Signal, Timer, ArrowUpRight,
   ShieldAlert, CircleDot, Footprints, Car, Anchor,
   HardHat, ChevronUp, MessageSquare, Bell,
+  // #48 SAR Enhancement A (2026-04-28): toggle icons.
+  CheckCircle, Lock,
 } from "lucide-react";
 // react-leaflet removed — using Leaflet directly to avoid Context issues in Figma Make
 import L from "leaflet";
@@ -44,6 +46,10 @@ import {
   saveSARMission, getActiveSARMissions, getAllSARMissions,
   recommendSearchPattern, calculateSearchCone, analyzeTrail,
 } from "./sar-engine";
+// #48 SAR Enhancement B (2026-04-28): audit-log every scenario load so
+// there's an unforgeable legal trail showing the SAR console was used
+// in TRAINING mode (not relied on for live rescue dispatch).
+import { supabase } from "./api/supabase-client";
 import {
   Card as DSCard, TOKENS, TYPOGRAPHY, PageHeader,
 } from "./design-system";
@@ -594,6 +600,45 @@ export function SARProtocolPage() {
       employeeName: scenario.employeeName,
       zone: scenario.zone,
     });
+
+    // #48 SAR Enhancement B (2026-04-28): write an audit_log entry every
+    // time a training scenario is loaded. This is the legal counterpart
+    // to the demo banner — the banner says "training only" to the user;
+    // this row says "training only" to a future investigator. If a court
+    // ever asks "did the dispatcher rely on this for a real rescue?",
+    // the audit_log shows category='training' for every interaction.
+    // FIRE-AND-FORGET: a failed audit MUST NOT block the mission UI.
+    void (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id ?? null;
+        await supabase.from("audit_log").insert({
+          id: crypto.randomUUID(),
+          action: "sar_training_session",
+          actor: userData?.user?.email ?? "anonymous",
+          actor_id: userId,
+          actor_role: "dispatcher",
+          operation: "LOAD_SCENARIO",
+          target: scenario.id,
+          target_name: scenario.title,
+          category: "training",
+          severity: "info",
+          metadata: {
+            mode: "training",
+            scenario_id: scenario.id,
+            employee_name: scenario.employeeName,
+            zone: scenario.zone,
+            terrain: scenario.terrain,
+            worker_type: scenario.workerType,
+            mission_id: mission.id,
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("[sar] training-session audit write failed:", err);
+      }
+    })();
+
     toast.success("SAR Mission launched — mobile workers alerted", {
       description: `Search for ${scenario.employeeName} in ${scenario.zone}`,
     });
@@ -705,6 +750,75 @@ export function SARProtocolPage() {
             FOR REAL EMERGENCIES, DIAL YOUR LOCAL EMERGENCY NUMBER (911 / 999 / 112)
           </div>
         </div>
+      </div>
+
+      {/* #48 SAR Enhancement A (2026-04-28): Live ↔ Training mode toggle.
+          Visually communicates that "Live" mode exists in the roadmap but
+          requires backend wiring (gps_trail subscription + sos_outbox
+          dispatch + Twilio bridge). Today, ONLY Training is selectable.
+          Pinning this UI now means future engineers know the contract:
+          the toggle's enabled-state IS the gate for switching to live
+          rescue dispatch. Removing the disabled-Live button without
+          adding the wiring would silently break the safety promise the
+          banner makes. The source-pinning test enforces this. */}
+      <div
+        data-testid="sar-mode-toggle"
+        style={{
+          margin: "0 24px 16px",
+          padding: "4px",
+          borderRadius: 12,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          display: "inline-flex",
+          gap: 4,
+          fontFamily: "'Tajawal','Outfit',sans-serif",
+        }}
+      >
+        <button
+          type="button"
+          aria-pressed="true"
+          aria-label="Training mode (active)"
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            background: "rgba(0,200,83,0.18)",
+            border: "1px solid rgba(0,200,83,0.40)",
+            color: "#00C853",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "default",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <CheckCircle size={12} />
+          Training
+        </button>
+        <button
+          type="button"
+          aria-pressed="false"
+          aria-disabled="true"
+          disabled
+          aria-label="Live mode (coming soon — requires backend wiring)"
+          title="Coming soon — requires live gps_trail subscription + sos_outbox dispatch + Twilio bridge"
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.06)",
+            color: "rgba(255,255,255,0.30)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "not-allowed",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Lock style={{ width: 12, height: 12 }} />
+          Live (coming soon)
+        </button>
       </div>
 
       {/* Header */}
