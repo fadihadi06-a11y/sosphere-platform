@@ -1,7 +1,26 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Individual Emergency PDF Report
-// Professional, legal-grade incident documentation for individuals
-// Paid plans only — can be used as legal evidence
+// Professional, legal-grade incident documentation for individuals.
+//
+// TIER MATRIX (2026-04-28 — CRIT 3-tier reports gap fix):
+//   • free  → no PDF (audit_log only, retroactive after upgrade)
+//   • basic → "Standard Report" — court-admissible, abbreviated
+//             evidence sections, no Server-Verified Audit Chain
+//   • elite → "Forensic Evidence Grade" — full Server-Verified Audit
+//             Chain (the legal-gold property), full GPS trail, full
+//             timeline, audio metadata, packet privacy state
+//
+// Why two tiers (instead of one paid PDF):
+//   • The Server-Verified Audit Chain is what makes a report legally
+//     tamper-evident in serious cases. It cross-references the on-device
+//     timeline with audit_log rows protected by FORCE RLS — impossible
+//     to forge even by an admin. That property carries real cost (RLS
+//     reads, server-side audit table maintenance) and warrants the
+//     elite price point.
+//   • basic still gives the user a lawful, automatically-generated
+//     incident document with timestamps, GPS, contact cycle, integrity
+//     hash, and a clear chain of custody — sufficient for insurance
+//     claims, employer reports, and most civil disputes.
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from "jspdf";
@@ -10,11 +29,29 @@ import { toast } from "sonner";
 
 // ── Types ───────────────────────────────────────────────────────
 
+/**
+ * The PDF report tier. Resolved by the caller from the user's
+ * effective subscription tier (subscription-service.getEffectiveTier).
+ *
+ * The function MUST receive a real tier — passing 'free' is a
+ * developer error and is rejected at the entry point. Free users
+ * cannot generate a PDF (they get audit_log persistence and can
+ * download retroactively after upgrading).
+ */
+export type ReportTier = "basic" | "elite";
+
 export interface IndividualReportData {
   // User
   userName: string;
   userPhone: string;
-  plan: "personal" | "family";
+  /**
+   * Tier governs what sections render. See ReportTier docstring.
+   * The legacy `plan` field is preserved for backward-compat with
+   * older callers but is now ignored when `tier` is present.
+   */
+  tier?: ReportTier;
+  /** @deprecated 2026-04-28 — use `tier` instead. Kept to avoid breaking older callers during rollout. */
+  plan?: "personal" | "family";
   
   // Incident
   incidentId: string;
@@ -132,10 +169,34 @@ const C = {
   lightGray: "#9CA3AF",
 };
 
+// ── Tier helpers ────────────────────────────────────────────────
+
+/**
+ * Resolve the report tier with a defensive default. Anything that
+ * isn't 'elite' falls back to 'basic' (we never silently render an
+ * elite-grade report for a basic user).
+ */
+function resolveTier(data: IndividualReportData): ReportTier {
+  if (data.tier === "elite") return "elite";
+  return "basic";
+}
+
+const TIER_LABEL: Record<ReportTier, string> = {
+  basic: "STANDARD REPORT",
+  elite: "FORENSIC EVIDENCE",
+};
+
 // ── Generate PDF ────────────────────────────────────────────────
 
 export function generateIndividualReport(data: IndividualReportData): void {
   try {
+    // CRIT 3-tier reports (2026-04-28): tier is the authoritative
+    // gate. resolveTier defaults to 'basic' if missing, which is the
+    // safer side (lower-fidelity output). Elite output is gated on
+    // an explicit data.tier === 'elite'.
+    const tier = resolveTier(data);
+    const isElite = tier === "elite";
+
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pw = doc.internal.pageSize.getWidth();
     const ph = doc.internal.pageSize.getHeight();
@@ -150,8 +211,12 @@ export function generateIndividualReport(data: IndividualReportData): void {
     doc.setFillColor(5, 7, 14);
     doc.rect(0, 0, pw, 65, "F");
 
-    // Red accent line
-    doc.setFillColor(255, 45, 85);
+    // Tier-colored accent line: elite=cyan (premium), basic=red
+    if (isElite) {
+      doc.setFillColor(0, 200, 224);
+    } else {
+      doc.setFillColor(255, 45, 85);
+    }
     doc.rect(0, 65, pw, 1.5, "F");
 
     // SOSphere logo area
@@ -165,17 +230,22 @@ export function generateIndividualReport(data: IndividualReportData): void {
     doc.setFontSize(22);
     doc.setTextColor(255, 255, 255);
     doc.text("Emergency Incident Report", margin + 14, 18);
-    
+
     doc.setFontSize(9);
     doc.setTextColor(0, 200, 224);
     doc.text("SOSphere Safety Platform", margin + 14, 24);
 
-    // Classification badge
-    doc.setFillColor(255, 45, 85);
-    doc.roundedRect(pw - margin - 35, 12, 35, 8, 2, 2, "F");
-    doc.setTextColor(255, 255, 255);
+    // Tier badge — replaces the static "CONFIDENTIAL" badge.
+    // Elite gets cyan + "FORENSIC EVIDENCE", basic gets orange + "STANDARD REPORT".
+    if (isElite) {
+      doc.setFillColor(0, 200, 224);
+    } else {
+      doc.setFillColor(255, 150, 0);
+    }
+    doc.roundedRect(pw - margin - 42, 12, 42, 8, 2, 2, "F");
+    doc.setTextColor(isElite ? 5 : 255, isElite ? 7 : 255, isElite ? 14 : 255);
     doc.setFontSize(7);
-    doc.text("CONFIDENTIAL", pw - margin - 17.5, 17, { align: "center" });
+    doc.text(TIER_LABEL[tier], pw - margin - 21, 17, { align: "center" });
 
     // Report metadata
     doc.setFontSize(8);
@@ -183,7 +253,11 @@ export function generateIndividualReport(data: IndividualReportData): void {
     y = 35;
     doc.text(`Report ID: ${data.incidentId}`, margin, y);
     doc.text(`Generated: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`, margin, y + 5);
-    doc.text(`Plan: ${data.plan === "family" ? "Family Plan" : "Personal Plan"}`, margin, y + 10);
+    // Tier line — shows what this report tier means at a glance.
+    doc.text(
+      `Tier: ${TIER_LABEL[tier]}${isElite ? " — full server-verified audit" : " — abbreviated evidence sections"}`,
+      margin, y + 10,
+    );
     
     // Date on right
     doc.setTextColor(255, 150, 0);
@@ -322,6 +396,10 @@ export function generateIndividualReport(data: IndividualReportData): void {
       // (timer ran for N seconds, but the blob itself is not in evidence).
       ["Audio Recording", (() => {
         if (!data.recordingDuration || data.recordingDuration <= 0) return "Not recorded";
+        // Basic: duration only, no storage URL (forensic chain-of-custody is Elite).
+        if (!isElite) {
+          return `${data.recordingDuration}s captured — full storage chain-of-custody available in Elite Forensic tier`;
+        }
         if (data.audioCaptured && data.audioUrl) {
           return `${data.recordingDuration}s — stored at ${data.audioUrl}`;
         }
@@ -329,6 +407,10 @@ export function generateIndividualReport(data: IndividualReportData): void {
       })()],
       ["Photos Captured", (() => {
         if (!data.photoCount || data.photoCount <= 0) return "No photos";
+        if (!isElite) {
+          // Basic: count only, no vault references.
+          return `${data.photoCount} photo(s) referenced — vault chain-of-custody in Elite tier`;
+        }
         if (data.photosCaptured) {
           return `${data.photoCount} photo(s) — stored in evidence vault`;
         }
@@ -338,7 +420,11 @@ export function generateIndividualReport(data: IndividualReportData): void {
       // FIX 2026-04-24 (Point 5): privacy packet state shared with
       // contacts. "not recorded" if the audit row didn't capture it
       // (older incidents) — NEVER a fake default.
+      // ELITE ONLY: forensic chain-of-custody field.
       ["Privacy Packet Shared", (() => {
+        if (!isElite) {
+          return "Available in Elite Forensic tier (forensic chain-of-custody field)";
+        }
         if (!data.packetModules) return "not recorded for this incident";
         const on: string[] = [];
         const off: string[] = [];
@@ -382,17 +468,22 @@ export function generateIndividualReport(data: IndividualReportData): void {
     doc.text(data.incidentId, pw - margin, 13, { align: "right" });
 
     // ── Section 5: Event Timeline ──
+    // CRIT 3-tier reports: basic gets last 10 events, elite gets full.
     y = 28;
     doc.setFontSize(11);
     doc.setTextColor(0, 200, 224);
-    doc.text("5. EVENT TIMELINE", margin + 5, y);
+    doc.text(
+      isElite ? "5. EVENT TIMELINE" : "5. EVENT TIMELINE (abbreviated)",
+      margin + 5, y,
+    );
 
     y += 5;
+    const timelineRows = isElite ? data.timeline : data.timeline.slice(-10);
     autoTable(doc, {
       startY: y,
       margin: { left: margin + 3, right: margin + 3 },
       head: [["Time", "Event", "Type"]],
-      body: data.timeline.map(t => [
+      body: timelineRows.map(t => [
         t.time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
         t.event,
         t.type.toUpperCase(),
@@ -417,7 +508,18 @@ export function generateIndividualReport(data: IndividualReportData): void {
       },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = (doc as any).lastAutoTable.finalY + 5;
+    // Show abbreviation footer when basic abbreviated.
+    if (!isElite && data.timeline.length > 10) {
+      doc.setFontSize(7);
+      doc.setTextColor(255, 150, 0);
+      doc.text(
+        `+ ${data.timeline.length - 10} earlier events in this incident — full chronological timeline included in Elite Forensic tier.`,
+        margin + 5, y,
+      );
+      y += 6;
+    }
+    y += 5;
 
     // ── Section 6: GPS Trail Log ──
     // FIX 2026-04-23: when gpsTrail came from the synthesized sin/cos fallback
@@ -435,18 +537,24 @@ export function generateIndividualReport(data: IndividualReportData): void {
       doc.text("GPS trail not available for this incident — only the trigger-time position was recorded.", margin + 5, y);
       y += 10;
     } else if (data.gpsTrail.length > 0) {
+      // CRIT 3-tier reports: basic shows first 5 only ("teaser" + count),
+      // elite shows first 20 + "+more" footer.
+      const trailLimit = isElite ? 20 : 5;
+      const trailRows = data.gpsTrail.slice(0, trailLimit);
+
       doc.setFontSize(11);
       doc.setTextColor(0, 200, 83);
-      doc.text(data.gpsTrailIsReal === false
-        ? "6. GPS TRAIL LOG (synthetic fallback — not authoritative)"
-        : "6. GPS TRAIL LOG", margin + 5, y);
+      const titleSuffix = data.gpsTrailIsReal === false
+        ? " (synthetic fallback — not authoritative)"
+        : (isElite ? "" : " (abbreviated)");
+      doc.text(`6. GPS TRAIL LOG${titleSuffix}`, margin + 5, y);
 
       y += 5;
       autoTable(doc, {
         startY: y,
         margin: { left: margin + 3, right: margin + 3 },
         head: [["#", "Time", "Latitude", "Longitude"]],
-        body: data.gpsTrail.slice(0, 20).map((p, i) => [
+        body: trailRows.map((p, i) => [
           (i + 1).toString(),
           p.time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
           p.lat.toFixed(6),
@@ -459,10 +567,16 @@ export function generateIndividualReport(data: IndividualReportData): void {
       });
 
       y = (doc as any).lastAutoTable.finalY + 5;
-      if (data.gpsTrail.length > 20) {
+      const remaining = data.gpsTrail.length - trailLimit;
+      if (remaining > 0) {
         doc.setFontSize(7);
-        doc.setTextColor(107, 112, 128);
-        doc.text(`+ ${data.gpsTrail.length - 20} more location updates (available in digital evidence package)`, margin + 5, y);
+        if (isElite) {
+          doc.setTextColor(107, 112, 128);
+          doc.text(`+ ${remaining} more location updates (available in digital evidence package)`, margin + 5, y);
+        } else {
+          doc.setTextColor(255, 150, 0);
+          doc.text(`+ ${remaining} more coordinates recorded — full trail table included in Elite Forensic tier.`, margin + 5, y);
+        }
         y += 8;
       }
     }
@@ -470,21 +584,54 @@ export function generateIndividualReport(data: IndividualReportData): void {
     // ── Section 7: Server-Verified Audit Chain ──
     // FIX 2026-04-24 (Point 3): prints the audit_log rows the server
     // recorded for this incident. This is the legally-defensible
-    // cross-reference: if the client-side timeline (Section 5) and
-    // the server audit chain agree, the report is tamper-consistent.
-    // Any divergence is visible to an investigator.
+    // cross-reference between the on-device timeline (Section 5) and
+    // tamper-evident server entries.
+    //
+    // CRIT 3-tier reports (2026-04-28): ELITE ONLY.
+    //   audit_log rows are protected by FORCE RLS (CRIT-#10) — they
+    //   cannot be forged even by an admin. That tamper-evidence is
+    //   forensic-grade and the principal reason Elite is priced higher.
+    //   Basic gets a clear notice: the data exists server-side and is
+    //   captured for every incident regardless of plan; an upgrade
+    //   re-renders this section with the audit chain populated.
     if (y > ph - 40) { doc.addPage(); y = 25; }
     doc.setFontSize(11);
     doc.setTextColor(139, 92, 246);
     doc.text("7. SERVER-VERIFIED AUDIT CHAIN", margin + 5, y);
     y += 2;
-    doc.setFontSize(7);
-    doc.setTextColor(107, 114, 128);
-    doc.text(
-      "Cross-reference: these entries come directly from the server's audit_log table.",
-      margin + 5, y + 4,
-    );
-    y += 9;
+
+    if (!isElite) {
+      doc.setFontSize(7);
+      doc.setTextColor(107, 114, 128);
+      doc.text(
+        "This section requires the Elite Forensic tier.",
+        margin + 5, y + 4,
+      );
+      y += 9;
+      doc.setFontSize(8);
+      doc.setTextColor(220, 220, 220);
+      const eliteNoticeLines = [
+        "The Server-Verified Audit Chain prints the audit_log rows the server recorded for this incident,",
+        "cross-referencing the on-device timeline (Section 5) with tamper-evident server entries (FORCE",
+        "RLS — cannot be forged even by a system administrator). This is the property that makes a report",
+        "forensic-grade and admissible in serious legal proceedings.",
+        "",
+        "The audit data for this incident is captured and retained on SOSphere's servers regardless of plan.",
+        "Upgrading to Elite Forensic and regenerating this report will populate this section retroactively.",
+      ];
+      for (const line of eliteNoticeLines) {
+        doc.text(line, margin + 5, y);
+        y += 4;
+      }
+      y += 4;
+    } else {
+      doc.setFontSize(7);
+      doc.setTextColor(107, 114, 128);
+      doc.text(
+        "Cross-reference: these entries come directly from the server's audit_log table.",
+        margin + 5, y + 4,
+      );
+      y += 9;
 
     if (data.serverAuditAvailable === false) {
       doc.setFontSize(9);
@@ -534,6 +681,7 @@ export function generateIndividualReport(data: IndividualReportData): void {
         y += 8;
       }
     }
+    } // end of `if (!isElite) else { ... }` (CRIT 3-tier reports)
 
     // ── Legal Notice ──
     if (y > ph - 80) { doc.addPage(); y = 25; }
@@ -718,7 +866,7 @@ export function generateDemoIndividualReport(): void {
   const data: IndividualReportData = {
     userName: adminProfile.name || "Ahmed Khalil",
     userPhone: adminProfile.phone || "+966 501 234 567",
-    plan: "personal",
+    tier: "elite",  // demo defaults to elite to showcase all sections
     incidentId: `SOS-${now.getTime().toString(36).toUpperCase().slice(-6)}`,
     triggerMethod: "hold",
     startTime: start,
