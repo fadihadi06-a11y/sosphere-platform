@@ -130,9 +130,13 @@ export function hasEverStartedTrial(): boolean {
 }
 
 /**
- * Begin the one-time Elite trial. Returns true if it was actually
- * started; false if the user has already used their trial (we do
- * not re-arm; one shot only).
+ * @deprecated CRIT-#12: localStorage-only trial starter is exploitable —
+ * a user wiping browser storage can re-arm the trial indefinitely.
+ * Use `startTrialAsync()` instead, which calls the server-side RPC
+ * `start_civilian_trial` first and only writes localStorage on approval.
+ *
+ * Kept for backward-compat with offline / pre-auth call sites that
+ * cannot await an RPC. SHOULD NOT be called from new code.
  */
 export function startTrial(days: number = DEFAULT_TRIAL_DAYS): boolean {
   if (readState()) return false;
@@ -143,6 +147,108 @@ export function startTrial(days: number = DEFAULT_TRIAL_DAYS): boolean {
     tier: "elite",
   });
   return true;
+}
+
+/* ──────────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────── */
+/*  CRIT-#12 (2026-04-28) — server-side anti-replay trial start   */
+/* ──────────────────────────────────────────────────────────────── */
+
+export interface StartTrialResult {
+  success: boolean;
+  /** Why the start failed (or "already_used", "unauthorized", etc.) */
+  reason?: string;
+  /** ISO timestamp when the trial actually started (server time). */
+  startedAt?: string;
+  /** ISO timestamp when the trial will expire. */
+  expiresAt?: string;
+  /** Plan that was started (always "elite" today). */
+  plan?: string;
+  /** True if the failure was a network/RPC error rather than policy. */
+  networkError?: boolean;
+}
+
+/**
+ * CRIT-#12: server-side-validated trial start.
+ *
+ * Calls `start_civilian_trial` RPC FIRST. The RPC checks the
+ * `civilian_trial_history` table (1 row per user lifetime) and only
+ * approves if no row exists. If approved, this function then writes
+ * localStorage so the existing UI hooks continue to work unchanged.
+ *
+ * If the RPC denies (trial already used) or fails (network), we do
+ * NOT write localStorage. Without localStorage, the rest of the app
+ * sees the user as "free tier" and gates Elite features accordingly.
+ *
+ * FAIL-CLOSED: any RPC error (network, missing client, server error)
+ * blocks the trial start. Better to deny a legitimate first-time user
+ * (who can retry with connectivity) than to grant an exploitative
+ * second trial.
+ */
+export async function startTrialAsync(
+  days: number = DEFAULT_TRIAL_DAYS,
+): Promise<StartTrialResult> {
+  // Local fast-path: if localStorage already has an active/cancelled
+  // trial for THIS browser, no need to hit the server.
+  if (readState()) {
+    return { success: false, reason: "trial_already_used_local" };
+  }
+
+  // Lazy-load supabase to keep this module dependency-light.
+  let supabase: any;
+  try {
+    const mod = await import("./api/supabase-client");
+    supabase = mod.supabase;
+    if (!supabase) {
+      return { success: false, reason: "supabase_not_configured", networkError: true };
+    }
+  } catch (e) {
+    console.warn("[trial-service] supabase import failed:", e);
+    return { success: false, reason: "supabase_import_failed", networkError: true };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("start_civilian_trial", {
+      p_plan: "elite",
+      p_duration_days: Math.max(1, Math.min(90, days)),
+    });
+    if (error) {
+      console.warn("[trial-service] RPC error:", error);
+      return { success: false, reason: "rpc_error", networkError: true };
+    }
+    if (!data || data.success !== true) {
+      // Server denied (trial already used / unauthorized / invalid plan).
+      return {
+        success: false,
+        reason: data?.reason ?? "server_denied",
+        startedAt: data?.started_at,
+        expiresAt: data?.expires_at,
+        plan: data?.plan,
+      };
+    }
+    // Server approved — write localStorage so rest of the app sees the trial.
+    const serverStartMs = data.started_at
+      ? new Date(data.started_at).getTime()
+      : Date.now();
+    const serverExpiresMs = data.expires_at
+      ? new Date(data.expires_at).getTime()
+      : serverStartMs + Math.max(1, days) * 86_400_000;
+    writeState({
+      startedAt: serverStartMs,
+      durationMs: Math.max(1, serverExpiresMs - serverStartMs),
+      status: "active",
+      tier: "elite",
+    });
+    return {
+      success: true,
+      startedAt: data.started_at,
+      expiresAt: data.expires_at,
+      plan: data.plan,
+    };
+  } catch (e) {
+    console.warn("[trial-service] startTrialAsync threw:", e);
+    return { success: false, reason: "exception", networkError: true };
+  }
 }
 
 /**

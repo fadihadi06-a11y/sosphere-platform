@@ -14,7 +14,7 @@ import { useState } from "react";
 import { Crown, Clock, X, Check } from "lucide-react";
 import {
   getTrialStatus,
-  startTrial,
+  startTrialAsync,
   cancelTrial,
   getTrialDurationDays,
 } from "./trial-service";
@@ -28,6 +28,8 @@ interface Props {
 
 export function TrialCard({ isAr = false, onRequestUpgrade }: Props) {
   const [, force] = useState(0);
+  const [pending, setPending] = useState(false);
+  const [denyReason, setDenyReason] = useState<string | null>(null);
   const rerender = () => force(v => v + 1);
 
   const status = getTrialStatus();
@@ -37,9 +39,32 @@ export function TrialCard({ isAr = false, onRequestUpgrade }: Props) {
   // If the user already owns Elite, the trial card is irrelevant.
   if (storedTier === "elite") return null;
 
-  const handleStart = () => {
-    if (startTrial(getTrialDurationDays())) {
-      rerender();
+  // CRIT-#12 (2026-04-28): start handler now goes through the async,
+  // server-validated path. Disable the button while in-flight, and surface
+  // a reason if the server denies (e.g. trial already used on another device).
+  const handleStart = async () => {
+    if (pending) return;
+    setPending(true);
+    setDenyReason(null);
+    try {
+      const res = await startTrialAsync(getTrialDurationDays());
+      if (res.success) {
+        rerender();
+      } else {
+        const reason = res.networkError
+          ? t("Network issue — please try again.", "مشكلة في الشبكة — حاول مرة أخرى.")
+          : res.reason === "trial_already_used"
+            ? t("You've already used your one-time trial.", "لقد استخدمت تجربتك المجانية بالفعل.")
+            : res.reason === "trial_already_used_local"
+              ? t("Trial already started on this device.", "التجربة تعمل على هذا الجهاز بالفعل.")
+              : res.reason === "unauthorized"
+                ? t("Please sign in to start your trial.", "يرجى تسجيل الدخول لبدء التجربة.")
+                : t("Trial unavailable right now.", "التجربة غير متاحة حالياً.");
+        setDenyReason(reason);
+        rerender();
+      }
+    } finally {
+      setPending(false);
     }
   };
 
@@ -196,15 +221,38 @@ export function TrialCard({ isAr = false, onRequestUpgrade }: Props) {
         </div>
         <button
           onClick={handleStart}
+          disabled={pending}
           className="mt-3 inline-flex items-center gap-1.5 px-3 py-2"
           style={{
             fontSize: 12, fontWeight: 700, color: "#0f1217",
-            background: "#FFD700", borderRadius: 10,
+            background: pending ? "rgba(255,215,0,0.45)" : "#FFD700",
+            borderRadius: 10,
+            cursor: pending ? "wait" : "pointer",
           }}
         >
           <Crown size={13} />
-          {t("Start trial", "ابدأ التجربة")}
+          {pending
+            ? t("Starting…", "جاري البدء…")
+            : t("Start trial", "ابدأ التجربة")}
         </button>
+        {/* CRIT-#12: surface server-deny reasons (e.g. trial already used
+            on another device, network error) so the user knows why nothing
+            happened after pressing the button. */}
+        {denyReason && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 11,
+              color: "#FF6B6B",
+              background: "rgba(255,107,107,0.08)",
+              border: "1px solid rgba(255,107,107,0.22)",
+              borderRadius: 8,
+              padding: "6px 10px",
+            }}
+          >
+            {denyReason}
+          </div>
+        )}
       </div>
     </div>
   );
