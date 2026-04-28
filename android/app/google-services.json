@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "143943152533",
+    "project_id": "sosphere-809bb",
+    "storage_bucket": "sosphere-809bb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143943152533:android:7c7f8d543a69c8d3b4fc9c",
+        "android_client_info": {
+          "package_name": "com.sosphere.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwU0UTfUfzytP7NGzgx_r7eDIBtkgU0d4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
