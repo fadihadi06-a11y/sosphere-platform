@@ -109,10 +109,27 @@ describe("CRIT / SAR engine — true wiring state (proves disclosure is necessar
     expect(engineSrc).toMatch(/localStorage/);
   });
 
-  it("dashboard-sar-page.tsx has zero supabase / fetch calls (UI is read-only)", () => {
-    // The UI layer must also stay disconnected until SAR is wired
-    // end-to-end. Ad-hoc fetch from this page is a regression.
-    expect(pageSrc).not.toMatch(/supabase/i);
+  it("dashboard-sar-page.tsx only touches Supabase for the training-audit insert", () => {
+    // 2026-04-28 (#48 Enhancement B): the page now writes ONE audit_log
+    // row when a training scenario is loaded. That is observability,
+    // not rescue-wiring — it documents that the user used SAR in
+    // TRAINING mode. Anything beyond that single insert (a SELECT for
+    // employees, a sos_outbox push, a fetch for live GPS) would be the
+    // start of real wiring and should remove the demo banner first.
+    //
+    // Pin: the supabase import must come from "./api/supabase-client"
+    // (the standard client, RLS-respecting), and the only `.from(...)`
+    // call should be `.from("audit_log")`.
+    expect(pageSrc).toMatch(
+      /import \{ supabase \} from "\.\/api\/supabase-client"/,
+    );
+    // Count `.from("` occurrences — there must be exactly one, and it
+    // must be the audit_log write.
+    const fromMatches = pageSrc.match(/\.from\("[a-z_]+"\)/g) || [];
+    expect(fromMatches.length).toBe(1);
+    expect(fromMatches[0]).toBe('\.from("audit_log")');
+    // No raw fetch() either — keeps the UI honest about its limited
+    // server reach.
     expect(pageSrc).not.toMatch(/\bfetch\(/);
   });
 });
@@ -138,5 +155,92 @@ describe("CRIT / SAR demo banner — visual prominence", () => {
     expect(bannerBlock).not.toBeNull();
     expect(bannerBlock![0]).not.toMatch(/onClick.*set.*Banner.*false/i);
     expect(bannerBlock![0]).not.toMatch(/dismiss/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #48 SAR enhancements (2026-04-28) — Toggle + audit_log entry.
+// ─────────────────────────────────────────────────────────────
+
+describe("#48 SAR Enhancement A / Live<->Training mode toggle", () => {
+  it("renders the toggle with stable testid", () => {
+    expect(pageSrc).toMatch(/data-testid="sar-mode-toggle"/);
+  });
+
+  it("Training button is the active one (aria-pressed=true)", () => {
+    // Pin the contract: Training is selected, Live is not.
+    expect(pageSrc).toMatch(/aria-pressed="true"[\s\S]*?Training/);
+  });
+
+  it("Live button is disabled with explanatory tooltip", () => {
+    expect(pageSrc).toMatch(/aria-disabled="true"/);
+    expect(pageSrc).toMatch(/Live \(coming soon\)/);
+    // The title attribute documents what wiring is missing — pinning
+    // it ensures a future engineer reads the contract before flipping
+    // Live to enabled.
+    expect(pageSrc).toMatch(/gps_trail subscription[\s\S]*?sos_outbox dispatch[\s\S]*?Twilio bridge/);
+  });
+
+  it("Live button uses Lock icon (visual cue for the disabled state)", () => {
+    // Source-pinning: the Lock icon makes the disabled state obvious
+    // even at a glance. Replacing it with a non-lock icon would soften
+    // the gate and is exactly the kind of visual regression we guard.
+    const liveBtnBlock = pageSrc.match(
+      /aria-disabled="true"[\s\S]{0,1500}/,
+    );
+    expect(liveBtnBlock).not.toBeNull();
+    expect(liveBtnBlock![0]).toMatch(/<Lock /);
+  });
+
+  it("toggle is positioned BEFORE the PageHeader (above the page title)", () => {
+    const toggleIdx = pageSrc.indexOf('data-testid="sar-mode-toggle"');
+    const headerIdx = pageSrc.indexOf("<PageHeader");
+    expect(toggleIdx).toBeGreaterThan(0);
+    expect(toggleIdx).toBeLessThan(headerIdx);
+  });
+});
+
+describe("#48 SAR Enhancement B / audit_log entry on scenario load", () => {
+  it("imports the supabase client", () => {
+    expect(pageSrc).toMatch(
+      /import \{ supabase \} from "\.\/api\/supabase-client"/,
+    );
+  });
+
+  it("handleStartMission writes an sar_training_session audit entry", () => {
+    const handlerBlock = pageSrc.match(
+      /handleStartMission = useCallback[\s\S]*?\}, \[\]\);/,
+    );
+    expect(handlerBlock).not.toBeNull();
+    expect(handlerBlock![0]).toMatch(/\.from\("audit_log"\)\.insert/);
+    expect(handlerBlock![0]).toMatch(/action: "sar_training_session"/);
+    expect(handlerBlock![0]).toMatch(/category: "training"/);
+    expect(handlerBlock![0]).toMatch(/operation: "LOAD_SCENARIO"/);
+  });
+
+  it("audit metadata captures scenario context (name, zone, terrain)", () => {
+    const handlerBlock = pageSrc.match(
+      /handleStartMission = useCallback[\s\S]*?\}, \[\]\);/,
+    );
+    expect(handlerBlock).not.toBeNull();
+    expect(handlerBlock![0]).toMatch(/employee_name: scenario\.employeeName/);
+    expect(handlerBlock![0]).toMatch(/zone: scenario\.zone/);
+    expect(handlerBlock![0]).toMatch(/terrain: scenario\.terrain/);
+    expect(handlerBlock![0]).toMatch(/mode: "training"/);
+  });
+
+  it("audit write is fire-and-forget (try/catch + no await blocking)", () => {
+    // The audit write MUST NOT block the UI — a failed insert becomes
+    // a console warning but the mission still launches. Pinning the
+    // try/catch prevents a regression that re-throws and breaks the
+    // happy path.
+    const handlerBlock = pageSrc.match(
+      /handleStartMission = useCallback[\s\S]*?\}, \[\]\);/,
+    );
+    expect(handlerBlock).not.toBeNull();
+    expect(handlerBlock![0]).toMatch(/void \(async \(\) =>/);
+    expect(handlerBlock![0]).toMatch(/try \{/);
+    expect(handlerBlock![0]).toMatch(/catch \(err\)/);
+    expect(handlerBlock![0]).toMatch(/console\.warn/);
   });
 });
