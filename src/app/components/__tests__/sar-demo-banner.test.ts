@@ -109,27 +109,28 @@ describe("CRIT / SAR engine — true wiring state (proves disclosure is necessar
     expect(engineSrc).toMatch(/localStorage/);
   });
 
-  it("dashboard-sar-page.tsx only touches Supabase for the training-audit insert", () => {
-    // 2026-04-28 (#48 Enhancement B): the page now writes ONE audit_log
-    // row when a training scenario is loaded. That is observability,
-    // not rescue-wiring — it documents that the user used SAR in
-    // TRAINING mode. Anything beyond that single insert (a SELECT for
-    // employees, a sos_outbox push, a fetch for live GPS) would be the
-    // start of real wiring and should remove the demo banner first.
+  it("dashboard-sar-page.tsx only touches Supabase via the audit RPC", () => {
+    // 2026-04-28 evolution:
+    //   • #48 Enhancement B added a direct .from("audit_log").insert
+    //   • Beehive audit #2 caught that GRANT + RLS block direct INSERT
+    //     on audit_log from authenticated → silent fail
+    //   • Fix: route through log_sos_audit RPC (SECURITY DEFINER, the
+    //     same path sos-alert uses)
     //
-    // Pin: the supabase import must come from "./api/supabase-client"
-    // (the standard client, RLS-respecting), and the only `.from(...)`
-    // call should be `.from("audit_log")`.
+    // The page now should have ZERO direct .from() calls — all
+    // server reach goes through the SECDEF RPC. Anything else
+    // (a SELECT for employees, a sos_outbox push, a fetch for live
+    // GPS) would be the start of real wiring and should remove the
+    // demo banner first.
     expect(pageSrc).toMatch(
       /import \{ supabase \} from "\.\/api\/supabase-client"/,
     );
-    // Count `.from("` occurrences — there must be exactly one, and it
-    // must be the audit_log write.
+    // No direct .from() table reach.
     const fromMatches = pageSrc.match(/\.from\("[a-z_]+"\)/g) || [];
-    expect(fromMatches.length).toBe(1);
-    expect(fromMatches[0]).toBe('\.from("audit_log")');
-    // No raw fetch() either — keeps the UI honest about its limited
-    // server reach.
+    expect(fromMatches.length).toBe(0);
+    // The RPC call is the only Supabase reach.
+    expect(pageSrc).toMatch(/supabase\.rpc\("log_sos_audit"/);
+    // No raw fetch() either.
     expect(pageSrc).not.toMatch(/\bfetch\(/);
   });
 });
@@ -207,15 +208,18 @@ describe("#48 SAR Enhancement B / audit_log entry on scenario load", () => {
     );
   });
 
-  it("handleStartMission writes an sar_training_session audit entry", () => {
+  it("handleStartMission writes an sar_training_session audit via RPC", () => {
+    // Beehive fix (2026-04-28): direct INSERT on audit_log is blocked
+    // by GRANT + RLS for authenticated. The training audit goes through
+    // the log_sos_audit SECURITY DEFINER RPC (same path sos-alert uses).
     const handlerBlock = pageSrc.match(
       /handleStartMission = useCallback[\s\S]*?\}, \[\]\);/,
     );
     expect(handlerBlock).not.toBeNull();
-    expect(handlerBlock![0]).toMatch(/\.from\("audit_log"\)\.insert/);
-    expect(handlerBlock![0]).toMatch(/action: "sar_training_session"/);
-    expect(handlerBlock![0]).toMatch(/category: "training"/);
-    expect(handlerBlock![0]).toMatch(/operation: "LOAD_SCENARIO"/);
+    expect(handlerBlock![0]).toMatch(/supabase\.rpc\("log_sos_audit"/);
+    expect(handlerBlock![0]).toMatch(/p_action:\s*"sar_training_session"/);
+    expect(handlerBlock![0]).toMatch(/p_actor_level:\s*"dispatcher"/);
+    expect(handlerBlock![0]).toMatch(/p_operation:\s*"LOAD_SCENARIO"/);
   });
 
   it("audit metadata captures scenario context (name, zone, terrain)", () => {
@@ -224,9 +228,12 @@ describe("#48 SAR Enhancement B / audit_log entry on scenario load", () => {
     );
     expect(handlerBlock).not.toBeNull();
     expect(handlerBlock![0]).toMatch(/employee_name: scenario\.employeeName/);
-    expect(handlerBlock![0]).toMatch(/zone: scenario\.zone/);
-    expect(handlerBlock![0]).toMatch(/terrain: scenario\.terrain/);
-    expect(handlerBlock![0]).toMatch(/mode: "training"/);
+    expect(handlerBlock![0]).toMatch(/zone:\s*scenario\.zone/);
+    expect(handlerBlock![0]).toMatch(/terrain:\s*scenario\.terrain/);
+    expect(handlerBlock![0]).toMatch(/mode:\s*"training"/);
+    // Preserves the legacy `category` semantic in the metadata blob
+    // even though the RPC writes the row with its own category column.
+    expect(handlerBlock![0]).toMatch(/category:\s*"training"/);
   });
 
   it("audit write is fire-and-forget (try/catch + no await blocking)", () => {
