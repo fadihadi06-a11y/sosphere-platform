@@ -126,12 +126,19 @@ describe("CRIT / SAR engine — true wiring state (proves disclosure is necessar
       /import \{ supabase \} from "\.\/api\/supabase-client"/,
     );
     // No direct .from() table reach.
-    const fromMatches = pageSrc.match(/\.from\("[a-z_]+"\)/g) || [];
+    // CRITICAL: strip single-line and block comments BEFORE counting,
+    // otherwise documentation that mentions the legacy pattern (e.g.
+    // "the previous version did supabase.from(\"audit_log\")...")
+    // would falsely fail this assertion.
+    const codeOnly = pageSrc
+      .replace(/\/\*[\s\S]*?\*\//g, "")  // strip /* ... */
+      .replace(/\/\/.*$/gm, "");              // strip // ...
+    const fromMatches = codeOnly.match(/\.from\("[a-z_]+"\)/g) || [];
     expect(fromMatches.length).toBe(0);
     // The RPC call is the only Supabase reach.
     expect(pageSrc).toMatch(/supabase\.rpc\("log_sos_audit"/);
-    // No raw fetch() either.
-    expect(pageSrc).not.toMatch(/\bfetch\(/);
+    // No raw fetch() either (also comment-stripped).
+    expect(codeOnly).not.toMatch(/\bfetch\(/);
   });
 });
 
