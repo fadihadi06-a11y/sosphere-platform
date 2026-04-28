@@ -1,5 +1,10 @@
 ﻿import { motion } from "motion/react";
-import { ArrowLeft, Lock } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Lock, Download } from "lucide-react";
+import { toast } from "sonner";
+// BLOCKER #14 (2026-04-28): GDPR Art. 15 download button calls the
+// `export-my-data` edge function via supabase.functions.invoke.
+import { supabase } from "./api/supabase-client";
 export function PrivacyPage({ onBack }: { onBack: () => void }) {
   const S = { fontFamily: "'Tajawal','Outfit',sans-serif" };
   const sections = [
@@ -30,8 +35,122 @@ export function PrivacyPage({ onBack }: { onBack: () => void }) {
             <p style={{ fontSize: 13, color: "rgba(255,255,255,.55)", lineHeight: 1.8 }}>{s.body}</p>
           </div>
         ))}
+        {/* BLOCKER #14 (2026-04-28): GDPR Art. 15 — Download my data button.
+            Available to ALL tiers (free + basic + elite) — GDPR rights are
+            universal. Rate-limited server-side to 1 request per 30 days.
+            Returns a JSON file containing every row across ~47 tables that
+            holds personal data about the user, plus a SHA-256 integrity
+            hash and category-grouped metadata. */}
+        <DataExportSection />
         <p style={{ fontSize: 11, color: "rgba(255,255,255,.2)", textAlign: "center", marginTop: 24 }}>آخر تحديث: مارس ٢٠٢٦ — SOSphere Safety Platform</p>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// DataExportSection — GDPR Art. 15 Subject Access Request UI.
+// Self-contained component so privacy-page.tsx stays readable. Calls the
+// `export-my-data` edge function, which:
+//   1. Validates JWT + applies 30-day rate limit
+//   2. Walks ~47 tables and assembles a JSON payload
+//   3. Computes SHA-256 over the data section for tamper-evidence
+//   4. Records the request in sar_request_history + audit_log
+// On success the JSON is offered as a downloadable file.
+// On 429 (rate-limited) we show the next_allowed_at date so the user
+// knows when they can request again.
+// ─────────────────────────────────────────────────────────────────────
+function DataExportSection() {
+  const [loading, setLoading] = useState(false);
+
+  const handleDownload = async () => {
+    if (loading) return;
+    setLoading(true);
+    const tid = toast.loading("جاري تحضير بياناتك...");
+    try {
+      const { data, error } = await supabase.functions.invoke("export-my-data", {
+        body: {},
+      });
+      // The edge function returns 429 when rate-limited; supabase-js
+      // surfaces this as `error` with the body in error.context.
+      if (error) {
+        // Try to extract the rate-limit details from the error context.
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx === "object" && "status" in ctx && (ctx as Response).status === 429) {
+          try {
+            const body = await (ctx as Response).json();
+            const next = body?.next_allowed_at
+              ? new Date(body.next_allowed_at).toLocaleDateString("ar-SA")
+              : "لاحقاً";
+            toast.error(`الطلب مقيّد — يمكنك المحاولة مرة أخرى في ${next}.`, { id: tid, duration: 6000 });
+          } catch {
+            toast.error("الطلب مقيّد — حاول مرة أخرى لاحقاً.", { id: tid });
+          }
+        } else {
+          toast.error("تعذّر تحضير البيانات. حاول مرة أخرى.", { id: tid });
+        }
+        return;
+      }
+      if (!data) {
+        toast.error("لم يتم استرداد أي بيانات.", { id: tid });
+        return;
+      }
+      // Trigger browser download as a JSON blob.
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateStr = new Date().toISOString().split("T")[0];
+      a.download = `sosphere-data-export-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("تم تنزيل بياناتك بنجاح.", { id: tid });
+    } catch (err) {
+      console.error("[privacy-page] download failed:", err);
+      toast.error("حدث خطأ غير متوقّع.", { id: tid });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid="gdpr-data-export-section"
+      className="mt-6 p-4"
+      style={{
+        borderRadius: 14,
+        background: "rgba(0,200,224,0.04)",
+        border: "1px solid rgba(0,200,224,0.18)",
+      }}
+    >
+      <p style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0", marginBottom: 6 }}>
+        ٨. تنزيل بياناتك (GDPR — المادة ١٥)
+      </p>
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,.6)", lineHeight: 1.7, marginBottom: 12 }}>
+        بإمكانك طلب نسخة كاملة من جميع البيانات الشخصية التي تحتفظ بها المنصة عنك (بصيغة JSON).
+        الطلب متاح لكل المستخدمين بدون استثناء، ومحدود بطلب واحد كل ٣٠ يوماً.
+      </p>
+      <motion.button
+        whileTap={{ scale: 0.97 }}
+        onClick={handleDownload}
+        disabled={loading}
+        className="flex items-center justify-center gap-2 w-full py-3"
+        style={{
+          borderRadius: 10,
+          background: loading ? "rgba(0,200,224,0.10)" : "rgba(0,200,224,0.18)",
+          border: "1px solid rgba(0,200,224,0.30)",
+          color: "#00C8E0",
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: loading ? "wait" : "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        <Download size={16} />
+        {loading ? "جاري التحضير..." : "تنزيل بياناتي"}
+      </motion.button>
     </div>
   );
 }
