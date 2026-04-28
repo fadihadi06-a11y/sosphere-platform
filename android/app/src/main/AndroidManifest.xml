@@ -77,6 +77,76 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              BLOCKER #21 (2026-04-28): Deep-link intent-filters.
+
+              Without these, links from system notifications, emails
+              (Supabase auth callbacks, password reset), Stripe payment
+              redirects, and shared SOS viewer URLs all open in the
+              external browser instead of the app - breaking auth flow.
+
+              Three filters:
+                A) Custom scheme `sosphere://` - notification taps
+                B) HTTPS App Links - sosphere-platform.vercel.app paths
+                   (autoVerify=true; needs assetlinks.json on domain
+                   for chooser-free behavior - tracked as BLOCKER #21b)
+
+              CATEGORY semantics:
+                - DEFAULT: required so implicit Intents are matched
+                - BROWSABLE: required so links from web/mail can launch us
+            -->
+
+            <!-- A) Custom scheme - sosphere:// (no browser dialog) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sosphere" />
+            </intent-filter>
+
+            <!-- B) HTTPS App Links - Supabase auth callbacks -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="sosphere-platform.vercel.app"
+                      android:pathPrefix="/auth" />
+            </intent-filter>
+
+            <!-- B) HTTPS App Links - password reset flow -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="sosphere-platform.vercel.app"
+                      android:pathPrefix="/reset-password" />
+            </intent-filter>
+
+            <!-- B) HTTPS App Links - Stripe payment returns -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="sosphere-platform.vercel.app"
+                      android:pathPrefix="/payment-success" />
+                <data android:scheme="https"
+                      android:host="sosphere-platform.vercel.app"
+                      android:pathPrefix="/payment-cancelled" />
+            </intent-filter>
+
+            <!-- B) HTTPS App Links - shared SOS viewer -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="sosphere-platform.vercel.app"
+                      android:pathPrefix="/shared-sos" />
+            </intent-filter>
+
         </activity>
 
         <provider
