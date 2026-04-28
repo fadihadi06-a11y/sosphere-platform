@@ -9,7 +9,8 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { IncidentRecord, ERREvent } from "./sos-emergency";
 import { getGPSTrail } from "./smart-timeline-tracker";
-import { generateIndividualReport, computeIncidentHashAsync, type IndividualReportData } from "./individual-pdf-report";
+import { generateIndividualReport, computeIncidentHashAsync, type IndividualReportData, type ReportTier } from "./individual-pdf-report";
+import { getTier } from "./subscription-service";
 
 interface EmergencyResponseRecordProps {
   record: IncidentRecord;
@@ -365,10 +366,20 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
                 });
                 const _documentHash = await computeIncidentHashAsync(record.id, _canonical);
 
+                // CRIT 3-tier reports (2026-04-28): pass the user's
+                // effective subscription tier to gate which sections render.
+                // Free tier should never reach this branch (the button is
+                // locked); if it somehow does, resolveTier() in the PDF
+                // module defaults to "basic" so we never silently render
+                // a forensic-grade report for a non-paying user.
+                // getTier() returns the effective tier (honors active Elite trial).
+                const _effectiveTier = getTier();
+                const _reportTier: ReportTier = _effectiveTier === "elite" ? "elite" : "basic";
+
                 const reportData: IndividualReportData = {
                   userName: _profile.name || _profile.fullName || "User",
                   userPhone: _profile.phone || "",
-                  plan: "personal",
+                  tier: _reportTier,
                   incidentId: record.id,
                   triggerMethod: record.triggerMethod as any,
                   startTime: record.startTime,
