@@ -435,6 +435,53 @@ function isStatusActive(status: string | null | undefined, periodEnd: string | n
   return true;
 }
 
+/**
+ * CRIT-#7 (2026-04-27): resolve the company owner's user_id from a
+ * companyId, mirroring the EXACT 3-path logic of the `is_company_owner`
+ * SQL helper (migrations/20260424162710 line 50-60). The previous
+ * implementation queried ONLY `companies.owner_user_id` — that column
+ * is unset for companies created via the modern `company_memberships`
+ * path AND for legacy rows that only populated `owner_id`. Result: the
+ * resolveTier company-chain returned null for the majority of B2B
+ * tenants, silently downgrading every employee SOS to free tier.
+ *
+ * Resolution order (first non-null wins):
+ *   1. company_memberships (active, role='owner')   — MODERN
+ *   2. companies.owner_user_id                       — RECENT
+ *   3. companies.owner_id                            — LEGACY
+ *
+ * Returns null if none of the three paths yield an owner.
+ */
+async function resolveCompanyOwnerUserId(companyId: string, supabase: any): Promise<string | null> {
+  // Path 1: modern memberships table.
+  try {
+    const { data: mem } = await supabase
+      .from("company_memberships")
+      .select("user_id")
+      .eq("company_id", companyId)
+      .eq("role", "owner")
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+    if (mem?.user_id) return mem.user_id as string;
+  } catch (err) {
+    console.warn("[sos-alert] company_memberships owner lookup failed:", err);
+  }
+
+  // Path 2 + 3: companies.owner_user_id then companies.owner_id (legacy).
+  try {
+    const { data: company } = await supabase
+      .from("companies")
+      .select("owner_user_id, owner_id")
+      .eq("id", companyId)
+      .maybeSingle();
+    return (company?.owner_user_id as string | null) ?? (company?.owner_id as string | null) ?? null;
+  } catch (err) {
+    console.warn("[sos-alert] companies owner_* lookup failed:", err);
+    return null;
+  }
+}
+
 async function resolveTier(userId: string, supabase: any): Promise<"free" | "basic" | "elite"> {
   // Step 1: personal subscription
   try {
@@ -463,14 +510,12 @@ async function resolveTier(userId: string, supabase: any): Promise<"free" | "bas
     const companyId = profile?.active_company_id;
     if (!companyId) return "free";
 
-    // Step 3: company owner
-    const { data: company } = await supabase
-      .from("companies")
-      .select("owner_user_id")
-      .eq("id", companyId)
-      .maybeSingle();
-    const ownerId = company?.owner_user_id;
-    if (!ownerId) return "free";
+    // Step 3: company owner — CRIT-#7 fix uses 3-path resolver.
+    const ownerId = await resolveCompanyOwnerUserId(companyId, supabase);
+    if (!ownerId) {
+      console.warn(`[sos-alert] CRIT-#7: no owner resolvable for company=${companyId} (memberships, owner_user_id, owner_id all null) — defaulting to free`);
+      return "free";
+    }
 
     // Step 4: owner's subscription
     const { data: ownerSub } = await supabase
