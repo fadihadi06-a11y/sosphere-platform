@@ -214,22 +214,25 @@ export async function enableKeepAwake(): Promise<void> {
     return;
   }
 
-  // CRIT-#22 (2026-04-27): @capacitor-community/keep-awake is NOT in
-  // package.json yet — this is the highest-impact native gap because
-  // the screen will lock during a long SOS, hiding critical UI.
-  // To activate (one-time setup):
+  // CRIT-#22 (2026-04-27, fix-2 2026-04-28): @capacitor-community/keep-awake
+  // is NOT in package.json yet — bundling the import (even with /* @vite-ignore */)
+  // breaks the Vercel Rollup build because Rollup statically analyses the path.
+  // We use the Capacitor runtime plugin REGISTRY instead (window.Capacitor.Plugins),
+  // which is populated by the native shell at boot. No bundle-time dep, no import.
+  // To activate the real plugin (one-time):
   //   npm install @capacitor-community/keep-awake
   //   npx cap sync
-  // Then this dynamic import will resolve and the call below will work.
-  // Until then we keep using the web Wake Lock API on web (already
-  // handled above) and silently no-op on native.
+  // After install, Capacitor.Plugins.KeepAwake will be defined natively and
+  // the call below works. Until then it silently no-ops on native (web Wake
+  // Lock already handled above).
   try {
-    const mod = await import(/* @vite-ignore */ '@capacitor-community/keep-awake').catch(() => null);
-    if (!mod?.KeepAwake) {
+    const cap: any = (typeof window !== "undefined") ? (window as any).Capacitor : null;
+    const KeepAwake = cap?.Plugins?.KeepAwake;
+    if (!KeepAwake) {
       console.warn('[Capacitor] KeepAwake plugin missing — `npm i @capacitor-community/keep-awake` to enable');
       return;
     }
-    await mod.KeepAwake.keepAwake();
+    await KeepAwake.keepAwake();
     keepAwakeActive = true;
     console.info('[Capacitor] Keep Awake enabled');
   } catch (err) {
@@ -254,14 +257,15 @@ export async function disableKeepAwake(): Promise<void> {
     return;
   }
 
-  // CRIT-#22: matching disable. Same install instructions in enableKeepAwake().
+  // CRIT-#22 (fix-2): matching disable via runtime registry — see enableKeepAwake.
   try {
-    const mod = await import(/* @vite-ignore */ '@capacitor-community/keep-awake').catch(() => null);
-    if (!mod?.KeepAwake) {
+    const cap: any = (typeof window !== "undefined") ? (window as any).Capacitor : null;
+    const KeepAwake = cap?.Plugins?.KeepAwake;
+    if (!KeepAwake) {
       keepAwakeActive = false;
       return;
     }
-    await mod.KeepAwake.allowSleep();
+    await KeepAwake.allowSleep();
     keepAwakeActive = false;
     console.info('[Capacitor] Keep Awake disabled');
   } catch (err) {
