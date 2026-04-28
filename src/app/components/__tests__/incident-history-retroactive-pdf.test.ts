@@ -100,16 +100,24 @@ describe("#53 / edge function: incident-report-data (per-incident)", () => {
   });
 
   it("fetches server audit chain via service-role AFTER ownership check", () => {
-    // The audit chain fetch MUST come after the ownership check —
+    // The §7 audit chain fetch MUST come after the ownership check —
     // service-role bypasses RLS, so we have to prove the user owns
     // the incident before exposing audit rows for it.
-    // Anchor on the actual query call (.from("audit_log")) — not bare
-    // "audit_log" which also appears in the file's header docstring
-    // and would falsely match before the ownership check line.
+    //
+    // Polish #5 (2026-04-28) added a SECOND, earlier audit_log query
+    // for retention-expired detection. That earlier query is safe
+    // because it's scoped to `actor_id = userId` from the verified JWT
+    // (so it can never leak audit data for someone else's incident).
+    // The §7 audit chain query, by contrast, is the broad one that
+    // pulls ALL audit rows for the incident (including system actors),
+    // so IT must wait for ownership.
+    //
+    // We pin the §7 query by anchoring on `lastIndexOf` — the LAST
+    // `.from("audit_log")` in the file is the §7 query.
     const ownership = reportFnSrc.indexOf("session.user_id !== userId");
-    const auditFetch = reportFnSrc.indexOf('.from("audit_log")');
+    const sec7AuditFetch = reportFnSrc.lastIndexOf('.from("audit_log")');
     expect(ownership).toBeGreaterThan(0);
-    expect(auditFetch).toBeGreaterThan(ownership);
+    expect(sec7AuditFetch).toBeGreaterThan(ownership);
   });
 
   it("does not set tier on the response — client picks tier at render time", () => {
@@ -291,4 +299,3 @@ describe("Polish #3 / StorageEvent merges instead of overwriting", () => {
     );
   });
 });
-
