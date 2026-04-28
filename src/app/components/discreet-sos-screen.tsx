@@ -11,7 +11,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useEffect, useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+// Foundation fix (2026-04-28): use the installed `motion` package directly
+// instead of relying on framer-motion as a transitive peer dep — npm prune
+// or a future motion@13 update could drop framer-motion silently. This
+// matches the import style of all 60+ other animated components in src/.
+import { motion, AnimatePresence } from "motion/react";
 import {
   isDiscreetModeActive,
   getDiscreetMode,

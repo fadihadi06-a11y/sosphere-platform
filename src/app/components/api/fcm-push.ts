@@ -51,7 +51,15 @@ export async function initFCM(userId?: string): Promise<string | null> {
     // Register service worker if not already
     const registration = await navigator.serviceWorker.ready;
 
-    // Dynamic import Firebase (avoids loading if not configured)
+    // Foundation note (2026-04-28): `firebase` is an OPTIONAL runtime dep —
+    // intentionally NOT in package.json. The isFCMConfigured() early-exit
+    // above (lines 45-48) guarantees these imports only execute when the
+    // operator has explicitly:
+    //   1. Set VITE_FIREBASE_* env vars on Vercel, AND
+    //   2. Run `npm install firebase` (post-deploy customisation step)
+    // If env vars are set without the npm install, the outer try/catch
+    // (line 100) gracefully falls back to web push. Vercel can therefore
+    // build the project without firebase being present in node_modules.
     const { initializeApp } = await import("firebase/app");
     const { getMessaging, getToken, onMessage } = await import("firebase/messaging");
 
