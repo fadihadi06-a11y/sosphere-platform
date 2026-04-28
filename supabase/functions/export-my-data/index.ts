@@ -99,9 +99,14 @@ interface TableSpec {
     | "identity" | "contacts" | "sos_activity" | "locations"
     | "memberships" | "communications" | "billing" | "system";
   // Optional projection — if absent, we SELECT *.
-  // Use this for tables where you want to drop sensitive PII the user
-  // shouldn't necessarily see in their own export (e.g. internal flags).
   projection?: string;
+  // Beehive fix #3 (2026-04-28): force admin-client read when the table
+  // has a service-role-only RLS policy (user-scoped client would silently
+  // return 0 rows, hiding data the user is legally entitled to in a SAR
+  // export). Admin client bypasses RLS, but we ALWAYS filter by the
+  // user-scoped column (`user_id = auth.uid()` etc.) so we cannot leak
+  // cross-tenant rows. Defence in depth: ownership check on every read.
+  useAdmin?: boolean;
 }
 
 const TABLE_SPECS: TableSpec[] = [
@@ -158,18 +163,18 @@ const TABLE_SPECS: TableSpec[] = [
 
   // ── Billing & Subscriptions ────────────────────────────────────────
   { table: "subscriptions",             column: "user_id",        category: "billing" },
-  { table: "stripe_unmapped_events",    column: "user_id",        category: "billing" },
-  { table: "twilio_spend_ledger",       column: "user_id",        category: "billing" },
+  { table: "stripe_unmapped_events",    column: "user_id",        category: "billing", useAdmin: true },
+  { table: "twilio_spend_ledger",       column: "user_id",        category: "billing", useAdmin: true },
 
   // ── System / derived ───────────────────────────────────────────────
   { table: "audit_log",                 column: "actor_id",       category: "system" },
-  { table: "profile_trigger_logs",      column: "user_id",        category: "system" },
-  { table: "risk_scores",               column: "employee_id",    category: "system" },
-  { table: "call_chains",               column: "user_id",        category: "system" },
-  { table: "zone_reports",              column: "user_id",        category: "system" },
-  { table: "missions",                  column: "employee_id",    category: "system" },
-  { table: "tasks",                     column: "user_id",        category: "system" },
-  { table: "files",                     column: "employee_id",    category: "system" },
+  { table: "profile_trigger_logs",      column: "user_id",        category: "system", useAdmin: true },
+  { table: "risk_scores",               column: "employee_id",    category: "system", useAdmin: true },
+  { table: "call_chains",               column: "user_id",        category: "system", useAdmin: true },
+  { table: "zone_reports",              column: "user_id",        category: "system", useAdmin: true },
+  { table: "missions",                  column: "employee_id",    category: "system", useAdmin: true },
+  { table: "tasks",                     column: "user_id",        category: "system", useAdmin: true },
+  { table: "files",                     column: "employee_id",    category: "system", useAdmin: true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -280,8 +285,12 @@ Deno.serve(async (req) => {
       userId; // user_id
 
     try {
-      // audit_log goes through admin (we want full system-actor entries).
-      const client = spec.table === "audit_log" ? admin : userClient;
+      // Beehive fix #3 (2026-04-28): pick client by spec.useAdmin too,
+      // not only by table name. Tables with service-role-only RLS need
+      // admin reads (with explicit ownership filter) to honor GDPR.
+      const client = (spec.table === "audit_log" || spec.useAdmin === true)
+        ? admin
+        : userClient;
       const projection = spec.projection || "*";
       const { data: rows, error } = await client
         .from(spec.table)
@@ -294,12 +303,34 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Beehive fix #3: when the user-scoped client returns 0 rows for a
+      // table that DOESN'T use admin override, we cannot tell apart "no
+      // data exists for this user" from "RLS silently blocked us". The
+      // safe assumption for GDPR transparency is to surface this as a
+      // soft warning so a curious user / auditor can see it. Tables that
+      // explicitly use the admin client (useAdmin=true OR audit_log) are
+      // never ambiguous — those reads are authoritative.
+      const usedAdmin = client === admin;
+      const rowCount = rows?.length || 0;
+      if (!usedAdmin && rowCount === 0) {
+        // Soft signal — the row stays in `data` (with row_count: 0) but
+        // we ALSO add a marker to errors[] so the response's
+        // errors_count reflects ambiguity.
+        errors.push({
+          table: spec.table,
+          reason: "rls_returned_zero_rows (may be empty OR may be RLS-blocked)",
+        });
+      }
+
       // Group by category so the JSON is human-readable.
       if (!data[spec.category]) data[spec.category] = {};
       data[spec.category][spec.table] = {
         scope_column: spec.column,
-        row_count: rows?.length || 0,
+        row_count: rowCount,
         rows: rows || [],
+        // Mark which client actually fetched the row — useful for
+        // auditors verifying transparency.
+        read_via: usedAdmin ? "admin_with_explicit_filter" : "user_jwt_rls",
       };
       tablesCount++;
     } catch (err) {

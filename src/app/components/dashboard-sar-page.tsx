@@ -608,31 +608,44 @@ export function SARProtocolPage() {
     // ever asks "did the dispatcher rely on this for a real rescue?",
     // the audit_log shows category='training' for every interaction.
     // FIRE-AND-FORGET: a failed audit MUST NOT block the mission UI.
+    //
+    // Beehive audit fix (2026-04-28): the previous version did a direct
+    // `supabase.from("audit_log").insert(...)` which silently failed on
+    // every call — CRIT-#10 + W3-8 REVOKEd INSERT on audit_log from
+    // authenticated. The audit_log only accepts writes via the SECURITY
+    // DEFINER RPC `log_sos_audit`, which is the same path sos-alert uses.
+    // Switching to the RPC actually persists the row.
+    //
+    // Param mapping:
+    //   p_action      → "sar_training_session"
+    //   p_actor       → user email (or "anonymous" for not-yet-signed-in)
+    //   p_actor_level → "dispatcher"  (override the worker default)
+    //   p_operation   → "LOAD_SCENARIO"
+    //   p_target      → scenario.id
+    //   p_target_name → scenario.title
+    //   p_metadata    → full training context (mode, employee, zone, etc.)
+    //   p_company_id  → null (training is dispatcher-scoped, not company)
     void (async () => {
       try {
         const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id ?? null;
-        await supabase.from("audit_log").insert({
-          id: crypto.randomUUID(),
-          action: "sar_training_session",
-          actor: userData?.user?.email ?? "anonymous",
-          actor_id: userId,
-          actor_role: "dispatcher",
-          operation: "LOAD_SCENARIO",
-          target: scenario.id,
-          target_name: scenario.title,
-          category: "training",
-          severity: "info",
-          metadata: {
-            mode: "training",
-            scenario_id: scenario.id,
+        await supabase.rpc("log_sos_audit", {
+          p_action:       "sar_training_session",
+          p_actor:        userData?.user?.email ?? "anonymous",
+          p_actor_level:  "dispatcher",
+          p_operation:    "LOAD_SCENARIO",
+          p_target:       scenario.id,
+          p_target_name:  scenario.title,
+          p_metadata: {
+            mode:          "training",
+            category:      "training",   // preserves the original intent
+            scenario_id:   scenario.id,
             employee_name: scenario.employeeName,
-            zone: scenario.zone,
-            terrain: scenario.terrain,
-            worker_type: scenario.workerType,
-            mission_id: mission.id,
+            zone:          scenario.zone,
+            terrain:       scenario.terrain,
+            worker_type:   scenario.workerType,
+            mission_id:    mission.id,
           },
-          created_at: new Date().toISOString(),
+          p_company_id:   null,
         });
       } catch (err) {
         console.warn("[sar] training-session audit write failed:", err);
