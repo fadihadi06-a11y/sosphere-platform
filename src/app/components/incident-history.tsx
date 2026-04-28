@@ -6,6 +6,21 @@ import {
   Filter, Search, Calendar, ChevronRight, ChevronDown,
   Mic, Zap, Timer, X, Eye, Trash2, Share2,
 } from "lucide-react";
+import { toast } from "sonner";
+// CRIT 3-tier reports / Retroactive PDF (2026-04-28):
+//   • supabase: invokes incident-history (list) + incident-report-data (per-incident).
+//   • getTier: resolves the user's CURRENT tier so a free→elite upgrade
+//     re-renders any past incident at the new tier.
+//   • generateIndividualReport + computeIncidentHashAsync: render the PDF
+//     client-side from the assembled payload.
+import { supabase } from "./api/supabase-client";
+import { getTier } from "./subscription-service";
+import {
+  generateIndividualReport,
+  computeIncidentHashAsync,
+  type IndividualReportData,
+  type ReportTier,
+} from "./individual-pdf-report";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type IncidentType = "sos" | "checkin_expired" | "dms_auto";
@@ -162,6 +177,130 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, []);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // CRIT 3-tier reports / Retroactive PDF (2026-04-28):
+  // Server-side history fetch. The localStorage path above only sees
+  // incidents created in THIS browser. Users who bought a new phone or
+  // logged in from a different browser would see an empty history —
+  // and the upgrade-for-retroactive-PDF promise would be hollow.
+  // We fetch the canonical list from `incident-history` and merge by id
+  // (server takes precedence — it has the authoritative server timestamps
+  // and audit chain). Failures are silent so offline still works.
+  // ─────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("incident-history");
+        if (cancelled || error || !data?.incidents) return;
+        // Convert server rows to the local Incident shape.
+        const serverIncidents: Incident[] = (data.incidents as any[]).map((s) => {
+          const start = s.startedAt ? new Date(s.startedAt) : new Date();
+          const end = s.endedAt ? new Date(s.endedAt) : start;
+          const duration = s.durationSec ?? Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+          const isResolved = ["resolved", "ended"].includes(s.status);
+          return {
+            id: s.id,
+            type: "sos" as IncidentType,
+            severity: isResolved ? "resolved" : (s.escalated ? "critical" : "high"),
+            date: start,
+            duration,
+            triggerMethod: "Hold 3s",
+            location: {
+              address: s.location?.address || "Location not recorded",
+              lat: s.location?.lat || 0,
+              lng: s.location?.lng || 0,
+            },
+            contactsCalled: s.contactCount ?? 0,
+            contactsAnswered: 0,
+            hasRecording: false,
+            resolved: isResolved,
+            events: [
+              { time: start.toLocaleTimeString("en-US", { hour12: false }), title: "SOS Activated", type: "sos_start" },
+              ...(end > start ? [{ time: end.toLocaleTimeString("en-US", { hour12: false }), title: `Status: ${s.status}`, type: "sos_end" as const }] : []),
+            ],
+          };
+        });
+        // Merge: server is authoritative; localStorage entries with no
+        // server counterpart (legacy/offline) are kept.
+        setRealIncidents((local) => {
+          const byId = new Map<string, Incident>();
+          for (const inc of serverIncidents) byId.set(inc.id, inc);
+          for (const inc of local) {
+            if (!byId.has(inc.id)) byId.set(inc.id, inc);
+          }
+          return Array.from(byId.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
+        });
+      } catch (err) {
+        // Silent failure — localStorage path still works for offline.
+        console.warn("[incident-history] server fetch failed:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Per-incident PDF download handler. Resolves the user's CURRENT tier
+  // (elite > basic; free triggers the upgrade flow) and asks the
+  // incident-report-data edge function for the report payload, then
+  // hands it to generateIndividualReport with the right tier.
+  // This is the path that delivers the upgrade-for-retroactive-PDFs
+  // promise — every past incident becomes downloadable at the new tier.
+  // ─────────────────────────────────────────────────────────────────────
+  const handleDownloadPdf = async (incidentId: string) => {
+    const tier = getTier();
+    if (tier === "free") {
+      onUpgrade?.();
+      return;
+    }
+    const reportTier: ReportTier = tier === "elite" ? "elite" : "basic";
+    const tid = toast.loading("Preparing report...");
+    try {
+      const { data, error } = await supabase.functions.invoke("incident-report-data", {
+        body: { incidentId },
+      });
+      if (error || !data?.data) {
+        toast.error("Could not load report data", { id: tid });
+        return;
+      }
+      const payload = data.data as Omit<IndividualReportData, "tier" | "documentHash">;
+      // Compute SHA-256 of the canonical payload for tamper-evidence.
+      const canonical = JSON.stringify({
+        id: payload.incidentId,
+        start: payload.startTime,
+        end: payload.endTime,
+        location: payload.location,
+        contacts: payload.contacts,
+      });
+      const documentHash = await computeIncidentHashAsync(payload.incidentId, canonical);
+      // Server returns ISO strings; convert to Date for the PDF generator.
+      const reportData: IndividualReportData = {
+        ...payload,
+        tier: reportTier,
+        documentHash,
+        startTime: new Date(payload.startTime as unknown as string),
+        endTime: new Date(payload.endTime as unknown as string),
+        gpsTrail: (payload.gpsTrail || []).map((p) => ({
+          ...p,
+          time: new Date((p as any).time as string),
+        })),
+        timeline: (payload.timeline || []).map((t) => ({
+          ...t,
+          time: new Date((t as any).time as string),
+        })),
+        serverAudit: (payload.serverAudit || []).map((a) => ({
+          ...a,
+          serverTime: new Date((a as any).serverTime as string),
+        })),
+      };
+      generateIndividualReport(reportData);
+      toast.success(`Report downloaded (${reportTier === "elite" ? "Forensic" : "Standard"})`, { id: tid });
+    } catch (err) {
+      console.error("[incident-history] download failed:", err);
+      toast.error("Could not download report", { id: tid });
+    }
+  };
 
   // Real incidents only — no demo/mock fallback (cleaned 2026-04-23)
   const allIncidents: Incident[] = realIncidents;
@@ -531,6 +670,7 @@ export function IncidentHistory({ onBack, userPlan, onUpgrade }: IncidentHistory
                                 {isPro && (
                                   <motion.button
                                     whileTap={{ scale: 0.97 }}
+                                    onClick={() => handleDownloadPdf(inc.id)}
                                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5"
                                     style={{
                                       borderRadius: 12,

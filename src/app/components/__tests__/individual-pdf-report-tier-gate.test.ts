@@ -99,8 +99,11 @@ describe("CRIT 3-tier reports / Elite-only sections", () => {
   });
 
   it("Privacy Packet Shared field is Elite-only", () => {
+    // Anchor on the array entry `["Privacy Packet Shared", (() => {` to
+    // avoid matching an older comment line that mentions the same
+    // string ("'Privacy Packet Shared' row added below the existing three").
     const packetBlock = pdfSrc.match(
-      /"Privacy Packet Shared"[\s\S]*?\}\)\(\)\]/,
+      /\["Privacy Packet Shared", \(\(\) => \{[\s\S]*?\}\)\(\)\]/,
     );
     expect(packetBlock).not.toBeNull();
     expect(packetBlock![0]).toMatch(/!isElite/);
@@ -179,10 +182,12 @@ describe("CRIT 3-tier reports / promise-of-no-leak guards", () => {
   // These tests assert the absence of patterns that, if present,
   // would mean the tier gate is bypassed somewhere.
   it("audit chain section never renders unconditionally (must have isElite gate)", () => {
-    // The string "data.serverAudit.slice(0, 40)" must only appear
-    // inside an `else` branch following `if (!isElite)`.
+    // The Elite-gated audit-chain block must be wrapped in
+    //   if (!isElite) { ...basic notice... } else { ...full table... }
+    // The end-of-block marker is `} // end of \`if (!isElite) else { ... }\``
+    // (a closing brace + comment, no `})`).
     const sec7Body = pdfSrc.match(
-      /SERVER-VERIFIED AUDIT CHAIN[\s\S]*?\}\) \/\/ end of/,
+      /SERVER-VERIFIED AUDIT CHAIN[\s\S]*?\} \/\/ end of/,
     );
     expect(sec7Body).not.toBeNull();
     expect(sec7Body![0]).toMatch(/if \(!isElite\) \{[\s\S]*?\} else \{/);
