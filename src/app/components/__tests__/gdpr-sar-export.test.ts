@@ -200,7 +200,12 @@ describe("BLOCKER #14 / edge function: security & rate-limit", () => {
   });
 
   it("returns HTTP 429 on rate_limited (Retry-After semantics)", () => {
-    expect(edgeFnSrc).toMatch(/'rate_limited'[\s\S]*?429/);
+    // Anchor on the actual ternary that maps reason -> status code:
+    //   gateData?.reason === "rate_limited" ? 429 : 403
+    // The previous regex used non-greedy [\s\S]*? which couldn\'t span
+    // the distance between the literal "rate_limited" and the status
+    // assignment. Pinning the ternary directly is more precise.
+    expect(edgeFnSrc).toMatch(/reason === "rate_limited" \? 429/);
   });
 
   it("uses user-scoped client for table walk (RLS enforced)", () => {
