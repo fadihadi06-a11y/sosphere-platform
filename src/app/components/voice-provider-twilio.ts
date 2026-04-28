@@ -416,9 +416,17 @@ export class TwilioVoiceProvider implements VoiceProvider {
       try {
         const { supabaseUrl, supabaseAnonKey } = this.config;
         if (supabaseUrl && supabaseAnonKey) {
-          // Use dynamic import to avoid hard dependency
-          const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-          const sb = createClient(supabaseUrl, supabaseAnonKey);
+          // Foundation fix (2026-04-28): use the installed @supabase/supabase-js
+          // package instead of the esm.sh URL import — URL imports work but
+          // bypass npm version pinning, dependency resolution, and Vercel's
+          // dependency cache. Still create a SEPARATE client so the voice
+          // provider's realtime channel does not contend with the main app's
+          // auth session.
+          const { createClient } = await import("@supabase/supabase-js");
+          const sb = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+            realtime: { params: { eventsPerSecond: 10 } },
+          });
           this._realtimeSb = sb;
           const channel = sb.channel(`call-${callId}`);
           this._realtimeChannel = channel;

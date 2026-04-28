@@ -215,7 +215,7 @@ export async function enableKeepAwake(): Promise<void> {
   }
 
   // CRIT-#22 (2026-04-27, fix-2 2026-04-28): @capacitor-community/keep-awake
-  // is NOT in package.json yet — bundling the import (even with /* @vite-ignore */)
+  // is NOT in package.json yet — bundling the import (even with vite-ignore hint)
   // breaks the Vercel Rollup build because Rollup statically analyses the path.
   // We use the Capacitor runtime plugin REGISTRY instead (window.Capacitor.Plugins),
   // which is populated by the native shell at boot. No bundle-time dep, no import.

@@ -7,6 +7,9 @@
 //                            account cross-origin.
 //   G-30 (B-20, 2026-04-26): 500 response no longer includes raw err.message;
 //                            schema names stay out of the public response.
+//   CRIT-#11 (2026-04-28):   cancel Stripe subscription BEFORE the cascade so
+//                            an erased account stops being charged. Block the
+//                            deletion if Stripe rejects (idempotent retry-safe).
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -92,6 +95,121 @@ Deno.serve(async (req) => {
   });
 
   try {
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRIT-#11 (2026-04-28): cancel Stripe subscription BEFORE deleting DB
+    // ─────────────────────────────────────────────────────────────────────
+    // GDPR Art. 17 mandates erasure, but erasing user_id while leaving the
+    // Stripe subscription active = user keeps getting charged with no way
+    // to log in to manage it = chargebacks + GDPR fine. We must cancel
+    // Stripe FIRST and FAIL the deletion if Stripe rejects (it is idempotent
+    // by subscription_id, so the user can safely retry).
+    //
+    // Free-tier users have stripe_subscription_id = NULL → skip gracefully.
+    // Stripe API errors (auth, network, rate-limit) → return 503, do NOT
+    // proceed to DB delete. The user retries; Stripe re-reads the same
+    // subscription_id and either cancels (200) or returns "already canceled"
+    // (also 200). Either way: safe.
+    // ═══════════════════════════════════════════════════════════════════════
+    let stripeSubId: string | null = null;
+    let stripeCustomerId: string | null = null;
+    try {
+      const { data: subRow, error: subLookupErr } = await admin
+        .from("subscriptions")
+        .select("stripe_subscription_id, stripe_customer_id, status")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (subLookupErr) {
+        console.error("[delete-account] subscription lookup failed:", subLookupErr);
+        return new Response(JSON.stringify({
+          error: "subscription_lookup_failed",
+          stage: "stripe_pre_delete",
+        }), { status: 500, headers: CORS });
+      }
+      stripeSubId      = (subRow as any)?.stripe_subscription_id ?? null;
+      stripeCustomerId = (subRow as any)?.stripe_customer_id ?? null;
+    } catch (e) {
+      console.error("[delete-account] subscription lookup threw:", e);
+      return new Response(JSON.stringify({
+        error: "subscription_lookup_exception",
+        stage: "stripe_pre_delete",
+      }), { status: 500, headers: CORS });
+    }
+
+    // Only call Stripe if we actually have a subscription to cancel.
+    if (stripeSubId) {
+      const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+      if (!stripeKey) {
+        console.error("[delete-account] STRIPE_SECRET_KEY missing — refusing to proceed (would orphan subscription)");
+        return new Response(JSON.stringify({
+          error: "stripe_not_configured",
+          stage: "stripe_pre_delete",
+          note: "Server is missing Stripe credentials; cannot cancel your subscription. Contact support.",
+        }), { status: 503, headers: CORS });
+      }
+      // Stripe DELETE on a subscription = immediate cancel (no proration).
+      // Immediate cancel is correct for GDPR erasure: no further charges, ever.
+      try {
+        const stripeRes = await fetch(
+          `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(stripeSubId)}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Authorization": `Bearer ${stripeKey}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              // Idempotency-Key prevents accidental double-cancellations on retry.
+              "Idempotency-Key": `del-acct-${userId}-${stripeSubId}`,
+            },
+          },
+        );
+        if (!stripeRes.ok) {
+          const body = await stripeRes.text().catch(() => "(unreadable)");
+          // 404 means already canceled or never existed — treat as success.
+          if (stripeRes.status === 404) {
+            console.warn(`[delete-account] Stripe sub ${stripeSubId} already gone (404), proceeding`);
+          } else {
+            console.error(`[delete-account] Stripe cancel ${stripeRes.status}:`, body.slice(0, 500));
+            return new Response(JSON.stringify({
+              error: "stripe_cancel_failed",
+              stage: "stripe_pre_delete",
+              stripe_status: stripeRes.status,
+              retryable: stripeRes.status >= 500 || stripeRes.status === 429,
+            }), { status: 503, headers: CORS });
+          }
+        } else {
+          console.info(`[delete-account] Stripe sub ${stripeSubId} cancelled for user ${userId}`);
+        }
+      } catch (stripeErr) {
+        console.error("[delete-account] Stripe network error:", stripeErr);
+        return new Response(JSON.stringify({
+          error: "stripe_network_error",
+          stage: "stripe_pre_delete",
+          retryable: true,
+        }), { status: 503, headers: CORS });
+      }
+
+      // Best-effort audit trail (do not fail deletion if audit insert fails).
+      try {
+        await admin.rpc("log_sos_audit", {
+          p_action: "stripe_subscription_cancelled_on_account_delete",
+          p_actor: userId,
+          p_actor_level: "self",
+          p_operation: "account_deletion",
+          p_target: stripeSubId,
+          p_target_name: null,
+          p_metadata: {
+            stripe_customer_id: stripeCustomerId,
+            email_hint: email.split("@")[0].slice(0, 3) + "***",
+            source: "delete-account/CRIT-#11",
+          },
+        });
+      } catch (auditErr) {
+        console.warn("[delete-account] audit log entry failed (non-fatal):", auditErr);
+      }
+    } else {
+      console.info(`[delete-account] no stripe_subscription_id for ${userId} — free tier, skipping Stripe cancel`);
+    }
+
+    // ── Proceed with the original RPC cascade (unchanged) ──
     const { data: rpcResult, error: rpcErr } = await admin.rpc(
       "delete_user_completely", { p_user_id: userId }
     );
@@ -152,6 +270,7 @@ Deno.serve(async (req) => {
       success: true,
       userId,
       email_scrubbed: "[deleted]",
+      stripe_subscription_cancelled: stripeSubId ? true : false,
       solo_companies_deleted: summary.solo_companies_deleted ?? 0,
       storage_objects_deleted: storageDeleted,
       storage_objects_failed:  storageFailed,
