@@ -623,10 +623,94 @@ export function SARProtocolPage() {
     <div style={{ minHeight: "100vh", color: "white" }}>
       <style>{pulseCSS}</style>
 
+      {/* ──────────────────────────────────────────────────────────────────
+          CRIT (2026-04-28): SAR-DEMO-MODE banner — DO NOT REMOVE.
+          ─────────────────────────────────────────────────────────────────
+          The SAR Protocol UI is a planning / training simulator. The
+          underlying engine (search-cone math, GPS analysis, escalation
+          timeline) is real, but it is NOT wired to:
+            • live worker GPS feeds (reads localStorage scenarios only)
+            • any external rescue dispatch service (no Twilio/911/999)
+            • the company's actual employees (preset SAR_SCENARIOS in code)
+          A dispatcher who clicks "Send Rescue Team" here will save a row
+          to localStorage. NOTHING reaches a real rescue team.
+          The banner below makes that contract visible to every user.
+          The source-pinning test in __tests__/sar-demo-banner.test.ts
+          fails CI if this banner is removed or its key copy is changed.
+          Do not remove until SAR is wired to live data + a real dispatch
+          channel (separate epic; tracked as Task #45).
+          ────────────────────────────────────────────────────────────── */}
+      <div
+        data-testid="sar-demo-mode-banner"
+        role="alert"
+        style={{
+          margin: "12px 24px 16px",
+          padding: "14px 18px",
+          borderRadius: 14,
+          background: "linear-gradient(135deg, rgba(255,45,85,0.18), rgba(255,159,10,0.10))",
+          border: "2px solid #FF2D55",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 14,
+          boxShadow: "0 0 20px rgba(255,45,85,0.25)",
+        }}
+      >
+        <ShieldAlert
+          style={{ width: 28, height: 28, color: "#FF2D55", flexShrink: 0, marginTop: 2 }}
+        />
+        <div style={{ flex: 1, fontFamily: "'Tajawal','Outfit',sans-serif" }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: "#FF2D55",
+              marginBottom: 6,
+              letterSpacing: 0.3,
+            }}
+          >
+            ⚠️ DEMO / TRAINING MODE — NOT CONNECTED TO LIVE RESCUE SERVICES
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.85)",
+              lineHeight: 1.6,
+              marginBottom: 4,
+            }}
+          >
+            This Search &amp; Rescue console is a planning &amp; training tool. Actions taken here
+            (dispatch teams, escalate, send rescue) are saved locally and do <strong>NOT</strong> reach
+            real rescue services, emergency authorities, or your workers&apos; phones.
+          </div>
+          <div
+            dir="rtl"
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.85)",
+              lineHeight: 1.7,
+              marginBottom: 8,
+            }}
+          >
+            وضع تدريبي — هذه الواجهة لا تتصل بخدمات الإنقاذ الفعلية.
+            في حالات الطوارئ الحقيقية اتصل برقم الطوارئ المحلي مباشرة:
+            <strong> 911 / 999 / 112</strong>.
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#FF9F0A",
+              fontWeight: 700,
+            }}
+          >
+            FOR REAL EMERGENCIES, DIAL YOUR LOCAL EMERGENCY NUMBER (911 / 999 / 112)
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <PageHeader
         title="SAR Protocol"
-        description="Search & Rescue — Intelligent Missing Worker System"
+        description="Search & Rescue — Intelligent Missing Worker System (Demo / Training Mode)"
         color="#FF2D55"
       />
 
