@@ -103,8 +103,11 @@ describe("#53 / edge function: incident-report-data (per-incident)", () => {
     // The audit chain fetch MUST come after the ownership check —
     // service-role bypasses RLS, so we have to prove the user owns
     // the incident before exposing audit rows for it.
+    // Anchor on the actual query call (.from("audit_log")) — not bare
+    // "audit_log" which also appears in the file's header docstring
+    // and would falsely match before the ownership check line.
     const ownership = reportFnSrc.indexOf("session.user_id !== userId");
-    const auditFetch = reportFnSrc.indexOf("audit_log");
+    const auditFetch = reportFnSrc.indexOf('.from("audit_log")');
     expect(ownership).toBeGreaterThan(0);
     expect(auditFetch).toBeGreaterThan(ownership);
   });
