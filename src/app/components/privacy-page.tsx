@@ -41,6 +41,7 @@ export function PrivacyPage({ onBack }: { onBack: () => void }) {
             Returns a JSON file containing every row across ~47 tables that
             holds personal data about the user, plus a SHA-256 integrity
             hash and category-grouped metadata. */}
+        <CcpaSection />
         <DataExportSection />
         <p style={{ fontSize: 11, color: "rgba(255,255,255,.2)", textAlign: "center", marginTop: 24 }}>آخر تحديث: مارس ٢٠٢٦ — SOSphere Safety Platform</p>
       </div>
@@ -151,6 +152,85 @@ function DataExportSection() {
         <Download size={16} />
         {loading ? "جاري التحضير..." : "تنزيل بياناتي"}
       </motion.button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Pre-launch Phase 4 (2026-04-29): CCPA / CPRA disclosure for the US
+// market. Even though the product is launched primarily in MENA, the
+// platform is technically reachable from California, so we publish
+// the required CCPA disclosures to keep the launch defensible.
+//
+// Mapped CCPA categories per Cal. Civ. Code § 1798.140(v):
+//   • Identifiers ........... phone number, account email
+//   • Geolocation .......... GPS coordinates (SENSITIVE PI under CPRA)
+//   • Internet activity .... device info, app telemetry
+//   • Commercial info ...... subscription tier, purchase history
+//   • Inferences ........... none used for profiling
+//
+// SOSphere does NOT sell or share PI for cross-context behavioural
+// advertising — so we are NOT required to publish a "Do Not Sell or
+// Share My Personal Information" link, but we still surface the fact
+// affirmatively below so users in CA know.
+// ─────────────────────────────────────────────────────────────────────
+function CcpaSection() {
+  return (
+    <div
+      data-testid="ccpa-disclosure-section"
+      className="mt-6 p-4"
+      style={{
+        borderRadius: 14,
+        background: "rgba(255,200,0,0.03)",
+        border: "1px solid rgba(255,200,0,0.18)",
+      }}
+    >
+      <p style={{ fontSize: 13, fontWeight: 700, color: "#FFC800", marginBottom: 8 }}>
+        ٩. سكان كاليفورنيا — CCPA / CPRA Notice
+      </p>
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,.65)", lineHeight: 1.8, marginBottom: 10 }}>
+        إذا كنت من سكان ولاية كاليفورنيا، تنطبق عليك الحقوق التالية بموجب قانون
+        خصوصية المستهلك (CCPA / CPRA):
+      </p>
+      <ul
+        style={{
+          fontSize: 12,
+          color: "rgba(255,255,255,.55)",
+          lineHeight: 1.9,
+          paddingInlineStart: 18,
+          marginBottom: 12,
+        }}
+      >
+        <li>الحق في معرفة فئات البيانات الشخصية التي نجمعها (المعرّفات، الموقع GPS، نشاط التطبيق، بيانات الاشتراك)</li>
+        <li>الحق في طلب نسخة كاملة من بياناتك (Right to Know — مغطّى بزر «تنزيل بياناتي» أعلاه)</li>
+        <li>الحق في حذف بياناتك (Right to Delete — متاح من إعدادات الحساب)</li>
+        <li>الحق في تصحيح أي بيانات غير دقيقة (Right to Correct)</li>
+        <li>الحق في تقييد استخدام بياناتك الحساسة كالموقع GPS (Right to Limit Use of Sensitive PI)</li>
+        <li>الحق في عدم التعرّض للتمييز عند ممارسة هذه الحقوق (Right to Non-Discrimination)</li>
+        <li>الحق في رفض البيع أو المشاركة (Right to Opt-Out)</li>
+      </ul>
+      <div
+        style={{
+          fontSize: 12,
+          color: "#7CFFB4",
+          background: "rgba(0,255,128,0.05)",
+          border: "1px solid rgba(0,255,128,0.18)",
+          borderRadius: 10,
+          padding: "10px 12px",
+          marginBottom: 10,
+          lineHeight: 1.7,
+        }}
+      >
+        ✅ <strong>We do not sell or share your personal information</strong> for
+        cross-context behavioural advertising or any other commercial purpose.
+        لا نبيع بياناتك ولا نشاركها لأغراض إعلانية.
+      </div>
+      <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", lineHeight: 1.7 }}>
+        لممارسة أي من حقوقك أعلاه أو لإحالة طلب CCPA رسمي راسلنا على{" "}
+        <span style={{ color: "#FFC800" }}>sosphere.support@gmail.com</span> مع
+        ذكر «CCPA Request» في عنوان الرسالة. نستجيب خلال ٤٥ يوماً كحدّ أقصى وفقاً
+        للقانون.
+      </p>
     </div>
   );
 }
