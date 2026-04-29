@@ -154,4 +154,30 @@ async function saveFCMToken(token: string, userId?: string): Promise<void> {
         user_id: userId,
         platform: detectPlatform(),
         is_active: true,
-        updated_at: new Date().toISOS
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "token" },
+    );
+    console.log("[FCM] Token saved to Supabase for user", userId);
+  } catch (e) {
+    console.warn("[FCM] Failed to save token:", e);
+  }
+}
+
+/**
+ * Get the current FCM token (null if not initialized).
+ */
+export function getFCMToken(): string | null {
+  return _fcmToken;
+}
+
+/**
+ * Detect platform for token registration.
+ */
+function detectPlatform(): string {
+  const ua = navigator.userAgent.toLowerCase();
+  if (/android/.test(ua)) return "android";
+  if (/iphone|ipad/.test(ua)) return "ios";
+  if (/mobile/.test(ua)) return "mobile-web";
+  return "desktop-web";
+}
