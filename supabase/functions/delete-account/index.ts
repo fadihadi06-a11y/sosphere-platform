@@ -209,6 +209,33 @@ Deno.serve(async (req) => {
       console.info(`[delete-account] no stripe_subscription_id for ${userId} — free tier, skipping Stripe cancel`);
     }
 
+    // ── Audit #5 / B2 (2026-04-29): record account deletion BEFORE
+    // it happens. The delete_user_completely RPC cascades and removes
+    // FK references to the user; audit rows written AFTER would have
+    // no actor to bind to, and the RPC itself does not write an audit
+    // row. So we capture the forensic evidence now, while the user
+    // identity is still intact.
+    try {
+      await admin.rpc("log_sos_audit", {
+        p_action: "account_deleted",
+        p_actor_user_id: userId,
+        p_actor_level: "self",
+        p_category: "account",
+        p_operation: "DELETE",
+        p_metadata: {
+          email_hint: email.split("@")[0].slice(0, 3) + "***",
+          had_stripe_subscription: !!stripeSubId,
+          stripe_customer_id_hint: stripeCustomerId
+            ? stripeCustomerId.slice(0, 8) + "***"
+            : null,
+          source: "delete-account/audit5-B2",
+        },
+      });
+    } catch (auditErr) {
+      // Non-blocking: deletion proceeds even if audit write fails.
+      console.warn("[delete-account] account_deleted audit failed (non-fatal):", auditErr);
+    }
+
     // ── Proceed with the original RPC cascade (unchanged) ──
     const { data: rpcResult, error: rpcErr } = await admin.rpc(
       "delete_user_completely", { p_user_id: userId }

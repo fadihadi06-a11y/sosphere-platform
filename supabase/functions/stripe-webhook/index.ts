@@ -173,6 +173,24 @@ serve(async (req: Request) => {
         }
         const sub = await stripeGet(`/subscriptions/${subId}`);
         await upsertSubscription(supabase, userId, sub, session.metadata?.planId);
+        // Audit #5 / B1 (2026-04-29): record the paid-plan transition.
+        // Required for compliance + GDPR export. Fire-and-forget — Stripe
+        // already retries the webhook on failure, no need to fail twice.
+        await supabase.rpc("log_sos_audit", {
+          p_action: "stripe_checkout_completed",
+          p_actor_user_id: userId,
+          p_actor_level: "user",
+          p_category: "billing",
+          p_operation: "CREATE",
+          p_metadata: {
+            stripe_event_id: evtId,
+            stripe_event_type: evtType,
+            subscription_id: subId,
+            plan_id: session.metadata?.planId || null,
+          },
+        }).then((r: { error?: unknown }) => {
+          if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+        });
         console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${userId} sub=${subId}`);
         break;
       }
@@ -191,6 +209,23 @@ serve(async (req: Request) => {
           break;
         }
         await upsertSubscription(supabase, row.user_id, sub);
+        // Audit #5 / B1: record the subscription change.
+        await supabase.rpc("log_sos_audit", {
+          p_action: "stripe_subscription_changed",
+          p_actor_user_id: row.user_id,
+          p_actor_level: "user",
+          p_category: "billing",
+          p_operation: "UPDATE",
+          p_metadata: {
+            stripe_event_id: evtId,
+            stripe_event_type: evtType,
+            subscription_id: sub.id,
+            status: sub.status,
+            cancel_at_period_end: sub.cancel_at_period_end,
+          },
+        }).then((r: { error?: unknown }) => {
+          if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+        });
         console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${row.user_id}`);
         break;
       }
@@ -202,6 +237,27 @@ serve(async (req: Request) => {
         if (updErr) {
           console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
           return new Response(JSON.stringify({ error: "db_update_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+        }
+        // Audit #5 / B1: record the cancellation.
+        // We re-fetch the user_id so the audit row is correlated.
+        const { data: deletedRow } = await supabase
+          .from("subscriptions").select("user_id")
+          .eq("stripe_subscription_id", sub.id).maybeSingle();
+        if (deletedRow?.user_id) {
+          await supabase.rpc("log_sos_audit", {
+            p_action: "stripe_subscription_cancelled",
+            p_actor_user_id: deletedRow.user_id,
+            p_actor_level: "user",
+            p_category: "billing",
+            p_operation: "DELETE",
+            p_metadata: {
+              stripe_event_id: evtId,
+              stripe_event_type: evtType,
+              subscription_id: sub.id,
+            },
+          }).then((r: { error?: unknown }) => {
+            if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+          });
         }
         console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${sub.id}`);
         break;
@@ -215,6 +271,30 @@ serve(async (req: Request) => {
           if (updErr) {
             console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
             return new Response(JSON.stringify({ error: "db_update_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+          }
+        }
+        // Audit #5 / B1: record payment failure for forensics.
+        if (inv.subscription) {
+          const { data: failRow } = await supabase
+            .from("subscriptions").select("user_id")
+            .eq("stripe_subscription_id", inv.subscription).maybeSingle();
+          if (failRow?.user_id) {
+            await supabase.rpc("log_sos_audit", {
+              p_action: "stripe_payment_failed",
+              p_actor_user_id: failRow.user_id,
+              p_actor_level: "user",
+              p_category: "billing",
+              p_operation: "UPDATE",
+              p_metadata: {
+                stripe_event_id: evtId,
+                stripe_event_type: evtType,
+                subscription_id: inv.subscription,
+                amount_due: inv.amount_due || null,
+                attempt_count: inv.attempt_count || null,
+              },
+            }).then((r: { error?: unknown }) => {
+              if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+            });
           }
         }
         console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription}`);
