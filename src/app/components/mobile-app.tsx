@@ -757,6 +757,17 @@ export function MobileApp() {
           if (!cancelled && session?.access_token) {
             await voiceCallEngine.refreshAuthToken(session.access_token);
           }
+          // BLOCKER #19 / Audit #4: also register FCM token on cold-start
+          // when the session was restored from storage (no SIGNED_IN
+          // event fires for restored sessions, only for transitions).
+          if (!cancelled && session?.user?.id) {
+            try {
+              const { initFCM } = await import("./api/fcm-push");
+              await initFCM(session.user.id);
+            } catch (e) {
+              console.warn("[SOS] initFCM (cold-start) failed (non-fatal):", e);
+            }
+          }
         } catch (err) {
           console.warn("[SOS] voice-engine initial token sync failed:", err);
         }
@@ -768,6 +779,21 @@ export function MobileApp() {
           voiceCallEngine.refreshAuthToken(token).catch((err) => {
             console.warn("[SOS] voice-engine token refresh failed:", err);
           });
+          // BLOCKER #19 / Audit #4 (2026-04-29): register the FCM push
+          // token now that we have a userId. Dynamic-imported so a
+          // missing firebase dep / VAPID key only produces a warning,
+          // never a navigation break. Idempotent — initFCM short-circuits
+          // when already initialized.
+          if (session?.user?.id) {
+            void (async () => {
+              try {
+                const { initFCM } = await import("./api/fcm-push");
+                await initFCM(session.user.id);
+              } catch (err) {
+                console.warn("[SOS] initFCM failed (non-fatal):", err);
+              }
+            })();
+          }
         });
         subscription = data?.subscription ?? null;
       } catch (err) {
