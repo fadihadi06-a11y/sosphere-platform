@@ -478,6 +478,19 @@ export function DashboardWebPage() {
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
         const userEmail = session.user.email || "";
 
+        // BLOCKER #19 / Audit #4 (2026-04-29): register the FCM push
+        // token now that we have a userId. Dynamic-imported so a
+        // missing firebase dep / VAPID key only produces a warning,
+        // never blocks the dashboard load.
+        void (async () => {
+          try {
+            const { initFCM } = await import("./api/fcm-push");
+            await initFCM(session.user.id);
+          } catch (err) {
+            console.warn("[Dashboard] initFCM failed (non-fatal):", err);
+          }
+        })();
+
         try {
           // Step 1: Check if OWNER (has company)
           const { data: company, error: companyError } = await supabase
