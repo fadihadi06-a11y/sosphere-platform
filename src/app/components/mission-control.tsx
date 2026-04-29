@@ -18,9 +18,15 @@ import {
 import { toast } from "sonner";
 import {
   type Mission, type MissionStatus, type MissionAlert,
-  getAllMissions, seedDemoMissions, createMission, cancelMission,
-  onMissionEvent, getMissionProgress, MISSION_STATUS_CONFIG,
+  createMission, cancelMission,
+  getMissionProgress, MISSION_STATUS_CONFIG,
 } from "./mission-store";
+// Wave 1 / T1.1 (2026-04-29): Mission Control is now Supabase-backed.
+// The previous localStorage-only path (seedDemoMissions + 3s polling +
+// onMissionEvent storage events) showed only seeded demos and never
+// reflected real missions. The new hook subscribes to the `missions`
+// realtime channel and respects RLS scoping by company.
+import { useSupabaseMissions, cancelMissionInSupabase } from "./mission-supabase";
 
 // ── Status Color Map ──────────────────────────────────────────
 const SC = MISSION_STATUS_CONFIG;
@@ -45,27 +51,15 @@ function fmtDate(ts: number): string {
 // ═══════════════════════════════════════════════════════════════
 
 export function MissionControlPage() {
-  const [missions, setMissions] = useState<Mission[]>([]);
+  // Wave 1 / T1.1 (2026-04-29): missions now flow from Supabase via
+  // the useSupabaseMissions hook. RLS scopes the read to the caller's
+  // company automatically. Realtime keeps the list current without the
+  // 3-second poll the localStorage path used.
+  const { missions, loading, error, isLive } = useSupabaseMissions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [filter, setFilter] = useState<"all" | "active" | "alerts" | "completed">("all");
   const [search, setSearch] = useState("");
-
-  // Seed + Load
-  useEffect(() => {
-    seedDemoMissions();
-    setMissions(getAllMissions());
-  }, []);
-
-  // Listen for cross-tab events
-  useEffect(() => {
-    const unsub = onMissionEvent(() => {
-      setMissions(getAllMissions());
-    });
-    // Also poll every 3s for same-tab updates
-    const interval = setInterval(() => setMissions(getAllMissions()), 3000);
-    return () => { unsub(); clearInterval(interval); };
-  }, []);
 
   // Filter + Search
   const filtered = useMemo(() => {
@@ -182,7 +176,14 @@ export function MissionControlPage() {
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="shrink-0 overflow-hidden"
             >
-              <MissionDetail mission={selected} onClose={() => setSelectedId(null)} onCancel={(id) => { cancelMission(id); setMissions(getAllMissions()); toast.success("Mission cancelled"); }} />
+              <MissionDetail mission={selected} onClose={() => setSelectedId(null)} onCancel={async (id) => {
+                // Wave 1 / T1.1: cancel in Supabase (realtime fires → list refreshes).
+                // Keep the localStorage cancel as a fallback so cross-tab eventing
+                // still works for tabs that haven't migrated yet.
+                const ok = await cancelMissionInSupabase(id);
+                cancelMission(id);  // local cache mirror
+                toast[ok ? "success" : "error"](ok ? "Mission cancelled" : "Failed to cancel mission");
+              }} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -190,7 +191,11 @@ export function MissionControlPage() {
 
       {/* ── Create Mission Drawer ──────────────────────────── */}
       <AnimatePresence>
-        {showCreate && <CreateMissionDrawer onClose={() => setShowCreate(false)} onCreated={() => { setMissions(getAllMissions()); setShowCreate(false); }} />}
+        {showCreate && <CreateMissionDrawer onClose={() => setShowCreate(false)} onCreated={() => {
+          // Wave 1 / T1.1: realtime subscription will refresh the list
+          // automatically when the new row is inserted into Supabase.
+          setShowCreate(false);
+        }} />}
       </AnimatePresence>
     </div>
   );
