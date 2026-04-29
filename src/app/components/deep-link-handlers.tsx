@@ -126,7 +126,11 @@ export function PaymentSuccessHandler() {
 
     // Trigger subscription refresh (CRIT-#3 listener picks this up).
     try {
-      window.dispatchEvent(new CustomEvent("sosphere:tier_refresh", {
+      // NOTE: event name uses underscore (`sosphere_tier_refresh`) — must
+      // match the listener registered in mobile-app.tsx:955. A previous
+      // version used a colon (`sosphere:tier_refresh`) which silently
+      // never fired the refresh after Stripe checkout.
+      window.dispatchEvent(new CustomEvent("sosphere_tier_refresh", {
         detail: { reason: "payment_success", sessionId },
       }));
     } catch {

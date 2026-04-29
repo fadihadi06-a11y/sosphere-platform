@@ -128,11 +128,18 @@ async function saveFCMToken(token: string, userId?: string): Promise<void> {
     return;
   }
   try {
+    // BLOCKER #19 (2026-04-29): explicitly write `is_active: true`. The
+    // server-side push dispatcher (send-push-notification) filters with
+    // `.eq("is_active", true)`, and is also responsible for flipping
+    // tokens to `false` when FCM returns UNREGISTERED. So a user who
+    // re-installs the app and re-registers MUST come back to `true` —
+    // we cannot rely on the column default for that revival.
     await supabase.from("push_tokens").upsert(
       {
         token,
         user_id: userId,
         platform: detectPlatform(),
+        is_active: true,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "token" },

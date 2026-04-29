@@ -1502,6 +1502,74 @@ serve(async (req: Request) => {
       server_results: fanoutResults,
     }).eq("id", emergencyId);
 
+    // ──────────────────────────────────────────────────────────────────
+    // BLOCKER #19 wiring (2026-04-29): self-confirmation push to caller.
+    // Once the fanout completes, the user (and any other devices they're
+    // signed in on) gets a push that confirms how many contacts received
+    // the SOS. This closes the loop for the user who triggered SOS —
+    // they immediately know the system worked, even if they're not
+    // looking at the screen.
+    //
+    // Internal call to send-push-notification using service-role so the
+    // caller-authorization branch is bypassed (we're a trusted server
+    // path). Wrapped in fire-and-forget try/catch — a failed push must
+    // NOT block the SOS response.
+    //
+    // Push to contacts (those who happen to be users on the platform)
+    // is a separate enhancement — needs a phone→user_id resolver that
+    // doesn't exist yet. SMS is the universal fallback.
+    // ──────────────────────────────────────────────────────────────────
+    void (async () => {
+      try {
+        const successCount = fanoutResults.filter(
+          (r: { smsSid?: string | null; callSid?: string | null }) => r.smsSid || r.callSid,
+        ).length;
+        const totalCount = fanoutResults.length;
+        const pushTitle = `🚨 SOS sent — ${successCount}/${totalCount} contacts`;
+        const pushBody = successCount === totalCount
+          ? `All ${totalCount} contacts notified. Stay calm, help is on the way.`
+          : `${successCount} of ${totalCount} contacts reached. Some failed — check incident details.`;
+        const fcmRes = await fetch(
+          `${SUPA_URL}/functions/v1/send-push-notification`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${SUPA_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              targetUserId: authUserId,
+              title: pushTitle,
+              body: pushBody,
+              data: {
+                kind: "sos_self_confirm",
+                emergency_id: emergencyId,
+                track_url: trackUrl,
+                contacts_total: String(totalCount),
+                contacts_reached: String(successCount),
+                deep_link: `sosphere://incident/${emergencyId}`,
+              },
+            }),
+          },
+        );
+        if (!fcmRes.ok) {
+          // 503 fcm_not_configured is OPERATIONAL state, not a bug —
+          // log at info level. Other statuses get a warning.
+          const text = await fcmRes.text();
+          if (fcmRes.status === 503 && text.includes("fcm_not_configured")) {
+            console.info("[sos-alert] FCM not configured — skipping self-confirm push");
+          } else {
+            console.warn(
+              `[sos-alert] self-confirm push failed: ${fcmRes.status} ${text.slice(0, 200)}`,
+            );
+          }
+        }
+      } catch (err) {
+        // Network glitch or function not deployed yet — never blocks SOS.
+        console.warn("[sos-alert] self-confirm push threw:", err);
+      }
+    })();
+
     // FIX 2026-04-24 Fix #6: record Twilio spend to the ledger.
     // Rough estimates: SMS ≈ $0.0075, call ≈ $0.015/min.
     // For the call we don't know actual duration at fire-time (call
@@ -1672,3 +1740,4 @@ serve(async (req: Request) => {
     });
   }
 });
+         
