@@ -106,7 +106,21 @@ export async function initFCM(userId?: string): Promise<string | null> {
     _initialized = true;
     return _fcmToken;
   } catch (err) {
-    console.warn("[FCM] Initialization failed:", err);
+    // Wave1/T1.1 live-test (2026-04-29): improved error logging.
+    // Before this, the catch printed `{}` because the error object's
+    // own enumerable properties were empty. Use direct property
+    // access to capture the actual Error fields so the next failure
+    // is debuggable at a glance.
+    const e = err as { name?: string; code?: string; message?: string; stack?: string };
+    console.warn(
+      "[FCM] Initialization failed:",
+      e?.name || "(no name)",
+      "/",
+      e?.code || "(no code)",
+      "/",
+      e?.message || String(err) || "(empty error)",
+    );
+    if (e?.stack) console.warn("[FCM] stack:", e.stack.split("\n").slice(0, 5).join("\n"));
     return null;
   }
 }
@@ -140,30 +154,4 @@ async function saveFCMToken(token: string, userId?: string): Promise<void> {
         user_id: userId,
         platform: detectPlatform(),
         is_active: true,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "token" },
-    );
-    console.log("[FCM] Token saved to Supabase for user", userId);
-  } catch (e) {
-    console.warn("[FCM] Failed to save token:", e);
-  }
-}
-
-/**
- * Get the current FCM token (null if not initialized).
- */
-export function getFCMToken(): string | null {
-  return _fcmToken;
-}
-
-/**
- * Detect platform for token registration.
- */
-function detectPlatform(): string {
-  const ua = navigator.userAgent.toLowerCase();
-  if (/android/.test(ua)) return "android";
-  if (/iphone|ipad/.test(ua)) return "ios";
-  if (/mobile/.test(ua)) return "mobile-web";
-  return "desktop-web";
-}
+        updated_at: new Date().toISOS
