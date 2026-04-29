@@ -1413,7 +1413,59 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                       if (invError) console.error("[Register] Invitations save failed:", invError);
                     }
 
-                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: allMembers.length });
+                    // ──────────────────────────────────────────────────────
+                    // Audit #5 / B3 (2026-04-29): trigger Supabase Auth
+                    // invitation emails for any employee with an email
+                    // address. Without this call, the invitations table
+                    // row exists but the employee never receives an email,
+                    // so they cannot sign in to the platform.
+                    //
+                    // The edge function is service-role, batched, and
+                    // tenant-validated — see invite-employees/index.ts.
+                    // We only send for employees who actually have an
+                    // email; phone-only invitations will need a separate
+                    // SMS flow (out of scope for B3).
+                    //
+                    // Wrapped in fire-and-forget try/catch so a transient
+                    // email failure does NOT block company registration —
+                    // the admin can re-trigger invites later from the
+                    // employees page.
+                    // ──────────────────────────────────────────────────────
+                    const inviteableEmployees = manualEmployees
+                      .filter(e => e.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email))
+                      .map(e => ({
+                        email: e.email!,
+                        full_name: e.name || "",
+                        company_id: companyId,
+                      }));
+                    if (inviteableEmployees.length > 0) {
+                      void (async () => {
+                        try {
+                          const { data: inviteRes, error: inviteErr } = await supabase.functions
+                            .invoke("invite-employees", {
+                              body: {
+                                employees: inviteableEmployees,
+                                redirect_to: `${window.location.origin}/auth/callback`,
+                              },
+                            });
+                          if (inviteErr) {
+                            console.warn(
+                              "[Register] invite-employees edge fn failed (non-fatal):",
+                              inviteErr,
+                            );
+                          } else {
+                            console.log(
+                              "[Register] invite emails sent:",
+                              inviteRes?.summary || "(no summary)",
+                            );
+                          }
+                        } catch (e) {
+                          console.warn("[Register] invite-employees threw (non-fatal):", e);
+                        }
+                      })();
+                    }
+
+                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: allMembers.length, invited_via_email: inviteableEmployees.length });
                     toast.success("Company registered successfully!");
 
                     onComplete(companyName, { companyName, plan: planId, billing, employeeCount: totalEmp });

@@ -427,7 +427,11 @@ export function MobileApp() {
     // [SUPABASE_READY] shake_sos: insert into sos_events with trigger_method='shake'
     emitSyncEvent({
       type: "SHAKE_SOS",
-      employeeId: `EMP-${loginName.replace(/\s+/g, "")}`,
+      // Audit #5 / R2 (2026-04-29): prefer real authUserId over the
+      // EMP-${name} cosmetic placeholder so audit-log correlation works
+      // when the dashboard receives this event via onSyncEvent. The
+      // server already tolerates either; only fall back when no auth.
+      employeeId: authUserId || `EMP-${loginName.replace(/\s+/g, "")}`,
       employeeName: loginName,
       zone: userZone,
       timestamp: Date.now(),
@@ -1429,7 +1433,9 @@ export function MobileApp() {
         {/* -- Auto Evacuation Overlay ----------------------- */}
         {/* Shows automatically when admin declares evacuation */}
         <EvacuationAlertOverlay
-          employeeId={`EMP-${loginName.replace(/\s+/g, "")}`}
+          /* Audit #5 / R2: use real auth user id when available so the
+             evacuation acknowledgement audit trail binds to the correct user. */
+          employeeId={authUserId || `EMP-${loginName.replace(/\s+/g, "")}`}
           employeeName={loginName}
           currentZoneId="Z-A"
         />
@@ -1496,7 +1502,8 @@ export function MobileApp() {
                 // [SUPABASE_READY] incident_report: insert into incident_reports + storage.upload(photos)
                 emitSyncEvent({
                   type: "INCIDENT_REPORT_RECEIVED",
-                  employeeId: `EMP-${loginName.replace(/\s+/g, "")}`,
+                  // Audit #5 / R2: real authUserId for dashboard correlation.
+                  employeeId: authUserId || `EMP-${loginName.replace(/\s+/g, "")}`,
                   employeeName: loginName,
                   zone: data.zone || userZone,
                   timestamp: Date.now(),
