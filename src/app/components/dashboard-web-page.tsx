@@ -10,7 +10,7 @@ import {
   Globe, Eye, Mail, AtSign, RefreshCw,
   XCircle, AlertCircle, ChevronDown,
 } from "lucide-react";
-import { supabase } from "./api/supabase-client";
+import { supabase, bindSessionToDevice } from "./api/supabase-client";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
 import { useDashboardStore, useDashboardAutoRefresh } from "./stores/dashboard-store";
@@ -498,6 +498,14 @@ export function DashboardWebPage() {
           if (mountedRef.current) setStep("form");
           return;
         }
+        // Audit 2026-04-30 (CRITICAL #4): bind fingerprint to this device
+        // so a stolen JWT used from another device fails validateSession-
+        // Fingerprint() on the next page load. Existing dead code in
+        // supabase-client.ts:433 is now wired to its actual purpose.
+        // Best-effort — never fails sign-in. SOS pages can later call
+        // validateSessionFingerprint(true) to skip validation during
+        // emergencies (already supported by the function).
+        bindSessionToDevice().catch((e) => console.warn("[Auth] fingerprint bind failed (non-fatal):", e));
         window.history.replaceState({}, "", "/dashboard");
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
         const userEmail = session.user.email || "";
@@ -643,10 +651,17 @@ export function DashboardWebPage() {
     if (oauthLoading) return;
     setOauthLoading(true);
     try {
+      // Audit 2026-04-30 (HIGH #9): redirect URL allowlist. Trusting
+      // window.location.origin let preview-domain or attacker-controlled
+      // subdomains catch the OAuth return. We pin redirectTo to the
+      // canonical production origin in production builds; dev mode falls
+      // back to the live origin so localhost still works.
+      const PROD_ORIGIN = "https://sosphere-platform.vercel.app";
+      const redirectOrigin = import.meta.env.PROD ? PROD_ORIGIN : window.location.origin;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${redirectOrigin}/dashboard`,
           queryParams: { prompt: "select_account" },
         },
       });
