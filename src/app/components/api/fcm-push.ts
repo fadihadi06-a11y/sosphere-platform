@@ -1,195 +1,161 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — Firebase Cloud Messaging (Push Notifications)
+// SOSphere — Web Push Notifications (Native, no Firebase)
 // ─────────────────────────────────────────────────────────────
-// Registers for push notifications and stores the FCM token
-// in Supabase so the server can send targeted pushes.
+// PIVOT (2026-04-30): replaced Firebase Cloud Messaging with the
+// native Web Push API (W3C standard, RFC 8030 / RFC 8291). FCM was
+// rejecting our API key with 401 UNAUTHENTICATED on the FCM
+// Registration API V1 endpoint despite all visible Cloud Console
+// settings being correct (API restriction allows FCM Registration,
+// Application restrictions = None, key value matches, FCM API
+// enabled). Root cause was opaque (likely Google-side propagation
+// or OAuth consent screen requirement). Rather than burning more
+// hours, we pivoted to the underlying standard.
 //
-// Setup (one-time):
-//   1. Create Firebase project at console.firebase.google.com
-//   2. Enable Cloud Messaging
-//   3. Get the VAPID key from Project Settings → Cloud Messaging
-//   4. Set VITE_FIREBASE_* env variables
+// Why Web Push is the right choice for SOSphere:
+//   • W3C standard built into all modern browsers (Chrome, Firefox,
+//     Edge, Safari 16.4+) — no third-party SDK required.
+//   • Same VAPID key we already had (push services accept VAPID
+//     directly; FCM was just one wrapper around it).
+//   • FREE — push services are operated by browser vendors at no
+//     per-message cost.
+//   • Background delivery + action buttons + badges all supported.
+//   • Removes Firebase dependency entirely from the web bundle.
 //
-// Cost: FREE — Firebase Cloud Messaging has no per-message cost.
+// File name kept as `fcm-push.ts` to avoid breaking import paths
+// across the codebase. The export surface (`initFCM`, `getFCMToken`,
+// `isFCMConfigured`) is preserved so call sites don't change. Each
+// function is now backed by Web Push under the hood.
+//
+// Storage shape: we save the entire PushSubscription as a JSON
+// string into push_tokens.token. The endpoint URL inside the JSON
+// uniquely identifies the device (replaces the FCM token's role).
+// The send-push-notification edge function parses the JSON to get
+// endpoint + p256dh + auth and signs a Web Push request with the
+// same VAPID private key that FCM was using.
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./supabase-client";
 
-// Firebase config from environment variables
-const FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
-};
+// VAPID public key — the SAME one we used for FCM. Push services
+// (Mozilla, Google, Apple) accept VAPID-signed requests directly.
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
-
-let _fcmToken: string | null = null;
+let _subscriptionJson: string | null = null;
 let _initialized = false;
 
 /**
- * Check if Firebase is configured
+ * Check if Web Push is configured. Only requires the VAPID public
+ * key — no Firebase project setup.
  */
 export function isFCMConfigured(): boolean {
-  return !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId && VAPID_KEY);
+  return !!VAPID_PUBLIC_KEY;
 }
 
 /**
- * Initialize FCM and get push token.
- * Call this after user logs in.
+ * Initialize Web Push and store the subscription on the server.
+ * Call after the user signs in (we need their userId to scope the
+ * push_tokens row correctly).
+ *
+ * Returns the JSON-stringified PushSubscription on success, null
+ * on any failure. Failures are NEVER thrown — they're logged and
+ * swallowed so the caller (auth listener) doesn't break sign-in.
  */
 export async function initFCM(userId?: string): Promise<string | null> {
-  if (_initialized && _fcmToken) return _fcmToken;
+  if (_initialized && _subscriptionJson) return _subscriptionJson;
   if (!isFCMConfigured()) {
-    console.info("[FCM] Not configured — using Web Push only.");
+    console.info("[WebPush] VAPID key not configured — push disabled.");
     return null;
   }
 
   try {
-    // ─── Pre-flight checks ────────────────────────────────────
-    if (!("serviceWorker" in navigator) || !("Notification" in window)) {
-      console.info("[FCM] Browser missing serviceWorker or Notification APIs.");
+    // ─── Pre-flight: browser support ──────────────────────────
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      console.info("[WebPush] Browser missing serviceWorker / PushManager / Notification APIs.");
       return null;
     }
 
-    // Wave1/T1.1 ROOT-CAUSE FIX (2026-04-29): permission gate.
-    // `getToken` rejects with InvalidAccessError if Notification
-    // permission is `default`. Must request explicitly first.
+    // ─── Permission gate (must be 'granted' before subscribing) ───
     const perm =
       Notification.permission === "granted"
         ? "granted"
         : await Notification.requestPermission();
     if (perm !== "granted") {
-      console.info("[FCM] Notification permission not granted:", perm);
+      console.info("[WebPush] Notification permission not granted:", perm);
       return null;
     }
 
-    // Wave1/T1.1 ROOT-CAUSE FIX: register the FCM-specific SW
-    // EXPLICITLY rather than rely on `navigator.serviceWorker.ready`.
-    // `ready` resolves to the FIRST registered SW which in this app
-    // is `/sw.js` (offline cache), NOT `/firebase-messaging-sw.js`.
-    // FCM strictly requires its own SW registration.
-    //
-    // We use a custom scope so this SW does NOT override `/sw.js`'s
-    // page caching — the two coexist peacefully on different scopes.
-    const registration = await navigator.serviceWorker.register(
-      "/firebase-messaging-sw.js",
-      { scope: "/firebase-cloud-messaging-push-scope" },
-    );
-    if (registration.installing) {
-      await new Promise<void>((resolve) => {
-        const sw = registration.installing!;
-        sw.addEventListener("statechange", function onChange(this: ServiceWorker) {
-          if (this.state === "activated") {
-            sw.removeEventListener("statechange", onChange);
-            resolve();
-          }
-        });
+    // ─── Use the existing /sw.js registration ─────────────────
+    // Unlike FCM (which required its OWN service worker file at a
+    // fixed scope), native Web Push works with any registered SW
+    // that listens for `push` events. /sw.js already has a
+    // complete `push` handler (see public/sw.js around line 138)
+    // so we just reuse the app shell SW.
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration) {
+      console.warn("[WebPush] No active service worker registration.");
+      return null;
+    }
+
+    // ─── Subscribe (or reuse existing subscription) ────────────
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
       });
     }
 
-    // Foundation note (2026-04-28): `firebase` is an OPTIONAL runtime dep —
-    // intentionally NOT in package.json. The isFCMConfigured() early-exit
-    // above (lines 45-48) guarantees these imports only execute when the
-    // operator has explicitly:
-    //   1. Set VITE_FIREBASE_* env vars on Vercel, AND
-    //   2. Run `npm install firebase` (post-deploy customisation step)
-    // If env vars are set without the npm install, the outer try/catch
-    // (line 100) gracefully falls back to web push. Vercel can therefore
-    // build the project without firebase being present in node_modules.
-    const { initializeApp } = await import("firebase/app");
-    const { getMessaging, getToken, onMessage } = await import("firebase/messaging");
+    // The `toJSON()` form is the canonical representation: it has
+    // `endpoint` plus `keys: { p256dh, auth }`. We serialise the
+    // whole object so the edge function can parse and reuse it
+    // exactly without losing any information.
+    _subscriptionJson = JSON.stringify(subscription.toJSON());
 
-    const app = initializeApp(FIREBASE_CONFIG);
-    const messaging = getMessaging(app);
+    console.info("[WebPush] Subscription obtained for endpoint:",
+      subscription.endpoint.substring(0, 60) + "...");
 
-    // Get FCM token
-    _fcmToken = await getToken(messaging, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: registration,
-    });
-
-    if (_fcmToken) {
-      console.info("[FCM] Token obtained:", _fcmToken.substring(0, 20) + "...");
-
-      // Store token in Supabase for server-side push
-      if (SUPABASE_CONFIG.isConfigured) {
-        await saveFCMToken(_fcmToken, userId);
-      }
-
-      // Tell the service worker
-      registration.active?.postMessage({
-        type: "FCM_TOKEN",
-        token: _fcmToken,
-      });
-
-      // Handle foreground messages
-      onMessage(messaging, (payload) => {
-        console.log("[FCM] Foreground message received");
-
-        // Dispatch custom event for the app to handle
-        window.dispatchEvent(
-          new CustomEvent("sosphere-push", {
-            detail: {
-              title: payload.notification?.title || "SOSphere Alert",
-              body: payload.notification?.body || "",
-              data: payload.data || {},
-            },
-          }),
-        );
-      });
+    // ─── Persist to Supabase for server-side targeting ────────
+    if (SUPABASE_CONFIG.isConfigured) {
+      await saveSubscription(_subscriptionJson, userId);
     }
 
     _initialized = true;
-    return _fcmToken;
+    return _subscriptionJson;
   } catch (err) {
-    // Wave1/T1.1 live-test (2026-04-29): improved error logging.
-    // Before this, the catch printed `{}` because the error object's
-    // own enumerable properties were empty. Use direct property
-    // access to capture the actual Error fields so the next failure
-    // is debuggable at a glance.
     const e = err as { name?: string; code?: string; message?: string; stack?: string };
     console.warn(
-      "[FCM] Initialization failed:",
+      "[WebPush] Initialization failed:",
       e?.name || "(no name)",
       "/",
       e?.code || "(no code)",
       "/",
       e?.message || String(err) || "(empty error)",
     );
-    if (e?.stack) console.warn("[FCM] stack:", e.stack.split("\n").slice(0, 5).join("\n"));
+    if (e?.stack) console.warn("[WebPush] stack:", e.stack.split("\n").slice(0, 5).join("\n"));
     return null;
   }
 }
 
 /**
- * Save FCM token to Supabase for server-side push targeting.
- * S-M3: refuses to save with a missing userId. Previously we
- * fell back to "anonymous", which pooled unrelated devices
- * under the same key and allowed a malicious/buggy caller to
- * register a token to nobody in particular. An anonymous row
- * also bypasses per-user RLS on push_tokens.
+ * Save the PushSubscription JSON to Supabase for server-side push
+ * targeting. Same S-M3 guard as before: refuses to save without a
+ * valid userId so we don't pool unrelated devices anonymously.
  *
- * Callers that don't yet have a userId should defer this call
- * until after sign-in completes.
+ * The PushSubscription's endpoint URL is the unique key (a single
+ * device can only have one active subscription per origin), so we
+ * use it via onConflict to update the row instead of creating a
+ * duplicate when the user re-installs / re-subscribes.
  */
-async function saveFCMToken(token: string, userId?: string): Promise<void> {
+async function saveSubscription(subscriptionJson: string, userId?: string): Promise<void> {
   if (!userId || typeof userId !== "string" || userId.length < 8) {
-    console.warn("[FCM] S-M3: refusing to save token without a valid userId");
+    console.warn("[WebPush] S-M3: refusing to save subscription without a valid userId");
     return;
   }
   try {
-    // BLOCKER #19 (2026-04-29): explicitly write `is_active: true`. The
-    // server-side push dispatcher (send-push-notification) filters with
-    // `.eq("is_active", true)`, and is also responsible for flipping
-    // tokens to `false` when FCM returns UNREGISTERED. So a user who
-    // re-installs the app and re-registers MUST come back to `true` —
-    // we cannot rely on the column default for that revival.
     await supabase.from("push_tokens").upsert(
       {
-        token,
+        token: subscriptionJson,
         user_id: userId,
         platform: detectPlatform(),
         is_active: true,
@@ -197,21 +163,23 @@ async function saveFCMToken(token: string, userId?: string): Promise<void> {
       },
       { onConflict: "token" },
     );
-    console.log("[FCM] Token saved to Supabase for user", userId);
+    console.log("[WebPush] Subscription saved to Supabase for user", userId);
   } catch (e) {
-    console.warn("[FCM] Failed to save token:", e);
+    console.warn("[WebPush] Failed to save subscription:", e);
   }
 }
 
 /**
- * Get the current FCM token (null if not initialized).
+ * Get the current PushSubscription JSON (null if not initialized).
+ * Kept for compatibility with old callers that named it "FCM token";
+ * the value is now a JSON-stringified PushSubscription.
  */
 export function getFCMToken(): string | null {
-  return _fcmToken;
+  return _subscriptionJson;
 }
 
 /**
- * Detect platform for token registration.
+ * Detect platform for token registration metadata.
  */
 function detectPlatform(): string {
   const ua = navigator.userAgent.toLowerCase();
@@ -220,3 +188,12 @@ function detectPlatform(): string {
   if (/mobile/.test(ua)) return "mobile-web";
   return "desktop-web";
 }
+
+/**
+ * Convert a base64url-encoded VAPID public key into a Uint8Array
+ * for PushManager.subscribe(). This is required because the spec
+ * mandates an ArrayBuffer / Uint8Array, not a string.
+ */
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
