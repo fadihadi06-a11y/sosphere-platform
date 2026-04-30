@@ -305,33 +305,68 @@ export function DashboardWebPage() {
       return "fallback-salt-00000000000000000";
     }
   };
-  const hashPinWithSalt = async (pin: string, salt: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(salt + ":" + pin);
+  // Audit 2026-04-30 (CRITICAL #14): single-round SHA-256 with a
+  // 6-digit PIN keyspace = 10^6 hashes/second on a single GPU, so a
+  // leaked salt+hash pair is cracked in milliseconds. PBKDF2 with
+  // 600,000 iterations (OWASP 2023+ recommendation) raises the cost
+  // by ~1e6x — full keyspace now takes weeks of GPU time per device.
+  // The old single-round hash format is still recognised for
+  // backward compatibility; it auto-upgrades on the next correct PIN
+  // entry. The new format uses a "v2:" prefix so we can distinguish
+  // and never accidentally treat a v1 hash as a v2 hash.
+  const PBKDF2_ITERATIONS = 600000;
+  const PBKDF2_KEYLEN_BITS = 256;
+
+  const hashPinPbkdf2 = async (pin: string, salt: string): Promise<string> => {
+    const enc = new TextEncoder();
+    const saltBytes = enc.encode("sosphere-pin-v2:" + salt);
+    const baseKey = await crypto.subtle.importKey(
+      "raw", enc.encode(pin), { name: "PBKDF2" }, false, ["deriveBits"],
+    );
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt: saltBytes, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+      baseKey,
+      PBKDF2_KEYLEN_BITS,
+    );
+    const hex = Array.from(new Uint8Array(bits))
+      .map(b => b.toString(16).padStart(2, "0")).join("");
+    return "v2:" + hex;
+  };
+
+  // Legacy single-round SHA-256 forms. Kept ONLY for recognition during
+  // migration — never used to write a new PIN. Two variants existed:
+  //   v1a: SHA-256(salt + ":" + pin)   — per-install salt era
+  //   v1b: SHA-256(pin + PIN_LEGACY_SALT) — pre-W3-49 constant salt
+  const hashPinLegacyPerInstall = async (pin: string, salt: string): Promise<string> => {
+    const data = new TextEncoder().encode(salt + ":" + pin);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
   };
-  const hashPinLegacy = async (pin: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(pin + PIN_LEGACY_SALT);
+  const hashPinLegacyConstant = async (pin: string): Promise<string> => {
+    const data = new TextEncoder().encode(pin + PIN_LEGACY_SALT);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
   };
+
   const storePin = async (pin: string) => {
     const salt = getOrCreateSalt();
-    localStorage.setItem(PIN_KEY, await hashPinWithSalt(pin, salt));
+    localStorage.setItem(PIN_KEY, await hashPinPbkdf2(pin, salt));
   };
+
   const checkPin = async (pin: string) => {
     const stored = getStoredPin();
     if (!stored) return false;
     const salt = getOrCreateSalt();
-    const newHash = await hashPinWithSalt(pin, salt);
-    if (newHash === stored) return true;
-    // Backward compat: legacy hash check + re-hash on success.
-    const legacyHash = await hashPinLegacy(pin);
-    if (legacyHash === stored) {
-      // upgrade in place
-      try { await storePin(pin); } catch {}
+    // Path 1: current v2 PBKDF2 hash.
+    if (stored.startsWith("v2:")) {
+      const candidate = await hashPinPbkdf2(pin, salt);
+      return candidate === stored;
+    }
+    // Path 2: legacy hash. Try both variants, and if either matches,
+    // re-hash with PBKDF2 transparently.
+    if (stored === (await hashPinLegacyPerInstall(pin, salt))
+        || stored === (await hashPinLegacyConstant(pin))) {
+      try { await storePin(pin); } catch { /* keep legacy hash if upgrade fails */ }
       return true;
     }
     return false;
