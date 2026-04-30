@@ -858,36 +858,51 @@ export function DashboardWebPage() {
           <div className="grid grid-cols-3 gap-3" style={{ width: "100%" }}>
             {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k, i) => (
               <button key={i} disabled={!k}
-                onClick={async () => {
+                onClick={() => {
                   if (!k) return;
-                  const current = pinStage === "enter" ? pinInput : pinConfirm;
                   const setter = pinStage === "enter" ? setPinInput : setPinConfirm;
                   setPinError("");
-                  if (k === "⌫") { setter(current.slice(0, -1)); return; }
-                  if (current.length >= 6) return;
-                  const next = current + k;
-                  setter(next);
-                  if (next.length === 6) {
-                    if (pinStage === "enter") {
-                      setTimeout(() => { setPinStage("confirm"); }, 300);
-                    } else {
-                      if (next === pinInput) {
-                        await storePin(pinInput);
-                        const pending = pendingLoginRef.current;
-                        if (pending) {
-                          doLogin(pending.name, pending.company);
-                        } else {
-                          const n = loginName || "Admin";
-                          const c = loginCompany || "Your Company";
-                          doLogin(n, c);
-                        }
+                  if (k === "⌫") { setter(p => p.slice(0, -1)); return; }
+                  // Same atomic pattern as pin-verify (Audit 2026-04-30):
+                  // functional updater so the length gate is checked against
+                  // the LATEST state, not a stale closure capture.
+                  setter(prev => {
+                    if (prev.length >= 6) return prev;
+                    const next = prev + k;
+                    if (next.length === 6) {
+                      if (pinStage === "enter") {
+                        setTimeout(() => {
+                          if (!mountedRef.current) return;
+                          setPinStage("confirm");
+                        }, 300);
                       } else {
-                        setPinError("PINs do not match. Try again.");
-                        setPinInput(""); setPinConfirm(""); setPinStage("enter");
-                        setTimeout(() => setPinError(""), 2000);
+                        // pinStage === "confirm" — verify the second entry
+                        // matches the first, then store + log in.
+                        if (next === pinInput) {
+                          void (async () => {
+                            await storePin(pinInput);
+                            if (!mountedRef.current) return;
+                            const pending = pendingLoginRef.current;
+                            if (pending) {
+                              doLogin(pending.name, pending.company);
+                            } else {
+                              const n = loginName || "Admin";
+                              const c = loginCompany || "Your Company";
+                              doLogin(n, c);
+                            }
+                          })();
+                        } else {
+                          setPinError("PINs do not match. Try again.");
+                          setPinInput(""); setPinConfirm(""); setPinStage("enter");
+                          setTimeout(() => {
+                            if (!mountedRef.current) return;
+                            setPinError("");
+                          }, 2000);
+                        }
                       }
                     }
-                  }
+                    return next;
+                  });
                 }}
                 style={{ height: 56, borderRadius: 14, background: k ? "rgba(255,255,255,0.06)" : "transparent", border: k ? "1px solid rgba(255,255,255,0.08)" : "none", color: "#fff", fontSize: 20, fontWeight: 600, cursor: k ? "pointer" : "default", opacity: k ? 1 : 0 }}
               >{k}</button>
@@ -930,23 +945,40 @@ export function DashboardWebPage() {
           <div className="grid grid-cols-3 gap-3" style={{ width: "100%" }}>
             {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k, i) => (
               <button key={i} disabled={!k}
-                onClick={async () => {
+                onClick={() => {
                   if (!k) return;
                   setPinError("");
                   if (k === "⌫") { setPinInput(p => p.slice(0, -1)); return; }
-                  if (pinInput.length >= 6) return;
-                  const next = pinInput + k;
-                  setPinInput(next);
-                  if (next.length === 6) {
-                    const valid = await checkPin(next);
-                    if (valid) {
-                      const pending = pendingLoginRef.current;
-                      if (pending) doLogin(pending.name, pending.company);
-                    } else {
-                      setPinError("Incorrect PIN. Try again.");
-                      setTimeout(() => { setPinInput(""); setPinError(""); }, 800);
+                  // Audit 2026-04-30 (CRITICAL bug fix): use functional
+                  // updater so the length check sees the LATEST pinInput,
+                  // not a stale closure capture. Without this, fast clicks
+                  // before React re-renders could compute the wrong `next`
+                  // and trigger validation on a partial PIN — or worse,
+                  // skip the length === 6 gate entirely.
+                  setPinInput(prev => {
+                    if (prev.length >= 6) return prev;
+                    const next = prev + k;
+                    if (next.length === 6) {
+                      // Run validation OUTSIDE the updater (no side effects
+                      // inside setState). The updater only computes the
+                      // new value; validation is fired-and-forgotten.
+                      void (async () => {
+                        const valid = await checkPin(next);
+                        if (!mountedRef.current) return;
+                        if (valid) {
+                          const pending = pendingLoginRef.current;
+                          if (pending) doLogin(pending.name, pending.company);
+                        } else {
+                          setPinError("Incorrect PIN. Try again.");
+                          setTimeout(() => {
+                            if (!mountedRef.current) return;
+                            setPinInput(""); setPinError("");
+                          }, 800);
+                        }
+                      })();
                     }
-                  }
+                    return next;
+                  });
                 }}
                 style={{ height: 56, borderRadius: 14, background: k ? "rgba(255,255,255,0.06)" : "transparent", border: k ? "1px solid rgba(255,255,255,0.08)" : "none", color: "#fff", fontSize: 20, fontWeight: 600, cursor: k ? "pointer" : "default", opacity: k ? 1 : 0 }}
               >{k}</button>
@@ -1032,10 +1064,18 @@ export function DashboardWebPage() {
                     if (co?.id) initRealtimeChannels(co.id);
                   }
                 } catch (_) {}
-                // After registration → show PIN setup
+                // After registration → show PIN setup.
+                // Audit 2026-04-30 (CRITICAL bug fix): do NOT call
+                // setDashboardSession() here — that pre-authorizes the
+                // user via the dashboardAuthLoader BEFORE a PIN exists.
+                // If the user reloads the tab between register and
+                // pin-setup, the next mount finds a session + company
+                // + NO stored PIN → falls through the `else` branch of
+                // the auth listener and calls doLogin() directly,
+                // bypassing PIN entirely. Session is now persisted only
+                // inside doLogin() AFTER PIN is verified.
                 setLoginName(name);
                 setLoginCompany(company);
-                setDashboardSession(name, company);
                 pendingLoginRef.current = { name, company };
                 {
                   const sid = (await supabase.auth.getSession()).data.session?.user.id || "post-register";
