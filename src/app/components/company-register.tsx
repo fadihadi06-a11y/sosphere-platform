@@ -1351,20 +1351,23 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     }
                     const companyId = newCompanyId as string;
 
-                    // 1b. Populate the rest of the registration fields.
-                    // RLS allows this UPDATE because the caller is now owner.
+                    // 1b. Populate non-billing fields. AUDIT 2026-04-30
+                    // (CRITICAL #3): plan, billing_cycle, trial_ends_at are
+                    // server-controlled (lock_company_billing_columns trigger
+                    // refuses any client UPDATE). The selected plan becomes
+                    // the *initial intent* tracked in the user's billing
+                    // flow — the actual plan column changes only via the
+                    // Stripe webhook. Trial is set inside create_company_v2
+                    // SECDEF based on user_trial_history.
                     const { error: updErr } = await supabase
                       .from("companies")
                       .update({
-                        plan: planId,
-                        billing_cycle: billing,
                         invite_code: inviteCode,
                         industry,
                         country,
                         employee_estimate: employeeEstimate,
                         has_zones: hasZones ?? false,
                         is_active: true,
-                        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                       })
                       .eq("id", companyId);
                     if (updErr) {
