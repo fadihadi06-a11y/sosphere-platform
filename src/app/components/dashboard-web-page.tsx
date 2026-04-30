@@ -484,10 +484,10 @@ export function DashboardWebPage() {
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
         const userEmail = session.user.email || "";
 
-        // BLOCKER #19 / Audit #4 (2026-04-29): register the push
-        // subscription now that we have a userId. Dynamic-imported
-        // so a missing VAPID key only produces a warning, never
-        // blocks the dashboard load.
+        // BLOCKER #19 / Audit #4 (2026-04-29): register the FCM push
+        // token now that we have a userId. Dynamic-imported so a
+        // missing firebase dep / VAPID key only produces a warning,
+        // never blocks the dashboard load.
         void (async () => {
           try {
             const { initFCM } = await import("./api/fcm-push");
@@ -1269,4 +1269,19 @@ export function DashboardWebPage() {
                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                           onClick={() => navigate("/demo")}
                           className="mt-3 flex items-center justify-center gap-2 w-full py-2 rounded-xl"
-                          style={{ background: "rgba(175,82,222,0.06)", border: "1px solid rgba(175,
+                          style={{ background: "rgba(175,82,222,0.06)", border: "1px solid rgba(175,82,222,0.12)", fontSize: 12, fontWeight: 600, color: "rgba(175,82,222,0.7)" }}>
+                          <Eye className="size-3.5" /> Watch 60s Live Demo
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
