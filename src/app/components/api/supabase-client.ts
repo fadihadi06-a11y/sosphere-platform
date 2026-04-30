@@ -29,12 +29,9 @@ export const supabase = createClient(
       autoRefreshToken: _isConfigured,
       detectSessionFromUrl: true,
       // SECURITY (2026-04-30): switched from "implicit" to "pkce".
-      // Implicit flow places the access_token in the URL hash where
-      // it leaks to extensions, document.referrer, and any analytics
-      // that capture URLs. PKCE is the OAuth 2.1 standard for SPAs —
-      // the auth server returns a single-use code that we exchange
-      // for tokens via the Supabase SDK, and tokens never appear in
-      // the URL bar.
+      // Implicit places access_token in URL hash where it leaks to
+      // extensions, document.referrer, analytics. PKCE is the OAuth
+      // 2.1 standard for SPAs — single-use code exchanged for tokens.
       flowType: "pkce",
     },
   }
@@ -481,4 +478,18 @@ export function validateProductionEnvironment(): EnvValidation {
   }
 
   // Important: Firebase for push notifications
-  if (!impo
+  if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+    warnings.push("Firebase not configured — push notifications disabled. Workers won't receive background SOS alerts.");
+  }
+
+  // Important: Twilio for voice calls
+  if (!import.meta.env.VITE_TWILIO_ENABLED) {
+    warnings.push("Twilio not configured — voice calls will use browser-only WebRTC (no PSTN).");
+  }
+
+  return {
+    ready: missing.length === 0,
+    missing,
+    warnings,
+  };
+}
