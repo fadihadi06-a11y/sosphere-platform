@@ -23,15 +23,14 @@
 //
 // File name kept as `fcm-push.ts` to avoid breaking import paths
 // across the codebase. The export surface (`initFCM`, `getFCMToken`,
-// `isFCMConfigured`) is preserved so call sites don't change. Each
-// function is now backed by Web Push under the hood.
+// `isFCMConfigured`) is preserved so call sites do not change.
 //
-// Storage shape: we save the entire PushSubscription as a JSON
-// string into push_tokens.token. The endpoint URL inside the JSON
-// uniquely identifies the device (replaces the FCM token's role).
-// The send-push-notification edge function parses the JSON to get
+// Storage shape: the entire PushSubscription is JSON-stringified
+// into push_tokens.token. The endpoint URL inside the JSON uniquely
+// identifies the device (replacing the FCM token's role). The
+// send-push-notification edge function parses this JSON to get
 // endpoint + p256dh + auth and signs a Web Push request with the
-// same VAPID private key that FCM was using.
+// VAPID private key stored as a Supabase secret.
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./supabase-client";
@@ -56,9 +55,9 @@ export function isFCMConfigured(): boolean {
  * Call after the user signs in (we need their userId to scope the
  * push_tokens row correctly).
  *
- * Returns the JSON-stringified PushSubscription on success, null
- * on any failure. Failures are NEVER thrown — they're logged and
- * swallowed so the caller (auth listener) doesn't break sign-in.
+ * Returns the JSON-stringified PushSubscription on success, null on
+ * any failure. Failures are NEVER thrown — they are logged and
+ * swallowed so the caller (auth listener) does not break sign-in.
  */
 export async function initFCM(userId?: string): Promise<string | null> {
   if (_initialized && _subscriptionJson) return _subscriptionJson;
@@ -87,9 +86,9 @@ export async function initFCM(userId?: string): Promise<string | null> {
     // ─── Use the existing /sw.js registration ─────────────────
     // Unlike FCM (which required its OWN service worker file at a
     // fixed scope), native Web Push works with any registered SW
-    // that listens for `push` events. /sw.js already has a
-    // complete `push` handler (see public/sw.js around line 138)
-    // so we just reuse the app shell SW.
+    // that listens for `push` events. /sw.js already has a complete
+    // `push` handler (see public/sw.js around line 138) so we just
+    // reuse the app shell SW.
     const registration = await navigator.serviceWorker.ready;
     if (!registration) {
       console.warn("[WebPush] No active service worker registration.");
@@ -108,12 +107,13 @@ export async function initFCM(userId?: string): Promise<string | null> {
 
     // The `toJSON()` form is the canonical representation: it has
     // `endpoint` plus `keys: { p256dh, auth }`. We serialise the
-    // whole object so the edge function can parse and reuse it
-    // exactly without losing any information.
+    // whole object so the edge function can reuse it exactly.
     _subscriptionJson = JSON.stringify(subscription.toJSON());
 
-    console.info("[WebPush] Subscription obtained for endpoint:",
-      subscription.endpoint.substring(0, 60) + "...");
+    console.info(
+      "[WebPush] Subscription obtained for endpoint:",
+      subscription.endpoint.substring(0, 60) + "...",
+    );
 
     // ─── Persist to Supabase for server-side targeting ────────
     if (SUPABASE_CONFIG.isConfigured) {
@@ -142,10 +142,10 @@ export async function initFCM(userId?: string): Promise<string | null> {
  * targeting. Same S-M3 guard as before: refuses to save without a
  * valid userId so we don't pool unrelated devices anonymously.
  *
- * The PushSubscription's endpoint URL is the unique key (a single
+ * The PushSubscription endpoint URL is the unique key (a single
  * device can only have one active subscription per origin), so we
- * use it via onConflict to update the row instead of creating a
- * duplicate when the user re-installs / re-subscribes.
+ * use it via onConflict to update the row instead of duplicating
+ * when the user re-installs / re-subscribes.
  */
 async function saveSubscription(subscriptionJson: string, userId?: string): Promise<void> {
   if (!userId || typeof userId !== "string" || userId.length < 8) {
@@ -197,3 +197,10 @@ function detectPlatform(): string {
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
