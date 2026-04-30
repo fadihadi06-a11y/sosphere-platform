@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 // react-leaflet removed — using Leaflet directly to avoid Context issues in Figma Make
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
@@ -104,9 +105,9 @@ const SAR_SCENARIOS: SARScenario[] = [
 // ── Leaflet Fix ────────────────────────────────────────────────
 
 const defaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url).href,
+  iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).href,
+  shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).href,
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],

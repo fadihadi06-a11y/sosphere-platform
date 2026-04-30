@@ -7,22 +7,17 @@ import {
   Star, Compass,
 } from "lucide-react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 // Inject Leaflet CSS
-if (typeof document !== "undefined" && !document.getElementById("leaflet-css-map")) {
-  const link = document.createElement("link");
-  link.id = "leaflet-css-map";
-  link.rel = "stylesheet";
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
-}
+// Leaflet CSS bundled via "leaflet/dist/leaflet.css" import below.
 
 // Fix default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).href,
+  iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url).href,
+  shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).href,
 });
 
 // ─── Types ─────────────────────────────────────────────────────
