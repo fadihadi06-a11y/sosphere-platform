@@ -16,8 +16,8 @@
 // security rules + HTTP referrer restrictions, not secret).
 // ═══════════════════════════════════════════════════════════════
 
-importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-messaging-compat.js");
 
 firebase.initializeApp({
   apiKey: "***REDACTED-OLD-BROWSER-KEY-ROTATED-2026-05-29***",

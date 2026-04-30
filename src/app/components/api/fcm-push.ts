@@ -48,8 +48,47 @@ export async function initFCM(userId?: string): Promise<string | null> {
   }
 
   try {
-    // Register service worker if not already
-    const registration = await navigator.serviceWorker.ready;
+    // ─── Pre-flight checks ────────────────────────────────────
+    if (!("serviceWorker" in navigator) || !("Notification" in window)) {
+      console.info("[FCM] Browser missing serviceWorker or Notification APIs.");
+      return null;
+    }
+
+    // Wave1/T1.1 ROOT-CAUSE FIX (2026-04-29): permission gate.
+    // `getToken` rejects with InvalidAccessError if Notification
+    // permission is `default`. Must request explicitly first.
+    const perm =
+      Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+    if (perm !== "granted") {
+      console.info("[FCM] Notification permission not granted:", perm);
+      return null;
+    }
+
+    // Wave1/T1.1 ROOT-CAUSE FIX: register the FCM-specific SW
+    // EXPLICITLY rather than rely on `navigator.serviceWorker.ready`.
+    // `ready` resolves to the FIRST registered SW which in this app
+    // is `/sw.js` (offline cache), NOT `/firebase-messaging-sw.js`.
+    // FCM strictly requires its own SW registration.
+    //
+    // We use a custom scope so this SW does NOT override `/sw.js`'s
+    // page caching — the two coexist peacefully on different scopes.
+    const registration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js",
+      { scope: "/firebase-cloud-messaging-push-scope" },
+    );
+    if (registration.installing) {
+      await new Promise<void>((resolve) => {
+        const sw = registration.installing!;
+        sw.addEventListener("statechange", function onChange(this: ServiceWorker) {
+          if (this.state === "activated") {
+            sw.removeEventListener("statechange", onChange);
+            resolve();
+          }
+        });
+      });
+    }
 
     // Foundation note (2026-04-28): `firebase` is an OPTIONAL runtime dep —
     // intentionally NOT in package.json. The isFCMConfigured() early-exit
