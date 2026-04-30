@@ -656,18 +656,34 @@ export function DashboardWebPage() {
   };
 
   // ── Email OTP Send ──
+  // Audit 2026-04-30 (CRITICAL #5): server-side rate-limit before
+  // touching Supabase. Previously the lockout (3 attempts/60s) was
+  // pure React state — bypassed by reload. Now check_rate_limit RPC
+  // enforces 5 sends/hour per email regardless of client state.
   const handleEmailSend = async () => {
     if (!isEmailValid) return;
     setEmailOtpLoading(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const { data: rl } = await supabase.rpc("check_rate_limit", {
+        p_bucket: "otp_send",
+        p_identifier: normalizedEmail,
+        p_max_attempts: 5,
+        p_window_seconds: 3600,
+      });
+      if (rl && (rl as any).allowed === false) {
+        const wait = (rl as any).retry_after_s || 60;
+        showToast("Too many attempts — try again in " + Math.ceil(wait / 60) + " minute(s)");
+        return;
+      }
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: normalizedEmail,
         options: { shouldCreateUser: true },
       });
       if (error) { showToast("Failed to send code: " + error.message); return; }
       setEmailOtp(""); setOtpAttempts(0); setLockedUntil(null);
       setStep("email-otp");
-      showToast("Code sent to " + email, "success");
+      showToast("Code sent to " + normalizedEmail, "success");
     } finally {
       if (mountedRef.current) setEmailOtpLoading(false);
     }
