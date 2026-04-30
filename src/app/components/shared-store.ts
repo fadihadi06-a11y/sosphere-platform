@@ -649,7 +649,15 @@ export function onSyncEvent(callback: (event: SyncEvent) => void) {
 
   return () => {
     window.removeEventListener("storage", handler);
-    if (realtimeUnsub) realtimeUnsub();
+    // 2026-04-30 (regression fix): the previous code referenced an
+    // undefined realtimeUnsub symbol that crashed React StrictMode
+    // double-mount or component teardown. The Supabase Realtime
+    // channel is registered ONCE per module via _syncRealtimeRegistered
+    // and torn down by initRealtimeChannels when the company changes,
+    // so there is no per-callback channel to unsubscribe here. We
+    // simply detach our callback reference so stale closures don't
+    // hold the channel alive.
+    if (_syncEventCallback === processEvent) _syncEventCallback = null;
   };
 }
 
