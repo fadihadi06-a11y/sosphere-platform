@@ -365,7 +365,13 @@ export function DashboardWebPage() {
 
   // ── Check session on mount — auto-login if already authenticated ──
   useEffect(() => {
-    if (window.location.hash.includes("access_token")) return; // OAuth redirect handled by onAuthStateChange
+    // Audit 2026-04-30 (BREAKING after PKCE pivot): the OAuth callback
+    // gate must also accept the PKCE ?code=... query param — implicit
+    // flow returned tokens in the hash, PKCE returns the auth code in
+    // the query string. Without this, the gate skips deferral and we
+    // race the auto-refresh that exchanges the code for a session.
+    if (window.location.hash.includes("access_token")) return;
+    if (new URLSearchParams(window.location.search).has("code")) return;
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!mountedRef.current) return;
       if (!session) {
@@ -729,13 +735,29 @@ export function DashboardWebPage() {
   };
 
   // ── Email OTP Resend ──
+  // Audit 2026-04-30 (CRITICAL): same server-side rate-limit as send.
+  // Previously this path bypassed the otp_send hardening — clicking
+  // "Resend" repeatedly let an attacker probe for valid emails or
+  // trigger Supabase's email-quota limits.
   const handleEmailResend = async () => {
     if (emailResendTimer > 0) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data: rl } = await supabase.rpc("check_rate_limit", {
+      p_bucket: "otp_send",
+      p_identifier: normalizedEmail,
+      p_max_attempts: 5,
+      p_window_seconds: 3600,
+    });
+    if (rl && (rl as any).allowed === false) {
+      const wait = (rl as any).retry_after_s || 60;
+      showToast("Too many attempts — try again in " + Math.ceil(wait / 60) + " minute(s)");
+      return;
+    }
     setEmailResendTimer(RESEND_COOLDOWN);
     setEmailOtp(""); setOtpAttempts(0); setLockedUntil(null);
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
     if (error) showToast("Failed to resend: " + error.message);
-    else showToast("New code sent to " + email, "success");
+    else showToast("New code sent to " + normalizedEmail, "success");
   };
 
   // ── Render: Loading (only shown during init) ──
@@ -1230,9 +1252,10 @@ export function DashboardWebPage() {
                         <h2 className="text-white" style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.7px" }}>Dashboard Access</h2>
                         <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)", marginTop: 5, lineHeight: 1.65 }}>Sign in to manage your safety operations</p>
                       </div>
-                      <motion.button whileTap={{ scale: 0.97 }} onClick={handleGoogleSignIn}
+                      <motion.button whileTap={{ scale: oauthLoading ? 1 : 0.97 }} onClick={handleGoogleSignIn}
+                        disabled={oauthLoading}
                         className="w-full flex items-center justify-center gap-3 py-4 rounded-[16px] mb-4 transition-all"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", opacity: oauthLoading ? 0.55 : 1, cursor: oauthLoading ? "wait" : "pointer" }}>
                         <svg width="18" height="18" viewBox="0 0 24 24">
                           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
