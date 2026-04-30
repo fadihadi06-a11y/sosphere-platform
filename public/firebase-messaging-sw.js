@@ -38,11 +38,13 @@ firebase.initializeApp({
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
-firebase.messaging.isSupported().then((ok) => {
-  if (!ok) {
-    console.warn("[firebase-messaging-sw] messaging not supported in this SW context");
-    return;
-  }
+// Wave1/T1.1 ROOT-CAUSE FIX (2026-04-30, v3): in Firebase v12,
+// firebase.messaging.isSupported() returns a boolean SYNCHRONOUSLY
+// (not a Promise). The previous .then() pattern threw
+// "isSupported(...).then is not a function" which crashed SW eval.
+if (!firebase.messaging.isSupported()) {
+  console.warn("[firebase-messaging-sw] messaging not supported in this SW context");
+} else {
   const messaging = firebase.messaging();
   messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || "SOSphere Alert";
@@ -56,7 +58,7 @@ firebase.messaging.isSupported().then((ok) => {
   };
     self.registration.showNotification(notificationTitle, notificationOptions);
   });
-});
+}
 
 // On click → focus app or open it.
 self.addEventListener("notificationclick", (event) => {
