@@ -539,19 +539,28 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         const { supabase } = await import("./api/supabase-client");
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.id) {
-          // Get company ID from localStorage first (fast), then Supabase
-          const cached = localStorage.getItem("sosphere_company_id");
-          if (cached) {
-            initRealtimeChannels(cached);
+          // 2026-04-30 (Beehive Audit live finding): always confirm the
+          // company_id from Supabase before subscribing. Previously a
+          // stale localStorage `sosphere_company_id` from earlier
+          // testing caused the dashboard to subscribe to a Realtime
+          // channel for a company that no longer exists, cluttering
+          // the console with `[Realtime] CDC channel online for
+          // company: <stale-uuid>` logs and wasting a websocket.
+          const { data } = await supabase
+            .from("companies")
+            .select("id")
+            .eq("owner_id", session.user.id)
+            .maybeSingle();
+          if (data?.id) {
+            localStorage.setItem("sosphere_company_id", data.id);
+            initRealtimeChannels(data.id);
           } else {
-            const { data } = await supabase.from("companies").select("id").eq("owner_id", session.user.id).maybeSingle();
-            if (data?.id) {
-              localStorage.setItem("sosphere_company_id", data.id);
-              initRealtimeChannels(data.id);
-            }
+            // Owner has no company yet (mid-registration) — clean
+            // any leftover cache so we don't subscribe to a ghost.
+            localStorage.removeItem("sosphere_company_id");
           }
         } else {
-          // Fallback: use stable ID based on company name for demo/offline mode
+          // No session — demo/offline mode uses a stable derived ID.
           const fallbackId = `demo-${companyName.toLowerCase().replace(/\s+/g, "-")}`;
           initRealtimeChannels(fallbackId);
         }
