@@ -28,10 +28,23 @@ firebase.initializeApp({
   appId: "1:143943152533:web:04de9a7a531c7f99b4fc9c",
 });
 
-const messaging = firebase.messaging();
+// Wave1/T1.1 ROOT-CAUSE FIX (2026-04-30): in Firebase v12 compat,
+// calling firebase.messaging() at top level throws synchronously
+// inside SW context because the constructor eagerly runs an
+// isSupported() probe that touches APIs not implemented in SW.
+// The opaque "ServiceWorker script evaluation failed" was that
+// throw bubbling up. Fix: gate via the static isSupported() first.
+// See: github.com/firebase/firebase-js-sdk/issues/5347
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
-// Handle background push notifications.
-messaging.onBackgroundMessage((payload) => {
+firebase.messaging.isSupported().then((ok) => {
+  if (!ok) {
+    console.warn("[firebase-messaging-sw] messaging not supported in this SW context");
+    return;
+  }
+  const messaging = firebase.messaging();
+  messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || "SOSphere Alert";
   const notificationOptions = {
     body: payload.notification?.body || "",
@@ -41,7 +54,8 @@ messaging.onBackgroundMessage((payload) => {
     tag: payload.data?.kind || "sosphere",
     requireInteraction: payload.data?.kind === "sos_self_confirm",
   };
-  self.registration.showNotification(notificationTitle, notificationOptions);
+    self.registration.showNotification(notificationTitle, notificationOptions);
+  });
 });
 
 // On click → focus app or open it.
