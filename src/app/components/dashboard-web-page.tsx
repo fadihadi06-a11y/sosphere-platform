@@ -270,7 +270,11 @@ export function DashboardWebPage() {
   const mountedRef = useRef(true);
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   const toastCounter = useRef(0);
-  const processingRef = useRef(false);
+  // Audit 2026-04-30 (HIGH#10): now stores the userId being processed
+  // (or null when idle), not just a boolean flag. Lets us detect
+  // genuine duplicates from the SAME user vs allow a different user
+  // (rare race during account switch) to be processed.
+  const processingRef = useRef<string | null>(null);
   const pendingLoginRef = useRef<{ name: string; company: string } | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -478,8 +482,16 @@ export function DashboardWebPage() {
       // from localStorage and fires INITIAL_SESSION instead) never
       // got their PushSubscription persisted into push_tokens.
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
-        if (processingRef.current) return;
-        processingRef.current = true;
+        // Audit 2026-04-30 (HIGH#10): dedupe by user.id, not bare flag.
+        if (processingRef.current === session.user.id) return;
+        processingRef.current = session.user.id;
+        // Audit 2026-04-30 (HIGH#11): require verified email before wizard.
+        if (session.user.email_confirmed_at == null && !session.user.user_metadata?.email_verified) {
+          console.warn("[Auth] email not verified — refusing to register company");
+          processingRef.current = null;
+          if (mountedRef.current) setStep("form");
+          return;
+        }
         window.history.replaceState({}, "", "/dashboard");
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
         const userEmail = session.user.email || "";
@@ -503,7 +515,7 @@ export function DashboardWebPage() {
             .from("companies").select("id, name")
             .eq("owner_id", session.user.id).maybeSingle();
 
-          if (!mountedRef.current) { processingRef.current = false; return; }
+          if (!mountedRef.current) { processingRef.current = null; return; }
 
           // If table doesn't exist (406) or other DB error → go straight to dashboard with mock data
           if (companyError) {
@@ -512,7 +524,7 @@ export function DashboardWebPage() {
             pendingLoginRef.current = { name, company: "SOSphere Demo" };
             setLoginName(name);
             doLogin(name, "SOSphere Demo");
-            setTimeout(() => { processingRef.current = false; }, 3000);
+            processingRef.current = null;
             return;
           }
 
@@ -539,7 +551,7 @@ export function DashboardWebPage() {
               .order("created_at", { ascending: false })
               .maybeSingle();
 
-            if (!mountedRef.current) { processingRef.current = false; return; }
+            if (!mountedRef.current) { processingRef.current = null; return; }
 
             // If invitations table doesn't exist → go to register
             if (invError) {
@@ -578,7 +590,9 @@ export function DashboardWebPage() {
           setLoginName(name);
           doLogin(name, "SOSphere Demo");
         }
-        setTimeout(() => { processingRef.current = false; }, 3000);
+        // Audit 2026-04-30 (Medium#28): release lock immediately, not
+        // after 3-second timeout. The user.id-based dedupe prevents double-fire.
+        processingRef.current = null;
       }
     });
     return () => { subscription.unsubscribe(); };
@@ -617,14 +631,28 @@ export function DashboardWebPage() {
   const isLocked = !!lockedUntil && Date.now() < lockedUntil;
 
   // ── Google Sign In ──
+  // Audit 2026-04-30 (HIGH#16): wrap in try/catch + loading state.
+  const [oauthLoading, setOauthLoading] = useState(false);
   const handleGoogleSignIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-        queryParams: { prompt: "select_account" },
-      },
-    });
+    if (oauthLoading) return;
+    setOauthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+      if (error) {
+        showToast("Sign-in failed: " + (error.message || "please try again"));
+        setOauthLoading(false);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      showToast("Sign-in failed: " + msg);
+      setOauthLoading(false);
+    }
   };
 
   // ── Email OTP Send ──
@@ -921,7 +949,10 @@ export function DashboardWebPage() {
                 setLoginCompany(company);
                 setDashboardSession(name, company);
                 pendingLoginRef.current = { name, company };
-                processingRef.current = true;
+                {
+                  const sid = (await supabase.auth.getSession()).data.session?.user.id || "post-register";
+                  processingRef.current = sid;
+                }
                 setPinInput("");
                 setPinConfirm("");
                 setPinStage("enter");
@@ -1285,3 +1316,4 @@ export function DashboardWebPage() {
   );
 }
 
+ 
