@@ -1,42 +1,46 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// send-push-notification (BLOCKER #19, 2026-04-28)
+// send-push-notification — Native Web Push (RFC 8030 / RFC 8291 / RFC 8292)
 //
-// Server-side push notification dispatcher using Firebase Cloud Messaging
-// HTTP v1 API. Companion to fcm-push.ts (client) which collects device
-// tokens into the public.push_tokens table.
+// PIVOT (2026-04-30): replaced Firebase Cloud Messaging HTTP v1 with the
+// native Web Push protocol. FCM was rejecting our API key with persistent
+// 401 UNAUTHENTICATED on the FCM Registration API V1 endpoint despite
+// every visible Cloud Console setting being correct (key value matched,
+// API restriction allowed FCM Registration, app restrictions = None,
+// FCM API enabled). Root cause was opaque (Google-side propagation or
+// OAuth consent screen requirement). Pivoting to the underlying W3C
+// standard removes the dependency entirely.
 //
-// WHY HTTP v1 INSTEAD OF FIREBASE ADMIN SDK?
-//   • The Admin SDK requires Node bindings that don't run on Deno Edge
-//     Functions cleanly. The HTTP v1 REST API works from any HTTP
-//     client and supports the same payload shape.
-//   • Auth is OAuth2: we sign a JWT with the service account private
-//     key, exchange it for a 1-hour access token, cache the token in
-//     module memory, and reuse until expiry.
+// HOW IT WORKS:
+//   The client (fcm-push.ts) calls PushManager.subscribe() and saves the
+//   resulting PushSubscription JSON into push_tokens.token. This row
+//   contains:
+//     { endpoint: "https://fcm.googleapis.com/wp/...",
+//       keys: { p256dh: "BN...", auth: "..." } }
+//   We sign a VAPID JWT (ECDSA P-256, 6-hour expiry), encrypt the
+//   payload with AES-128-GCM using ECDH-derived keys, and POST to the
+//   endpoint URL. The browser's push service routes the message to the
+//   registered service worker, which fires the `push` event handled by
+//   /sw.js (already implemented).
 //
-// AUTHORIZATION MODEL (defence in depth):
-//   The caller must pass a Supabase JWT. We resolve the caller's user_id
-//   from the JWT, then verify they're allowed to push to the targetUserId:
-//     1) self    — caller === target (notification to your own devices)
-//     2) company — caller and target share an active company_membership
-//     3) contact — target appears in caller's emergency_contacts
-//     4) service-role — bypasses the above (sos-alert internal calls)
-//   Anything else returns 403. Never trust target_user_id alone — that
-//   would let any logged-in user push to anyone with a known UUID.
-//
-// FAIL-MODES:
-//   • Firebase env vars missing → 503 with clear reason (deploy-time
-//     misconfiguration; the call site should swallow this, not crash).
-//   • OAuth2 token fetch failure → 503 (transient; retryable).
-//   • No push_tokens for target → 200 with sent_count=0 (not an error;
-//     user simply hasn't enabled push on any device).
-//   • FCM rejects a token (invalid/unregistered) → mark token is_active=false
-//     in push_tokens so we don't keep retrying it.
+// AUTHORIZATION MODEL (UNCHANGED from FCM era — this is purely a
+// transport change):
+//   1) self    — caller === target
+//   2) company — caller and target share an active company_membership
+//   3) service-role — bypasses checks (sos-alert internal calls)
+//   Anything else returns 403.
 //
 // ENVIRONMENT VARIABLES (set via `supabase secrets set`):
-//   FCM_PROJECT_ID            — e.g. "sosphere-prod"
-//   FCM_SERVICE_ACCOUNT_EMAIL — e.g. "fcm-sender@sosphere-prod.iam.gserviceaccount.com"
-//   FCM_SERVICE_ACCOUNT_KEY   — the PEM private key from the service-account JSON
-//                               (the "private_key" field, with literal \n escapes)
+//   VAPID_PUBLIC_KEY   — base64url-encoded P-256 public key (raw, 65 bytes
+//                        starting with 0x04, the uncompressed marker).
+//                        SAME value as client's VITE_FIREBASE_VAPID_KEY.
+//   VAPID_PRIVATE_KEY  — base64url-encoded P-256 private key (raw, 32 bytes).
+//   VAPID_SUBJECT      — "mailto:ops@sosphere.app" or a https URL.
+//
+// FAIL-MODES:
+//   • VAPID env vars missing → 503 with reason="vapid_not_configured"
+//   • Push service returns 410/404 → token marked is_active=false
+//   • Push service returns other 4xx → counted as failure, kept active
+//   • No push_tokens for target → 200 with sent_count=0 (not an error)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -45,11 +49,11 @@ const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPA_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPA_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const FCM_PROJECT_ID = Deno.env.get("FCM_PROJECT_ID") || "";
-const FCM_SERVICE_ACCOUNT_EMAIL = Deno.env.get("FCM_SERVICE_ACCOUNT_EMAIL") || "";
-const FCM_SERVICE_ACCOUNT_KEY = Deno.env.get("FCM_SERVICE_ACCOUNT_KEY") || "";
+const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY") || "";
+const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY") || "";
+const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") || "mailto:ops@sosphere.app";
 
-const FCM_CONFIGURED = !!(FCM_PROJECT_ID && FCM_SERVICE_ACCOUNT_EMAIL && FCM_SERVICE_ACCOUNT_KEY);
+const VAPID_CONFIGURED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
   .split(",").map((s) => s.trim()).filter(Boolean);
@@ -72,135 +76,260 @@ function buildCors(req: Request): Record<string, string> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─────────────────────────────────────────────────────────────────────────
-// OAuth2 access-token caching. We sign a fresh JWT, exchange for an
-// access token (valid 3600s), and cache it in module memory until 60s
-// before expiry. Concurrent invocations share the same cached token.
+// Base64url helpers. Web Push uses URL-safe base64 WITHOUT padding
+// everywhere (subscription keys, VAPID keys, JWT encoding).
 // ─────────────────────────────────────────────────────────────────────────
-let _cachedToken: { token: string; expiresAt: number } | null = null;
+function b64uToBytes(s: string): Uint8Array {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
-async function getGoogleAccessToken(): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  if (_cachedToken && _cachedToken.expiresAt > now + 60) {
-    return _cachedToken.token;
-  }
+function bytesToB64u(b: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+  return btoa(bin).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
 
-  // Build the JWT for OAuth2 token exchange.
-  // Header: { alg: RS256, typ: JWT }
-  // Claims: { iss, scope, aud, exp, iat }
-  const header = { alg: "RS256", typ: "JWT" };
-  const claims = {
-    iss: FCM_SERVICE_ACCOUNT_EMAIL,
-    scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
+function utf8(s: string): Uint8Array {
+  return new TextEncoder().encode(s);
+}
 
-  const enc = (obj: object) =>
-    btoa(JSON.stringify(obj))
-      .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const headerB64 = enc(header);
-  const claimsB64 = enc(claims);
-  const signingInput = `${headerB64}.${claimsB64}`;
-
-  // Import the PEM private key. The env var contains literal \n escapes
-  // (because shell-set strings can't carry real newlines).
-  const pem = FCM_SERVICE_ACCOUNT_KEY.replace(/\\n/g, "\n");
-  const pkcs8 = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\s+/g, "");
-  const binaryKey = Uint8Array.from(atob(pkcs8), (c) => c.charCodeAt(0));
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryKey,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const sigBytes = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    new TextEncoder().encode(signingInput),
-  );
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBytes)))
-    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const jwt = `${signingInput}.${sigB64}`;
-
-  // Exchange JWT for access token.
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  if (!tokenRes.ok) {
-    const text = await tokenRes.text();
-    throw new Error(`OAuth2 token exchange failed: ${tokenRes.status} ${text}`);
-  }
-  const tokenData = await tokenRes.json() as { access_token: string; expires_in: number };
-  _cachedToken = {
-    token: tokenData.access_token,
-    expiresAt: now + (tokenData.expires_in || 3600),
-  };
-  return _cachedToken.token;
+function concat(...parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Send a single FCM message. Returns true on accepted, false on rejected.
-// On 404/UNREGISTERED we deactivate the token in push_tokens.
+// VAPID JWT signing. ECDSA P-256 with SHA-256.
+// We cache the imported private key in module memory to avoid re-importing
+// it on every call. The JWT is short-lived (12h max per spec; we cap at 6h)
+// and reused per-audience until 5min before expiry.
 // ─────────────────────────────────────────────────────────────────────────
-async function sendFcmMessage(params: {
-  accessToken: string;
-  fcmToken: string;
-  title: string;
-  body: string;
-  data: Record<string, string>;
-}): Promise<{ ok: boolean; reason?: string; tokenInvalid?: boolean }> {
-  const url = `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`;
-  const payload = {
-    message: {
-      token: params.fcmToken,
-      notification: {
-        title: params.title,
-        body: params.body,
-      },
-      data: params.data,
-      android: {
-        priority: "high",
-        notification: {
-          sound: "default",
-          channel_id: "sosphere_emergency",
-        },
-      },
-      apns: {
-        payload: {
-          aps: { sound: "default", "content-available": 1 },
-        },
-      },
-    },
+const _cachedJwts = new Map<string, { jwt: string; expiresAt: number }>();
+let _cachedPrivateKey: CryptoKey | null = null;
+
+async function importVapidPrivateKey(): Promise<CryptoKey> {
+  if (_cachedPrivateKey) return _cachedPrivateKey;
+  const dBytes = b64uToBytes(VAPID_PRIVATE_KEY);
+  const pubBytes = b64uToBytes(VAPID_PUBLIC_KEY);
+  if (dBytes.length !== 32) {
+    throw new Error(`VAPID_PRIVATE_KEY wrong length: expected 32 bytes, got ${dBytes.length}`);
+  }
+  if (pubBytes.length !== 65 || pubBytes[0] !== 0x04) {
+    throw new Error(`VAPID_PUBLIC_KEY must be 65 bytes starting with 0x04 (uncompressed P-256)`);
+  }
+  const x = pubBytes.slice(1, 33);
+  const y = pubBytes.slice(33, 65);
+  const jwk: JsonWebKey = {
+    kty: "EC",
+    crv: "P-256",
+    d: bytesToB64u(dBytes),
+    x: bytesToB64u(x),
+    y: bytesToB64u(y),
+    ext: true,
   };
-  const res = await fetch(url, {
+  _cachedPrivateKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  return _cachedPrivateKey;
+}
+
+async function signVapidJwt(audience: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const cached = _cachedJwts.get(audience);
+  if (cached && cached.expiresAt > now + 300) return cached.jwt;
+
+  const exp = now + 6 * 3600;
+  const headerB64 = bytesToB64u(utf8(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const claimsB64 = bytesToB64u(utf8(JSON.stringify({
+    aud: audience,
+    exp,
+    sub: VAPID_SUBJECT,
+  })));
+  const signingInput = `${headerB64}.${claimsB64}`;
+  const key = await importVapidPrivateKey();
+  // WebCrypto returns r||s concatenated (64 bytes for P-256). That's the
+  // correct JWS format — no DER wrapping needed.
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    utf8(signingInput),
+  ));
+  const jwt = `${signingInput}.${bytesToB64u(sig)}`;
+  _cachedJwts.set(audience, { jwt, expiresAt: exp });
+  return jwt;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// HKDF helper (RFC 5869). Used by aes128gcm content-encoding (RFC 8188)
+// to derive the content encryption key (CEK) and nonce from the IKM.
+// ─────────────────────────────────────────────────────────────────────────
+async function hkdf(
+  ikm: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+  length: number,
+): Promise<Uint8Array> {
+  const baseKey = await crypto.subtle.importKey(
+    "raw", ikm, { name: "HKDF" }, false, ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info },
+    baseKey,
+    length * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Encrypt payload using aes128gcm content-encoding (RFC 8188 / RFC 8291).
+//
+// Returns the full body to POST to the endpoint:
+//   header(86 bytes: salt[16] || rs[4]=4096 || idlen[1]=65 || keyid[65]=as_pub_uncompressed)
+//   || ciphertext (= AES-GCM(plaintext || 0x02))
+//
+// We append a single 0x02 delimiter to the plaintext (no extra padding —
+// payloads are short and we prefer minimum overhead).
+// ─────────────────────────────────────────────────────────────────────────
+async function encryptAes128Gcm(
+  plaintext: Uint8Array,
+  uaPublic: Uint8Array,
+  authSecret: Uint8Array,
+): Promise<Uint8Array> {
+  // 1) Generate ephemeral ECDH P-256 keypair (Application Server's per-msg
+  //    keys — distinct from the long-lived VAPID keys; spec requires fresh
+  //    per-message keypair for forward secrecy).
+  const ephKeyPair = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveBits"],
+  );
+  const asPubRaw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", ephKeyPair.publicKey),
+  );
+  if (asPubRaw.length !== 65) {
+    throw new Error(`Unexpected AS public key length: ${asPubRaw.length}`);
+  }
+
+  // 2) Import UA's public key for ECDH derivation.
+  const uaPubKey = await crypto.subtle.importKey(
+    "raw", uaPublic,
+    { name: "ECDH", namedCurve: "P-256" },
+    false, [],
+  );
+
+  // 3) ECDH → shared secret (32 bytes).
+  const sharedSecret = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "ECDH", public: uaPubKey },
+      ephKeyPair.privateKey,
+      256,
+    ),
+  );
+
+  // 4) HKDF chain per RFC 8291:
+  //    keyInfo = "WebPush: info\0" || ua_pub || as_pub
+  //    IKM     = HKDF(sharedSecret, salt=authSecret, info=keyInfo, 32)
+  //    salt    = random(16)
+  //    PRK     = HKDF-Extract(salt, IKM)
+  //    cek     = HKDF-Expand(PRK, "Content-Encoding: aes128gcm\0", 16)
+  //    nonce   = HKDF-Expand(PRK, "Content-Encoding: nonce\0", 12)
+  const keyInfo = concat(utf8("WebPush: info\0"), uaPublic, asPubRaw);
+  const ikm = await hkdf(sharedSecret, authSecret, keyInfo, 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await hkdf(ikm, salt, new Uint8Array(0), 32);
+  const cek = await hkdf(prk, new Uint8Array(0), utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(prk, new Uint8Array(0), utf8("Content-Encoding: nonce\0"), 12);
+
+  // 5) AES-128-GCM encryption with 0x02 delimiter appended.
+  const aesKey = await crypto.subtle.importKey(
+    "raw", cek, { name: "AES-GCM" }, false, ["encrypt"],
+  );
+  const padded = concat(plaintext, new Uint8Array([0x02]));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, padded),
+  );
+
+  // 6) Build aes128gcm body header per RFC 8188 §2.1:
+  //    salt(16) || rs(4 BE) || idlen(1) || keyid(idlen)
+  const header = new Uint8Array(16 + 4 + 1 + 65);
+  header.set(salt, 0);
+  header[16] = 0x00; header[17] = 0x00; header[18] = 0x10; header[19] = 0x00; // rs=4096
+  header[20] = 65; // idlen
+  header.set(asPubRaw, 21);
+
+  return concat(header, ciphertext);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST one message to a single subscription.
+// Returns ok/reason/dead. `dead=true` (404/410) means caller should mark
+// the subscription is_active=false in push_tokens.
+// ─────────────────────────────────────────────────────────────────────────
+async function sendOneWebPush(params: {
+  subscriptionJson: string;
+  payloadJson: string;
+}): Promise<{ ok: boolean; reason?: string; dead?: boolean }> {
+  let sub: { endpoint: string; keys: { p256dh: string; auth: string } };
+  try {
+    sub = JSON.parse(params.subscriptionJson);
+  } catch {
+    return { ok: false, reason: "subscription_json_unparseable", dead: true };
+  }
+  if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+    return { ok: false, reason: "subscription_json_invalid_shape", dead: true };
+  }
+
+  const url = new URL(sub.endpoint);
+  const audience = `${url.protocol}//${url.host}`;
+  const jwt = await signVapidJwt(audience);
+
+  const uaPublic = b64uToBytes(sub.keys.p256dh);
+  const authSecret = b64uToBytes(sub.keys.auth);
+  const plaintext = utf8(params.payloadJson);
+
+  let body: Uint8Array;
+  try {
+    body = await encryptAes128Gcm(plaintext, uaPublic, authSecret);
+  } catch (e) {
+    return { ok: false, reason: `encrypt_failed: ${(e as Error).message}` };
+  }
+
+  const res = await fetch(sub.endpoint, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      "Content-Type": "application/json",
+      "Content-Encoding": "aes128gcm",
+      "Content-Type": "application/octet-stream",
+      "TTL": "86400",
+      "Urgency": "high",
+      "Authorization": `vapid t=${jwt}, k=${VAPID_PUBLIC_KEY}`,
     },
-    body: JSON.stringify(payload),
+    body,
   });
-  if (res.ok) return { ok: true };
 
-  const text = await res.text();
-  // FCM error codes: UNREGISTERED / INVALID_ARGUMENT means the token is
-  // dead; we should stop retrying it.
-  const tokenInvalid = res.status === 404
-    || /UNREGISTERED|INVALID_ARGUMENT/i.test(text);
-  return { ok: false, reason: `${res.status} ${text.slice(0, 200)}`, tokenInvalid };
+  if (res.status === 201 || res.status === 202 || res.status === 200) {
+    return { ok: true };
+  }
+  // 404/410 → permanently dead. Other 4xx/5xx → transient (keep active).
+  const dead = res.status === 404 || res.status === 410;
+  let bodyText = "";
+  try { bodyText = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+  return {
+    ok: false,
+    dead,
+    reason: `${res.status} ${res.statusText} ${bodyText}`,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -213,30 +342,23 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: CORS });
   }
 
-  // Fail fast if FCM isn't configured. Edge function still deploys —
-  // call sites can detect 503 with reason="fcm_not_configured" and
-  // fall back to other channels (SMS, in-app). This makes Firebase
-  // setup an OPTIONAL post-deploy step, not a blocker.
-  if (!FCM_CONFIGURED) {
+  if (!VAPID_CONFIGURED) {
     return new Response(
       JSON.stringify({
-        error: "fcm_not_configured",
-        message: "FCM_PROJECT_ID / FCM_SERVICE_ACCOUNT_EMAIL / FCM_SERVICE_ACCOUNT_KEY env vars are not set on this Supabase project.",
+        error: "vapid_not_configured",
+        message: "VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY env vars are not set on this Supabase project.",
       }),
       { status: 503, headers: CORS },
     );
   }
 
   // ── 1) Auth ──────────────────────────────────────────────────────
-  const auth = req.headers.get("Authorization") || "";
-  const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const authHeader = req.headers.get("Authorization") || "";
+  const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!jwt) {
     return new Response(JSON.stringify({ error: "Missing token" }), { status: 401, headers: CORS });
   }
 
-  // Detect service-role calls (internal callers like sos-alert) by
-  // comparing the JWT to the service-role key. service-role bypasses
-  // the per-target authorization check below.
   const isServiceRole = (jwt === SUPA_SERVICE_ROLE);
 
   let callerUserId: string | null = null;
@@ -270,162 +392,4 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Invalid targetUserId" }), { status: 400, headers: CORS });
   }
   if (!title || title.length > 200) {
-    return new Response(JSON.stringify({ error: "title required (1-200 chars)" }), { status: 400, headers: CORS });
-  }
-  if (!messageBody || messageBody.length > 1000) {
-    return new Response(JSON.stringify({ error: "body required (1-1000 chars)" }), { status: 400, headers: CORS });
-  }
-
-  const admin = createClient(SUPA_URL, SUPA_SERVICE_ROLE, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  // ── 3) Authorization (only for non-service-role callers) ─────────
-  if (!isServiceRole && callerUserId) {
-    if (callerUserId !== targetUserId) {
-      // Allowed if (a) shared company OR (b) target in caller's emergency_contacts.
-      const { data: cm } = await admin
-        .from("company_memberships")
-        .select("company_id")
-        .eq("user_id", callerUserId)
-        .eq("active", true);
-      const callerCompanies = new Set((cm || []).map((r: any) => r.company_id));
-
-      let sharedCompany = false;
-      if (callerCompanies.size > 0) {
-        const { data: tm } = await admin
-          .from("company_memberships")
-          .select("company_id")
-          .eq("user_id", targetUserId)
-          .eq("active", true);
-        sharedCompany = (tm || []).some((r: any) => callerCompanies.has(r.company_id));
-      }
-
-      let isContact = false;
-      if (!sharedCompany) {
-        // emergency_contacts has a phone but no FK to auth.users; we
-        // can't reliably resolve "is targetUserId one of caller's
-        // contacts?" without phone-number normalisation. For safety
-        // we DENY in this branch — if real-world need emerges, add a
-        // user_contacts row with an explicit user_id linkage.
-        isContact = false;
-      }
-
-      if (!sharedCompany && !isContact) {
-        return new Response(
-          JSON.stringify({ error: "Not authorized to push to this user" }),
-          { status: 403, headers: CORS },
-        );
-      }
-    }
-  }
-
-  // ── 4) Fetch target's active push tokens ─────────────────────────
-  const { data: tokens, error: tokenErr } = await admin
-    .from("push_tokens")
-    .select("id, token, platform")
-    .eq("user_id", targetUserId)
-    .eq("is_active", true);
-  if (tokenErr) {
-    console.warn("[send-push-notification] push_tokens query failed:", tokenErr);
-    return new Response(JSON.stringify({ error: "Token lookup failed" }), { status: 500, headers: CORS });
-  }
-  if (!tokens || tokens.length === 0) {
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        sent_count: 0,
-        failed_count: 0,
-        note: "No active push tokens for target user",
-      }),
-      { status: 200, headers: CORS },
-    );
-  }
-
-  // ── 5) Get Google access token + send to each device ─────────────
-  let accessToken: string;
-  try {
-    accessToken = await getGoogleAccessToken();
-  } catch (err) {
-    console.error("[send-push-notification] OAuth2 token fetch failed:", err);
-    return new Response(
-      JSON.stringify({ error: "fcm_oauth_failed", message: String(err).slice(0, 200) }),
-      { status: 503, headers: CORS },
-    );
-  }
-
-  // String-coerce data values (FCM v1 requires string-only data fields).
-  const stringData: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data)) {
-    stringData[k] = typeof v === "string" ? v : JSON.stringify(v);
-  }
-
-  let sentCount = 0;
-  let failedCount = 0;
-  const failures: Array<{ tokenId: string; reason: string }> = [];
-
-  for (const t of tokens) {
-    const result = await sendFcmMessage({
-      accessToken,
-      fcmToken: t.token,
-      title,
-      body: messageBody,
-      data: stringData,
-    });
-    if (result.ok) {
-      sentCount++;
-    } else {
-      failedCount++;
-      failures.push({ tokenId: t.id, reason: result.reason || "unknown" });
-      // Deactivate dead tokens so we don't keep retrying them.
-      if (result.tokenInvalid) {
-        try {
-          await admin
-            .from("push_tokens")
-            .update({ is_active: false, updated_at: new Date().toISOString() })
-            .eq("id", t.id);
-        } catch (e) {
-          console.warn("[send-push-notification] token deactivation failed:", e);
-        }
-      }
-    }
-  }
-
-  // ── 6) audit_log entry (best-effort) ─────────────────────────────
-  try {
-    await admin.from("audit_log").insert({
-      id: crypto.randomUUID(),
-      action: "push_notification_sent",
-      actor: isServiceRole ? "service_role" : (callerUserId || "anonymous"),
-      actor_id: callerUserId,
-      actor_role: isServiceRole ? "system" : "user",
-      operation: "PUSH",
-      target: targetUserId,
-      category: "communications",
-      severity: failedCount > 0 ? "warning" : "info",
-      metadata: {
-        title,
-        body_preview: messageBody.slice(0, 80),
-        target_user_id: targetUserId,
-        sent_count: sentCount,
-        failed_count: failedCount,
-        failures: failures.slice(0, 5),
-        is_service_role: isServiceRole,
-      },
-      created_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.warn("[send-push-notification] audit_log write failed:", err);
-  }
-
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      sent_count: sentCount,
-      failed_count: failedCount,
-      target_token_count: tokens.length,
-      failures: failures.slice(0, 5),
-    }),
-    { status: 200, headers: CORS },
-  );
-});
+    return new Response(JSON.stringify({ error: "titl
