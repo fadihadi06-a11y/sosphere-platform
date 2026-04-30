@@ -25,63 +25,80 @@ export function WelcomeActivation() {
   const [userName, setUserName] = useState("");
   const [companyName, setCompanyName] = useState("");
 
-  // ── Parse Supabase invite tokens from URL hash ──────────────
+  // ── Parse Supabase invite tokens from URL hash OR PKCE code ──
+  // Audit 2026-04-30 (BREAKING after PKCE pivot): Supabase invites
+  // historically returned tokens in the URL hash. Under PKCE flow
+  // they return ?code=... in the query string and must be exchanged
+  // via supabase.auth.exchangeCodeForSession(). Support both paths.
   useEffect(() => {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken  = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    const type         = params.get("type"); // "invite" | "recovery" | "signup"
+    (async () => {
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      const accessToken  = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const hashType     = hashParams.get("type");
 
-    if (!accessToken || !refreshToken) {
-      // Check if already logged in
-      supabase.auth.getSession().then(({ data }) => {
+      const queryParams = new URLSearchParams(window.location.search);
+      const code         = queryParams.get("code");
+      const queryType    = queryParams.get("type");
+
+      const inviteType = hashType || queryType || "invite";
+      let session: any = null;
+      let exchangeErr: any = null;
+
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        session = data?.session ?? null;
+        exchangeErr = error;
+      } else if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        session = data?.session ?? null;
+        exchangeErr = error;
+      } else {
+        const { data } = await supabase.auth.getSession();
         if (data.session) {
           setStep("already-active");
-        } else {
-          setStep("error");
-          setErrorMsg(isAr
-            ? "رابط الدعوة غير صالح أو انتهت صلاحيته. تواصل مع مشرفك."
-            : "Invitation link is invalid or has expired. Please contact your supervisor."
-          );
-        }
-      });
-      return;
-    }
-
-    // Set session from invite tokens
-    supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-      .then(async ({ data, error }) => {
-        if (error || !data.session) {
-          setStep("error");
-          setErrorMsg(isAr
-            ? "انتهت صلاحية رابط الدعوة. اطلب دعوة جديدة من مشرفك."
-            : "Invitation link has expired. Ask your supervisor to resend the invitation."
-          );
           return;
         }
+        setStep("error");
+        setErrorMsg(isAr
+          ? "رابط الدعوة غير صالح أو انتهت صلاحيته. تواصل مع مشرفك."
+          : "Invitation link is invalid or has expired. Please contact your supervisor."
+        );
+        return;
+      }
 
-        const user = data.session.user;
-        setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "");
+      if (exchangeErr || !session) {
+        setStep("error");
+        setErrorMsg(isAr
+          ? "انتهت صلاحية رابط الدعوة. اطلب دعوة جديدة من مشرفك."
+          : "Invitation link has expired. Ask your supervisor to resend the invitation."
+        );
+        return;
+      }
 
-        // Get company name from employees table
-        const { data: empData } = await supabase
-          .from("employees")
-          .select("company_id, companies(name)")
-          .eq("email", user.email)
-          .single();
+      const user = session.user;
+      setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "");
 
-        if (empData?.companies) {
-          setCompanyName((empData.companies as any).name || "");
-        }
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("company_id, companies(name)")
+        .eq("email", user.email)
+        .single();
 
-        // If invite type, user needs to set password
-        if (type === "invite" || !user.user_metadata?.password_set) {
-          setStep("set-password");
-        } else {
-          setStep("already-active");
-        }
-      });
+      if (empData?.companies) {
+        setCompanyName((empData.companies as any).name || "");
+      }
+
+      if (inviteType === "invite" || !user.user_metadata?.password_set) {
+        setStep("set-password");
+      } else {
+        setStep("already-active");
+      }
+    })();
   }, []);
 
   // ── Password strength ────────────────────────────────────────
