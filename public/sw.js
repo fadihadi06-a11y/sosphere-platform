@@ -22,7 +22,7 @@
 // Verified by 30 scenarios in scripts/test-b14-sw-cache-policy.mjs.
 // ═══════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'sosphere-v2';
+const CACHE_NAME = 'sosphere-v3-fcm-csp-2026-04-29';
 const STATIC_PRECACHE = [
   '/',
   '/app',
