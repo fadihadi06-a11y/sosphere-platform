@@ -118,26 +118,77 @@ async function signVapidJwt(audience: string): Promise<string> {
   return jwt;
 }
 
-// HKDF (RFC 5869).
-async function hkdf(ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
-  const baseKey = await crypto.subtle.importKey("raw", ikm, { name: "HKDF" }, false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, baseKey, length * 8);
-  return new Uint8Array(bits);
+// HKDF-Extract (RFC 5869): PRK = HMAC-SHA-256(salt, IKM).
+// Extract is just one HMAC. We do this directly with WebCrypto's HMAC sign,
+// not WebCrypto's HKDF (which fuses Extract+Expand and gives the wrong PRK
+// when you want the bare extract output).
+async function hmacSha256(keyBytes: Uint8Array, msg: Uint8Array): Promise<Uint8Array> {
+  const k = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, msg));
+}
+
+// HKDF-Expand (RFC 5869): output = T(1) || T(2) || ... where
+// T(i) = HMAC-SHA-256(PRK, T(i-1) || info || byte(i)). We must implement this
+// manually because WebCrypto HKDF always prepends an Extract step.
+async function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  const hashLen = 32; // SHA-256
+  const blocks = Math.ceil(length / hashLen);
+  if (blocks > 255) throw new Error("hkdfExpand: length too large");
+  const out = new Uint8Array(length);
+  let prev = new Uint8Array(0);
+  let written = 0;
+  for (let i = 1; i <= blocks; i++) {
+    const inputArr = new Uint8Array(prev.length + info.length + 1);
+    inputArr.set(prev, 0);
+    inputArr.set(info, prev.length);
+    inputArr[prev.length + info.length] = i;
+    prev = await hmacSha256(prk, inputArr);
+    const take = Math.min(hashLen, length - written);
+    out.set(prev.subarray(0, take), written);
+    written += take;
+  }
+  return out;
 }
 
 // aes128gcm content-encoding (RFC 8188 / RFC 8291).
+//
+// Audit 2026-05-02 (lifesaving fix): the previous implementation used
+// WebCrypto's HKDF (which performs Extract+Expand atomically) for ALL three
+// derivation steps. That worked for the FIRST call (computing IKM from the
+// ECDH shared secret + auth_secret + key_info), because there we genuinely
+// need Extract+Expand. But for the second step we need PRK = HMAC(salt, IKM)
+// raw — *just* Extract — and for steps 3 and 4 we need Expand-only from PRK.
+//
+// Calling WebCrypto HKDF with empty info to "approximate" Extract gave us
+// HMAC(HMAC(salt, IKM), 0x01), not HMAC(salt, IKM). And calling HKDF for the
+// CEK/NONCE re-Extracted PRK against an empty salt before Expanding, so the
+// CEK and NONCE were *both* off by a factor of an extra Extract.
+//
+// The cumulative effect: ciphertext that the push service happily accepts and
+// forwards (it doesn't validate encryption), but that the browser silently
+// drops because it can't decrypt with the auth_secret it gave us at subscribe
+// time. Symptom: send-push-notification returns sent_count:1, but the SW push
+// event never fires and getNotifications() stays empty.
+//
+// Fix: separate hmacSha256() (= Extract for our case) and a hand-rolled
+// hkdfExpand() (RFC 5869 § 2.3). All three derivations now match the spec.
 async function encryptAes128Gcm(plaintext: Uint8Array, uaPublic: Uint8Array, authSecret: Uint8Array): Promise<Uint8Array> {
   const ephKeyPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const asPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephKeyPair.publicKey));
   if (asPubRaw.length !== 65) throw new Error("AS public key wrong length: " + asPubRaw.length);
   const uaPubKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
   const sharedSecret = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaPubKey }, ephKeyPair.privateKey, 256));
+  // RFC 8291 step: IKM = HKDF(salt=auth_secret, IKM=ECDH_shared, info=key_info, len=32).
+  // Here we DO want Extract+Expand together → use hmacSha256 for Extract then hkdfExpand.
   const keyInfo = concat(utf8("WebPush: info\0"), uaPublic, asPubRaw);
-  const ikm = await hkdf(sharedSecret, authSecret, keyInfo, 32);
+  const prkKey = await hmacSha256(authSecret, sharedSecret);
+  const ikm = await hkdfExpand(prkKey, keyInfo, 32);
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const prk = await hkdf(ikm, salt, new Uint8Array(0), 32);
-  const cek = await hkdf(prk, new Uint8Array(0), utf8("Content-Encoding: aes128gcm\0"), 16);
-  const nonce = await hkdf(prk, new Uint8Array(0), utf8("Content-Encoding: nonce\0"), 12);
+  // RFC 8188 PRK = HMAC-SHA-256(salt, IKM) — Extract ONLY. NOT another HKDF.
+  const prk = await hmacSha256(salt, ikm);
+  // RFC 8188 CEK / NONCE = HKDF-Expand from PRK. Do NOT re-Extract.
+  const cek = await hkdfExpand(prk, utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdfExpand(prk, utf8("Content-Encoding: nonce\0"), 12);
   const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]);
   const padded = concat(plaintext, new Uint8Array([0x02]));
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, padded));
@@ -229,65 +280,4 @@ Deno.serve(async (req) => {
     }
   }
 
-  const { data: tokens, error: tokenErr } = await admin.from("push_tokens").select("id, token, platform").eq("user_id", targetUserId).eq("is_active", true);
-  if (tokenErr) {
-    console.warn("[send-push-notification] push_tokens query failed:", tokenErr);
-    return new Response(JSON.stringify({ error: "Token lookup failed" }), { status: 500, headers: CORS });
-  }
-  if (!tokens || tokens.length === 0) {
-    return new Response(JSON.stringify({ ok: true, sent_count: 0, failed_count: 0, note: "No active push tokens for target user" }), { status: 200, headers: CORS });
-  }
-
-  const stringData: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data)) stringData[k] = typeof v === "string" ? v : JSON.stringify(v);
-  const payloadJson = JSON.stringify({
-    title, body: messageBody, data: stringData,
-    severity: stringData.severity || "high",
-    tag: stringData.tag || stringData.callId || ("sosphere-" + Date.now()),
-  });
-
-  let sentCount = 0;
-  let failedCount = 0;
-  const failures: Array<{ tokenId: string; reason: string }> = [];
-
-  for (const t of tokens) {
-    let result: { ok: boolean; reason?: string; dead?: boolean };
-    try { result = await sendOneWebPush({ subscriptionJson: t.token, payloadJson }); }
-    catch (e) { result = { ok: false, reason: "exception: " + (e as Error).message }; }
-
-    if (result.ok) sentCount++;
-    else {
-      failedCount++;
-      failures.push({ tokenId: t.id, reason: result.reason || "unknown" });
-      if (result.dead) {
-        try { await admin.from("push_tokens").update({ is_active: false, updated_at: new Date().toISOString() }).eq("id", t.id); }
-        catch (e) { console.warn("[send-push-notification] token deactivation failed:", e); }
-      }
-    }
-  }
-
-  try {
-    await admin.from("audit_log").insert({
-      id: crypto.randomUUID(),
-      action: "push_notification_sent",
-      actor: isServiceRole ? "service_role" : (callerUserId || "anonymous"),
-      actor_id: callerUserId,
-      actor_role: isServiceRole ? "system" : "user",
-      operation: "PUSH",
-      target: targetUserId,
-      category: "communications",
-      severity: failedCount > 0 ? "warning" : "info",
-      metadata: {
-        title, body_preview: messageBody.slice(0, 80), target_user_id: targetUserId,
-        sent_count: sentCount, failed_count: failedCount, failures: failures.slice(0, 5),
-        is_service_role: isServiceRole, transport: "web-push-aes128gcm",
-      },
-      created_at: new Date().toISOString(),
-    });
-  } catch (err) { console.warn("[send-push-notification] audit_log write failed:", err); }
-
-  return new Response(JSON.stringify({
-    ok: true, sent_count: sentCount, failed_count: failedCount,
-    target_token_count: tokens.length, failures: failures.slice(0, 5),
-  }), { status: 200, headers: CORS });
-});
+  const { data: tokens, error: tokenErr } = await admin.from("push_tokens").select("id
