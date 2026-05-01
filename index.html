@@ -52,16 +52,14 @@
       </div>
     </div>
     <script>
-      // Unregister any old service workers that may be blocking
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          registrations.forEach(function(reg) { reg.unregister(); });
-          if (registrations.length > 0) {
-            document.getElementById('boot-status').textContent = 'Cleared cache, reloading...';
-            setTimeout(function() { location.reload(); }, 500);
-          }
-        });
-      }
+      // Audit 2026-05-01: REMOVED the SW unregister + reload script.
+      // It ran on EVERY page load, finding the freshly-registered SW
+      // from service-worker-register.ts, unregistering it, then reloading.
+      // That caused the "Clear cache, reloading..." black screen the
+      // user kept seeing AND broke OAuth PKCE callbacks (the reload
+      // happened mid-flow, the code-verifier was lost from session
+      // storage, the user was kicked back to login).
+      // SW lifecycle is correctly handled by service-worker-register.ts.
       // Debug: show errors visibly on screen
       window.onerror = function(msg, url, line) {
         var el = document.getElementById('boot-status');
