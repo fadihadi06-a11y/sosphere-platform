@@ -1498,4 +1498,34 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                 <Sparkles className="size-5" />
                 Launch Company Dashboard
                 <ArrowRight className="size-5" />
-       
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── Bottom Action Bar (steps 1-5) ──────────────────────── */}
+      {step < 6 && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 px-5 pb-8 pt-4"
+          style={{ background: "linear-gradient(transparent, #05070E 40%)" }}>
+          <motion.button
+            whileTap={canNext() ? { scale: 0.97 } : {}}
+            onClick={handleNext}
+            disabled={!canNext()}
+            className="w-full flex items-center justify-center gap-2.5 py-[15px] rounded-2xl transition-all"
+            style={{
+              background: canNext() ? "linear-gradient(135deg, #00C8E0, #00A5C0)" : "rgba(255,255,255,0.03)",
+              color: canNext() ? "#fff" : "rgba(255,255,255,0.15)",
+              fontSize: 15, fontWeight: 600,
+              boxShadow: canNext() ? "0 8px 30px rgba(0,200,224,0.25)" : "none",
+              border: canNext() ? "none" : "1px solid rgba(255,255,255,0.04)",
+              cursor: canNext() ? "pointer" : "default",
+            }}>
+            {step === 5 ? "Start 14-Day Free Trial" : "Continue"}
+            <ArrowRight className="size-4" />
+          </motion.button>
+        </div>
+      )}
+    </div>
+  );
+}
