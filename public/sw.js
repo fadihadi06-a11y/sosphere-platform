@@ -22,7 +22,9 @@
 // Verified by 30 scenarios in scripts/test-b14-sw-cache-policy.mjs.
 // ═══════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'sosphere-v3-fcm-csp-2026-04-29';
+// 2026-05-01: bumped CACHE_NAME to force activate of SW with new
+// push handler (lifesaving fix — see push handler comment).
+const CACHE_NAME = 'sosphere-v4-lifesaving-push-2026-05-01';
 const STATIC_PRECACHE = [
   '/',
   '/app',
@@ -135,6 +137,23 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ── Push Notifications (Web Push + FCM) ───────────────────
+//
+// Audit 2026-05-01 (lifesaving fix): live test confirmed the FULL push
+// pipeline works — server signs, FCM delivers, SW receives, Windows
+// renders the toast. BUT non-critical notifications were vanishing in
+// ~4 seconds before the owner could notice them. requireInteraction
+// was gated on `severity === 'critical'` only. The owner SOS fan-out
+// from sos-alert DOES set severity:"critical" (so it persists), but:
+//   • sos_self_confirm (employee-facing "your SOS was sent") had no
+//     severity → defaulted to "high" → vanished too quickly.
+//   • Any forgotten/missing severity field anywhere up the chain meant
+//     the owner could miss an emergency because they happened to look
+//     away for 5 seconds.
+// New rule: ANY notification whose `kind` starts with "sos_" OR whose
+// severity is "critical" or "high" is treated as lifesaving and stays
+// on screen until the user dismisses it. This is defense-in-depth — even
+// if a future caller forgets to set severity:"critical", the kind alone
+// keeps the notification visible.
 self.addEventListener('push', (event) => {
   let data = {};
   try {
@@ -145,6 +164,9 @@ self.addEventListener('push', (event) => {
   }
 
   const severity = data.severity || data.data?.severity || 'medium';
+  const kind = data.kind || data.data?.kind || '';
+  const isLifesaving = severity === 'critical' || severity === 'high' || (typeof kind === 'string' && kind.indexOf('sos_') === 0);
+
   const vibrate = severity === 'critical'
     ? [300, 100, 300, 100, 300]
     : severity === 'high'
@@ -161,8 +183,12 @@ self.addEventListener('push', (event) => {
       vibrate,
       tag,
       renotify: true,
-      requireInteraction: severity === 'critical',
-      actions: severity === 'critical' ? [
+      // requireInteraction now keyed on `isLifesaving`, not just
+      // `severity === 'critical'`. Owner cannot afford to miss an
+      // SOS toast that auto-dismissed in 4 seconds while they were
+      // looking down at a phone.
+      requireInteraction: isLifesaving,
+      actions: isLifesaving ? [
         { action: 'view', title: 'View Emergency' },
         { action: 'dismiss', title: 'Dismiss' },
       ] : [],
