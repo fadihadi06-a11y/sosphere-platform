@@ -22,7 +22,17 @@ const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_db_migration_errors",
 ]);
 
-const SOSPHERE_KEEP_PREFIXES: readonly string[] = [];
+// Audit 2026-05-01 (lifesaving UX fix): the dashboard PIN is now
+// stored under user-scoped keys (sosphere_dashboard_pin:<uuid>) so
+// each user on a shared device keeps their own PIN. Logout MUST NOT
+// wipe these — otherwise the user is forced to re-set their PIN on
+// every login, which makes the pin-setup screen indistinguishable
+// from pin-verify and led to a real production confusion the user
+// experienced as "wrong PIN logged me in" (it was actually a fresh
+// PIN setup they didn't realize they were doing).
+const SOSPHERE_KEEP_PREFIXES: readonly string[] = [
+  "sosphere_dashboard_pin:",
+];
 const SOSPHERE_PREFIX = "sosphere_";
 
 // CRIT-#4: legacy keys that pre-date the sosphere_ prefix convention.
