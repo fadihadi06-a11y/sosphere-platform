@@ -20,6 +20,7 @@ import { EmployeeInviteManager } from "./employee-invite-manager";
 import { getJoinRequests, approveJoinRequest, rejectJoinRequest, type JoinRequest } from "./shared-store";
 import { toast } from "sonner";
 import { useDashboardStore } from "./stores/dashboard-store";
+import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
 // ── Types ─────────────────────────────────────────────────────
 interface UnifiedEmployeesPageProps {
@@ -408,6 +409,19 @@ export function UnifiedEmployeesPage({
   const [showInviteManager, setShowInviteManager] = useState(false);
   const [showPendingApprovals, setShowPendingApprovals] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
+  // Blocker C (2026-04-30): post-onboarding employee invitation UI.
+  // Allows the owner to add employees from the dashboard, see pending
+  // invitations, and revoke them. Backed by the invite-employees edge
+  // function (auth.admin.inviteUserByEmail) and the invitations table.
+  const [showInviteEmployee, setShowInviteEmployee] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState<"employee" | "zone_admin" | "dispatcher">("employee");
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [pendingInvites, setPendingInvites] = useState<Array<{ id: string; email: string; role: string | null; created_at: string; status: string; name: string | null }>>([]);
+  const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
+  const [companyIdForInvites, setCompanyIdForInvites] = useState<string | null>(null);
   const [approvalToast, setApprovalToast] = useState<{ name: string; action: "approved" | "rejected" } | null>(null);
 
   // Plan limit guard for adding employees
@@ -509,6 +523,126 @@ export function UnifiedEmployeesPage({
 
   const activeCount = filtered.filter(e => e.status !== "off-shift").length;
 
+  // Blocker C (2026-04-30): load company_id for the current owner so
+  // we can scope invitations queries. Also subscribes to pending list
+  // so the modal updates after invites/revokes.
+  useEffect(() => {
+    if (!SUPABASE_CONFIG.isConfigured) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.id) return;
+        const { data: co } = await supabase
+          .from("companies")
+          .select("id")
+          .eq("owner_id", session.user.id)
+          .maybeSingle();
+        if (!cancelled && co?.id) setCompanyIdForInvites(co.id);
+      } catch (_) { /* ignore — page still works without invitations panel */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const loadPendingInvites = async () => {
+    if (!companyIdForInvites) return;
+    setPendingInvitesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("invitations")
+        .select("id, email, role, role_type, created_at, status, name")
+        .eq("company_id", companyIdForInvites)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        setPendingInvites(data.map((r: any) => ({
+          id: r.id, email: r.email, role: r.role || r.role_type,
+          created_at: r.created_at, status: r.status, name: r.name,
+        })));
+      }
+    } catch (_) { /* ignore */ }
+    setPendingInvitesLoading(false);
+  };
+
+  useEffect(() => {
+    if (showInviteEmployee) loadPendingInvites();
+  }, [showInviteEmployee, companyIdForInvites]);
+
+  const handleSendInvite = async () => {
+    setInviteError("");
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteError("Please enter a valid email address");
+      return;
+    }
+    if (!companyIdForInvites) {
+      setInviteError("Company not loaded yet — try again in a moment");
+      return;
+    }
+    setInviteSubmitting(true);
+    try {
+      // 1) Pre-create the invitation row so accept_invitation() can find
+      //    it later. The edge function then triggers Supabase Auth invite.
+      const { error: insErr } = await supabase.from("invitations").insert({
+        company_id: companyIdForInvites,
+        email,
+        name: inviteName.trim() || null,
+        role: inviteRole,
+        role_type: inviteRole,
+        status: "pending",
+      });
+      if (insErr && !/duplicate|unique/i.test(insErr.message)) {
+        setInviteError(insErr.message);
+        setInviteSubmitting(false);
+        return;
+      }
+      // 2) Call the invite-employees edge function to send the email.
+      const { data: { session } } = await supabase.auth.getSession();
+      const url = `${SUPABASE_CONFIG.url}/functions/v1/invite-employees`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({
+          employees: [{ email, full_name: inviteName.trim() || undefined, company_id: companyIdForInvites }],
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setInviteError(`Failed to send invite: ${res.status} ${text.slice(0, 160)}`);
+        setInviteSubmitting(false);
+        return;
+      }
+      toast.success(`Invitation sent to ${email}`);
+      setInviteEmail(""); setInviteName(""); setInviteRole("employee");
+      await loadPendingInvites();
+    } catch (e) {
+      setInviteError(`Error: ${(e as Error).message}`);
+    } finally {
+      setInviteSubmitting(false);
+    }
+  };
+
+  const handleRevokeInvite = async (id: string, email: string) => {
+    if (!confirm(`Revoke invitation for ${email}?`)) return;
+    try {
+      const { error } = await supabase
+        .from("invitations")
+        .update({ status: "revoked" })
+        .eq("id", id);
+      if (error) {
+        toast.error(`Failed to revoke: ${error.message}`);
+        return;
+      }
+      toast.success(`Invitation revoked for ${email}`);
+      await loadPendingInvites();
+    } catch (e) {
+      toast.error(`Revoke failed: ${(e as Error).message}`);
+    }
+  };
+
   return (
     <div className={`${webMode ? "px-6 py-5" : "px-4 py-4"} space-y-5`}>
 
@@ -554,6 +688,20 @@ export function UnifiedEmployeesPage({
           }}>
           <Upload className="size-3.5" />
           Import
+        </motion.button>
+        {/* Blocker C (2026-04-30): single-employee invite button. */}
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { if (!guardEmployeeAdd()) setShowInviteEmployee(true); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl"
+          style={{
+            background: "linear-gradient(135deg, rgba(0,200,83,0.18), rgba(0,200,83,0.06))",
+            border: "1px solid rgba(0,200,83,0.3)",
+            color: "#00C853",
+            fontSize: 13, fontWeight: 700,
+          }}>
+          <UserPlus className="size-3.5" />
+          Invite Employee
         </motion.button>
 
         {/* Pending Approvals Button */}
@@ -809,6 +957,145 @@ export function UnifiedEmployeesPage({
                 onNavigate?.(page);
               }}
             />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Blocker C (2026-04-30): Invite Employee Modal */}
+      <AnimatePresence>
+        {showInviteEmployee && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+            onClick={() => setShowInviteEmployee(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg rounded-2xl p-6"
+              style={{ background: "#0A0E1A", border: "1px solid rgba(255,255,255,0.1)", maxHeight: "85vh", overflowY: "auto" }}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl flex items-center justify-center"
+                    style={{ background: "rgba(0,200,83,0.12)", border: "1px solid rgba(0,200,83,0.3)" }}>
+                    <UserPlus className="size-5" style={{ color: "#00C853" }} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>Invite Employee</h3>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Send a secure email invite to join your company</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowInviteEmployee(false)}
+                  className="size-8 rounded-lg flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.05)" }}>
+                  <X className="size-4" style={{ color: "rgba(255,255,255,0.5)" }} />
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>Email *</label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="employee@company.com"
+                    className="w-full mt-1 px-4 py-3 rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: 14 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>Full Name (optional)</label>
+                  <input
+                    type="text"
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                    placeholder="Ahmad Hassan"
+                    className="w-full mt-1 px-4 py-3 rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: 14 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>Role</label>
+                  <div className="grid grid-cols-3 gap-2 mt-1">
+                    {(["employee","zone_admin","dispatcher"] as const).map(r => (
+                      <button key={r} onClick={() => setInviteRole(r)}
+                        className="px-3 py-2 rounded-xl text-center"
+                        style={{
+                          background: inviteRole === r ? "rgba(0,200,224,0.15)" : "rgba(255,255,255,0.04)",
+                          border: inviteRole === r ? "1px solid rgba(0,200,224,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                          color: inviteRole === r ? "#00C8E0" : "rgba(255,255,255,0.55)",
+                          fontSize: 12, fontWeight: 600, textTransform: "capitalize",
+                        }}>
+                        {r.replace("_", " ")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {inviteError && (
+                  <div className="px-3 py-2 rounded-xl"
+                    style={{ background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.3)" }}>
+                    <p style={{ fontSize: 12, color: "#FF2D55" }}>{inviteError}</p>
+                  </div>
+                )}
+                <button
+                  onClick={handleSendInvite}
+                  disabled={inviteSubmitting || !inviteEmail.trim()}
+                  className="w-full py-3 rounded-xl flex items-center justify-center gap-2"
+                  style={{
+                    background: inviteSubmitting || !inviteEmail.trim()
+                      ? "rgba(255,255,255,0.04)"
+                      : "linear-gradient(135deg, #00C853, #008A3A)",
+                    color: inviteSubmitting || !inviteEmail.trim() ? "rgba(255,255,255,0.3)" : "#fff",
+                    fontSize: 14, fontWeight: 700,
+                    cursor: inviteSubmitting || !inviteEmail.trim() ? "not-allowed" : "pointer",
+                    border: "none",
+                  }}>
+                  {inviteSubmitting ? <>Sending...</> : <><Send className="size-4" /> Send Invitation</>}
+                </button>
+              </div>
+
+              {/* Pending invitations list */}
+              <div className="pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    Pending Invitations ({pendingInvites.length})
+                  </p>
+                  <button onClick={loadPendingInvites}
+                    style={{ fontSize: 11, color: "#00C8E0", background: "none", border: "none", cursor: "pointer" }}>
+                    {pendingInvitesLoading ? "Loading..." : "Refresh"}
+                  </button>
+                </div>
+                {pendingInvites.length === 0 && !pendingInvitesLoading && (
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center", padding: "16px 0" }}>
+                    No pending invitations
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {pendingInvites.map(inv => (
+                    <div key={inv.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {inv.email}
+                        </p>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                          {(inv.name || "—")} · {inv.role || "employee"} · {new Date(inv.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <button onClick={() => handleRevokeInvite(inv.id, inv.email)}
+                        className="px-2 py-1 rounded-lg shrink-0"
+                        style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.2)", color: "#FF2D55", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
