@@ -1543,6 +1543,13 @@ serve(async (req: Request) => {
               body: pushBody,
               data: {
                 kind: "sos_self_confirm",
+                // Audit 2026-05-01: explicit severity ensures the
+                // employee's SOS-confirmation toast stays on screen
+                // (sw.js requireInteraction). Without this, the
+                // confirmation auto-dismissed in ~4s and employees
+                // in distress couldn't visually verify their SOS
+                // was actually sent.
+                severity: "critical",
                 emergency_id: emergencyId,
                 track_url: trackUrl,
                 contacts_total: String(totalCount),
