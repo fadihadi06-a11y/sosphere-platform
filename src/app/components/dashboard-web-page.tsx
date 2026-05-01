@@ -522,7 +522,7 @@ export function DashboardWebPage() {
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: company.name || "Your Company" };
           setLoginName(name);
-          if (getStoredPin(authUserId)) {
+          if (getStoredPin(session.user.id)) {
             setPinInput(""); setPinError("");
             setStep("pin-verify");
           } else {
@@ -554,7 +554,7 @@ export function DashboardWebPage() {
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: companyName };
           setLoginName(name);
-          if (getStoredPin(authUserId)) {
+          if (getStoredPin(session.user.id)) {
             setPinInput(""); setPinError("");
             setStep("pin-verify");
           } else {
@@ -602,7 +602,7 @@ export function DashboardWebPage() {
       // success handler can resume it.
       pendingLoginRef.current = { name, company };
       setLoginName(name);
-      if (getStoredPin(authUserId)) {
+      if (getStoredPin(session.user.id)) {
         setPinInput(""); setPinError("");
         setStep("pin-verify");
       } else {
@@ -706,7 +706,7 @@ export function DashboardWebPage() {
             useDashboardStore.getState().initDashboard();
             pendingLoginRef.current = { name, company: company.name || "Your Company" };
             setLoginName(name);
-            if (getStoredPin(authUserId)) {
+            if (getStoredPin(session.user.id)) {
               setPinInput(""); setPinError("");
               setStep("pin-verify");
             } else {
@@ -754,7 +754,7 @@ export function DashboardWebPage() {
                 });
               pendingLoginRef.current = { name, company: companyName };
               setLoginName(name);
-              if (getStoredPin(authUserId)) {
+              if (getStoredPin(session.user.id)) {
                 setPinInput(""); setPinError("");
                 setStep("pin-verify");
               } else {
