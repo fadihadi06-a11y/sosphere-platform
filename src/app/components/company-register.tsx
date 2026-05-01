@@ -1324,96 +1324,108 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     })();
                     const planId = selectedPlan ?? recommendedPlan.id;
 
-                    // 1. Save company via canonical SECDEF RPC.
+                    // 1. Atomic company registration — single SECDEF RPC.
                     //
-                    // W3-16 (B-20, 2026-04-26): pre-fix the client did a direct
-                    // `upsert` with only `owner_id` (the LEGACY column). After
-                    // W3-38 consolidated the companies RLS policies to require
-                    // `owner_user_id = auth.uid()`, the upsert started failing
-                    // RLS — and even before that, the legacy ownership model
-                    // didn't add a company_memberships row, so the new owner
-                    // wasn't actually a "member" of their own company by
-                    // is_company_member() checks.
+                    // Audit #13 / Batch 3 (2026-04-30, wired 2026-05-01):
+                    // register_company_full performs in ONE transaction:
+                    //   • create_company_v2(name) — inserts companies row +
+                    //     owner_user_id, deactivates any prior membership,
+                    //     inserts company_memberships(role='owner')
+                    //   • UPDATE companies metadata (industry/country/
+                    //     employee_estimate/invite_code/has_zones/is_active)
+                    //   • INSERT zones[] (full schema: type/risk_level/
+                    //     evacuation_point/evac_lat/evac_lng + lat/lng mirror
+                    //     to lon for back-compat, status='active')
+                    //   • INSERT invitations[] (preserves name/phone/department/
+                    //     zone_name/role_type, normalizes email lower(trim),
+                    //     ON CONFLICT silently skipped → idempotent)
                     //
-                    // Now: call create_company_v2(p_name) — SECDEF RPC that:
-                    //   • inserts companies row (owner_user_id = auth.uid())
-                    //   • deactivates any prior active membership for this user
-                    //   • inserts company_memberships row (role='owner')
-                    // Then UPDATE the row with the extra registration fields,
-                    // which goes through the new W3-38 admin/owner UPDATE
-                    // policy (the just-created owner is allowed).
-                    const { data: newCompanyId, error: rpcErr } = await supabase
-                      .rpc("create_company_v2", { p_name: companyName });
-                    if (rpcErr || !newCompanyId) {
-                      console.error("[Register] create_company_v2 RPC failed:", rpcErr);
-                      toast.error("Failed to register company. Please try again.");
-                      return;
-                    }
-                    const companyId = newCompanyId as string;
+                    // If ANY step fails the entire transaction rolls back —
+                    // no partial-state companies left in DB. Billing columns
+                    // (plan/trial_ends_at) remain server-controlled inside
+                    // create_company_v2 SECDEF (anti-replay via
+                    // user_trial_history table).
+                    //
+                    // Legacy fallback: if RPC missing on this deploy (older
+                    // env), fall back to the 4-step path.
+                    const zonesPayload = zones.map(z => ({
+                      name: z.name,
+                      type: z.type,
+                      risk_level: z.riskLevel,
+                      evacuation_point: z.evacuationPoint,
+                      lat: z.lat ?? null,
+                      lng: z.lng ?? null,
+                      radius_meters: z.radiusMeters ?? null,
+                      evac_lat: z.evacLat ?? null,
+                      evac_lng: z.evacLng ?? null,
+                    }));
+                    const invitationsPayload = manualEmployees.map(e => ({
+                      email: e.email || null,
+                      name: e.name,
+                      phone: e.phone,
+                      role: e.role || "employee",
+                      role_type: "employee",
+                      department: e.department || null,
+                      zone_name: e.zone || null,
+                    }));
 
-                    // 1b. Populate non-billing fields. AUDIT 2026-04-30
-                    // (CRITICAL #3): plan, billing_cycle, trial_ends_at are
-                    // server-controlled (lock_company_billing_columns trigger
-                    // refuses any client UPDATE). The selected plan becomes
-                    // the *initial intent* tracked in the user's billing
-                    // flow — the actual plan column changes only via the
-                    // Stripe webhook. Trial is set inside create_company_v2
-                    // SECDEF based on user_trial_history.
-                    const { error: updErr } = await supabase
-                      .from("companies")
-                      .update({
-                        invite_code: inviteCode,
-                        industry,
-                        country,
-                        employee_estimate: employeeEstimate,
-                        has_zones: hasZones ?? false,
-                        is_active: true,
-                      })
-                      .eq("id", companyId);
-                    if (updErr) {
-                      console.error("[Register] Company metadata update failed (non-fatal):", updErr);
-                      // Continue — the company exists, just with default metadata.
-                    }
+                    const { data: regResult, error: regErr } = await supabase
+                      .rpc("register_company_full", {
+                        p_name:              companyName,
+                        p_industry:          industry,
+                        p_country:           country,
+                        p_employee_estimate: employeeEstimate,
+                        p_invite_code:       inviteCode,
+                        p_zones:             zonesPayload as any,
+                        p_invitations:       invitationsPayload as any,
+                      });
 
-                    // 2. Save zones
-                    if (zones.length > 0) {
-                      const zoneRows = zones.map(z => ({
-                        company_id: companyId,
-                        name: z.name,
-                        type: z.type,
-                        risk_level: z.riskLevel,
-                        evacuation_point: z.evacuationPoint,
-                        lat: z.lat ?? null,
-                        lon: z.lng ?? null,
-                        lng: z.lng ?? null,
-                        radius: z.radiusMeters ?? null,
-                        radius_meters: z.radiusMeters ?? null,
-                        evac_lat: z.evacLat ?? null,
-                        evac_lng: z.evacLng ?? null,
+                    let companyId: string;
+                    if (regErr || !regResult || !(regResult as any).company_id) {
+                      console.warn("[Register] register_company_full unavailable, falling back to 4-step:", regErr?.message);
+                      // ── LEGACY FALLBACK PATH (kept for older deploys) ──
+                      const { data: newCompanyId, error: rpcErr } = await supabase
+                        .rpc("create_company_v2", { p_name: companyName });
+                      if (rpcErr || !newCompanyId) {
+                        console.error("[Register] create_company_v2 RPC failed:", rpcErr);
+                        toast.error("Failed to register company. Please try again.");
+                        return;
+                      }
+                      companyId = newCompanyId as string;
+                      const { error: updErr } = await supabase.from("companies")
+                        .update({
+                          invite_code: inviteCode, industry, country,
+                          employee_estimate: employeeEstimate,
+                          has_zones: hasZones ?? false, is_active: true,
+                        })
+                        .eq("id", companyId);
+                      if (updErr) console.error("[Register] Company metadata update failed (non-fatal):", updErr);
+                      if (zones.length > 0) {
+                        const zoneRows = zones.map(z => ({
+                          company_id: companyId, name: z.name, type: z.type,
+                          risk_level: z.riskLevel, evacuation_point: z.evacuationPoint,
+                          lat: z.lat ?? null, lon: z.lng ?? null, lng: z.lng ?? null,
+                          radius: z.radiusMeters ?? null, radius_meters: z.radiusMeters ?? null,
+                          evac_lat: z.evacLat ?? null, evac_lng: z.evacLng ?? null,
+                        }));
+                        const { error: zonesError } = await supabase.from("zones").insert(zoneRows);
+                        if (zonesError) console.error("[Register] Zones save failed:", zonesError);
+                      }
+                      const allMembers = manualEmployees.map(e => ({
+                        company_id: companyId, name: e.name, email: e.email || null,
+                        phone: e.phone, role: e.role || "employee",
+                        department: e.department || null, zone_name: e.zone || null,
+                        status: "pending", invited_by: userId, role_type: "employee",
                       }));
-                      const { error: zonesError } = await supabase.from("zones").insert(zoneRows);
-                      if (zonesError) console.error("[Register] Zones save failed:", zonesError);
-                    }
-
-                    // 3. Save invitations (employees + admins)
-                    const allMembers = [
-                      ...manualEmployees.map(e => ({
-                        company_id: companyId,
-                        name: e.name,
-                        email: e.email || null,
-                        phone: e.phone,
-                        role: e.role || "employee",
-                        department: e.department || null,
-                        zone_name: e.zone || null,
-                        status: "pending",
-                        invited_by: userId,
-                        role_type: "employee",
-                      })),
-                    ];
-
-                    if (allMembers.length > 0) {
-                      const { error: invError } = await supabase.from("invitations").insert(allMembers);
-                      if (invError) console.error("[Register] Invitations save failed:", invError);
+                      if (allMembers.length > 0) {
+                        const { error: invError } = await supabase.from("invitations").insert(allMembers);
+                        if (invError) console.error("[Register] Invitations save failed:", invError);
+                      }
+                    } else {
+                      companyId = (regResult as any).company_id as string;
+                      console.log("[Register] Atomic registration OK:",
+                        "zones:", (regResult as any).zone_count,
+                        "invites:", (regResult as any).invite_count);
                     }
 
                     // ──────────────────────────────────────────────────────
@@ -1468,7 +1480,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                       })();
                     }
 
-                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: allMembers.length, invited_via_email: inviteableEmployees.length });
+                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: invitationsPayload.length, invited_via_email: inviteableEmployees.length });
                     toast.success("Company registered successfully!");
 
                     onComplete(companyName, { companyName, plan: planId, billing, employeeCount: totalEmp });
@@ -1486,34 +1498,4 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                 <Sparkles className="size-5" />
                 Launch Company Dashboard
                 <ArrowRight className="size-5" />
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* ── Bottom Action Bar (steps 1-5) ──────────────────────── */}
-      {step < 6 && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 px-5 pb-8 pt-4"
-          style={{ background: "linear-gradient(transparent, #05070E 40%)" }}>
-          <motion.button
-            whileTap={canNext() ? { scale: 0.97 } : {}}
-            onClick={handleNext}
-            disabled={!canNext()}
-            className="w-full flex items-center justify-center gap-2.5 py-[15px] rounded-2xl transition-all"
-            style={{
-              background: canNext() ? "linear-gradient(135deg, #00C8E0, #00A5C0)" : "rgba(255,255,255,0.03)",
-              color: canNext() ? "#fff" : "rgba(255,255,255,0.15)",
-              fontSize: 15, fontWeight: 600,
-              boxShadow: canNext() ? "0 8px 30px rgba(0,200,224,0.25)" : "none",
-              border: canNext() ? "none" : "1px solid rgba(255,255,255,0.04)",
-              cursor: canNext() ? "pointer" : "default",
-            }}>
-            {step === 5 ? "Start 14-Day Free Trial" : "Continue"}
-            <ArrowRight className="size-4" />
-          </motion.button>
-        </div>
-      )}
-    </div>
-  );
-}
+       

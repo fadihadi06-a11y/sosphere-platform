@@ -612,9 +612,23 @@ export function DashboardWebPage() {
               initRealtimeChannels(invitation.company_id);
               useDashboardStore.getState().initDashboard();
               const companyName = (invitation.companies as any)?.name || "Your Company";
-              // Non-blocking: accept invitation in background (don't block login on this)
-              supabase.from("invitations").update({ status: "accepted" }).eq("id", invitation.id)
-                .then(({ error: updateErr }) => { if (updateErr) console.warn("[Auth] Failed to accept invitation:", updateErr.message); });
+              // Non-blocking: accept invitation in background (don't block login on this).
+              // Audit 2026-05-01: switched from direct UPDATE invitations to the
+              // accept_invitation RPC (Blocker A). Idempotent — the RPC's
+              // ON CONFLICT DO NOTHING on company_memberships safely re-affirms
+              // membership for repeat logins, and writes the employees row
+              // (which the legacy direct UPDATE never created). Falls back to
+              // the legacy direct UPDATE on RPC error / no-match for robustness.
+              supabase.rpc("accept_invitation")
+                .then(({ data: claim, error: rpcErr }) => {
+                  const claimResult = claim as { ok?: boolean; reason?: string } | null;
+                  if (rpcErr || (claimResult && claimResult.ok === false)) {
+                    if (rpcErr) console.warn("[Auth] accept_invitation RPC failed (non-fatal):", rpcErr.message);
+                    else console.warn("[Auth] accept_invitation no match:", claimResult?.reason);
+                    supabase.from("invitations").update({ status: "accepted" }).eq("id", invitation.id)
+                      .then(({ error: updateErr }) => { if (updateErr) console.warn("[Auth] Fallback invitation update failed:", updateErr.message); });
+                  }
+                });
               pendingLoginRef.current = { name, company: companyName };
               setLoginName(name);
               if (getStoredPin()) {
@@ -1422,25 +1436,4 @@ export function DashboardWebPage() {
                             onClick={() => window.open("mailto:sales@sosphere.io?subject=Demo Request", "_blank")}
                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px]"
                             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>
-                            Request Demo
-                          </motion.button>
-                        </div>
-                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", lineHeight: 1.5 }}>14-day free trial · No credit card required</p>
-                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                          onClick={() => navigate("/demo")}
-                          className="mt-3 flex items-center justify-center gap-2 w-full py-2 rounded-xl"
-                          style={{ background: "rgba(175,82,222,0.06)", border: "1px solid rgba(175,82,222,0.12)", fontSize: 12, fontWeight: 600, color: "rgba(175,82,222,0.7)" }}>
-                          <Eye className="size-3.5" /> Watch 60s Live Demo
-                        </motion.button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+                            Request D
