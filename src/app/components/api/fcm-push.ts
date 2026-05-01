@@ -165,6 +165,17 @@ async function saveSubscription(subscriptionJson: string, userId?: string): Prom
     return;
   }
   try {
+    // Audit 2026-05-01: push_tokens 400 root cause #2.
+    //
+    // The DB has a unique constraint UNIQUE (user_id, token), NOT
+    // a single-column unique on `token`. Supabase upsert with
+    // onConflict: "token" does not match this constraint and the
+    // request silently became an INSERT that then violated the
+    // composite unique → 400 Bad Request → console showed
+    // "Subscription saved" but nothing was actually written, so
+    // the entire owner SOS push fan-out (Blocker B v50) had zero
+    // recipients to deliver to. Fix: tell upsert about the actual
+    // composite constraint columns.
     await supabase.from("push_tokens").upsert(
       {
         token: subscriptionJson,
@@ -173,7 +184,7 @@ async function saveSubscription(subscriptionJson: string, userId?: string): Prom
         is_active: true,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "token" },
+      { onConflict: "user_id,token" },
     );
     console.log("[WebPush] Subscription saved to Supabase for user", userId);
   } catch (e) {
