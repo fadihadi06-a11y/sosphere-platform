@@ -140,6 +140,26 @@ export function WelcomeActivation() {
       return;
     }
 
+    // Blocker A fix (2026-04-30): bridge invitation -> membership.
+    // Without this RPC, the invited employee sets a password but never
+    // becomes a company member (orphan account). The RPC is idempotent
+    // and SECDEF, so it is safe to call here regardless of whether the
+    // membership already exists. Errors are surfaced softly: success
+    // card still shows, but a console warning helps debug if the
+    // invitation lookup failed.
+    try {
+      const { data: claim, error: claimErr } = await supabase.rpc("accept_invitation");
+      if (claimErr) {
+        console.warn("[Welcome] accept_invitation RPC failed (non-fatal):", claimErr.message);
+      } else if (claim && (claim as any).ok === false) {
+        console.warn("[Welcome] No matching invitation:", (claim as any).reason);
+      } else {
+        console.log("[Welcome] Joined company:", (claim as any)?.company_id, "as", (claim as any)?.role);
+      }
+    } catch (e) {
+      console.warn("[Welcome] accept_invitation threw (non-fatal):", e);
+    }
+
     setStep("success");
     setIsSubmitting(false);
   };
