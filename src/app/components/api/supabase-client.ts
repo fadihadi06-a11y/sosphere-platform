@@ -27,7 +27,17 @@ export const supabase = createClient(
     auth: {
       persistSession: _isConfigured,
       autoRefreshToken: _isConfigured,
-      detectSessionFromUrl: true,
+      detectSessionInUrl: true,  // ← critical typo fix (audit 2026-05-01)
+      // The previous typo `detectSessionFromUrl` caused supabase-js to
+      // OVERWRITE its internal default (which IS true) with `undefined`,
+      // disabling automatic PKCE/implicit OAuth-callback detection. This
+      // is what was causing the "Loading SOSphere" hang after Sign in
+      // with Google: the ?code= in the redirect URL was never exchanged
+      // for a session, so SIGNED_IN never fired and the auth listener
+      // was waiting forever. Verified by reading
+      // node_modules/@supabase/auth-js/dist/main/GoTrueClient.js where
+      // line `this.detectSessionInUrl = settings.detectSessionInUrl;`
+      // overwrites the constructor default of `true`.
       // SECURITY (2026-04-30): switched from "implicit" to "pkce".
       // Implicit places access_token in URL hash where it leaks to
       // extensions, document.referrer, analytics. PKCE is the OAuth
