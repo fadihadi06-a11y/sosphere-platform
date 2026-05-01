@@ -317,10 +317,52 @@ export function DashboardWebPage() {
   const [pinConfirm, setPinConfirm] = useState("");
   const [pinStage, setPinStage] = useState<"enter" | "confirm">("enter");
   const [pinError, setPinError] = useState("");
-  const PIN_KEY = "sosphere_dashboard_pin";
-  const PIN_SALT_KEY = "sosphere_dashboard_pin_salt";  // W3-49: per-install
+  // Audit 2026-05-01 (CRITICAL UX + security fix):
+  //
+  // OLD design: single shared key `sosphere_dashboard_pin` — every user on
+  // this device shared one slot, AND the key was wiped on every page load
+  // without a Supabase session (line 421 + 521 + 757 + 1175). Result:
+  //   1. user closes tab → next visit sees "Set Dashboard PIN" again
+  //      (PIN was wiped) → confused they enter the same 6 twice → screen
+  //      shows "Confirm PIN" → enter same 6 → "match" → dashboard.
+  //      User experiences this as "wrong PIN logged me in" but it was
+  //      actually a fresh setup they didn't realize they were doing.
+  //   2. user A sets PIN, logs out → user B logs in → user A's PIN
+  //      hash (which is still in the key user B's keypad now writes
+  //      against) gets overwritten → user A locked out of their own
+  //      device on next visit.
+  //
+  // NEW design: PIN is keyed by Supabase user.id. Each user has their
+  // own persistent PIN. Logout DOES NOT wipe it. Different user on
+  // same device = different key = own PIN setup. Auto-detects legacy
+  // single-key PIN on first migration so existing users aren't locked
+  // out.
+  const PIN_KEY_PREFIX = "sosphere_dashboard_pin:";
+  const LEGACY_PIN_KEY = "sosphere_dashboard_pin"; // pre-2026-05-01 unscoped key
+  const PIN_SALT_KEY = "sosphere_dashboard_pin_salt";  // W3-49: per-install (kept shared)
   const PIN_LEGACY_SALT = "sosphere_pin_salt_2026";    // for legacy hash recognition
-  const getStoredPin = () => localStorage.getItem(PIN_KEY);
+  const pinKeyFor = (userId: string | null | undefined): string | null =>
+    userId && userId.length >= 8 ? PIN_KEY_PREFIX + userId : null;
+  const getStoredPin = (userId: string | null | undefined): string | null => {
+    const k = pinKeyFor(userId);
+    if (!k) return null;
+    const scoped = localStorage.getItem(k);
+    if (scoped) return scoped;
+    // ── One-time migration from legacy unscoped key ──
+    // If the user has no scoped PIN but a legacy PIN exists in the
+    // pre-2026-05-01 single-key slot, adopt it so existing users do
+    // not get locked out. The legacy slot is removed atomically so
+    // a different user on this device cannot reuse the same hash.
+    const legacy = localStorage.getItem(LEGACY_PIN_KEY);
+    if (legacy) {
+      try {
+        localStorage.setItem(k, legacy);
+        localStorage.removeItem(LEGACY_PIN_KEY);
+      } catch { /* ignore */ }
+      return legacy;
+    }
+    return null;
+  };
 
   // W3-49 (B-20, 2026-04-26): per-install random salt instead of a single
   // constant. Pre-fix used `"sosphere_pin_salt_2026"` for every install, so
@@ -385,13 +427,18 @@ export function DashboardWebPage() {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
   };
 
-  const storePin = async (pin: string) => {
+  const storePin = async (userId: string | null | undefined, pin: string) => {
+    const k = pinKeyFor(userId);
+    if (!k) {
+      console.warn("[PIN] storePin refused — missing userId");
+      return;
+    }
     const salt = getOrCreateSalt();
-    localStorage.setItem(PIN_KEY, await hashPinPbkdf2(pin, salt));
+    localStorage.setItem(k, await hashPinPbkdf2(pin, salt));
   };
 
-  const checkPin = async (pin: string) => {
-    const stored = getStoredPin();
+  const checkPin = async (userId: string | null | undefined, pin: string) => {
+    const stored = getStoredPin(userId);
     if (!stored) return false;
     const salt = getOrCreateSalt();
     // Path 1: current v2 PBKDF2 hash.
@@ -400,10 +447,10 @@ export function DashboardWebPage() {
       return candidate === stored;
     }
     // Path 2: legacy hash. Try both variants, and if either matches,
-    // re-hash with PBKDF2 transparently.
+    // re-hash with PBKDF2 transparently (under the user-scoped key).
     if (stored === (await hashPinLegacyPerInstall(pin, salt))
         || stored === (await hashPinLegacyConstant(pin))) {
-      try { await storePin(pin); } catch { /* keep legacy hash if upgrade fails */ }
+      try { await storePin(userId, pin); } catch { /* keep legacy hash if upgrade fails */ }
       return true;
     }
     return false;
@@ -447,7 +494,9 @@ export function DashboardWebPage() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!mountedRef.current) return;
       if (!session) {
-        localStorage.removeItem("sosphere_dashboard_pin");
+        /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
+       per-user via PIN_KEY_PREFIX, persists across logout, and is
+       independently set up by each user on the same device. */ void 0;
         setStep("form");
         return;
       }
@@ -473,7 +522,7 @@ export function DashboardWebPage() {
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: company.name || "Your Company" };
           setLoginName(name);
-          if (getStoredPin()) {
+          if (getStoredPin(authUserId)) {
             setPinInput(""); setPinError("");
             setStep("pin-verify");
           } else {
@@ -505,7 +554,7 @@ export function DashboardWebPage() {
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: companyName };
           setLoginName(name);
-          if (getStoredPin()) {
+          if (getStoredPin(authUserId)) {
             setPinInput(""); setPinError("");
             setStep("pin-verify");
           } else {
@@ -515,7 +564,9 @@ export function DashboardWebPage() {
         }
 
         // No company or invitation — show login form
-        localStorage.removeItem("sosphere_dashboard_pin");
+        /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
+       per-user via PIN_KEY_PREFIX, persists across logout, and is
+       independently set up by each user on the same device. */ void 0;
         setStep("form");
       } catch (err) {
         console.error("[Auth] Unexpected error on mount:", err);
@@ -551,7 +602,7 @@ export function DashboardWebPage() {
       // success handler can resume it.
       pendingLoginRef.current = { name, company };
       setLoginName(name);
-      if (getStoredPin()) {
+      if (getStoredPin(authUserId)) {
         setPinInput(""); setPinError("");
         setStep("pin-verify");
       } else {
@@ -655,7 +706,7 @@ export function DashboardWebPage() {
             useDashboardStore.getState().initDashboard();
             pendingLoginRef.current = { name, company: company.name || "Your Company" };
             setLoginName(name);
-            if (getStoredPin()) {
+            if (getStoredPin(authUserId)) {
               setPinInput(""); setPinError("");
               setStep("pin-verify");
             } else {
@@ -703,7 +754,7 @@ export function DashboardWebPage() {
                 });
               pendingLoginRef.current = { name, company: companyName };
               setLoginName(name);
-              if (getStoredPin()) {
+              if (getStoredPin(authUserId)) {
                 setPinInput(""); setPinError("");
                 setStep("pin-verify");
               } else {
@@ -712,7 +763,9 @@ export function DashboardWebPage() {
               }
             } else {
               // ── NEW USER → REGISTER ──
-              localStorage.removeItem("sosphere_dashboard_pin");
+              /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
+       per-user via PIN_KEY_PREFIX, persists across logout, and is
+       independently set up by each user on the same device. */ void 0;
               setLoginName(name);
               setStep("register");
             }
@@ -966,7 +1019,7 @@ export function DashboardWebPage() {
                         // matches the first, then store + log in.
                         if (next === pinInput) {
                           void (async () => {
-                            await storePin(pinInput);
+                            await storePin(authUserId, pinInput);
                             if (!mountedRef.current) return;
                             // Audit 2026-05-01: PIN was just set + stored
                             // — open the gate so doLogin proceeds to
@@ -1055,7 +1108,7 @@ export function DashboardWebPage() {
                       // inside setState). The updater only computes the
                       // new value; validation is fired-and-forgotten.
                       void (async () => {
-                        const valid = await checkPin(next);
+                        const valid = await checkPin(authUserId, next);
                         if (!mountedRef.current) return;
                         if (valid) {
                           // Audit 2026-05-01: open the PIN gate before
@@ -1129,7 +1182,9 @@ export function DashboardWebPage() {
             // Dashboard PIN is a user-chosen admin PIN; completeLogout
             // also sweeps it via the prefix scan, but be explicit here
             // so intent is obvious to future readers.
-            try { localStorage.removeItem("sosphere_dashboard_pin"); } catch { /* ignore */ }
+            try { /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
+       per-user via PIN_KEY_PREFIX, persists across logout, and is
+       independently set up by each user on the same device. */ void 0; } catch { /* ignore */ }
             if (mountedRef.current) { setStep("form"); setEmailOtp(""); setEmail(""); }
           }}
         />
