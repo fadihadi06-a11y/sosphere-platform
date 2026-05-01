@@ -279,9 +279,11 @@ export function DashboardWebPage() {
   const pendingLoginRef = useRef<{ name: string; company: string } | null>(null);
   // Audit 2026-05-01 (lifesaving fix): tracks the auth user_id so the
   // NotificationPermissionBanner can scope the saved subscription to
-  // the correct user. Set from the auth listener when SIGNED_IN /
-  // INITIAL_SESSION fires; cleared on logout.
-  const authUserIdRef = useRef<string | null>(null);
+  // the correct user. Uses STATE (not just ref) so the banner
+  // re-renders the moment the auth listener fires SIGNED_IN /
+  // INITIAL_SESSION. Earlier ref-only attempt left the banner with
+  // userId=undefined permanently, hiding it forever.
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [pinStage, setPinStage] = useState<"enter" | "confirm">("enter");
@@ -552,8 +554,8 @@ export function DashboardWebPage() {
         const userEmail = session.user.email || "";
         // Audit 2026-05-01: expose user id to the
         // NotificationPermissionBanner (it scopes the saved subscription
-        // to this user).
-        authUserIdRef.current = session.user.id;
+        // to this user). Uses setState so React re-renders the banner.
+        setAuthUserId(session.user.id);
 
         // BLOCKER #19 / Audit #4 (2026-04-29): register the FCM push
         // token now that we have a userId. Dynamic-imported so a
@@ -1032,7 +1034,7 @@ export function DashboardWebPage() {
           position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)",
           zIndex: 100, width: "min(720px, calc(100% - 32px))", pointerEvents: "auto",
         }}>
-          <NotificationPermissionBanner userId={authUserIdRef.current ?? undefined} />
+          <NotificationPermissionBanner userId={authUserId ?? undefined} />
         </div>
         <CompanyDashboard
           companyName={loginCompany}
