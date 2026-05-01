@@ -277,6 +277,35 @@ export function DashboardWebPage() {
   // (rare race during account switch) to be processed.
   const processingRef = useRef<string | null>(null);
   const pendingLoginRef = useRef<{ name: string; company: string } | null>(null);
+  // ────────────────────────────────────────────────────────────
+  // ROOT-CAUSE PIN GATE (audit 2026-05-01)
+  //
+  // Single source of truth: dashboard is reachable ONLY when this
+  // ref is true. Closes 6 historical bypass paths in handler #1 +
+  // handler #2 (lines 438, 451, 469, 494, 587, 666 pre-fix) where
+  // doLogin() was called directly without PIN verification — a
+  // race between the two auth listeners could land the user on the
+  // dashboard while the PIN screen was still rendering.
+  //
+  // Why a ref (not state):
+  //   • doLogin() must read the LATEST value synchronously when
+  //     called from PIN handlers — useState would create a stale
+  //     closure (the same bug class that produced the original
+  //     "first digit logs me in" PIN bypass).
+  //   • The value is intentionally NOT persisted to localStorage —
+  //     a page reload MUST restart the verification process. This
+  //     follows OWASP Auth Cheat Sheet §"Re-authentication on
+  //     session resumption" + NIST SP 800-63B §5.1.1.2.
+  //
+  // State machine (no shortcuts allowed):
+  //   anonymous → form → [OAuth] → checking-session
+  //                              → if no PIN: pin-setup
+  //                              → if PIN exists: pin-verify
+  //                              → on PIN success: pinVerifiedRef=true
+  //                                              → welcome → dashboard
+  // Reset to false on: SIGNED_OUT, completeLogout, page reload.
+  // ────────────────────────────────────────────────────────────
+  const pinVerifiedRef = useRef(false);
   // Audit 2026-05-01 (lifesaving fix): tracks the auth user_id so the
   // NotificationPermissionBanner can scope the saved subscription to
   // the correct user. Uses STATE (not just ref) so the banner
@@ -504,9 +533,35 @@ export function DashboardWebPage() {
     };
   }, []);
 
-  // ── Core login ──
+  // ── Core login (PIN-gated) ──
+  //
+  // Audit 2026-05-01 (CRITICAL ROOT FIX): every reachable path to
+  // the dashboard now passes through this gate. If pinVerifiedRef is
+  // false (the default for every fresh page load), we redirect to
+  // pin-setup or pin-verify INSTEAD of stepping to dashboard. The
+  // 6 historical bypass paths (handler #1 + handler #2 catch-alls,
+  // DB-error paths, no-PIN owner branch) all funnel through here
+  // and are now safe.
   const doLogin = useCallback((name: string, company: string) => {
     if (!mountedRef.current) return;
+
+    // ── PIN GATE ──
+    if (!pinVerifiedRef.current) {
+      // Always remember the pending login destination so the PIN
+      // success handler can resume it.
+      pendingLoginRef.current = { name, company };
+      setLoginName(name);
+      if (getStoredPin()) {
+        setPinInput(""); setPinError("");
+        setStep("pin-verify");
+      } else {
+        setPinInput(""); setPinConfirm(""); setPinStage("enter");
+        setStep("pin-setup");
+      }
+      return;
+    }
+
+    // ── PIN already verified — proceed to welcome → dashboard ──
     setLoginName(name);
     setLoginCompany(company);
     setDashboardSession(name, company);
@@ -521,6 +576,11 @@ export function DashboardWebPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mountedRef.current) return;
       if (event === "SIGNED_OUT") {
+        // Audit 2026-05-01: close the PIN gate so the next sign-in
+        // is forced through PIN verification again. Without this,
+        // a returning session inside the same tab would inherit
+        // pinVerifiedRef=true from the previous user.
+        pinVerifiedRef.current = false;
         if (mountedRef.current) setStep("form");
         return;
       }
@@ -908,6 +968,12 @@ export function DashboardWebPage() {
                           void (async () => {
                             await storePin(pinInput);
                             if (!mountedRef.current) return;
+                            // Audit 2026-05-01: PIN was just set + stored
+                            // — open the gate so doLogin proceeds to
+                            // dashboard. Without this we would loop back
+                            // to pin-verify (which would now succeed but
+                            // is a wasted round-trip).
+                            pinVerifiedRef.current = true;
                             const pending = pendingLoginRef.current;
                             if (pending) {
                               doLogin(pending.name, pending.company);
@@ -992,6 +1058,10 @@ export function DashboardWebPage() {
                         const valid = await checkPin(next);
                         if (!mountedRef.current) return;
                         if (valid) {
+                          // Audit 2026-05-01: open the PIN gate before
+                          // calling doLogin so it proceeds to dashboard
+                          // instead of looping back to pin-verify.
+                          pinVerifiedRef.current = true;
                           const pending = pendingLoginRef.current;
                           if (pending) doLogin(pending.name, pending.company);
                         } else {
@@ -1010,7 +1080,15 @@ export function DashboardWebPage() {
               >{k}</button>
             ))}
           </div>
-          <button onClick={async () => { const { completeLogout } = await import("./api/complete-logout"); await completeLogout(); setStep("form"); setPinInput(""); }}
+          <button onClick={async () => {
+              // Audit 2026-05-01: explicitly close the PIN gate on
+              // "Sign in with different account" so the next user
+              // is forced through PIN verification.
+              pinVerifiedRef.current = false;
+              const { completeLogout } = await import("./api/complete-logout");
+              await completeLogout();
+              setStep("form"); setPinInput("");
+            }}
             style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
             Sign in with different account
           </button>
@@ -1043,6 +1121,9 @@ export function DashboardWebPage() {
           onLogout={async () => {
             // S-H5: completeLogout handles dashboard session + all
             // other sosphere_* keys + supabase.auth.signOut() + event.
+            // Audit 2026-05-01: also close the PIN gate so a re-login
+            // in the same tab is forced through PIN verification.
+            pinVerifiedRef.current = false;
             const { completeLogout } = await import("./api/complete-logout");
             await completeLogout();
             // Dashboard PIN is a user-chosen admin PIN; completeLogout
