@@ -483,7 +483,11 @@ export function UnifiedEmployeesPage({
     sos:      employees.filter(e => e.status === "sos").length,
     late:     employees.filter(e => e.status === "late-checkin").length,
     offShift: employees.filter(e => e.status === "off-shift").length,
-    avgScore: Math.round(employees.reduce((s, e) => s + e.safetyScore, 0) / employees.length),
+    // Audit 2026-05-01 (live test fix): guard against div-by-zero when
+    // company has no employees yet. Old code returned NaN -> "NaN%" KPI.
+    avgScore: employees.length > 0
+      ? Math.round(employees.reduce((s, e) => s + e.safetyScore, 0) / employees.length)
+      : 0,
   }), [employees]);
 
   // ── Filter counts ────────────────────────────────────────────
@@ -583,6 +587,13 @@ export function UnifiedEmployeesPage({
     try {
       // 1) Pre-create the invitation row so accept_invitation() can find
       //    it later. The edge function then triggers Supabase Auth invite.
+      //
+      // Audit 2026-05-01 (live test fix): include `invited_by` so the
+      // audit trail records *which* owner sent the invite. Required for
+      // compliance + dispute resolution. Falls back to NULL only if the
+      // session genuinely can't be resolved (the RLS policy on
+      // invitations already requires the user be a company member).
+      const { data: { user } } = await supabase.auth.getUser();
       const { error: insErr } = await supabase.from("invitations").insert({
         company_id: companyIdForInvites,
         email,
@@ -590,6 +601,7 @@ export function UnifiedEmployeesPage({
         role: inviteRole,
         role_type: inviteRole,
         status: "pending",
+        invited_by: user?.id ?? null,
       });
       if (insErr && !/duplicate|unique/i.test(insErr.message)) {
         setInviteError(insErr.message);
