@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { CompanyDashboard } from "./company-dashboard";
+import { NotificationPermissionBanner } from "./notification-permission-banner";
 import { CompanyRegister } from "./company-register";
 import { setDashboardSession, clearDashboardSession, getDashboardSession, isSessionExpired } from "./utils/dashboard-auth-guard";
 import {
@@ -276,6 +277,11 @@ export function DashboardWebPage() {
   // (rare race during account switch) to be processed.
   const processingRef = useRef<string | null>(null);
   const pendingLoginRef = useRef<{ name: string; company: string } | null>(null);
+  // Audit 2026-05-01 (lifesaving fix): tracks the auth user_id so the
+  // NotificationPermissionBanner can scope the saved subscription to
+  // the correct user. Set from the auth listener when SIGNED_IN /
+  // INITIAL_SESSION fires; cleared on logout.
+  const authUserIdRef = useRef<string | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [pinStage, setPinStage] = useState<"enter" | "confirm">("enter");
@@ -544,6 +550,10 @@ export function DashboardWebPage() {
         window.history.replaceState({}, "", "/dashboard");
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
         const userEmail = session.user.email || "";
+        // Audit 2026-05-01: expose user id to the
+        // NotificationPermissionBanner (it scopes the saved subscription
+        // to this user).
+        authUserIdRef.current = session.user.id;
 
         // BLOCKER #19 / Audit #4 (2026-04-29): register the FCM push
         // token now that we have a userId. Dynamic-imported so a
@@ -1010,7 +1020,20 @@ export function DashboardWebPage() {
   // ── Render: Dashboard ──
   if (step === "dashboard") {
     return (
-      <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#05070E", fontFamily: "'Outfit', sans-serif", position: "relative" }}>
+        {/* Lifesaving fix (audit 2026-05-01): prompt user to enable
+            Web Push if permission is "default". Without this, browsers
+            silently block requestPermission() outside user gestures and
+            push_tokens stays empty -> SOS alerts never reach the owner.
+            Banner overlays on top of the dashboard so it does not
+            disturb the existing CompanyDashboard layout. Hides itself
+            when permission is granted, denied, or snoozed for 24h. */}
+        <div style={{
+          position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)",
+          zIndex: 100, width: "min(720px, calc(100% - 32px))", pointerEvents: "auto",
+        }}>
+          <NotificationPermissionBanner userId={authUserIdRef.current ?? undefined} />
+        </div>
         <CompanyDashboard
           companyName={loginCompany}
           webMode={true}

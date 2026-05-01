@@ -74,12 +74,24 @@ export async function initFCM(userId?: string): Promise<string | null> {
     }
 
     // ─── Permission gate (must be 'granted' before subscribing) ───
-    const perm =
-      Notification.permission === "granted"
-        ? "granted"
-        : await Notification.requestPermission();
-    if (perm !== "granted") {
-      console.info("[WebPush] Notification permission not granted:", perm);
+    //
+    // Audit 2026-05-01 (lifesaving fix): browsers silently block
+    // Notification.requestPermission() if it's not called from a user
+    // gesture context. Auth listeners (where initFCM is invoked) are
+    // NOT user gestures — so the prompt never shows, permission stays
+    // 'default', and push_tokens never gets populated. Result:
+    // owner gets ZERO push alerts when an employee triggers SOS.
+    //
+    // New behavior: this function ONLY proceeds when permission is
+    // already 'granted'. If 'default' (never asked), we return null
+    // silently and rely on requestPushPermission() being called from
+    // a real user gesture (button click). If 'denied', we log + skip.
+    if (Notification.permission === "denied") {
+      console.warn("[WebPush] Notification permission denied by user — push alerts disabled.");
+      return null;
+    }
+    if (Notification.permission !== "granted") {
+      console.info("[WebPush] Notification permission not yet granted (state: " + Notification.permission + "). Call requestPushPermission() from a user gesture to enable.");
       return null;
     }
 
@@ -176,6 +188,50 @@ async function saveSubscription(subscriptionJson: string, userId?: string): Prom
  */
 export function getFCMToken(): string | null {
   return _subscriptionJson;
+}
+
+/**
+ * Returns the current notification permission state. UI uses this to
+ * decide whether to show the "Enable emergency alerts" banner.
+ */
+export function getNotificationPermissionState(): "granted" | "denied" | "default" | "unsupported" {
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission as "granted" | "denied" | "default";
+}
+
+/**
+ * Request notification permission AND initialize Web Push subscription.
+ *
+ * MUST be called from a user gesture handler (button click, etc.) —
+ * browsers silently block requestPermission() outside user gestures.
+ *
+ * After permission is granted, the function chains directly into the
+ * full initFCM flow so the subscription is registered immediately
+ * without waiting for the next page load.
+ *
+ * Returns:
+ *   "granted"     — permission granted, subscription saved to push_tokens
+ *   "denied"      — user clicked Block (cannot re-ask without browser settings)
+ *   "unsupported" — browser lacks Notification API
+ *   "save-failed" — permission granted but push subscription / DB save failed
+ */
+export async function requestPushPermission(userId: string): Promise<"granted" | "denied" | "unsupported" | "save-failed"> {
+  if (typeof Notification === "undefined") return "unsupported";
+  if (Notification.permission === "granted") {
+    const t = await initFCM(userId);
+    return t ? "granted" : "save-failed";
+  }
+  if (Notification.permission === "denied") return "denied";
+  let perm: NotificationPermission;
+  try {
+    perm = await Notification.requestPermission();
+  } catch (e) {
+    console.warn("[WebPush] requestPermission threw:", e);
+    return "save-failed";
+  }
+  if (perm !== "granted") return perm === "denied" ? "denied" : "save-failed";
+  const t = await initFCM(userId);
+  return t ? "granted" : "save-failed";
 }
 
 /**
