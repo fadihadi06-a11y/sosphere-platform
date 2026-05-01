@@ -1570,6 +1570,127 @@ serve(async (req: Request) => {
       }
     })();
 
+    // ──────────────────────────────────────────────────────────────────
+    // BLOCKER B fix (2026-04-30): owner fan-out push.
+    // The self-confirmation push above only reaches the SOSing user.
+    // Without this fan-out, a company owner sitting at their dashboard
+    // had NO way to know an employee just fired SOS — they'd have to
+    // see the realtime CDC update arrive and happen to be looking at
+    // the screen. Now: every active owner of the same company gets a
+    // critical push with the SOS details, deep-linked to the incident.
+    //
+    // Fire-and-forget. Failures only warn — must NEVER block SOS.
+    // Resolves owners via company_memberships (modern path, role='owner',
+    // active=true), the same source the existing self-confirm logic
+    // already uses elsewhere in this file.
+    // ──────────────────────────────────────────────────────────────────
+    void (async () => {
+      try {
+        // Look up the SOSing user's active company.
+        let companyIdForFanout: string | null = null;
+        try {
+          const { data: emp } = await supabase
+            .from("employees")
+            .select("company_id")
+            .eq("user_id", authUserId)
+            .eq("verified", true)
+            .maybeSingle();
+          companyIdForFanout = emp?.company_id ?? null;
+          if (!companyIdForFanout) {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("active_company_id")
+              .eq("id", authUserId)
+              .maybeSingle();
+            companyIdForFanout = prof?.active_company_id ?? null;
+          }
+        } catch (_) { /* best-effort */ }
+
+        if (!companyIdForFanout) {
+          // Civilian SOS or unresolved company — no fan-out needed.
+          return;
+        }
+
+        // Resolve all active owners of this company (excluding the SOSing
+        // user themselves, who already got the self-confirm push above).
+        const { data: owners, error: ownerErr } = await supabase
+          .from("company_memberships")
+          .select("user_id")
+          .eq("company_id", companyIdForFanout)
+          .eq("role", "owner")
+          .eq("active", true);
+        if (ownerErr) {
+          console.warn("[sos-alert] owner fan-out lookup failed:", ownerErr.message);
+          return;
+        }
+
+        const ownerIds: string[] = (owners || [])
+          .map((o: any) => o.user_id)
+          .filter((id: string) => id && id !== authUserId);
+        if (ownerIds.length === 0) {
+          return;
+        }
+
+        // Resolve the SOSing employee's name for the push body.
+        let employeeLabel = "An employee";
+        try {
+          const { data: empName } = await supabase
+            .from("employees")
+            .select("name")
+            .eq("user_id", authUserId)
+            .eq("company_id", companyIdForFanout)
+            .maybeSingle();
+          const trimmed = (empName?.name || "").trim();
+          if (trimmed) employeeLabel = trimmed;
+        } catch (_) { /* best-effort */ }
+
+        const ownerTitle = `🚨 SOS — ${employeeLabel}`;
+        const ownerBody = `An emergency was triggered. Tap to open the live incident.`;
+
+        await Promise.all(ownerIds.map(async (ownerId: string) => {
+          try {
+            const res = await fetch(
+              `${SUPA_URL}/functions/v1/send-push-notification`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${SUPA_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  targetUserId: ownerId,
+                  title: ownerTitle,
+                  body: ownerBody,
+                  data: {
+                    kind: "sos_owner_alert",
+                    emergency_id: emergencyId,
+                    company_id: companyIdForFanout,
+                    employee_user_id: authUserId,
+                    severity: "critical",
+                    deep_link: `/dashboard/emergencies/${emergencyId}`,
+                  },
+                }),
+              },
+            );
+            if (!res.ok && res.status !== 503) {
+              const text = await res.text();
+              console.warn(
+                `[sos-alert] owner fan-out push to ${ownerId} failed: ${res.status} ${text.slice(0, 160)}`,
+              );
+            }
+          } catch (e) {
+            console.warn(`[sos-alert] owner fan-out push to ${ownerId} threw:`, e);
+          }
+        }));
+
+        console.log(
+          `[sos-alert] owner fan-out: pushed SOS to ${ownerIds.length} owner(s) of company ${companyIdForFanout}`,
+        );
+      } catch (err) {
+        console.warn("[sos-alert] owner fan-out outer error (non-fatal):", err);
+      }
+    })();
+
     // FIX 2026-04-24 Fix #6: record Twilio spend to the ledger.
     // Rough estimates: SMS ≈ $0.0075, call ≈ $0.015/min.
     // For the call we don't know actual duration at fire-time (call
