@@ -1436,4 +1436,25 @@ export function DashboardWebPage() {
                             onClick={() => window.open("mailto:sales@sosphere.io?subject=Demo Request", "_blank")}
                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px]"
                             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>
-                            Request D
+                            Request Demo
+                          </motion.button>
+                        </div>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", lineHeight: 1.5 }}>14-day free trial · No credit card required</p>
+                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                          onClick={() => navigate("/demo")}
+                          className="mt-3 flex items-center justify-center gap-2 w-full py-2 rounded-xl"
+                          style={{ background: "rgba(175,82,222,0.06)", border: "1px solid rgba(175,82,222,0.12)", fontSize: 12, fontWeight: 600, color: "rgba(175,82,222,0.7)" }}>
+                          <Eye className="size-3.5" /> Watch 60s Live Demo
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

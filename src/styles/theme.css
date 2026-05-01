@@ -2,6 +2,26 @@
 
 :root {
   --font-size: 16px;
+  /*
+   * Foundation type scale (audit 2026-05-01).
+   * theme.css below references --text-2xl/xl/lg/base in the @layer base
+   * h1-h4/label/button/input rules, but these were never declared.
+   * Result: every font-size declaration in those rules was invalid and
+   * discarded, so browsers fell back to user-agent defaults (h1 ≈ 2em
+   * = 32px, h2 ≈ 1.5em = 24px, etc.) instead of the design-intended
+   * scale. That mis-match made every page look "zoomed in" by ~30-50%.
+   * Aligning here with Tailwind's default text-* scale so existing
+   * `class="text-2xl"` utilities and these fallback element rules
+   * produce identical sizes.
+   */
+  --text-xs:   0.75rem;   /* 12px */
+  --text-sm:   0.875rem;  /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg:   1.125rem;  /* 18px */
+  --text-xl:   1.25rem;   /* 20px */
+  --text-2xl:  1.5rem;    /* 24px */
+  --text-3xl:  1.875rem;  /* 30px */
+  --text-4xl:  2.25rem;   /* 36px */
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
@@ -226,44 +246,3 @@
   --sos-space-lg: 32px;
   --sos-space-xl: 48px;
 
-  /* Elevation */
-  --sos-shadow-0: none;
-  --sos-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --sos-shadow-2: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* ═══ Animations ═══ */
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.2); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ═══ Scrollbar ═══ */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
