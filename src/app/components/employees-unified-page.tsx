@@ -1331,4 +1331,22 @@ export function UnifiedEmployeesPage({
                 : "linear-gradient(135deg, rgba(255,45,85,0.15), rgba(255,45,85,0.05))",
               border: `1px solid ${approvalToast.action === "approved" ? "rgba(0,200,83,0.3)" : "rgba(255,45,85,0.3)"}`,
               boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
-   
+              backdropFilter: "blur(20px)",
+            }}>
+            {approvalToast.action === "approved" ? (
+              <CheckCircle2 className="size-5" style={{ color: "#00C853" }} />
+            ) : (
+              <X className="size-5" style={{ color: "#FF2D55" }} />
+            )}
+            <span style={{
+              fontSize: 13, fontWeight: 700,
+              color: approvalToast.action === "approved" ? "#00C853" : "#FF2D55",
+            }}>
+              {approvalToast.name} {approvalToast.action === "approved" ? "approved — notification sent to mobile app" : "rejected"}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
