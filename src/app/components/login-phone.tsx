@@ -1,7 +1,7 @@
 import { TermsPage } from "./terms-page";
 import { PrivacyPage } from "./privacy-page";
 import { useState } from "react";
-import { Shield, ArrowRight } from "lucide-react";
+import { Shield, ArrowRight, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { CountrySheet, COUNTRIES, type Country } from "./country-picker";
 import { OTPVerify } from "./otp-verify";
 import { useLang } from "./useLang";
@@ -27,6 +27,60 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  // #170 fix C (2026-05-02): email + password fallback for employees whose
+  // company invite created a yahoo/hotmail/outlook/custom-domain account.
+  // Phone+SMS (Twilio) is region-locked and Google OAuth only works for
+  // Google accounts — neither serves a yahoo employee who set their
+  // password 2 minutes ago in welcome-activation.tsx.
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+
+  const handleEmailPasswordSubmit = async () => {
+    setEmailError("");
+    if (!email || !emailPassword) return;
+    if (emailPassword.length < 8) {
+      setEmailError(isAr ? "كلمة المرور يجب أن تكون 8 أحرف على الأقل" : "Password must be at least 8 characters");
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      const { supabase } = await import("./api/supabase-client");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: emailPassword,
+      });
+      if (error) {
+        setEmailError(error.message || (isAr ? "بيانات الدخول غير صحيحة" : "Invalid credentials"));
+        setEmailLoading(false);
+        return;
+      }
+      // #170 design choice: full-page reload instead of in-React routing.
+      // Reason: mobile-app.tsx restoreSession() runs once on mount and is
+      // the ONLY code that performs the company-employee fast-path (#170
+      // fix B). A reload guarantees that path runs with the fresh session
+      // → routes employees straight to employee-dashboard. In-React
+      // navigation would require duplicating the membership query +
+      // routing logic here, which would drift from the canonical path.
+      const name =
+        data.user?.user_metadata?.full_name ||
+        data.user?.email?.split("@")[0] ||
+        "";
+      if (onEmailLogin) {
+        // Best-effort hint to parent (current handleEmailLogin is a no-op
+        // for our flow but might be useful for analytics later).
+        try { onEmailLogin(email, name); } catch { /* ignore */ }
+      }
+      window.location.reload();
+    } catch (e) {
+      console.warn("[LoginPhone] signInWithPassword threw:", e);
+      setEmailError(isAr ? "خطأ في الاتصال. حاول مرة أخرى." : "Connection error. Please try again.");
+      setEmailLoading(false);
+    }
+  };
 
   const isPhoneValid = phone.length >= 8;
 
@@ -257,6 +311,123 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
               </>
             )}
           </button>
+
+          {/* #170 fix C: email + password (collapsed by default).
+              For employees from invitation flow whose email is yahoo /
+              hotmail / outlook / custom domain — they have a password
+              from welcome-activation but no Phone/Google path. */}
+          {!showEmailForm && (
+            <button
+              onClick={() => { setShowEmailForm(true); setEmailError(""); }}
+              className="w-full"
+              style={{
+                marginTop: 12, padding: "10px 14px", borderRadius: 12,
+                background: "transparent", border: "1px dashed rgba(255,255,255,.08)",
+                color: "rgba(255,255,255,.45)", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, ...S,
+              }}
+            >
+              <Mail size={13} />
+              {isAr ? "تسجيل الدخول بالبريد وكلمة المرور" : "Sign in with email & password"}
+            </button>
+          )}
+
+          {showEmailForm && (
+            <div style={{ marginTop: 14, padding: 14, borderRadius: 14, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,200,224,.7)", marginBottom: 10, textAlign: "center", letterSpacing: ".5px", ...S }}>
+                {isAr ? "للموظفين الذين سجّلوا عبر دعوة الشركة" : "For employees who joined via company invite"}
+              </p>
+
+              {/* Email */}
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <Mail size={14} style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,.25)" }} />
+                <input
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={isAr ? "البريد الإلكتروني" : "Email address"}
+                  style={{
+                    width: "100%", height: 46, borderRadius: 12,
+                    background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)",
+                    color: "#fff", fontSize: 14, fontWeight: 600,
+                    paddingInlineStart: 36, paddingInlineEnd: 14,
+                    outline: "none", direction: "ltr", textAlign: "left",
+                    fontFamily: "'Outfit',sans-serif",
+                  }}
+                />
+              </div>
+
+              {/* Password */}
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <Lock size={14} style={{ position: "absolute", insetInlineStart: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,.25)" }} />
+                <input
+                  type={showEmailPassword ? "text" : "password"}
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  placeholder={isAr ? "كلمة المرور" : "Password"}
+                  style={{
+                    width: "100%", height: 46, borderRadius: 12,
+                    background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)",
+                    color: "#fff", fontSize: 14, fontWeight: 600,
+                    paddingInlineStart: 36, paddingInlineEnd: 40,
+                    outline: "none", direction: "ltr", textAlign: "left",
+                    fontFamily: "'Outfit',sans-serif",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowEmailPassword(!showEmailPassword)}
+                  style={{
+                    position: "absolute", insetInlineEnd: 10, top: "50%", transform: "translateY(-50%)",
+                    background: "transparent", border: "none", cursor: "pointer",
+                    padding: 4, display: "flex", alignItems: "center",
+                  }}
+                >
+                  {showEmailPassword
+                    ? <EyeOff size={14} style={{ color: "rgba(255,255,255,.35)" }} />
+                    : <Eye size={14} style={{ color: "rgba(255,255,255,.35)" }} />}
+                </button>
+              </div>
+
+              {emailError && (
+                <p style={{ fontSize: 11, color: "#FF2D55", marginBottom: 8, textAlign: "center", ...S }}>{emailError}</p>
+              )}
+
+              <button
+                onClick={handleEmailPasswordSubmit}
+                disabled={!email || !emailPassword || emailLoading}
+                className="w-full flex items-center justify-center gap-2"
+                style={{
+                  height: 46, borderRadius: 12,
+                  background: (email && emailPassword && !emailLoading)
+                    ? "linear-gradient(135deg,#00C8E0,#00A5C0)"
+                    : "rgba(255,255,255,.04)",
+                  color: (email && emailPassword && !emailLoading) ? "#fff" : "rgba(255,255,255,.25)",
+                  fontSize: 14, fontWeight: 700,
+                  border: "none",
+                  cursor: (email && emailPassword && !emailLoading) ? "pointer" : "default",
+                  ...S,
+                }}
+              >
+                {emailLoading
+                  ? (<><div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "spin .8s linear infinite" }} />{isAr ? "جاري الدخول..." : "Signing in..."}</>)
+                  : (<>{isAr ? "تسجيل الدخول" : "Sign In"}<ArrowRight size={14} /></>)}
+              </button>
+
+              <button
+                onClick={() => { setShowEmailForm(false); setEmail(""); setEmailPassword(""); setEmailError(""); }}
+                style={{
+                  width: "100%", marginTop: 8, padding: 6,
+                  background: "transparent", border: "none",
+                  color: "rgba(255,255,255,.3)", fontSize: 11, fontWeight: 500,
+                  cursor: "pointer", ...S,
+                }}
+              >
+                {isAr ? "إلغاء" : "Cancel"}
+              </button>
+            </div>
+          )}
 
           {/* Dev-only quick access */}
           {import.meta.env.DEV && onDemoAccess && (
