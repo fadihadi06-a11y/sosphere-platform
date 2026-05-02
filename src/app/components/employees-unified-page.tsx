@@ -617,8 +617,18 @@ export function UnifiedEmployeesPage({
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session?.access_token || ""}`,
         },
+        // Audit 2026-05-02 (CRITICAL employee onboarding fix): without an
+        // explicit redirect_to, invite-employees falls back to
+        // `${SITE_URL || 'https://sosphere.app'}/welcome` — sosphere.app is
+        // a wrong domain and Supabase Auth's allowlist may also reject it,
+        // so the magic link redirected employees back to the landing page
+        // instead of the activation flow. New companies could not onboard
+        // ANY employees. Pin the redirect to THIS deployment's /welcome
+        // route, which knows how to exchange the PKCE code into a session
+        // (see welcome-activation.tsx).
         body: JSON.stringify({
           employees: [{ email, full_name: inviteName.trim() || undefined, company_id: companyIdForInvites }],
+          redirect_to: `${window.location.origin}/welcome`,
         }),
       });
       if (!res.ok) {
@@ -1321,22 +1331,4 @@ export function UnifiedEmployeesPage({
                 : "linear-gradient(135deg, rgba(255,45,85,0.15), rgba(255,45,85,0.05))",
               border: `1px solid ${approvalToast.action === "approved" ? "rgba(0,200,83,0.3)" : "rgba(255,45,85,0.3)"}`,
               boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
-              backdropFilter: "blur(20px)",
-            }}>
-            {approvalToast.action === "approved" ? (
-              <CheckCircle2 className="size-5" style={{ color: "#00C853" }} />
-            ) : (
-              <X className="size-5" style={{ color: "#FF2D55" }} />
-            )}
-            <span style={{
-              fontSize: 13, fontWeight: 700,
-              color: approvalToast.action === "approved" ? "#00C853" : "#FF2D55",
-            }}>
-              {approvalToast.name} {approvalToast.action === "approved" ? "approved — notification sent to mobile app" : "rejected"}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+   
