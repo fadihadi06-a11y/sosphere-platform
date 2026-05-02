@@ -149,6 +149,35 @@ export function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // ── Defense-in-depth: rescue magic-link tokens that landed here ────
+  // Audit 2026-05-02 (CRITICAL employee onboarding fix):
+  // Even when an invite-employees call passes a correct redirect_to, the
+  // Supabase Auth project's "Redirect URL allowlist" will silently strip
+  // any redirect that isn't on it and substitute the project's Site URL
+  // — which routes to "/" → this landing page. Result: an employee who
+  // clicked a valid invitation email arrived here with their PKCE
+  // ?code=... or hash #access_token=... in the URL, and the landing
+  // page just discarded it.
+  //
+  // This effect detects those tokens on mount and forwards to /welcome
+  // (welcome-activation.tsx), preserving the query/hash so its existing
+  // exchangeCodeForSession() logic completes the activation. Defense
+  // works even if a future caller forgets redirect_to or the allowlist
+  // is misconfigured.
+  useEffect(() => {
+    try {
+      const search = window.location.search || "";
+      const hash = window.location.hash || "";
+      const looksLikeAuth =
+        /(^|[?&])(code|token_hash|type)=/.test(search) ||
+        /access_token=|refresh_token=|type=invite|type=magiclink|type=recovery/.test(hash);
+      if (looksLikeAuth && window.location.pathname !== "/welcome") {
+        // Use replace so the user can't "Back" into a half-consumed token.
+        window.location.replace("/welcome" + search + hash);
+      }
+    } catch { /* never block render on rescue logic */ }
+  }, []);
+
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
@@ -493,31 +522,4 @@ export function LandingPage() {
       <footer style={{ padding: "40px 24px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00C8E0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>SOSphere</div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.2 }}>{t.footer.tagline}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            {t.footer.links.map((l, i) => (
-              <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}>{l}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>{t.footer.copy}</div>
-        </div>
-      </footer>
-
-      {/* Mobile responsive CSS */}
-      <style>{`
-        @media (max-width: 768px) {
-          .hidden-mobile { display: none !important; }
-        }
-      `}</style>
-    </div>
-  );
-}
+            <div style={{
