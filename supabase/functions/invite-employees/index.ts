@@ -39,6 +39,12 @@ interface InviteResult {
   email: string;
   success: boolean;
   error?: string;
+  // #149 fix (2026-05-02): when Supabase Auth refuses to send a new invite
+  // because the email already has a confirmed user, we no longer pretend
+  // the invite was sent. Instead we surface this distinct state so the
+  // owner sees "this person already has a SOSphere account — they can
+  // sign in directly" rather than the misleading "invitation sent" toast.
+  skipped_existing?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -167,9 +173,28 @@ Deno.serve(async (req: Request) => {
           });
 
           if (error) {
-            // "User already registered" is not a real error — skip gracefully
-            if (error.message.includes("already")) {
-              return { email: emp.email, success: true, error: "already_registered" };
+            // #149 fix (2026-05-02): When the email already has a CONFIRMED
+            // auth.users record, Supabase Auth's inviteUserByEmail returns
+            // an error like "User already registered" and refuses to send
+            // a new invitation email — by design, to prevent abuse.
+            //
+            // PRE-FIX: this branch silently flipped success=true with a
+            // tagged error, the summary counted it as "sent", and the UI
+            // toasted "Invitation sent" even though no email had left the
+            // server. Owner waited for an email that never came.
+            //
+            // NEW: surface "skipped_existing" as a distinct result. The
+            // invitation row in public.invitations stays pending so when
+            // the existing user signs in to /app, accept_invitation RPC
+            // adds them to the company. The UI shows actionable copy.
+            const looksLikeAlreadyExists = /already|registered|exists/i.test(error.message || "");
+            if (looksLikeAlreadyExists) {
+              return {
+                email: emp.email,
+                success: false,
+                skipped_existing: true,
+                error: "User already has a SOSphere account. No invite email was sent. They can sign in directly to /app — they will be added to your company on next sign-in.",
+              };
             }
             return { email: emp.email, success: false, error: error.message };
           }
@@ -193,14 +218,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Summary ───────────────────────────────────────────────
-    const sent    = results.filter(r => r.success).length;
-    const failed  = results.filter(r => !r.success).length;
-    const skipped = results.filter(r => r.error === "already_registered").length;
+    // sent  = invites that actually reached an inbox.
+    // skipped_existing = the email already had a confirmed account,
+    //                    so Supabase refused to send a new invite.
+    //                    The invitation row is still pending and will
+    //                    be auto-claimed when the existing user signs in.
+    // failed = any other error (validation, rate limit, network, etc.).
+    const sent             = results.filter(r => r.success === true).length;
+    const skipped_existing = results.filter(r => r.skipped_existing === true).length;
+    const failed           = results.filter(r => r.success === false && !r.skipped_existing).length;
 
     return new Response(
       JSON.stringify({
+        // top-level success: the function executed without crashing.
+        // The per-email outcome is in `summary` and `results` — UI must
+        // inspect those, not just the top-level boolean.
         success: true,
-        summary: { total: employees.length, sent, failed, skipped },
+        summary: { total: employees.length, sent, failed, skipped_existing },
         results,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

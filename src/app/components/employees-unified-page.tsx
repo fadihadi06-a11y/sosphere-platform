@@ -637,9 +637,35 @@ export function UnifiedEmployeesPage({
         setInviteSubmitting(false);
         return;
       }
-      toast.success(`Invitation sent to ${email}`);
-      setInviteEmail(""); setInviteName(""); setInviteRole("employee");
-      await loadPendingInvites();
+      // #149 fix (2026-05-02): inspect per-email outcome instead of trusting
+      // the top-level `success` boolean. The edge function now distinguishes
+      // three states per email — sent / skipped_existing / failed — so we
+      // can show the owner an actionable message instead of a misleading
+      // "Invitation sent" toast when the email already had an account.
+      let summary: { sent: number; failed: number; skipped_existing: number } | undefined;
+      let firstResult: { success: boolean; skipped_existing?: boolean; error?: string } | undefined;
+      try {
+        const parsed = await res.json();
+        summary = parsed?.summary;
+        firstResult = parsed?.results?.[0];
+      } catch { /* keep defaults */ }
+
+      if (summary?.skipped_existing && summary.skipped_existing > 0) {
+        toast.info(
+          `${email} already has a SOSphere account. Ask them to sign in directly with their existing password — they will be added to your company automatically.`,
+          { duration: 9000 },
+        );
+        setInviteEmail(""); setInviteName(""); setInviteRole("employee");
+        await loadPendingInvites();
+      } else if (summary?.failed && summary.failed > 0) {
+        setInviteError(`Failed: ${firstResult?.error || "unknown error"}`);
+      } else if (summary?.sent && summary.sent > 0) {
+        toast.success(`Invitation sent to ${email}`);
+        setInviteEmail(""); setInviteName(""); setInviteRole("employee");
+        await loadPendingInvites();
+      } else {
+        setInviteError("Invitation status unclear — please refresh and check pending invites.");
+      }
     } catch (e) {
       setInviteError(`Error: ${(e as Error).message}`);
     } finally {
