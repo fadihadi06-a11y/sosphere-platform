@@ -522,4 +522,31 @@ export function LandingPage() {
       <footer style={{ padding: "40px 24px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00C8E0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>SOSphere</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.2 }}>{t.footer.tagline}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+            {t.footer.links.map((l, i) => (
+              <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}>{l}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>{t.footer.copy}</div>
+        </div>
+      </footer>
+
+      {/* Mobile responsive CSS */}
+      <style>{`
+        @media (max-width: 768px) {
+          .hidden-mobile { display: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
