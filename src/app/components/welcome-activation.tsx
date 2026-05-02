@@ -10,6 +10,21 @@ import { useLang } from "./useLang";
 
 type ActivationStep = "loading" | "set-password" | "success" | "error" | "already-active";
 
+// #170 fix A helper: declarative auto-redirect on the success page.
+// Renders nothing, side-effect only. Pure function component so React's
+// strict-mode double-invocation in dev still results in a single timer
+// (StrictMode runs the effect → cleanup → effect again, net 1 timer).
+function AutoRedirect({ href, delayMs }: { href: string; delayMs: number }) {
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      // Use replace so the user can't "Back" into the consumed activation URL.
+      window.location.replace(href);
+    }, delayMs);
+    return () => window.clearTimeout(t);
+  }, [href, delayMs]);
+  return null;
+}
+
 export function WelcomeActivation() {
   const { isAr } = useLang();
   const dir = isAr ? "rtl" : "ltr";
@@ -363,37 +378,72 @@ export function WelcomeActivation() {
               <h2 style={{ fontSize: 24, fontWeight: 800, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.4px", marginBottom: 8 }}>
                 {isAr ? "تم تفعيل حسابك! 🎉" : "Account Activated! 🎉"}
               </h2>
-              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>
+              {companyName && (
+                <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 4 }}>
+                  {isAr ? `أنت الآن عضو في` : `You're now a member of`}{" "}
+                  <span style={{ color: "#00C8E0", fontWeight: 700 }}>{companyName}</span>
+                </p>
+              )}
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>
                 {isAr
-                  ? "أنت الآن جاهز للانضمام لفريق السلامة. حمّل تطبيق SOSphere لتسجيل الدخول."
-                  : "You're now ready to join your safety team. Download the SOSphere app to get started."
+                  ? "سننقلك إلى التطبيق خلال ثوانٍ..."
+                  : "Taking you to the app in a moment..."
                 }
               </p>
             </div>
 
-            {/* Download CTA */}
-            <div className="w-full p-4 rounded-2xl space-y-3"
-              style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.12)" }}>
-              <div className="flex items-center gap-3">
-                <Smartphone className="size-5 shrink-0" style={{ color: "#00C8E0" }} />
-                <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>
-                  {isAr ? "حمّل التطبيق" : "Download the App"}
-                </p>
-              </div>
+            {/* #170 fix A (2026-05-02): real CTA replacing dead Download buttons.
+                Browser-native button is the primary path — the user already has a
+                live Supabase session (set by exchangeCodeForSession in the load
+                effect). The mobile-app entry point (#170 fix B) detects the
+                active company_membership and routes them straight to
+                employee-dashboard, bypassing the civilian/employee picker and
+                LoginPhone screens. ?from=welcome is a hint for analytics + any
+                future first-run logic on /app. */}
+            <a
+              href="/app?from=welcome"
+              className="w-full flex items-center justify-center gap-2"
+              style={{
+                padding: "14px 20px",
+                borderRadius: 16,
+                background: "linear-gradient(135deg, #00C8E0, #00A5C0)",
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 8px 28px rgba(0,200,224,0.35)",
+              }}
+            >
+              {isAr ? "افتح التطبيق الآن" : "Open SOSphere App"}
+              <ArrowRight className="size-4" />
+            </a>
+
+            {/* Download links shown ONLY as a secondary option — small, optional,
+                does not block flow. Primary CTA above is the lifesaving path. */}
+            <div className="w-full pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 8, textAlign: "center" }}>
+                {isAr ? "أو حمّل التطبيق المخصّص لاحقاً" : "Or download the native app later"}
+              </p>
               <div className="grid grid-cols-2 gap-2">
-                {["App Store", "Google Play"].map(store => (
-                  <div key={store} className="py-2.5 rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{store}</span>
-                  </div>
-                ))}
+                <a href="https://apps.apple.com/app/sosphere" target="_blank" rel="noopener noreferrer"
+                  className="py-2 rounded-lg flex items-center justify-center gap-1.5"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", textDecoration: "none" }}>
+                  <Smartphone className="size-3" style={{ color: "rgba(255,255,255,0.4)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>App Store</span>
+                </a>
+                <a href="https://play.google.com/store/apps/details?id=app.sosphere" target="_blank" rel="noopener noreferrer"
+                  className="py-2 rounded-lg flex items-center justify-center gap-1.5"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", textDecoration: "none" }}>
+                  <Smartphone className="size-3" style={{ color: "rgba(255,255,255,0.4)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Google Play</span>
+                </a>
               </div>
             </div>
 
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-              {isAr ? "يمكنك أيضاً الوصول عبر المتصفح على" : "Or access via browser at"}{" "}
-              <span style={{ color: "#00C8E0" }}>sosphere.app/app</span>
-            </p>
+            {/* Auto-redirect after 3s — the user's session is already live, so
+                /app entry will fast-path them to employee-dashboard immediately
+                (see mobile-app.tsx #170 fix B). */}
+            <AutoRedirect href="/app?from=welcome" delayMs={3000} />
           </motion.div>
         )}
 

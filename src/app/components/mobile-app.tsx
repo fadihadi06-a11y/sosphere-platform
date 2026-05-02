@@ -624,6 +624,95 @@ export function MobileApp() {
           consentDone = hasCompletedConsent() && hasCompletedGpsConsent();
         }
 
+        // ──────────────────────────────────────────────────────────────
+        // #170 fix B (2026-05-02): Company-employee fast-path.
+        //
+        // Pre-fix: an employee who joined via the company invite flow
+        // (welcome-activation.tsx → set password → accept_invitation
+        // RPC) lands on /app with a valid Supabase session BUT no local
+        // consent flags AND no individual_profile in localStorage —
+        // because they never went through /app's civilian onboarding.
+        // The 3-condition gate below (session && consent && profile)
+        // therefore fails, and they're sent to login-welcome → intro
+        // slides → civilian/employee picker → LoginPhone — even though
+        // we already KNOW they are a verified employee of a specific
+        // company. Result: they get stuck at LoginPhone (which lacks
+        // email/password — see #152), unable to enter the app at all.
+        //
+        // Fix: when a session exists, query company_memberships once.
+        // If the user has an active non-owner membership, they are an
+        // employee whose consent was implicit at invite acceptance
+        // (B2B legal model — the employer is data controller). Synth-
+        // esize the local profile + consent flags + state, then route
+        // straight to employee-dashboard. The membership row is the
+        // single source of truth for "this is a real employee".
+        //
+        // Owners (role='owner') are deliberately excluded — they use
+        // /dashboard, not /app. If an owner happens to land on /app
+        // they fall through to the standard flow (no membership match).
+        // ──────────────────────────────────────────────────────────────
+        if (session?.user) {
+          try {
+            const { data: membership } = await supabase
+              .from("company_memberships")
+              .select("company_id, role")
+              .eq("user_id", session.user.id)
+              .eq("active", true)
+              .neq("role", "owner")
+              .maybeSingle();
+
+            if (membership) {
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("full_name, phone, email")
+                .eq("id", session.user.id)
+                .maybeSingle();
+
+              const empName =
+                profile?.full_name ||
+                session.user.user_metadata?.full_name ||
+                (session.user.email || profile?.email || "").split("@")[0] ||
+                "Employee";
+              const empPhone = profile?.phone || "";
+
+              // Synth local profile so subsequent cold-loads also fast-path.
+              try {
+                localStorage.setItem(
+                  "sosphere_individual_profile",
+                  JSON.stringify({ name: empName, phone: empPhone, registeredAt: Date.now() }),
+                );
+              } catch { /* localStorage may be blocked */ }
+
+              // Mark consent as complete (invite acceptance = implicit B2B consent).
+              try {
+                const now = new Date().toISOString();
+                localStorage.setItem("sosphere_tos_consent", JSON.stringify({
+                  accepted: true, timestamp: Date.now(), version: "1.0",
+                }));
+                localStorage.setItem("sosphere_gps_consent", JSON.stringify({
+                  allowed: true, timestamp: Date.now(), declinedWarningShown: false,
+                }));
+                void now; // referenced for clarity
+              } catch { /* ignore */ }
+
+              setLoginName(empName);
+              setLoginPhone(empPhone);
+              setLoginMode("employee");
+              setSelectedPath("employee");
+              setUserPlan("employee");
+              setAuthUserId(session.user.id);
+              screenHistoryRef.current = [];
+
+              setIsRestoring(false);
+              navigate("employee-dashboard");
+              console.log(`[Auth] #170-B fast-path: employee ${empName} → employee-dashboard (company ${membership.company_id})`);
+              return;
+            }
+          } catch (e) {
+            console.warn("[Auth] #170-B membership probe failed; falling back to standard flow:", e);
+          }
+        }
+
         if (session?.user && consentDone && savedProfile?.registeredAt) {
           // ──────────────────────────────────────────────────────────────
           // F-B (2026-04-25): age-gate guard for EXISTING users — fail-SECURE.
