@@ -2,7 +2,7 @@
 // SOSphere — Employees Hub (Full Hybrid Redesign)
 // Directory · Live Status · Quick Call · GPS · Safety Score
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Users, Search, MapPin, Phone, Shield, Clock,
@@ -423,6 +423,11 @@ export function UnifiedEmployeesPage({
   const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
   const [companyIdForInvites, setCompanyIdForInvites] = useState<string | null>(null);
   const [approvalToast, setApprovalToast] = useState<{ name: string; action: "approved" | "rejected" } | null>(null);
+  // E1.6.1 Q6: live count of items still queued (pgmq -> worker hasn't
+  // processed yet). Bridges the ~60s gap between enqueue and the moment
+  // the worker writes invitations rows. Re-computed via Realtime on
+  // async_job_metadata.
+  const [queuedItemsCount, setQueuedItemsCount] = useState<number>(0);
 
   // Plan limit guard for adding employees
   const { checkPlanLimitGuard, checkTrialGuard } = useDashboardStore();
@@ -567,6 +572,44 @@ export function UnifiedEmployeesPage({
     } catch (_) { /* ignore */ }
     setPendingInvitesLoading(false);
   };
+
+  // E1.6.1 Q6: queued items badge loader + realtime subscription
+  const loadQueuedItemsCount = useCallback(async (cid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("async_job_metadata")
+        .select("progress")
+        .eq("company_id", cid)
+        .in("status", ["pending", "running", "paused"]);
+      if (error || !Array.isArray(data)) return;
+      const total = data.reduce((acc: number, row: any) => {
+        const p = row?.progress || {};
+        const remaining = Math.max(0, (Number(p.total) || 0) - (Number(p.processed) || 0));
+        return acc + remaining;
+      }, 0);
+      setQueuedItemsCount(total);
+    } catch (_) { /* non-fatal: badge stays at last known value */ }
+  }, []);
+
+  useEffect(() => {
+    if (!companyIdForInvites || !SUPABASE_CONFIG.isConfigured) return;
+    void loadQueuedItemsCount(companyIdForInvites);
+    const channel = supabase
+      .channel(`queued_items_badge:${companyIdForInvites}`)
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        {
+          event:  "*",
+          schema: "public",
+          table:  "async_job_metadata",
+          filter: `company_id=eq.${companyIdForInvites}`,
+        },
+        () => { void loadQueuedItemsCount(companyIdForInvites); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [companyIdForInvites, loadQueuedItemsCount]);
 
   useEffect(() => {
     if (showInviteEmployee) loadPendingInvites();
@@ -1117,9 +1160,31 @@ export function UnifiedEmployeesPage({
               {/* Pending invitations list */}
               <div className="pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center justify-between mb-3">
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Pending Invitations ({pendingInvites.length})
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Pending Invitations ({pendingInvites.length})
+                    </p>
+                    {/* E1.6.1 Q6: live "Queued: N" pill — visible during the */}
+                    {/* ~60s window between enqueue and worker materializing.   */}
+                    {queuedItemsCount > 0 && (
+                      <span title="Items waiting in the async queue. They'll appear in Pending Invitations as the worker processes them."
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md"
+                        style={{
+                          background: "rgba(155,89,182,0.10)",
+                          border: "1px solid rgba(155,89,182,0.20)",
+                          color: "#9B59B6",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: 0.3,
+                        }}>
+                        <span style={{
+                          display: "inline-block", width: 6, height: 6, borderRadius: 999,
+                          background: "#9B59B6",
+                        }} />
+                        QUEUED {queuedItemsCount.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                   <button onClick={loadPendingInvites}
                     style={{ fontSize: 11, color: "#00C8E0", background: "none", border: "none", cursor: "pointer" }}>
                     {pendingInvitesLoading ? "Loading..." : "Refresh"}
