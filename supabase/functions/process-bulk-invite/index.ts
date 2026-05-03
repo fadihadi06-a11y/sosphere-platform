@@ -1,58 +1,29 @@
-// ═══════════════════════════════════════════════════════════════
-// SOSphere — Edge Function: process-bulk-invite (E1.4)
-// ═══════════════════════════════════════════════════════════════
-// WORLD-CLASS WORKER PATTERN
-// ──────────────────────────
-// • Reads messages from pgmq queue 'bulk_invite' with 5-minute visibility
-//   timeout (SKIP LOCKED concurrency — N workers can run in parallel safely)
-// • For each message: orchestrates the existing invite-employees edge function
-//   in chunks, updates progress, exponential-backoff on failure
-// • Triggered every 30 seconds by pg_cron + pg_net.http_post (E1.4 migration)
-// • Auth: shared CRON_SECRET header (cron is the only legitimate caller)
-//
-// IDEMPOTENCY GUARANTEES
-// ──────────────────────
-// 1. pgmq visibility timeout: while one worker holds a message, others skip it
-// 2. Each chunk-call to invite-employees is itself idempotent (Supabase Auth
-//    inviteUserByEmail already handles "user already registered")
-// 3. Progress updates use jsonb_set so partial failures resume correctly
-// 4. On crash mid-message: visibility expires after 5 min → next worker picks
-//    it up → starts from progress.processed (skips already-done items)
-//
-// FAILURE HANDLING
-// ────────────────
-// • Per-chunk error: count toward progress.failed but continue
-// • Whole-message error: increment attempt_count; if < max_attempts →
-//   pgmq.send_with_delay (exponential 1m / 5m / 30m); else → status='failed'
-// • All terminal states write audit_log entry
-//
-// Deploy: supabase functions deploy process-bulk-invite
-// Set secret: supabase secrets set CRON_SECRET=<long-random-string>
-// ═══════════════════════════════════════════════════════════════
+// SOSphere — Edge Function: process-bulk-invite (E1.4 + E1.5 + E1.6.1)
+// World-class async worker. Reads pgmq, drives Supabase Auth admin API
+// directly (no HTTP hop to invite-employees). See processMessage for the
+// full root-cause story behind dropping the HTTP hop and the E1.6.1
+// fix that persists the rich CSV fields via public.invitations.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET               = Deno.env.get("CRON_SECRET") || "";
-// E1.5 root-cause fix: worker no longer HTTP-calls invite-employees (the
-// JWT chain failed with UNAUTHORIZED_INVALID_JWT_FORMAT — see processMessage
-// for the full diagnosis). Worker drives Supabase Auth admin API directly.
 
-// pgmq read parameters
-const VISIBILITY_TIMEOUT_SECS = 300;  // 5 min — long enough for a chunk to complete
-const BATCH_QTY               = 10;   // up to 10 messages per worker run
-const CHUNK_SIZE              = 100;  // employees per invite-employees HTTP call
-const MAX_RUNTIME_MS          = 50_000; // edge fn timeout safety (Supabase limit ~60s)
-
-// Exponential backoff for whole-message retry (seconds)
-const BACKOFF_SCHEDULE = [60, 300, 1800];  // 1 min, 5 min, 30 min
+const VISIBILITY_TIMEOUT_SECS = 300;
+const BATCH_QTY               = 10;
+const CHUNK_SIZE              = 100;
+const MAX_RUNTIME_MS          = 50_000;
+const BACKOFF_SCHEDULE        = [60, 300, 1800];
 
 interface JobMetadata {
   id: string;
   pgmq_msg_id: number;
   job_type: string;
   company_id: string;
+  /** Owner who originally enqueued the job. Used as `invited_by` on
+      the invitations rows the worker creates per item (E1.6.1). */
+  created_by: string | null;
   status: string;
   progress: { total: number; processed: number; succeeded: number; failed: number };
   attempt_count: number;
@@ -65,7 +36,19 @@ interface PgmqMessage {
   enqueued_at: string;
   vt: string;
   message: {
-    items?: Array<{ email: string; full_name?: string; company_id?: string }>;
+    items?: Array<{
+      email: string;
+      full_name?: string;
+      phone?: string;
+      department?: string;
+      job_title?: string;
+      employee_id?: string;
+      zone?: string;
+      shift?: string;
+      name_ar?: string;
+      emergency_contact?: string;
+      company_id?: string;
+    }>;
     company_id?: string;
     estimated_count?: number;
     source?: string;
@@ -73,7 +56,6 @@ interface PgmqMessage {
 }
 
 Deno.serve(async (req: Request) => {
-  // ── Auth: only the cron caller (or admin manual trigger with CRON_SECRET) ──
   const providedSecret = req.headers.get("x-cron-secret") || "";
   if (!CRON_SECRET || providedSecret !== CRON_SECRET) {
     console.warn("[process-bulk-invite] rejected: missing/invalid CRON_SECRET");
@@ -89,12 +71,6 @@ Deno.serve(async (req: Request) => {
   });
 
   try {
-    // ── Step 1: read up to BATCH_QTY messages from the queue ──
-    // ROOT-CAUSE FIX (E1.4 activation): use public.worker_read_jobs wrapper
-    // instead of supabase.schema("pgmq"). The pgmq schema is intentionally
-    // NOT exposed in Supabase API config (security boundary). The wrappers
-    // in E1.4 migration are SECURITY DEFINER + service_role-only, so they
-    // are the ONLY supported path for the worker to read pgmq.
     const { data: msgs, error: readErr } = await supabase.rpc("worker_read_jobs", {
       p_queue_name: "bulk_invite",
       p_qty:        BATCH_QTY,
@@ -113,20 +89,15 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[process-bulk-invite] read ${messages.length} message(s)`);
 
-    // ── Step 2: process each message (sequentially within this worker; multiple
-    //   workers can run in parallel safely thanks to pgmq visibility timeout) ──
     let processedCount = 0;
     let failedCount    = 0;
     const results: Array<{ msg_id: number; outcome: string; detail?: string }> = [];
 
     for (const msg of messages) {
-      // Time-budget safety: if approaching edge function timeout, leave the
-      // remaining messages for the next cron tick (visibility will release them).
       if (Date.now() - startedAt > MAX_RUNTIME_MS) {
-        console.warn("[process-bulk-invite] runtime budget exhausted; deferring remaining messages");
+        console.warn("[process-bulk-invite] runtime budget exhausted");
         break;
       }
-
       const outcome = await processMessage(supabase, msg);
       results.push({ msg_id: msg.msg_id, outcome: outcome.outcome, detail: outcome.detail });
       if (outcome.outcome === "completed" || outcome.outcome === "skipped") processedCount++;
@@ -147,23 +118,19 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// processMessage — handles one pgmq message end-to-end
-// ═══════════════════════════════════════════════════════════════════════════
 async function processMessage(
   supabase: ReturnType<typeof createClient>,
   msg: PgmqMessage,
 ): Promise<{ outcome: "completed" | "failed" | "retried" | "skipped"; detail?: string }> {
-
-  // ── Step A: load metadata row by pgmq_msg_id ──
+  // E1.6.1: also pull `created_by` so the invitations rows we create
+  // downstream carry the correct invited_by (owner who submitted CSV).
   const { data: meta, error: metaErr } = await supabase
     .from("async_job_metadata")
-    .select("id, pgmq_msg_id, job_type, company_id, status, progress, attempt_count, max_attempts")
+    .select("id, pgmq_msg_id, job_type, company_id, created_by, status, progress, attempt_count, max_attempts")
     .eq("pgmq_msg_id", msg.msg_id)
     .maybeSingle();
 
   if (metaErr || !meta) {
-    // Orphaned message (no metadata row). Archive and skip.
     console.warn(`[process-bulk-invite] orphan msg_id=${msg.msg_id}, archiving`);
     await archiveMessage(supabase, msg.msg_id);
     return { outcome: "skipped", detail: "orphan-no-metadata" };
@@ -171,13 +138,11 @@ async function processMessage(
 
   const job = meta as unknown as JobMetadata;
 
-  // ── Step B: terminal-state guard (cancelled/completed/failed) → archive ──
   if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") {
     await archiveMessage(supabase, msg.msg_id);
     return { outcome: "skipped", detail: `already ${job.status}` };
   }
 
-  // ── Step C: mark as running ──
   await supabase.from("async_job_metadata")
     .update({
       status: "running",
@@ -186,11 +151,10 @@ async function processMessage(
     })
     .eq("id", job.id);
 
-  const items = msg.message.items || [];
+  const items     = msg.message.items || [];
   const companyId = msg.message.company_id || job.company_id;
+  const createdBy = job.created_by;
 
-  // ── Step D: chunk + dispatch to invite-employees ──
-  // Resume from where we left off (progress.processed) to be re-entrant.
   let processed  = job.progress.processed || 0;
   let succeeded  = job.progress.succeeded || 0;
   let failed     = job.progress.failed    || 0;
@@ -199,23 +163,10 @@ async function processMessage(
     for (let i = processed; i < items.length; i += CHUNK_SIZE) {
       const chunk = items.slice(i, i + CHUNK_SIZE);
 
-      // ROOT-CAUSE FIX (E1.5 behavioral test): we previously POSTed to
-      // invite-employees with Authorization: Bearer SUPABASE_SERVICE_ROLE_KEY.
-      // That fails with UNAUTHORIZED_INVALID_JWT_FORMAT for two reasons:
-      //   1. Supabase has moved to `sb_secret_*` non-JWT secret keys; even
-      //      the legacy JWT service_role key is rejected when forwarded
-      //      because invite-employees calls getUser(token) which requires a
-      //      USER session token, not a service-role key.
-      //   2. Even if the gateway accepted it, getUser() returns NULL for
-      //      service-role tokens so invite-employees would 401 anyway.
-      //
-      // The worker already holds a service-role client. The ownership check
-      // that invite-employees enforces is ALREADY enforced one layer earlier
-      // by enqueue_job (RPC refuses to enqueue unless caller owns company),
-      // so we know the job belongs to a legitimate owner. We replicate the
-      // remaining invite-employees logic here in-process — no HTTP hop, no
-      // JWT chain, no 500-row rate limit, and reads from the same env that
-      // already works (SUPABASE_SERVICE_ROLE_KEY auto-injected by the runtime).
+      // ── ROOT-CAUSE: drive Supabase Auth admin API directly ──
+      // (was POSTing to invite-employees with service-role JWT — failed
+      //  UNAUTHORIZED_INVALID_JWT_FORMAT. enqueue_job already enforces
+      //  ownership, so the worker can act on behalf of the owner safely.)
       const SITE_URL    = Deno.env.get("SITE_URL") || "https://sosphere-platform.vercel.app";
       const redirectTo  = `${SITE_URL}/welcome`;
 
@@ -224,7 +175,32 @@ async function processMessage(
           if (!emp.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emp.email)) {
             return { email: emp.email, success: false, reason: "invalid-email" };
           }
-          const { error } = await supabase.auth.admin.inviteUserByEmail(emp.email, {
+
+          // ── E1.6.1 BEEHIVE FIX (Q1+Q2): persist rich CSV fields ──
+          // accept_invitation() reads from public.invitations to materialize
+          // employees rows (name/phone/department/role) on magic-link click.
+          // Without an invitations row the rich CSV data is lost AND the
+          // dashboard's "Pending Invitations" panel shows 0 even with 35K
+          // emails in flight. Insert FIRST, then dispatch.
+          const lowerEmail = emp.email.toLowerCase();
+          const { error: invInsertErr } = await supabase
+            .from("invitations")
+            .insert({
+              company_id: companyId,
+              email:      lowerEmail,
+              name:       emp.full_name || null,
+              phone:      emp.phone || null,
+              department: emp.department || null,
+              role:       emp.job_title || "employee",
+              role_type:  "employee",
+              invited_by: createdBy,
+              status:     "pending",
+            });
+          if (invInsertErr) {
+            return { email: emp.email, success: false, reason: `invitations insert: ${invInsertErr.message}` };
+          }
+
+          const { error } = await supabase.auth.admin.inviteUserByEmail(lowerEmail, {
             redirectTo,
             data: {
               full_name:  emp.full_name || "",
@@ -233,10 +209,9 @@ async function processMessage(
             },
           });
           if (error) {
-            // Mirror invite-employees #149: "User already registered" is NOT
-            // a failure — the existing account will be auto-claimed by the
-            // accept_invitation RPC on next sign-in. Count as succeeded so
-            // owners see the right number; the invitations row stays pending.
+            // "User already registered" is NOT a failure — accept_invitation
+            // auto-claims them on next sign-in (the invitations row we
+            // inserted above is exactly what makes that work).
             if (/already|registered|exists/i.test(error.message || "")) {
               return { email: emp.email, success: true, reason: "already-exists" };
             }
@@ -260,22 +235,15 @@ async function processMessage(
       failed    += chunkFailed;
       processed += chunk.length;
 
-      // Persist progress after each chunk (re-entrant resume point)
       await supabase.from("async_job_metadata")
         .update({
-          progress: {
-            total: items.length,
-            processed,
-            succeeded,
-            failed,
-          },
+          progress: { total: items.length, processed, succeeded, failed },
         })
         .eq("id", job.id);
     }
 
-    // ── Step E: success — mark completed + archive pgmq message ──
     // Clear error_message on success path so a previously-retried job that
-    // eventually succeeds doesn't display stale errors from earlier attempts.
+    // eventually completes doesn't display stale errors.
     await supabase.from("async_job_metadata")
       .update({
         status: "completed",
@@ -294,7 +262,6 @@ async function processMessage(
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error(`[process-bulk-invite] job ${job.id} chunk failed:`, errMsg);
 
-    // Persist partial progress (so retry resumes correctly)
     await supabase.from("async_job_metadata")
       .update({
         progress: { total: items.length, processed, succeeded, failed },
@@ -302,22 +269,15 @@ async function processMessage(
       })
       .eq("id", job.id);
 
-    // ── Step F: retry vs terminal-failed decision ──
     const willRetry = (job.attempt_count + 1) < job.max_attempts;
     if (willRetry) {
-      // Exponential backoff: pick from BACKOFF_SCHEDULE by attempt_count
       const delaySec = BACKOFF_SCHEDULE[Math.min(job.attempt_count, BACKOFF_SCHEDULE.length - 1)];
-
-      // Delete the current message and re-send with delay (pgmq doesn't have
-      // native delay-on-fail; we re-enqueue the same payload).
-      // ROOT-CAUSE FIX: use public.worker_requeue_job_with_delay wrapper.
       await archiveMessage(supabase, msg.msg_id);
       const { data: newMsg } = await supabase.rpc("worker_requeue_job_with_delay", {
         p_queue_name:  "bulk_invite",
         p_payload:     msg.message,
         p_delay_secs:  delaySec,
       });
-      // Update metadata to point at new pgmq_msg_id and reset to pending
       await supabase.from("async_job_metadata")
         .update({
           status: "pending",
@@ -328,7 +288,6 @@ async function processMessage(
       await writeAudit(supabase, job, "job_retry_scheduled", { delay_sec: delaySec, attempt: job.attempt_count + 1 });
       return { outcome: "retried", detail: `retry in ${delaySec}s` };
     } else {
-      // Terminal failure: archive + mark failed
       await archiveMessage(supabase, msg.msg_id);
       await supabase.from("async_job_metadata")
         .update({
@@ -344,16 +303,11 @@ async function processMessage(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════
 async function archiveMessage(
   supabase: ReturnType<typeof createClient>,
   msgId: number,
 ): Promise<void> {
   try {
-    // ROOT-CAUSE FIX: use public.worker_archive_job wrapper (pgmq schema is not
-    // exposed via Supabase API by design; SECURITY DEFINER wrapper is the path).
     await supabase.rpc("worker_archive_job", {
       p_queue_name: "bulk_invite",
       p_msg_id:     msgId,
