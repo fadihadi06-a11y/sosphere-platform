@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-03T15:14:01.189Z",
-  "total_migrations": 90,
-  "manifest_sha256": "a617505d749cb733220cf48c0110551e967b4d67eb005c8f4124e70d804249fc",
+  "generated_at": "2026-05-03T17:14:38.376Z",
+  "total_migrations": 91,
+  "manifest_sha256": "5061d00434dd81220d419c8eee61aeced3358e24e87aa3407e24a36273640fb9",
   "migrations": [
     {
       "version": "20260415",
@@ -632,6 +632,13 @@
       "file": "20260503150306_foundation_invariants_phase6.sql",
       "sha256": "232c1ebd932460d4879c0257617d3e4fb0677d01900b1c07244f31a4fed375c5",
       "bytes": 12695
+    },
+    {
+      "version": "20260503170553",
+      "name": "e1_async_job_queue_pgmq_foundation",
+      "file": "20260503170553_e1_async_job_queue_pgmq_foundation.sql",
+      "sha256": "aeefee300e29221989dcf6707c294c4323a4c7eb78957c798184698e566b4eac",
+      "bytes": 16501
     }
   ]
 }
