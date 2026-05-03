@@ -34,7 +34,22 @@ jobs:
       # O-M1: intermediate cap of 300 warnings (long-term goal <100)
       - run: npx eslint src/app/ --max-warnings 1100
 
-  # ── Job 3: Build ───────────────────────────────────────
+  # ── Job 3: Migration Drift Guard ───────────────────────
+  # L0.5 (#182): catches migrations applied to live Supabase that never
+  # made it to git. Before this guard, foundation_canonical_identity_rpc
+  # lived only in production for ~24h. Lock file is the single source of
+  # truth for "what migrations git knows about" — see scripts/check-migration-drift.mjs
+  migration-drift:
+    name: Migration Drift Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/check-migration-drift.mjs --check
+
+  # ── Job 4: Build ───────────────────────────────────────
   build:
     name: Vite Build
     runs-on: ubuntu-latest
