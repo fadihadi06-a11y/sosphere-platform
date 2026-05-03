@@ -995,8 +995,17 @@ export function UnifiedEmployeesPage({
             className="fixed inset-0 z-50 overflow-y-auto"
             style={{ background: "rgba(0,0,0,0.97)" }}>
             <EnterpriseImportWizard
+              // E1.5: companyId is REQUIRED for the new async-queue flow.
+              // Without it the wizard refuses to enqueue (better than the
+              // legacy silent-fail). Loaded above via session.user.id ->
+              // companies.owner_id (same query that scopes pending invites).
+              companyId={companyIdForInvites}
               onComplete={(imported) => {
-                toast.success(`Imported ${imported.length} employees`);
+                // E1.5: messaging now reflects ASYNC enqueue. The actual
+                // employee rows / invitation emails materialize as the
+                // worker (process-bulk-invite, ~60s tick) processes the
+                // queue. Owners track live progress on the Jobs page.
+                toast.success(`Queued ${imported.length} invitations — processing in background`);
                 setShowImportWizard(false);
               }}
               onCancel={() => setShowImportWizard(false)}
