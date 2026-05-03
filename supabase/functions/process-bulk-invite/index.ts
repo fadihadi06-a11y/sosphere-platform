@@ -88,17 +88,16 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── Step 1: read up to BATCH_QTY messages from the queue ──
-    // Supabase exposes pgmq via public.pgmq_public RPCs. Use raw SQL via
-    // postgres-meta-style query if pgmq_public not enabled; otherwise call directly.
-    const { data: msgs, error: readErr } = await supabase.rpc("pgmq_read", {
-      queue_name: "bulk_invite",
-      sleep_seconds: VISIBILITY_TIMEOUT_SECS,
-      n: BATCH_QTY,
-    }).then(r => r.data ? r : supabase.schema("pgmq").rpc("read", {
-      queue_name: "bulk_invite",
-      vt: VISIBILITY_TIMEOUT_SECS,
-      qty: BATCH_QTY,
-    }));
+    // ROOT-CAUSE FIX (E1.4 activation): use public.worker_read_jobs wrapper
+    // instead of supabase.schema("pgmq"). The pgmq schema is intentionally
+    // NOT exposed in Supabase API config (security boundary). The wrappers
+    // in E1.4 migration are SECURITY DEFINER + service_role-only, so they
+    // are the ONLY supported path for the worker to read pgmq.
+    const { data: msgs, error: readErr } = await supabase.rpc("worker_read_jobs", {
+      p_queue_name: "bulk_invite",
+      p_qty:        BATCH_QTY,
+      p_vt_secs:    VISIBILITY_TIMEOUT_SECS,
+    });
 
     if (readErr) {
       console.error("[process-bulk-invite] pgmq.read failed:", readErr);
@@ -271,11 +270,12 @@ async function processMessage(
 
       // Delete the current message and re-send with delay (pgmq doesn't have
       // native delay-on-fail; we re-enqueue the same payload).
+      // ROOT-CAUSE FIX: use public.worker_requeue_job_with_delay wrapper.
       await archiveMessage(supabase, msg.msg_id);
-      const { data: newMsg } = await supabase.schema("pgmq").rpc("send", {
-        queue_name: "bulk_invite",
-        msg: msg.message,
-        delay: delaySec,
+      const { data: newMsg } = await supabase.rpc("worker_requeue_job_with_delay", {
+        p_queue_name:  "bulk_invite",
+        p_payload:     msg.message,
+        p_delay_secs:  delaySec,
       });
       // Update metadata to point at new pgmq_msg_id and reset to pending
       await supabase.from("async_job_metadata")
@@ -312,9 +312,11 @@ async function archiveMessage(
   msgId: number,
 ): Promise<void> {
   try {
-    await supabase.schema("pgmq").rpc("archive", {
-      queue_name: "bulk_invite",
-      msg_id:     msgId,
+    // ROOT-CAUSE FIX: use public.worker_archive_job wrapper (pgmq schema is not
+    // exposed via Supabase API by design; SECURITY DEFINER wrapper is the path).
+    await supabase.rpc("worker_archive_job", {
+      p_queue_name: "bulk_invite",
+      p_msg_id:     msgId,
     });
   } catch (err) {
     console.warn(`[process-bulk-invite] archive(${msgId}) failed (non-fatal):`, err);
