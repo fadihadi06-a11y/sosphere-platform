@@ -664,9 +664,18 @@ export function DashboardWebPage() {
           // directly with a still-pending invitation. Idempotent — returns
           // ok:false with reason='no_pending_invitation' when there is
           // nothing to claim, so it is safe to always run.
-          await supabase.rpc("accept_invitation").catch((e) =>
-            console.warn("[Auth] accept_invitation prefetch failed (non-fatal):", e),
-          );
+          // ROOT FIX (#181): supabase.rpc() returns PostgrestFilterBuilder,
+          // which is thenable but NOT a real Promise — it has no .catch().
+          // Calling .catch on it throws "TypeError: Le.rpc(...).catch is not
+          // a function" which then bubbles to the outer try/catch as the
+          // [Auth] Unexpected error we kept seeing on every page load.
+          // Correct pattern: await + destructure { error } from the result.
+          {
+            const { error: invErr } = await supabase.rpc("accept_invitation");
+            if (invErr) {
+              console.warn("[Auth] accept_invitation prefetch failed (non-fatal):", invErr.message);
+            }
+          }
 
           const identity = await loadCanonicalIdentity(supabase);
           if (!mountedRef.current) { processingRef.current = null; return; }
