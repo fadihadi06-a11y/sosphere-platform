@@ -1429,53 +1429,62 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     }
 
                     // ──────────────────────────────────────────────────────
-                    // Audit #5 / B3 (2026-04-29): trigger Supabase Auth
-                    // invitation emails for any employee with an email
-                    // address. Without this call, the invitations table
-                    // row exists but the employee never receives an email,
-                    // so they cannot sign in to the platform.
+                    // E1.7 (2026-05-03): trigger Supabase Auth invitation
+                    // emails via the async queue (public.enqueue_job RPC).
                     //
-                    // The edge function is service-role, batched, and
-                    // tenant-validated — see invite-employees/index.ts.
-                    // We only send for employees who actually have an
-                    // email; phone-only invitations will need a separate
-                    // SMS flow (out of scope for B3).
+                    // WHY ASYNC, NOT SYNCHRONOUS HTTP?
+                    //   The legacy path POSTed to invite-employees inline.
+                    //   Three failure modes:
+                    //     1. invite-employees has a 500-row hard limit;
+                    //        large registrations would 4xx.
+                    //     2. browser tab held open during all batches —
+                    //        any timeout = silent partial failure.
+                    //     3. service-role JWT chain via fetch() is broken
+                    //        in newer Supabase API key model (E1.5 audit).
                     //
-                    // Wrapped in fire-and-forget try/catch so a transient
-                    // email failure does NOT block company registration —
-                    // the admin can re-trigger invites later from the
-                    // employees page.
+                    // NEW FLOW
+                    //   • register_company_full RPC has ALREADY persisted
+                    //     invitations rows (atomic transaction) above.
+                    //   • This call only triggers EMAIL DISPATCH via the
+                    //     E1 async worker. Worker (process-bulk-invite v9)
+                    //     skips invitations re-insert if row is already
+                    //     pending — no duplicates.
+                    //   • idempotency_key = `register:${companyId}` —
+                    //     accidental double-submit returns the existing
+                    //     job (no duplicate dispatch).
                     // ──────────────────────────────────────────────────────
                     const inviteableEmployees = manualEmployees
                       .filter(e => e.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email))
                       .map(e => ({
-                        email: e.email!,
+                        email: e.email!.toLowerCase().trim(),
                         full_name: e.name || "",
+                        phone: e.phone || "",
+                        department: e.department || "",
+                        job_title: e.role || "",
                         company_id: companyId,
                       }));
                     if (inviteableEmployees.length > 0) {
                       void (async () => {
                         try {
-                          const { data: inviteRes, error: inviteErr } = await supabase.functions
-                            .invoke("invite-employees", {
-                              body: {
-                                employees: inviteableEmployees,
-                                redirect_to: `${window.location.origin}/auth/callback`,
-                              },
-                            });
-                          if (inviteErr) {
-                            console.warn(
-                              "[Register] invite-employees edge fn failed (non-fatal):",
-                              inviteErr,
-                            );
+                          const { data, error } = await supabase.rpc("enqueue_job", {
+                            p_job_type:        "bulk_invite",
+                            p_company_id:      companyId,
+                            p_payload: {
+                              items:           inviteableEmployees,
+                              company_id:      companyId,
+                              estimated_count: inviteableEmployees.length,
+                              source:          "company_register",
+                            },
+                            p_idempotency_key: `register:${companyId}`,
+                            p_max_attempts:    3,
+                          });
+                          if (error) {
+                            console.warn("[Register] enqueue_job failed (non-fatal):", error);
                           } else {
-                            console.log(
-                              "[Register] invite emails sent:",
-                              inviteRes?.summary || "(no summary)",
-                            );
+                            console.log("[Register] invitation dispatch queued:", data);
                           }
                         } catch (e) {
-                          console.warn("[Register] invite-employees threw (non-fatal):", e);
+                          console.warn("[Register] enqueue_job threw (non-fatal):", e);
                         }
                       })();
                     }
