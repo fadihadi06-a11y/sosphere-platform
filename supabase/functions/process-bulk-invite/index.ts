@@ -1,8 +1,8 @@
-// SOSphere — Edge Function: process-bulk-invite (E1.4 + E1.5 + E1.6.1)
+// SOSphere — Edge Function: process-bulk-invite (E1.4 + E1.5 + E1.6.1 + E1.7)
 // World-class async worker. Reads pgmq, drives Supabase Auth admin API
-// directly (no HTTP hop to invite-employees). See processMessage for the
-// full root-cause story behind dropping the HTTP hop and the E1.6.1
-// fix that persists the rich CSV fields via public.invitations.
+// directly. E1.6.1 inserts invitations rows for accept_invitation().
+// E1.7 skips insert if invitation already pending (register_company_full
+// path + retry safety).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -21,8 +21,6 @@ interface JobMetadata {
   pgmq_msg_id: number;
   job_type: string;
   company_id: string;
-  /** Owner who originally enqueued the job. Used as `invited_by` on
-      the invitations rows the worker creates per item (E1.6.1). */
   created_by: string | null;
   status: string;
   progress: { total: number; processed: number; succeeded: number; failed: number };
@@ -122,8 +120,6 @@ async function processMessage(
   supabase: ReturnType<typeof createClient>,
   msg: PgmqMessage,
 ): Promise<{ outcome: "completed" | "failed" | "retried" | "skipped"; detail?: string }> {
-  // E1.6.1: also pull `created_by` so the invitations rows we create
-  // downstream carry the correct invited_by (owner who submitted CSV).
   const { data: meta, error: metaErr } = await supabase
     .from("async_job_metadata")
     .select("id, pgmq_msg_id, job_type, company_id, created_by, status, progress, attempt_count, max_attempts")
@@ -163,10 +159,6 @@ async function processMessage(
     for (let i = processed; i < items.length; i += CHUNK_SIZE) {
       const chunk = items.slice(i, i + CHUNK_SIZE);
 
-      // ── ROOT-CAUSE: drive Supabase Auth admin API directly ──
-      // (was POSTing to invite-employees with service-role JWT — failed
-      //  UNAUTHORIZED_INVALID_JWT_FORMAT. enqueue_job already enforces
-      //  ownership, so the worker can act on behalf of the owner safely.)
       const SITE_URL    = Deno.env.get("SITE_URL") || "https://sosphere-platform.vercel.app";
       const redirectTo  = `${SITE_URL}/welcome`;
 
@@ -176,28 +168,43 @@ async function processMessage(
             return { email: emp.email, success: false, reason: "invalid-email" };
           }
 
-          // ── E1.6.1 BEEHIVE FIX (Q1+Q2): persist rich CSV fields ──
+          // ── E1.6.1 (Q1+Q2): persist rich CSV fields via invitations row ──
           // accept_invitation() reads from public.invitations to materialize
-          // employees rows (name/phone/department/role) on magic-link click.
-          // Without an invitations row the rich CSV data is lost AND the
-          // dashboard's "Pending Invitations" panel shows 0 even with 35K
-          // emails in flight. Insert FIRST, then dispatch.
+          // employees rows on magic-link click.
+          //
+          // ── E1.7 GUARD: skip insert if a pending invitation already
+          //    exists for this (company_id, email). Prevents:
+          //      • duplicate rows when register_company_full already
+          //        seeded invitations and the wizard then enqueues the
+          //        email-dispatch job (the canonical E1.7 flow);
+          //      • duplicate rows during re-entrant retries.
           const lowerEmail = emp.email.toLowerCase();
-          const { error: invInsertErr } = await supabase
+          const { data: existingInv } = await supabase
             .from("invitations")
-            .insert({
-              company_id: companyId,
-              email:      lowerEmail,
-              name:       emp.full_name || null,
-              phone:      emp.phone || null,
-              department: emp.department || null,
-              role:       emp.job_title || "employee",
-              role_type:  "employee",
-              invited_by: createdBy,
-              status:     "pending",
-            });
-          if (invInsertErr) {
-            return { email: emp.email, success: false, reason: `invitations insert: ${invInsertErr.message}` };
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("email", lowerEmail)
+            .eq("status", "pending")
+            .limit(1)
+            .maybeSingle();
+
+          if (!existingInv) {
+            const { error: invInsertErr } = await supabase
+              .from("invitations")
+              .insert({
+                company_id: companyId,
+                email:      lowerEmail,
+                name:       emp.full_name || null,
+                phone:      emp.phone || null,
+                department: emp.department || null,
+                role:       emp.job_title || "employee",
+                role_type:  "employee",
+                invited_by: createdBy,
+                status:     "pending",
+              });
+            if (invInsertErr) {
+              return { email: emp.email, success: false, reason: `invitations insert: ${invInsertErr.message}` };
+            }
           }
 
           const { error } = await supabase.auth.admin.inviteUserByEmail(lowerEmail, {
@@ -209,9 +216,6 @@ async function processMessage(
             },
           });
           if (error) {
-            // "User already registered" is NOT a failure — accept_invitation
-            // auto-claims them on next sign-in (the invitations row we
-            // inserted above is exactly what makes that work).
             if (/already|registered|exists/i.test(error.message || "")) {
               return { email: emp.email, success: true, reason: "already-exists" };
             }
@@ -242,8 +246,6 @@ async function processMessage(
         .eq("id", job.id);
     }
 
-    // Clear error_message on success path so a previously-retried job that
-    // eventually completes doesn't display stale errors.
     await supabase.from("async_job_metadata")
       .update({
         status: "completed",
