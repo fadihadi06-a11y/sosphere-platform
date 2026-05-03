@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-03T17:14:38.376Z",
-  "total_migrations": 91,
-  "manifest_sha256": "5061d00434dd81220d419c8eee61aeced3358e24e87aa3407e24a36273640fb9",
+  "generated_at": "2026-05-03T17:25:21.784Z",
+  "total_migrations": 92,
+  "manifest_sha256": "4af8bb07831e6c26052b453777ad89cb96549b65ccead9510cdfabd843734ed2",
   "migrations": [
     {
       "version": "20260415",
@@ -639,6 +639,13 @@
       "file": "20260503170553_e1_async_job_queue_pgmq_foundation.sql",
       "sha256": "aeefee300e29221989dcf6707c294c4323a4c7eb78957c798184698e566b4eac",
       "bytes": 16501
+    },
+    {
+      "version": "20260503172156",
+      "name": "e1_4_worker_wrappers_and_cron",
+      "file": "20260503172156_e1_4_worker_wrappers_and_cron.sql",
+      "sha256": "83616a6dfb712f85273ad3f55e5092eadcbf977c6d94b475c511b7901bc90ea9",
+      "bytes": 6679
     }
   ]
 }
