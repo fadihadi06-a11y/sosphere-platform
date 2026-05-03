@@ -162,7 +162,7 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
       }
     })();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // intentional: useEffect dep array deliberately partial (CI fix #176)
   }, []);
 
   // Auto-save journeys on change — dual-write to localStorage (instant

@@ -76,7 +76,7 @@ export function NeighborAlertOverlay({ lang = "en", suppress = false }: Neighbor
       },
     );
     return () => handle.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // intentional: useEffect dep array deliberately partial (CI fix #176)
   }, []);
 
   // Auto-dismiss and housekeeping when alert changes or suppress toggles.

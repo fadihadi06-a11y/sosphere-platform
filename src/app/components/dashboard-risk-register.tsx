@@ -406,7 +406,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       setServerBootComplete(true);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // intentional: useEffect dep array deliberately partial (CI fix #176)
   }, []);
 
   // Persist risk updates: localStorage (instant offline cache) + Supabase
