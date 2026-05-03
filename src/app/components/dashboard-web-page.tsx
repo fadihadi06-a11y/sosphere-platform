@@ -535,10 +535,16 @@ export function DashboardWebPage() {
        independently set up by each user on the same device. */ void 0;
         setStep("form");
       } catch (err) {
-        // L3 finding: stringify defensively so future prod diagnostics work.
+        // L3-followup-2 (#181): also persist mount-time errors.
         const errInfo = err instanceof Error
           ? { name: err.name, message: err.message, stack: (err.stack||"").split("\n").slice(0,3).join(" | ") }
           : { raw: String(err) };
+        try {
+          const diag = { ts: new Date().toISOString(), route: "mount", err: errInfo };
+          const prior = JSON.parse(localStorage.getItem("_auth_diag") || "[]");
+          prior.push(diag);
+          localStorage.setItem("_auth_diag", JSON.stringify(prior.slice(-10)));
+        } catch (_) { /* ignore */ }
         console.error("[Auth] Unexpected error on mount:", errInfo);
         useDashboardStore.getState().initDashboard();
         doLogin(name, "SOSphere Demo");
@@ -687,14 +693,18 @@ export function DashboardWebPage() {
             setStep("register");
           }
         } catch (err) {
-          // Network or unexpected error → go to dashboard with mock data.
-          // L3 finding: console.error("...", obj) shows "Object" because the
-          // error reference is opaque after EnvShield redaction. Stringify
-          // the message + name + stack defensively so future production
-          // diagnostics work without source maps.
+          // L3-followup-2 (#181): EnvShield + minification mask console
+          // output, so persist a structured breadcrumb to localStorage we
+          // can read back via JS without EnvShield's redaction.
           const errInfo = err instanceof Error
             ? { name: err.name, message: err.message, stack: (err.stack||"").split("\n").slice(0,3).join(" | ") }
             : { raw: String(err) };
+          try {
+            const diag = { ts: new Date().toISOString(), route: "onAuthStateChange", err: errInfo };
+            const prior = JSON.parse(localStorage.getItem("_auth_diag") || "[]");
+            prior.push(diag);
+            localStorage.setItem("_auth_diag", JSON.stringify(prior.slice(-10)));
+          } catch (_) { /* localStorage full or disabled — ignore */ }
           console.error("[Auth] Unexpected error:", errInfo);
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: "SOSphere Demo" };
