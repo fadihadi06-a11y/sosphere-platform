@@ -280,4 +280,65 @@ Deno.serve(async (req) => {
     }
   }
 
-  const { data: tokens, error: tokenErr } = await admin.from("push_tokens").select("id
+  const { data: tokens, error: tokenErr } = await admin.from("push_tokens").select("id, token, platform").eq("user_id", targetUserId).eq("is_active", true);
+  if (tokenErr) {
+    console.warn("[send-push-notification] push_tokens query failed:", tokenErr);
+    return new Response(JSON.stringify({ error: "Token lookup failed" }), { status: 500, headers: CORS });
+  }
+  if (!tokens || tokens.length === 0) {
+    return new Response(JSON.stringify({ ok: true, sent_count: 0, failed_count: 0, note: "No active push tokens for target user" }), { status: 200, headers: CORS });
+  }
+
+  const stringData: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) stringData[k] = typeof v === "string" ? v : JSON.stringify(v);
+  const payloadJson = JSON.stringify({
+    title, body: messageBody, data: stringData,
+    severity: stringData.severity || "high",
+    tag: stringData.tag || stringData.callId || ("sosphere-" + Date.now()),
+  });
+
+  let sentCount = 0;
+  let failedCount = 0;
+  const failures: Array<{ tokenId: string; reason: string }> = [];
+
+  for (const t of tokens) {
+    let result: { ok: boolean; reason?: string; dead?: boolean };
+    try { result = await sendOneWebPush({ subscriptionJson: t.token, payloadJson }); }
+    catch (e) { result = { ok: false, reason: "exception: " + (e as Error).message }; }
+
+    if (result.ok) sentCount++;
+    else {
+      failedCount++;
+      failures.push({ tokenId: t.id, reason: result.reason || "unknown" });
+      if (result.dead) {
+        try { await admin.from("push_tokens").update({ is_active: false, updated_at: new Date().toISOString() }).eq("id", t.id); }
+        catch (e) { console.warn("[send-push-notification] token deactivation failed:", e); }
+      }
+    }
+  }
+
+  try {
+    await admin.from("audit_log").insert({
+      id: crypto.randomUUID(),
+      action: "push_notification_sent",
+      actor: isServiceRole ? "service_role" : (callerUserId || "anonymous"),
+      actor_id: callerUserId,
+      actor_role: isServiceRole ? "system" : "user",
+      operation: "PUSH",
+      target: targetUserId,
+      category: "communications",
+      severity: failedCount > 0 ? "warning" : "info",
+      metadata: {
+        title, body_preview: messageBody.slice(0, 80), target_user_id: targetUserId,
+        sent_count: sentCount, failed_count: failedCount, failures: failures.slice(0, 5),
+        is_service_role: isServiceRole, transport: "web-push-aes128gcm",
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) { console.warn("[send-push-notification] audit_log write failed:", err); }
+
+  return new Response(JSON.stringify({
+    ok: true, sent_count: sentCount, failed_count: failedCount,
+    target_token_count: tokens.length, failures: failures.slice(0, 5),
+  }), { status: 200, headers: CORS });
+});
