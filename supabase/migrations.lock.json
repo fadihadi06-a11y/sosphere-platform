@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-03T14:51:34.671Z",
-  "total_migrations": 89,
-  "manifest_sha256": "376fc2d6166f2b70d5afec061f002ae935e2c2033fd510a46b045e76eaaae26d",
+  "generated_at": "2026-05-03T15:14:01.189Z",
+  "total_migrations": 90,
+  "manifest_sha256": "a617505d749cb733220cf48c0110551e967b4d67eb005c8f4124e70d804249fc",
   "migrations": [
     {
       "version": "20260415",
@@ -625,6 +625,13 @@
       "file": "20260502220922_foundation_auth_audit_logging.sql",
       "sha256": "10f90031bf68ba9775f9ebc622a77081191a9aae1cec948c54b52472a518f1cc",
       "bytes": 9102
+    },
+    {
+      "version": "20260503150306",
+      "name": "foundation_invariants_phase6",
+      "file": "20260503150306_foundation_invariants_phase6.sql",
+      "sha256": "232c1ebd932460d4879c0257617d3e4fb0677d01900b1c07244f31a4fed375c5",
+      "bytes": 12695
     }
   ]
 }
