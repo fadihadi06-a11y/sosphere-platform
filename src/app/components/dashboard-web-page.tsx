@@ -535,7 +535,11 @@ export function DashboardWebPage() {
        independently set up by each user on the same device. */ void 0;
         setStep("form");
       } catch (err) {
-        console.error("[Auth] Unexpected error on mount:", err);
+        // L3 finding: stringify defensively so future prod diagnostics work.
+        const errInfo = err instanceof Error
+          ? { name: err.name, message: err.message, stack: (err.stack||"").split("\n").slice(0,3).join(" | ") }
+          : { raw: String(err) };
+        console.error("[Auth] Unexpected error on mount:", errInfo);
         useDashboardStore.getState().initDashboard();
         doLogin(name, "SOSphere Demo");
       }
@@ -683,8 +687,15 @@ export function DashboardWebPage() {
             setStep("register");
           }
         } catch (err) {
-          // Network or unexpected error → go to dashboard with mock data
-          console.error("[Auth] Unexpected error:", err);
+          // Network or unexpected error → go to dashboard with mock data.
+          // L3 finding: console.error("...", obj) shows "Object" because the
+          // error reference is opaque after EnvShield redaction. Stringify
+          // the message + name + stack defensively so future production
+          // diagnostics work without source maps.
+          const errInfo = err instanceof Error
+            ? { name: err.name, message: err.message, stack: (err.stack||"").split("\n").slice(0,3).join(" | ") }
+            : { raw: String(err) };
+          console.error("[Auth] Unexpected error:", errInfo);
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: "SOSphere Demo" };
           setLoginName(name);
@@ -820,12 +831,15 @@ export function DashboardWebPage() {
         return;
       }
       const name = data.user?.user_metadata?.full_name || data.user?.email || "Admin";
-      const { data: company } = await supabase
-        .from("companies").select("id, name")
-        .eq("owner_id", data.user?.id).maybeSingle();
+      // FOUNDATION-1 / Phase 5d (#180 follow-up): use canonical identity here too.
+      // The previous block only checked `companies WHERE owner_id` — meaning an
+      // employee/dispatcher who completed email OTP (e.g. invited user signing
+      // in via OTP for the first time) was sent to /register instead of dashboard.
+      // loadCanonicalIdentity reads memberships, so all roles route correctly.
+      const identity = await loadCanonicalIdentity(supabase);
       if (!mountedRef.current) return;
-      if (company) {
-        doLogin(name, company.name || "Your Company");
+      if (identity.active_company) {
+        doLogin(name, identity.active_company.name);
       } else {
         setLoginName(name);
         setStep("register");
@@ -1143,13 +1157,12 @@ export function DashboardWebPage() {
                 }
                 // Init Realtime after registration
                 try {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (session?.user) {
-                    const { data: co } = await supabase
-                      .from("companies").select("id")
-                      .eq("owner_id", session.user.id).maybeSingle();
-                    if (co?.id) initRealtimeChannels(co.id);
-                  }
+                  // FOUNDATION-1 / Phase 5d (#180 follow-up): ditto. Right
+                  // after register_company_full, the new owner-membership
+                  // exists. Use the canonical RPC so we get the real
+                  // company_id from active_company without an extra query.
+                  const identity = await loadCanonicalIdentity(supabase);
+                  if (identity.active_company?.id) initRealtimeChannels(identity.active_company.id);
                 } catch (_) {}
                 // After registration → show PIN setup.
                 // Audit 2026-04-30 (CRITICAL bug fix): do NOT call
