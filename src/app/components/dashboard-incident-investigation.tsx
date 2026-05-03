@@ -680,7 +680,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // intentional: useEffect dep array deliberately partial (CI fix #176)
   }, []);
 
   // ── Persist ALL user investigations to localStorage + Supabase ──

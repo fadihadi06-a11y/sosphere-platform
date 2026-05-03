@@ -577,7 +577,7 @@ export function IntelligentGuide({
       addLog(`AUTO phase_budget_exceeded — advancing from ${PHASE_META[phase]?.label ?? phase}`, "#FF9500");
       advancePhase();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // intentional: useEffect dep array deliberately partial (CI fix #176)
   }, [phase, phaseTimedOut, context.batteryLevel]);
 
   // ── Elapsed Timer ────────────────────────────────────────────
