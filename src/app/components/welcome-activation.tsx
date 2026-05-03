@@ -58,8 +58,11 @@ export function WelcomeActivation() {
       const queryType    = queryParams.get("type");
 
       const inviteType = hashType || queryType || "invite";
-      let session: any = null;
-      let exchangeErr: any = null;
+      // ESLint no-useless-assignment + TS strictNullChecks both happy:
+      // declare without initial value; every reachable path either assigns
+      // both or returns early before the post-assignment read.
+      let session: any;
+      let exchangeErr: any;
 
       if (code) {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);

@@ -172,8 +172,12 @@ export async function resyncPendingIncidents(): Promise<{
 }> {
   if (!SUPABASE_CONFIG.isConfigured) return { attempted: 0, synced: 0 };
 
-  let list: any[] = [];
-  let statusMap: Record<string, { at: string; ok: boolean }> = {};
+  // ESLint no-useless-assignment: both vars are assigned inside the try
+  // block on every success path; on catch we return early. Declaring
+  // without initializer avoids a dead initial assignment that was
+  // overwritten on the very next reachable read.
+  let list: any[];
+  let statusMap: Record<string, { at: string; ok: boolean }>;
   try {
     list = JSON.parse(localStorage.getItem("sosphere_incident_history") || "[]");
     const raw = localStorage.getItem(SYNC_STATUS_KEY);

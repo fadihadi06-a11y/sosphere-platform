@@ -93,7 +93,10 @@ describe("BLOCKER #14 / migration: sar_request_history + RPCs", () => {
     expect(migrationSrc).toMatch(
       /CREATE OR REPLACE FUNCTION public\.complete_sar_export/,
     );
-    expect(migrationSrc).toMatch(/p_tables_count   integer/);
+    // Use {N} repetition to make the run-length explicit (eslint
+    // no-regex-spaces flags multi-space literals because they are
+    // visually ambiguous with copy-pasted whitespace).
+    expect(migrationSrc).toMatch(/p_tables_count {3}integer/);
     expect(migrationSrc).toMatch(/p_bytes_returned bigint/);
   });
 
