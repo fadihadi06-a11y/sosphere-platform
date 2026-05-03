@@ -14,7 +14,7 @@ import {
   UserCog, Wallet, Radar, ListChecks, BookOpen,
   CloudLightning, Award, Mail,
   Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
-  CreditCard, Lock, Crown, RefreshCw,
+  CreditCard, Lock, Crown, RefreshCw, Activity,
 } from "lucide-react";
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
@@ -51,6 +51,7 @@ import { GlobalSearch, useGlobalSearch } from "./global-search";
 
 // Import Unified Employees Page
 import { UnifiedEmployeesPage } from "./employees-unified-page";
+import { DashboardJobsPage } from "./dashboard-jobs-page";
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
@@ -169,6 +170,10 @@ const PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
   buddySystem:            { hub: "people",            tab: "buddy" },
   checklist:              { hub: "people",            tab: "checklist" },
   safetyScore:            { hub: "people",            tab: "score" },
+  // E1.6: Jobs is a sub-tab of "People & Teams" — Jobs are bulk operations
+  // on people (CSV imports, SCIM syncs, mass invitations). The wizard
+  // routes here via onNavigate("jobs") after a successful enqueue.
+  jobs:                   { hub: "people",            tab: "jobs" },
   incidentInvestigation:  { hub: "incidentRisk",      tab: "investigation" },
   riskRegister:           { hub: "incidentRisk",      tab: "register" },
   complianceReports:      { hub: "reportsAnalytics",  tab: "reports" },
@@ -275,6 +280,8 @@ const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: any; col
     { id: "buddy", label: "Buddy System", icon: UserCheck, color: "#00C853" },
     { id: "checklist", label: "Pre-Shift", icon: ListChecks, color: "#FF9500" },
     { id: "score", label: "Safety Score", icon: Award, color: "#FFD700" },
+    // E1.6: Jobs tab — live status of bulk operations enqueued via E1.5
+    { id: "jobs", label: "Jobs", icon: Activity, color: "#9B59B6" },
   ],
   incidentRisk: [
     { id: "investigation", label: "Investigation", icon: FileWarning, color: "#FF9500" },
@@ -1764,6 +1771,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                         {getHubTab("people") === "buddy" && <BuddySystemPage t={t} webMode={webMode} />}
                         {getHubTab("people") === "checklist" && <PreShiftChecklistPage t={t} webMode={webMode} onNavigateToFlagged={() => { setIncidentSourceFilter("Pre-Shift Checklist"); setCurrentPage("incidentRisk" as any); setHubTab("incidentRisk" as any, "investigation"); }} />}
                         {getHubTab("people") === "score" && <SafetyGamificationPage t={t} webMode={webMode} />}
+                        {/* E1.6: live Background Jobs page (subscribes to async_job_metadata via Realtime) */}
+                        {getHubTab("people") === "jobs" && <DashboardJobsPage />}
                       </motion.div>
                     </AnimatePresence>
                   </div>
