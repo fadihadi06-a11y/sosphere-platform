@@ -12,6 +12,7 @@ import {
   XCircle, AlertCircle, ChevronDown,
 } from "lucide-react";
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
+import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
 import { useDashboardStore, useDashboardAutoRefresh } from "./stores/dashboard-store";
@@ -503,67 +504,32 @@ export function DashboardWebPage() {
       const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
 
       try {
-        // Check if OWNER
-        const { data: company, error: companyError } = await supabase
-          .from("companies").select("id, name")
-          .eq("owner_id", session.user.id).maybeSingle();
+        // FOUNDATION-1 / Phase 5d (#180): single-RPC identity resolution.
+        // Replaces the previous 2-query pattern (companies → invitations) with
+        // one atomic call to public.get_my_identity(). The legacy "ADMIN via
+        // invitation" path read from invitations (workflow history) instead of
+        // company_memberships (current state) — that was the root cause of
+        // stale invitees being shown as admins. Now identity reflects only
+        // CURRENT membership rows, which the L1 invariants guarantee correct.
+        const identity = await loadCanonicalIdentity(supabase);
         if (!mountedRef.current) return;
 
-        // If table doesn't exist (406) → go straight to dashboard with mock data
-        if (companyError) {
-          console.warn("[Auth] companies query failed on mount:", companyError.message);
+        if (identity.active_company) {
+          // Owner / employee / dispatcher with active membership → dashboard
+          initRealtimeChannels(identity.active_company.id);
           useDashboardStore.getState().initDashboard();
-          doLogin(name, "SOSphere Demo");
-          return;
-        }
-
-        if (company) {
-          initRealtimeChannels(company.id);
-          useDashboardStore.getState().initDashboard();
-          pendingLoginRef.current = { name, company: company.name || "Your Company" };
+          pendingLoginRef.current = { name, company: identity.active_company.name };
           setLoginName(name);
           if (getStoredPin(session.user.id)) {
             setPinInput(""); setPinError("");
             setStep("pin-verify");
           } else {
-            doLogin(name, company.name || "Your Company");
+            doLogin(name, identity.active_company.name);
           }
           return;
         }
 
-        // Check if ADMIN via invitation
-        const { data: invitation, error: invError } = await supabase
-          .from("invitations")
-          .select("id, company_id, companies(name)")
-          .eq("email", session.user.email || "")
-          .in("status", ["pending", "accepted"])
-          .order("created_at", { ascending: false })
-          .maybeSingle();
-        if (!mountedRef.current) return;
-
-        if (invError) {
-          console.warn("[Auth] invitations query failed on mount:", invError.message);
-          useDashboardStore.getState().initDashboard();
-          doLogin(name, "SOSphere Demo");
-          return;
-        }
-
-        if (invitation) {
-          const companyName = (invitation.companies as any)?.name || "Your Company";
-          initRealtimeChannels(invitation.company_id);
-          useDashboardStore.getState().initDashboard();
-          pendingLoginRef.current = { name, company: companyName };
-          setLoginName(name);
-          if (getStoredPin(session.user.id)) {
-            setPinInput(""); setPinError("");
-            setStep("pin-verify");
-          } else {
-            doLogin(name, companyName);
-          }
-          return;
-        }
-
-        // No company or invitation — show login form
+        // No active membership → show login form (civilian / unconfirmed)
         /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
        per-user via PIN_KEY_PREFIX, persists across logout, and is
        independently set up by each user on the same device. */ void 0;
@@ -662,7 +628,6 @@ export function DashboardWebPage() {
         bindSessionToDevice().catch((e) => console.warn("[Auth] fingerprint bind failed (non-fatal):", e));
         window.history.replaceState({}, "", "/dashboard");
         const name = session.user.user_metadata?.full_name || session.user.email || "Admin";
-        const userEmail = session.user.email || "";
         // Audit 2026-05-01: expose user id to the
         // NotificationPermissionBanner (it scopes the saved subscription
         // to this user). Uses setState so React re-renders the banner.
@@ -682,29 +647,25 @@ export function DashboardWebPage() {
         })();
 
         try {
-          // Step 1: Check if OWNER (has company)
-          const { data: company, error: companyError } = await supabase
-            .from("companies").select("id, name")
-            .eq("owner_id", session.user.id).maybeSingle();
+          // FOUNDATION-1 / Phase 5d (#180): single-RPC identity resolution +
+          // safety-net accept_invitation. welcome-activation.tsx normally
+          // claims pending invitations on /welcome; this defensive call
+          // covers the case where a freshly-OAuthed user lands on /dashboard
+          // directly with a still-pending invitation. Idempotent — returns
+          // ok:false with reason='no_pending_invitation' when there is
+          // nothing to claim, so it is safe to always run.
+          await supabase.rpc("accept_invitation").catch((e) =>
+            console.warn("[Auth] accept_invitation prefetch failed (non-fatal):", e),
+          );
 
+          const identity = await loadCanonicalIdentity(supabase);
           if (!mountedRef.current) { processingRef.current = null; return; }
 
-          // If table doesn't exist (406) or other DB error → go straight to dashboard with mock data
-          if (companyError) {
-            console.warn("[Auth] companies query failed:", companyError.message, "→ loading dashboard with mock data");
+          if (identity.active_company) {
+            // Active membership (owner | admin | employee | dispatcher) → dashboard
+            initRealtimeChannels(identity.active_company.id);
             useDashboardStore.getState().initDashboard();
-            pendingLoginRef.current = { name, company: "SOSphere Demo" };
-            setLoginName(name);
-            doLogin(name, "SOSphere Demo");
-            processingRef.current = null;
-            return;
-          }
-
-          if (company) {
-            // ── OWNER FLOW ──
-            initRealtimeChannels(company.id);
-            useDashboardStore.getState().initDashboard();
-            pendingLoginRef.current = { name, company: company.name || "Your Company" };
+            pendingLoginRef.current = { name, company: identity.active_company.name };
             setLoginName(name);
             if (getStoredPin(session.user.id)) {
               setPinInput(""); setPinError("");
@@ -714,61 +675,12 @@ export function DashboardWebPage() {
               setStep("pin-setup");
             }
           } else {
-            // Step 2: Check if ADMIN (has invitation)
-            const { data: invitation, error: invError } = await supabase
-              .from("invitations")
-              .select("id, company_id, role, status, companies(name)")
-              .eq("email", userEmail)
-              .in("status", ["pending", "accepted"])
-              .order("created_at", { ascending: false })
-              .maybeSingle();
-
-            if (!mountedRef.current) { processingRef.current = null; return; }
-
-            // If invitations table doesn't exist → go to register
-            if (invError) {
-              console.warn("[Auth] invitations query failed:", invError.message, "→ showing register");
-              setLoginName(name);
-              setStep("register");
-            } else if (invitation) {
-              // ── ADMIN FLOW ──
-              initRealtimeChannels(invitation.company_id);
-              useDashboardStore.getState().initDashboard();
-              const companyName = (invitation.companies as any)?.name || "Your Company";
-              // Non-blocking: accept invitation in background (don't block login on this).
-              // Audit 2026-05-01: switched from direct UPDATE invitations to the
-              // accept_invitation RPC (Blocker A). Idempotent — the RPC's
-              // ON CONFLICT DO NOTHING on company_memberships safely re-affirms
-              // membership for repeat logins, and writes the employees row
-              // (which the legacy direct UPDATE never created). Falls back to
-              // the legacy direct UPDATE on RPC error / no-match for robustness.
-              supabase.rpc("accept_invitation")
-                .then(({ data: claim, error: rpcErr }) => {
-                  const claimResult = claim as { ok?: boolean; reason?: string } | null;
-                  if (rpcErr || (claimResult && claimResult.ok === false)) {
-                    if (rpcErr) console.warn("[Auth] accept_invitation RPC failed (non-fatal):", rpcErr.message);
-                    else console.warn("[Auth] accept_invitation no match:", claimResult?.reason);
-                    supabase.from("invitations").update({ status: "accepted" }).eq("id", invitation.id)
-                      .then(({ error: updateErr }) => { if (updateErr) console.warn("[Auth] Fallback invitation update failed:", updateErr.message); });
-                  }
-                });
-              pendingLoginRef.current = { name, company: companyName };
-              setLoginName(name);
-              if (getStoredPin(session.user.id)) {
-                setPinInput(""); setPinError("");
-                setStep("pin-verify");
-              } else {
-                setPinInput(""); setPinConfirm(""); setPinStage("enter");
-                setStep("pin-setup");
-              }
-            } else {
-              // ── NEW USER → REGISTER ──
-              /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
+            // ── NEW USER → REGISTER ──
+            /* Audit 2026-05-01: removed destructive PIN wipe. PIN is now scoped
        per-user via PIN_KEY_PREFIX, persists across logout, and is
        independently set up by each user on the same device. */ void 0;
-              setLoginName(name);
-              setStep("register");
-            }
+            setLoginName(name);
+            setStep("register");
           }
         } catch (err) {
           // Network or unexpected error → go to dashboard with mock data
