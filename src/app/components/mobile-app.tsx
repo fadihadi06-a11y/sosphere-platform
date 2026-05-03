@@ -653,47 +653,46 @@ export function MobileApp() {
         // ──────────────────────────────────────────────────────────────
         if (session?.user) {
           try {
-            const { data: membership } = await supabase
-              .from("company_memberships")
-              .select("company_id, role")
-              .eq("user_id", session.user.id)
-              .eq("active", true)
-              .neq("role", "owner")
-              .maybeSingle();
+            // FOUNDATION-1 / Phase 5b (2026-05-02): canonical identity from
+            // get_my_identity() RPC instead of ad-hoc multi-table queries.
+            // The RPC derives primary_role from the AUTHORITATIVE
+            // company_memberships row (not the often-broken profiles.role)
+            // and pulls live employee_data. Replaces 2-query block, gains
+            // honest data even when profiles is stale, full employee_data,
+            // capabilities[], and warnings[] for invariant violations.
+            const { data: identity, error: idErr } = await supabase
+              .rpc("get_my_identity");
 
-            if (membership) {
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("full_name, phone, email")
-                .eq("id", session.user.id)
-                .maybeSingle();
-
+            const role = (identity as any)?.primary_role;
+            if (idErr) {
+              console.warn("[Auth] get_my_identity RPC failed; falling back:", idErr.message);
+            } else if (role === "employee" || role === "dispatcher") {
+              const id = identity as any;
               const empName =
-                profile?.full_name ||
-                session.user.user_metadata?.full_name ||
-                (session.user.email || profile?.email || "").split("@")[0] ||
+                id?.employee_data?.name ||
+                id?.profile?.full_name ||
+                (id?.email || "").split("@")[0] ||
                 "Employee";
-              const empPhone = profile?.phone || "";
+              const empPhone = id?.employee_data?.phone || "";
+              const companyName = id?.active_company?.name;
+              const companyId = id?.active_company?.id;
 
-              // Synth local profile so subsequent cold-loads also fast-path.
               try {
                 localStorage.setItem(
                   "sosphere_individual_profile",
                   JSON.stringify({ name: empName, phone: empPhone, registeredAt: Date.now() }),
                 );
-              } catch { /* localStorage may be blocked */ }
-
-              // Mark consent as complete (invite acceptance = implicit B2B consent).
-              try {
-                const now = new Date().toISOString();
                 localStorage.setItem("sosphere_tos_consent", JSON.stringify({
                   accepted: true, timestamp: Date.now(), version: "1.0",
                 }));
                 localStorage.setItem("sosphere_gps_consent", JSON.stringify({
                   allowed: true, timestamp: Date.now(), declinedWarningShown: false,
                 }));
-                void now; // referenced for clarity
-              } catch { /* ignore */ }
+              } catch { /* localStorage may be blocked */ }
+
+              if (Array.isArray(id?.warnings) && id.warnings.length > 0) {
+                console.warn(`[Auth] FOUNDATION-1 identity warnings for ${id.email}:`, id.warnings);
+              }
 
               setLoginName(empName);
               setLoginPhone(empPhone);
@@ -705,11 +704,11 @@ export function MobileApp() {
 
               setIsRestoring(false);
               navigate("employee-dashboard");
-              console.log(`[Auth] #170-B fast-path: employee ${empName} → employee-dashboard (company ${membership.company_id})`);
+              console.log(`[Auth] FOUNDATION-1 P5: ${empName} → employee-dashboard (${companyName || companyId}, role=${role})`);
               return;
             }
           } catch (e) {
-            console.warn("[Auth] #170-B membership probe failed; falling back to standard flow:", e);
+            console.warn("[Auth] identity probe threw; falling back to standard flow:", e);
           }
         }
 
@@ -2012,10 +2011,23 @@ export function MobileApp() {
                   setSourceScreen("individual-home"); navigate("safe-walk");
                 })}
                 onLogout={async () => {
-                  const { signOut, clearDeviceFingerprint } = await import("./api/supabase-client");
-                  await signOut();
-                  clearDeviceFingerprint();
-                  // W3-25: wipe ALL per-user PII before next user can log in.
+                  // FOUNDATION-1 / Phase 5c (#172 + #173): proper logout chain.
+                  // 1) log_auth_event WHILE authenticated → audit captures actor
+                  // 2) completeLogout() → purges localStorage (scoped), IndexedDB,
+                  //    Zustand, role/tenant cache, device fingerprint, signOut
+                  // 3) clearUserDataOnLogout() (W3-25) layered for component state
+                  try {
+                    const { supabase } = await import("./api/supabase-client");
+                    await supabase.rpc("log_auth_event", {
+                      p_action: "logout",
+                      p_outcome: "success",
+                      p_metadata: { source: "mobile-app", screen: "individual-home" },
+                    });
+                  } catch (e) { console.warn("[Auth] logout audit log failed (non-fatal):", e); }
+                  try {
+                    const { completeLogout } = await import("./api/complete-logout");
+                    await completeLogout();
+                  } catch (e) { console.warn("[Auth] completeLogout failed:", e); }
                   clearUserDataOnLogout();
                   resetBiometricSession();
                   setUserPlan("free");
@@ -2056,9 +2068,20 @@ export function MobileApp() {
                   setSourceScreen("employee-dashboard"); navigate("safe-walk");
                 }}
                 onLogout={async () => {
-                  const { signOut } = await import("./api/supabase-client");
-                  await signOut();
-                  // W3-25: wipe ALL per-user PII before next user can log in.
+                  // FOUNDATION-1 / Phase 5c (#172 + #173) — see counterpart in
+                  // individual-home onLogout for full rationale.
+                  try {
+                    const { supabase } = await import("./api/supabase-client");
+                    await supabase.rpc("log_auth_event", {
+                      p_action: "logout",
+                      p_outcome: "success",
+                      p_metadata: { source: "mobile-app", screen: "employee-dashboard" },
+                    });
+                  } catch (e) { console.warn("[Auth] logout audit log failed (non-fatal):", e); }
+                  try {
+                    const { completeLogout } = await import("./api/complete-logout");
+                    await completeLogout();
+                  } catch (e) { console.warn("[Auth] completeLogout failed:", e); }
                   clearUserDataOnLogout();
                   resetBiometricSession();
                   setUserPlan("free");
