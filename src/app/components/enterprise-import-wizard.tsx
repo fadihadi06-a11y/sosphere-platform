@@ -74,6 +74,12 @@ export interface EnterpriseImportWizardProps {
   onComplete: (employees: any[]) => void;
   onCancel: () => void;
   onNavigate?: (page: string) => void;
+  /**
+   * Owner's active company id. REQUIRED for the new (E1.5) async-queue flow.
+   * If null, the wizard falls back to disabled "queueing impossible" state
+   * rather than the silently-broken legacy direct-insert path.
+   */
+  companyId?: string | null;
 }
 
 // ── SOSphere Required Fields ──────────────────────────────────
@@ -218,7 +224,7 @@ const DEPARTMENTS = [
 // ═══════════════════════════════════════════════════════════════
 // Main Wizard Component
 // ═══════════════════════════════════════════════════════════════
-export function EnterpriseImportWizard({ onComplete, onCancel, onNavigate }: EnterpriseImportWizardProps) {
+export function EnterpriseImportWizard({ onComplete, onCancel, onNavigate, companyId }: EnterpriseImportWizardProps) {
   const [step, setStep] = useState<WizardStep>(0);
   const [method, setMethod] = useState<ImportMethod | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -231,6 +237,9 @@ export function EnterpriseImportWizard({ onComplete, onCancel, onNavigate }: Ent
   const [importProgress, setImportProgress] = useState(0);
   const [importCount, setImportCount] = useState(0);
   const [importPhase, setImportPhase] = useState<"uploading" | "processing" | "email" | "done">("uploading");
+  // E1.5: track the queued job id so Step5 can deep-link to /jobs/<id> (E1.6)
+  const [queuedJobId, setQueuedJobId] = useState<string | null>(null);
+  const [queuedDeduped, setQueuedDeduped] = useState<boolean>(false);
   const [depProgress, setDepProgress] = useState<Record<string, number>>({});
   const [completedDeps, setCompletedDeps] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -299,83 +308,138 @@ Khalid Omar,خالد عمر,EMP-003,+966509876543,khalid@company.com,Operations,
     setIsValidating(false);
   };
 
-  // ── Run Import ────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════
+  // runImport — E1.5 ROOT-CAUSE REWRITE (was broken in 2 ways):
+  //
+  //   OLD BUG #1: `supabase.from("employees").insert(batch)` from the browser
+  //               ran 700+ batches for a 35K-row company. Browser tabs lose
+  //               focus, websockets time out, and worse — NO company_id was
+  //               attached so RLS quietly rejected every row. Owners thought
+  //               import worked; in reality 0 rows landed.
+  //
+  //   OLD BUG #2: `supabase.auth.admin.inviteUserByEmail()` requires the
+  //               SERVICE_ROLE key. The browser only has the anon key. Every
+  //               call failed silently → no emails sent, ever, for any
+  //               bulk-import customer. Single-employee invites worked
+  //               because they go through the `invite-employees` edge fn
+  //               (which holds service_role server-side).
+  //
+  // NEW DESIGN: one atomic call to public.enqueue_job(...). The async worker
+  // (process-bulk-invite, deployed E1.4) picks the message up within ~60s
+  // and processes in chunks of 100 with re-entrant resume + exponential
+  // backoff. The browser's job is now ~100ms instead of ~30 minutes, and
+  // the work survives tab close / network drop. This is the SQS / BullMQ /
+  // Sidekiq pattern that every enterprise SaaS uses for 35K-scale uploads.
+  // ═════════════════════════════════════════════════════════════════════
   const runImport = async () => {
     if (!validation) return;
+    if (!companyId) {
+      toast.error("Cannot queue import: company id not loaded. Try refreshing the page.");
+      return;
+    }
+
     setStep(4);
     setImportProgress(0);
     setImportCount(0);
     setImportPhase("uploading");
     setDepProgress({});
     setCompletedDeps([]);
+    setQueuedJobId(null);
+    setQueuedDeduped(false);
 
-    const total = rawData.length;
     const fieldMap = Object.fromEntries(
       columnMappings.filter(m => m.sosField).map(m => [m.sosField!, m.csvColumn])
     );
 
-    // Phase 1: Insert employees into Supabase in batches of 50
+    // Build the canonical items array in a single pass. Filter out invalid
+    // emails (the worker would reject them anyway, no need to enqueue waste).
     setImportPhase("processing");
-    const batchSize = 50;
-    let processed = 0;
-    const deptsSeen = new Set<string>();
-
-    for (let i = 0; i < rawData.length; i += batchSize) {
-      const batch = rawData.slice(i, i + batchSize).map(row => ({
-        full_name:   (row[fieldMap["name"]]        ?? "").trim(),
-        employee_id: (row[fieldMap["employee_id"]] ?? "").trim(),
-        phone:       (row[fieldMap["phone"]]       ?? "").trim(),
-        email:       (row[fieldMap["email"]]       ?? "").trim(),
-        department:  (row[fieldMap["department"]]  ?? "").trim(),
-        job_title:   (row[fieldMap["role"]]        ?? "").trim(),
-        zone:        (row[fieldMap["zone"]]        ?? "").trim(),
-        shift:       (row[fieldMap["shift"]]       ?? "").trim(),
-        name_ar:     (row[fieldMap["name_ar"]]     ?? "").trim(),
+    setImportProgress(10);
+    const items = rawData
+      .map(row => ({
+        email:             (row[fieldMap["email"]]            ?? "").trim().toLowerCase(),
+        full_name:         (row[fieldMap["name"]]             ?? "").trim(),
+        employee_id:       (row[fieldMap["employee_id"]]      ?? "").trim(),
+        phone:             (row[fieldMap["phone"]]            ?? "").trim(),
+        department:        (row[fieldMap["department"]]       ?? "").trim(),
+        job_title:         (row[fieldMap["role"]]             ?? "").trim(),
+        zone:              (row[fieldMap["zone"]]             ?? "").trim(),
+        shift:             (row[fieldMap["shift"]]            ?? "").trim(),
+        name_ar:           (row[fieldMap["name_ar"]]          ?? "").trim(),
         emergency_contact: (row[fieldMap["emergency_contact"]] ?? "").trim(),
-        status: "invited",
-      }));
+        company_id:        companyId,
+      }))
+      .filter(it => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(it.email));
 
-      await supabase.from("employees").insert(batch);
-      processed += batch.length;
-
-      const pct = Math.round((processed / total) * 100);
-      setImportProgress(pct);
-      setImportCount(processed);
-
-      // Track departments for UI
-      batch.forEach(emp => {
-        if (emp.department && !deptsSeen.has(emp.department)) {
-          deptsSeen.add(emp.department);
-          setCompletedDeps(p => [...p, emp.department]);
-        }
-      });
-
-      await new Promise(r => setTimeout(r, 80)); // pacing for UX
+    if (items.length === 0) {
+      toast.error("No rows had a valid email address. Nothing to enqueue.");
+      setImportPhase("done");
+      setStep(2); // back to validation
+      return;
     }
 
-    // Phase 2: Send email invitations via Supabase Auth
-    setImportPhase("email");
-    const emails = rawData
-      .map(row => (row[fieldMap["email"]] ?? "").trim())
-      .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-
-    // Batch invitations: 50 per batch with 1s delay to avoid spam filters
-    for (let i = 0; i < emails.length; i += 50) {
-      const batch = emails.slice(i, i + 50);
-      await Promise.allSettled(
-        batch.map(email =>
-          supabase.auth.admin.inviteUserByEmail(email, {
-            redirectTo: `${window.location.origin}/welcome`,
-          })
-        )
-      );
-      if (i + 50 < emails.length) {
-        await new Promise(r => setTimeout(r, 1000)); // 1s between batches
+    // Surface the dept list immediately so the UX feels alive even though
+    // the actual processing is async. (The animation polled per-batch in the
+    // legacy code; here the wizard hands off in one call so we mirror it.)
+    const deptsSeen = new Set<string>();
+    items.forEach(it => {
+      if (it.department && !deptsSeen.has(it.department)) {
+        deptsSeen.add(it.department);
+        setCompletedDeps(p => [...p, it.department]);
       }
+    });
+
+    // Idempotency key: same file (name+size) for the same company within the
+    // same minute = same job. Prevents accidental double-clicks from creating
+    // two jobs that both invite all 35K people. Worker is also idempotent
+    // per-row via Supabase Auth's "user already registered" handling, so
+    // this is a defense-in-depth guard, not the only safety net.
+    const minuteBucket = Math.floor(Date.now() / 60000);
+    const idempotencyKey = `csv:${companyId}:${file?.name || "anon"}:${file?.size || 0}:${items.length}:${minuteBucket}`;
+
+    setImportPhase("email");
+    setImportProgress(60);
+
+    const { data, error } = await supabase.rpc("enqueue_job", {
+      p_job_type:        "bulk_invite",
+      p_company_id:      companyId,
+      p_payload: {
+        items,
+        company_id:      companyId,
+        estimated_count: items.length,
+        source:          "csv_wizard",
+      },
+      p_idempotency_key: idempotencyKey,
+      p_max_attempts:    3,
+    });
+
+    if (error) {
+      // RPC raised — likely auth (42501) or unknown job_type (22023). The
+      // ownership guard inside enqueue_job will trip if a non-owner somehow
+      // got past the dashboard's role gate (shouldn't happen, but defensive).
+      console.error("[import-wizard] enqueue_job failed:", error);
+      toast.error(`Could not queue import: ${error.message || "unknown error"}`);
+      setImportPhase("done");
+      setStep(2);
+      return;
     }
 
+    const result = data as { ok?: boolean; job_id?: string; deduplicated?: boolean; error?: string } | null;
+    if (!result?.ok || !result.job_id) {
+      toast.error(`Could not queue import: ${result?.error ?? "no job id returned"}`);
+      setImportPhase("done");
+      setStep(2);
+      return;
+    }
+
+    setQueuedJobId(result.job_id);
+    setQueuedDeduped(!!result.deduplicated);
+    setImportProgress(100);
+    setImportCount(items.length);
     setImportPhase("done");
-    await new Promise(r => setTimeout(r, 400));
+
+    // small breath for the success animation
+    await new Promise(r => setTimeout(r, 600));
     setStep(5);
   };
 
@@ -495,6 +559,8 @@ Khalid Omar,خالد عمر,EMP-003,+966509876543,khalid@company.com,Operations,
               key="s5"
               total={totalEmployees}
               validation={validation}
+              jobId={queuedJobId}
+              deduplicated={queuedDeduped}
               onComplete={() => onComplete(validation.preview)}
               onNavigate={onNavigate}
             />
@@ -1416,20 +1482,33 @@ function Step4Importing({
 // Step 5 — Complete + Onboarding Checklist
 // ═══════════════════════════════════════════════════════════════
 function Step5Complete({
-  total, validation, onComplete, onNavigate,
+  total, validation, jobId, deduplicated, onComplete, onNavigate,
 }: {
   total: number;
   validation: ValidationResult;
+  jobId: string | null;
+  deduplicated: boolean;
   onComplete: () => void;
   onNavigate?: (page: string) => void;
 }) {
   const [checkedItems, setCheckedItems] = useState<string[]>(["imported"]);
 
+  // E1.5: messaging now reflects ASYNC enqueue (not synchronous import).
+  // The worker (process-bulk-invite) processes the job within ~60s and
+  // updates async_job_metadata.progress in real-time. Owners track progress
+  // on the Jobs page (E1.6). If `deduplicated` is true the user uploaded
+  // the same file twice within a minute and is now viewing the existing
+  // job — phrasing reflects that to avoid "did it work?" confusion.
+  const headlineLabel = deduplicated ? "Already Queued" : "Queued for Invite";
+  const headlineDesc  = deduplicated
+    ? `${total} employees were queued earlier — viewing the existing job`
+    : `${total} invitations queued. Worker is processing in background.`;
+
   const checklist: OnboardingChecklist[] = [
     {
       id: "imported",
-      label: "Employees Imported",
-      description: `${total} employees added to SOSphere`,
+      label: headlineLabel,
+      description: headlineDesc,
       icon: <Users className="size-4" style={{ color: "#00C853" }} />,
       done: true,
       action: "",
@@ -1643,13 +1722,15 @@ function Step5Complete({
           </div>
         </div>
 
-        {/* CTA */}
+        {/* Primary CTA — view job progress (E1.5: was "View All Employees" */}
+        {/* in legacy synchronous flow; the async worker hasn't created rows */}
+        {/* yet so we point to the Jobs page which surfaces live progress).  */}
         <motion.button
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.3 }}
-          onClick={onComplete}
-          className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 mb-4"
+          onClick={() => onNavigate?.("jobs")}
+          className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 mb-3"
           style={{
             background: "linear-gradient(135deg, #00C8E0, #00E676)",
             color: "#000",
@@ -1658,17 +1739,38 @@ function Step5Complete({
             letterSpacing: "-0.2px",
             boxShadow: "0 6px 32px rgba(0,200,224,0.3)",
           }}>
-          <Users className="size-5" />
-          View All {total} Employees
+          <Clock className="size-5" />
+          Track Job Progress
           <ArrowRight className="size-5" />
         </motion.button>
 
-        {/* Summary */}
+        {/* Secondary CTA — go to employees list (will populate as worker runs) */}
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.4 }}
+          onClick={onComplete}
+          className="w-full py-3 rounded-2xl flex items-center justify-center gap-2 mb-4"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "rgba(255,255,255,0.85)",
+            fontSize: 13,
+            fontWeight: 700,
+            letterSpacing: "-0.2px",
+          }}>
+          <Users className="size-4" />
+          Go to Employees List
+        </motion.button>
+
+        {/* Summary — phrasing reflects async flow (no false claim of */}
+        {/* "emails sent" since worker dispatches them after dequeue).   */}
         <div className="p-4 rounded-2xl flex items-start gap-3 mb-4"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
           <Database className="size-4 flex-shrink-0 mt-0.5" style={{ color: "rgba(255,255,255,0.25)" }} />
           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", lineHeight: 1.6 }}>
-            Import logged · Audit trail created · {total} employees now have SOSphere access pending app download. Email invitations sent to {total - validation.errors.filter(e => e.field === "email").length} employees via Supabase Auth.
+            {jobId ? <>Job <span style={{ color: "rgba(255,255,255,0.55)", fontFamily: "monospace" }}>{jobId.slice(0, 8)}…</span> · </> : null}
+            Audit trail created · {total} invitations queued · Worker dispatches in chunks of 100 with exponential backoff. Track live progress on the Jobs page.
           </p>
         </div>
       </div>

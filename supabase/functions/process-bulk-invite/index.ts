@@ -35,7 +35,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET               = Deno.env.get("CRON_SECRET") || "";
-const INVITE_FN_URL             = `${SUPABASE_URL}/functions/v1/invite-employees`;
+// E1.5 root-cause fix: worker no longer HTTP-calls invite-employees (the
+// JWT chain failed with UNAUTHORIZED_INVALID_JWT_FORMAT — see processMessage
+// for the full diagnosis). Worker drives Supabase Auth admin API directly.
 
 // pgmq read parameters
 const VISIBILITY_TIMEOUT_SECS = 300;  // 5 min — long enough for a chunk to complete
@@ -197,30 +199,65 @@ async function processMessage(
     for (let i = processed; i < items.length; i += CHUNK_SIZE) {
       const chunk = items.slice(i, i + CHUNK_SIZE);
 
-      const inviteRes = await fetch(INVITE_FN_URL, {
-        method:  "POST",
-        headers: {
-          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify({
-          employees: chunk.map(it => ({
-            email:      it.email,
-            full_name:  it.full_name,
-            company_id: companyId,
-          })),
-        }),
-      });
+      // ROOT-CAUSE FIX (E1.5 behavioral test): we previously POSTed to
+      // invite-employees with Authorization: Bearer SUPABASE_SERVICE_ROLE_KEY.
+      // That fails with UNAUTHORIZED_INVALID_JWT_FORMAT for two reasons:
+      //   1. Supabase has moved to `sb_secret_*` non-JWT secret keys; even
+      //      the legacy JWT service_role key is rejected when forwarded
+      //      because invite-employees calls getUser(token) which requires a
+      //      USER session token, not a service-role key.
+      //   2. Even if the gateway accepted it, getUser() returns NULL for
+      //      service-role tokens so invite-employees would 401 anyway.
+      //
+      // The worker already holds a service-role client. The ownership check
+      // that invite-employees enforces is ALREADY enforced one layer earlier
+      // by enqueue_job (RPC refuses to enqueue unless caller owns company),
+      // so we know the job belongs to a legitimate owner. We replicate the
+      // remaining invite-employees logic here in-process — no HTTP hop, no
+      // JWT chain, no 500-row rate limit, and reads from the same env that
+      // already works (SUPABASE_SERVICE_ROLE_KEY auto-injected by the runtime).
+      const SITE_URL    = Deno.env.get("SITE_URL") || "https://sosphere-platform.vercel.app";
+      const redirectTo  = `${SITE_URL}/welcome`;
 
-      if (!inviteRes.ok) {
-        const text = await inviteRes.text();
-        throw new Error(`invite-employees HTTP ${inviteRes.status}: ${text.substring(0, 200)}`);
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (emp) => {
+          if (!emp.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emp.email)) {
+            return { email: emp.email, success: false, reason: "invalid-email" };
+          }
+          const { error } = await supabase.auth.admin.inviteUserByEmail(emp.email, {
+            redirectTo,
+            data: {
+              full_name:  emp.full_name || "",
+              company_id: companyId,
+              role:       "employee",
+            },
+          });
+          if (error) {
+            // Mirror invite-employees #149: "User already registered" is NOT
+            // a failure — the existing account will be auto-claimed by the
+            // accept_invitation RPC on next sign-in. Count as succeeded so
+            // owners see the right number; the invitations row stays pending.
+            if (/already|registered|exists/i.test(error.message || "")) {
+              return { email: emp.email, success: true, reason: "already-exists" };
+            }
+            return { email: emp.email, success: false, reason: error.message };
+          }
+          return { email: emp.email, success: true };
+        })
+      );
+
+      let chunkSent = 0, chunkFailed = 0;
+      for (const r of chunkResults) {
+        if (r.status === "fulfilled") {
+          if (r.value.success) chunkSent++;
+          else                 chunkFailed++;
+        } else {
+          chunkFailed++;
+        }
       }
 
-      const result = await inviteRes.json();
-      const summary = result.summary || { sent: 0, failed: 0 };
-      succeeded += summary.sent || 0;
-      failed    += summary.failed || 0;
+      succeeded += chunkSent;
+      failed    += chunkFailed;
       processed += chunk.length;
 
       // Persist progress after each chunk (re-entrant resume point)
@@ -237,11 +274,14 @@ async function processMessage(
     }
 
     // ── Step E: success — mark completed + archive pgmq message ──
+    // Clear error_message on success path so a previously-retried job that
+    // eventually succeeds doesn't display stale errors from earlier attempts.
     await supabase.from("async_job_metadata")
       .update({
         status: "completed",
         completed_at: new Date().toISOString(),
         progress: { total: items.length, processed, succeeded, failed },
+        error_message: null,
       })
       .eq("id", job.id);
 
