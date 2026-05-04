@@ -517,6 +517,7 @@ Khalid Omar,خالد عمر,EMP-003,+966509876543,khalid@company.com,Operations,
               key="s1"
               file={file}
               isDragging={isDragging}
+              rowCount={rowCount}
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
@@ -711,11 +712,12 @@ function Step0Method({ onSelect }: { onSelect: (m: ImportMethod) => void }) {
 // Step 1 — Upload & File Preview
 // ═══════════════════════════════════════════════════════════════
 function Step1Upload({
-  file, isDragging, onDragOver, onDragLeave, onDrop, onFileSelect,
+  file, isDragging, rowCount, onDragOver, onDragLeave, onDrop, onFileSelect,
   onDownloadTemplate, onBack, fileInputRef,
 }: {
   file: File | null;
   isDragging: boolean;
+  rowCount: number;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
