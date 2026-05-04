@@ -21,6 +21,7 @@ import { getJoinRequests, approveJoinRequest, rejectJoinRequest, type JoinReques
 import { toast } from "sonner";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { loadCanonicalIdentity } from "./api/canonical-identity";
 
 // ── Types ─────────────────────────────────────────────────────
 interface UnifiedEmployeesPageProps {
@@ -540,14 +541,19 @@ export function UnifiedEmployeesPage({
     let cancelled = false;
     (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user?.id) return;
-        const { data: co } = await supabase
-          .from("companies")
-          .select("id")
-          .eq("owner_id", session.user.id)
-          .maybeSingle();
-        if (!cancelled && co?.id) setCompanyIdForInvites(co.id);
+        // E1.6-PHASE3 (2026-05-04): use loadCanonicalIdentity instead of
+        // a raw getSession() + companies SELECT. The legacy two-call chain
+        // hits supabase-js's _acquireLock twice; if the lock is wedged by
+        // an unrelated boot-time holder, companyIdForInvites stays null
+        // forever — which is exactly what surfaced the user-facing
+        // "Cannot queue import: company id not loaded" error during the
+        // E1 live test. loadCanonicalIdentity tries safeRpc first
+        // (direct fetch, lock-free) and only falls back to the locking
+        // path if that fails.
+        const id = await loadCanonicalIdentity(supabase);
+        if (!cancelled && id?.active_company?.id) {
+          setCompanyIdForInvites(id.active_company.id);
+        }
       } catch (_) { /* ignore — page still works without invitations panel */ }
     })();
     return () => { cancelled = true; };
