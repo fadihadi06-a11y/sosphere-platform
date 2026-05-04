@@ -46,6 +46,7 @@ import {
 import { toast } from "sonner";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
+import { safeRpc } from "./api/safe-rpc";
 
 // ── Types ─────────────────────────────────────────────────────
 type JobStatus =
@@ -138,19 +139,22 @@ export function DashboardJobsPage() {
   dlog('E1.RENDER');
 
   // ── Initial load: identity → fetch jobs ─────────────────────
+  // E1.6-PHASE3 (2026-05-04): use safeRpc (direct fetch, bypasses
+  // supabase-js auth lock) so the Jobs page can never be wedged by an
+  // unrelated boot-time _acquireLock holder.
   const loadJobs = useCallback(async (cid: string) => {
     dlog(`E1.LOADJOBS_CALLED cid=${cid.slice(0,8)}`);
-    const { data, error } = await supabase.rpc("get_my_jobs", {
-      p_company_id: cid,
-      p_limit:      50,
-    });
+    const { data, error } = await safeRpc<{ ok?: boolean; jobs?: AsyncJob[] }>(
+      "get_my_jobs",
+      { p_company_id: cid, p_limit: 50 },
+      { timeoutMs: 8000 },
+    );
     dlog(`E1.LOADJOBS_RPC_RETURNED err=${error?.message?.slice(0,40) || 'null'} jobs=${(data as any)?.jobs?.length ?? 'NF'}`);
     if (error) {
       toast.error(`Failed to load jobs: ${error.message}`);
       return;
     }
-    const result = data as { ok?: boolean; jobs?: AsyncJob[] } | null;
-    setJobs(Array.isArray(result?.jobs) ? result!.jobs : []);
+    setJobs(Array.isArray(data?.jobs) ? data!.jobs! : []);
   }, []);
 
   useEffect(() => {
@@ -255,14 +259,17 @@ export function DashboardJobsPage() {
   const handleCancel = async (jobId: string) => {
     setCancellingIds(prev => new Set(prev).add(jobId));
     try {
-      const { data, error } = await supabase.rpc("cancel_job", { p_job_id: jobId });
+      const { data, error } = await safeRpc<{ ok?: boolean; error?: string }>(
+        "cancel_job",
+        { p_job_id: jobId },
+        { timeoutMs: 8000 },
+      );
       if (error) {
         toast.error(`Cancel failed: ${error.message}`);
         return;
       }
-      const result = data as { ok?: boolean; error?: string } | null;
-      if (!result?.ok) {
-        toast.error(`Cancel failed: ${result?.error ?? "unknown"}`);
+      if (!data?.ok) {
+        toast.error(`Cancel failed: ${data?.error ?? "unknown"}`);
         return;
       }
       toast.success("Job cancelled");
