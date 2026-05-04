@@ -31,6 +31,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { safeRpc } from "./safe-rpc";
 
 export type PrimaryRole =
   | "owner"
@@ -84,7 +85,25 @@ export interface CanonicalIdentity {
 export async function loadCanonicalIdentity(
   supabase: SupabaseClient,
 ): Promise<CanonicalIdentity> {
-  // ── Primary path: get_my_identity() RPC ─────────────────────────────
+  // ── E1.6-PHASE3 (2026-05-04): direct fetch first, supabase.rpc second ──
+  // safeRpc bypasses supabase-js auth lock entirely. If the auth lock is
+  // wedged by an unrelated boot-time acquisition (proven to happen via
+  // the PHASE1 instrumentation), supabase.rpc("get_my_identity") deadlocks
+  // forever. The Jobs page and any other identity-gated page MUST keep
+  // working in that scenario, so we try the direct fetch first.
+  try {
+    const { data, error } = await safeRpc<Record<string, unknown>>("get_my_identity", {}, { timeoutMs: 6000 });
+    if (!error && data && typeof data === "object") {
+      return normalizeIdentity(data);
+    }
+    if (error && error.message !== "no-session") {
+      console.warn("[canonical-identity] safeRpc failed, trying supabase.rpc:", error.message);
+    }
+  } catch (err) {
+    console.warn("[canonical-identity] safeRpc threw, trying supabase.rpc:", err);
+  }
+
+  // ── Secondary path: supabase.rpc (uses auth lock; may deadlock) ─────
   try {
     const { data, error } = await supabase.rpc("get_my_identity");
     if (!error && data && typeof data === "object") {
