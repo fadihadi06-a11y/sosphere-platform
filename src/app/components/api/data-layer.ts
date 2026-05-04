@@ -50,30 +50,139 @@ let currentMode: DataMode = "supabase";
 export function setDataMode(mode: DataMode) { currentMode = mode; }
 export function getDataMode(): DataMode { return currentMode; }
 
-// Helper: get current company ID � reads from JWT claims (fast, no DB round-trip)
-async function getCompanyId(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
+// =================================================================
+// E1.6-PHASE2 ROOT-CAUSE FIX (2026-05-04):
+//
+// Previously every fetch* in this module did:
+//     await supabase.auth.getSession()
+// inside getCompanyId(). The dashboard store calls
+//     Promise.all([fetchEmployees, fetchEmergencies, fetchZones, fetchKPIs])
+// which spawned 4+ parallel getSession() calls — each one acquiring
+// auth-js's internal _acquireLock. fetchKPIs() then spawns its own
+// Promise.all of 3 queries → 7+ parallel auth-lock acquisitions per
+// refresh cycle.
+//
+// If even one wrappedFn never resolves (background tab throttle,
+// fetch hang, race against onAuthStateChange), pendingInLock grows
+// unbounded and every subsequent rpc — including get_my_identity()
+// on the Jobs page — deadlocks forever. Live capture proved this:
+// 9 ACQ_BEGIN, 0 ACQ_END, pending grew 20 → 28 in 30s.
+//
+// Fix: read company_id directly from the JWT in localStorage
+// (single source of truth, zero auth-lock acquisitions) + cache
+// in-process for 5 min + single-flight any DB fallback so parallel
+// callers collapse into one round-trip.
+//
+// This matches the pattern used by Vercel/Linear/Notion: derive
+// tenant id from the access-token claim, never re-fetch on every
+// page-level data call.
+// =================================================================
+
+let _cachedCompanyId: string | null = null;
+let _cacheExpiresAt = 0;
+let _inflightFetch: Promise<string | null> | null = null;
+const COMPANY_ID_CACHE_TTL_MS = 5 * 60_000;
+
+// Read JWT directly from localStorage; bypasses auth._acquireLock entirely.
+// Supports both modern (object) and legacy (array) storage formats used
+// by supabase-js v2.x.
+function _readCompanyIdFromStoredJwt(): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    // Primary: read company_id injected by custom_access_token_hook
-    const payload = JSON.parse(atob(session.access_token.split(".")[1]));
-    if (payload.company_id) return payload.company_id as string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const url = (import.meta as any).env?.VITE_SUPABASE_URL || "";
+    const projectRef = url.match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+    if (!projectRef) return null;
+    const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+
+    // Modern format: { access_token, refresh_token, expires_at, user, ... }
+    // Legacy format: [access_token, refresh_token, provider_token, ...]
+    let accessToken: string | undefined;
+    if (parsed && typeof parsed === "object") {
+      if (Array.isArray(parsed)) {
+        accessToken = typeof parsed[0] === "string" ? parsed[0] : undefined;
+      } else {
+        const o = parsed as Record<string, unknown>;
+        accessToken = typeof o.access_token === "string" ? o.access_token : undefined;
+      }
+    }
+    if (!accessToken) return null;
+
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return null;
+    // base64url → base64
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(parts[1].length + (4 - parts[1].length % 4) % 4, "=");
+    const payload = JSON.parse(atob(b64));
+
+    // Reject expired tokens — cached value would be stale and the
+    // refresh handler may already be racing to mint a new one.
+    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
+      return null;
+    }
+    if (typeof payload.company_id === "string" && payload.company_id) {
+      return payload.company_id;
+    }
+    return null;
   } catch {
-    // JWT decode failed � fall back to DB
+    return null;
   }
-  // Fallback: DB lookup (first login before hook fires, or hook not configured)
-  const { data } = await supabase
-    .from("companies")
-    .select("id")
-    .eq("owner_id", session.user.id)
-    .maybeSingle();
-  if (data) return data.id;
-  const { data: emp } = await supabase
-    .from("employees")
-    .select("company_id")
-    .eq("user_id", session.user.id)
-    .maybeSingle();
-  return emp?.company_id ?? null;
+}
+
+async function getCompanyId(): Promise<string | null> {
+  // 1. In-memory cache (sub-millisecond, zero IO)
+  if (_cachedCompanyId && Date.now() < _cacheExpiresAt) {
+    return _cachedCompanyId;
+  }
+  // 2. JWT claim from localStorage (zero auth-lock acquisitions)
+  const fromJwt = _readCompanyIdFromStoredJwt();
+  if (fromJwt) {
+    _cachedCompanyId = fromJwt;
+    _cacheExpiresAt = Date.now() + COMPANY_ID_CACHE_TTL_MS;
+    return fromJwt;
+  }
+  // 3. Single-flight DB fallback — only one in-flight regardless of
+  //    how many parallel callers arrive. This still touches auth lock
+  //    once, but never explodes pendingInLock to 20+ as before.
+  if (_inflightFetch) return _inflightFetch;
+  _inflightFetch = (async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("owner_id", session.user.id)
+        .maybeSingle();
+      let id: string | null = data?.id ?? null;
+      if (!id) {
+        const { data: emp } = await supabase
+          .from("employees")
+          .select("company_id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        id = emp?.company_id ?? null;
+      }
+      if (id) {
+        _cachedCompanyId = id;
+        _cacheExpiresAt = Date.now() + COMPANY_ID_CACHE_TTL_MS;
+      }
+      return id;
+    } finally {
+      _inflightFetch = null;
+    }
+  })();
+  return _inflightFetch;
+}
+
+// Exposed so completeLogout / tenant-switch flows can drop the cached
+// claim and force a re-read on the next call. Without this, a logged-out
+// user could briefly see the previous tenant's company_id.
+export function clearCompanyIdCache(): void {
+  _cachedCompanyId = null;
+  _cacheExpiresAt = 0;
+  _inflightFetch = null;
 }
 
 // =================================================================
