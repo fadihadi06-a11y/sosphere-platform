@@ -13,6 +13,7 @@ import { supabase } from "./supabase-client";
 import { clearPermissionCache } from "./server-permission";
 import { clearRoleCache } from "./authenticated-role";
 import { clearTenantCache } from "./tenant";
+import { clearCompanyIdCache } from "./data-layer";
 import { purgeAllOfflineData } from "../offline-database";
 import { clearDashboardStore } from "../stores/dashboard-store";
 
@@ -47,6 +48,10 @@ export async function completeLogout(): Promise<void> {
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
+  // E1.6-PHASE2 (2026-05-04): drop the cached JWT-derived companyId so a
+  // tenant switch on the same browser tab cannot leak the previous tenant's
+  // id into fetchEmployees / fetchEmergencies / fetchZones for up to 5 min.
+  try { clearCompanyIdCache(); } catch { /* best effort */ }
 
   try {
     const toDelete: string[] = [];
