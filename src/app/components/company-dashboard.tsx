@@ -544,20 +544,13 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     (async () => {
       try {
         const { supabase } = await import("./api/supabase-client");
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id) {
-          // 2026-04-30 (Beehive Audit live finding): always confirm the
-          // company_id from Supabase before subscribing. Previously a
-          // stale localStorage `sosphere_company_id` from earlier
-          // testing caused the dashboard to subscribe to a Realtime
-          // channel for a company that no longer exists, cluttering
-          // the console with `[Realtime] CDC channel online for
-          // company: <stale-uuid>` logs and wasting a websocket.
-          const { data } = await supabase
-            .from("companies")
-            .select("id")
-            .eq("owner_id", session.user.id)
-            .maybeSingle();
+        // E1.6-PHASE3 (2026-05-04): use loadCanonicalIdentity (safeRpc-first,
+        // lock-free) instead of getSession() + companies SELECT chain.
+        const { loadCanonicalIdentity } = await import("./api/canonical-identity");
+        const id = await loadCanonicalIdentity(supabase);
+        const userId = id?.user_id;
+        if (userId) {
+          const data = id.active_company ? { id: id.active_company.id } : null;
           if (data?.id) {
             localStorage.setItem("sosphere_company_id", data.id);
             initRealtimeChannels(data.id);

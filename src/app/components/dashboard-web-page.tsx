@@ -1199,7 +1199,9 @@ export function DashboardWebPage() {
                 setLoginCompany(company);
                 pendingLoginRef.current = { name, company };
                 {
-                  const sid = (await supabase.auth.getSession()).data.session?.user.id || "post-register";
+                  // E1.6-PHASE3: lock-free user id for processing label.
+                  const { getStoredUser } = await import("./api/safe-rpc");
+                  const sid = getStoredUser()?.id || "post-register";
                   processingRef.current = sid;
                 }
                 setPinInput("");
