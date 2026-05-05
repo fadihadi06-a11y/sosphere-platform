@@ -26,6 +26,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from "./supabase-client";
+import { getStoredUser } from "./safe-rpc";
 
 export type SubscriptionChangeCallback = () => void;
 
@@ -93,9 +94,10 @@ export async function subscribeSubscriptionChanges(
 
   // Initial subscribe (if a session exists right now).
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) {
-      await subscribeFor(session.user.id);
+    // E1.6-PHASE3: JWT from storage (auth-state-change fires later for real session).
+    const u = getStoredUser();
+    if (u?.id) {
+      await subscribeFor(u.id);
     }
   } catch (e) {
     console.warn("[sub-rt] could not read initial session:", e);

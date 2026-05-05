@@ -13,6 +13,7 @@ import { TrialCard } from "./trial-card";
 // loaded lazily so the upgrade screen still mounts when offline /
 // unconfigured (it just shows the error toast on click).
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { getStoredUser } from "./api/safe-rpc";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type BillingCycle = "monthly" | "yearly";
@@ -87,8 +88,9 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
     }
     setIsUpgrading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+      // E1.6-PHASE3 (2026-05-04): JWT-from-localStorage; never block upgrade on auth lock.
+      const u = getStoredUser();
+      if (!u) {
         setUpgradeError("Please sign in before upgrading.");
         setIsUpgrading(false);
         return;

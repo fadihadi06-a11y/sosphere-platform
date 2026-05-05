@@ -110,9 +110,11 @@ export async function initSentry(): Promise<void> {
     try {
       // Initial identity (if the user was already signed in when the
       // app booted — e.g. returning user with a valid session token).
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.user) {
-        setSentryUser({ id: data.session.user.id, email: data.session.user.email ?? undefined });
+      // E1.6-PHASE3: bootstrap Sentry user from JWT, lock-free.
+      const { getStoredUser } = await import("./api/safe-rpc");
+      const u = getStoredUser();
+      if (u) {
+        setSentryUser({ id: u.id, email: u.email ?? undefined });
       }
 // W3-43 (B-20, 2026-04-26): capture + unsubscribe to prevent leak.
       if ((globalThis as any).__sentryAuthSub) {

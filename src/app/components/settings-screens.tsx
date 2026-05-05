@@ -259,9 +259,9 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                       if (!confirmed) return;
                       hapticWarning();
                       try {
-                        const { supabase } = await import("./api/supabase-client");
-                        const { data: sessionData } = await supabase.auth.getSession();
-                        const token = sessionData.session?.access_token;
+                        // E1.6-PHASE3: lock-free token read.
+                        const { getStoredBearerToken } = await import("./api/safe-rpc");
+                        const token = getStoredBearerToken();
                         if (!token) {
                           toast.error("Not signed in", { description: "Please sign in first." });
                           return;

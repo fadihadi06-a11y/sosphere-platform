@@ -233,3 +233,25 @@ export function hasValidStoredSession(): boolean {
 export function getStoredBearerToken(): string | null {
   return _getBearer();
 }
+
+/**
+ * Lock-free read of the bare-minimum identity claims from the stored JWT
+ * (sub = user UUID, email). Returns null on no session / parse error /
+ * expired token. Pairs with getStoredBearerToken for callers that need
+ * both the bearer and the user id without going through auth.getSession().
+ */
+export function getStoredUser(): { id: string; email: string | null } | null {
+  const tok = _getBearer();
+  if (!tok) return null;
+  try {
+    const parts = tok.split(".");
+    if (parts.length < 2) return null;
+    const padLen = (4 - (parts[1].length % 4)) % 4;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(parts[1].length + padLen, "=");
+    const payload = JSON.parse(atob(b64));
+    if (typeof payload.sub !== "string") return null;
+    return { id: payload.sub, email: typeof payload.email === "string" ? payload.email : null };
+  } catch {
+    return null;
+  }
+}
