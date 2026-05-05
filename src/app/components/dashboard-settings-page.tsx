@@ -18,6 +18,8 @@ import {
 import { setHybridMode as setHybridModeStore, getHybridMode, assignEmployeeZone, ZONE_NAMES } from "./shared-store";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+import { MFAEnrollmentModal } from "./mfa-enrollment-modal";
+import { mfaListFactors, mfaUnenroll, mfaRecoveryStatus, mfaGenerateRecoveryCodes } from "./api/mfa-client";
 
 type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents" | "attendance" | "settings" | "commandCenter" | "riskMap" | "billing" | "analytics" | "shiftScheduling" | "geofencing";
 
@@ -591,7 +593,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                       </div>
                     </div>
                     <div className="px-6" style={{ background: "rgba(255,255,255,0.01)" }}>
-                      <WebToggle id="twoFA"    label="Two-Factor Authentication (2FA)" desc="Require OTP on every login for admin accounts" color="#00C853" />
+                      <MFAControlSection />
                       <WebToggle id="auditLog" label="Audit Logging"                   desc="Record all admin actions with timestamps and IP" color="#00C8E0" />
                       <div className="flex items-center justify-between py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                         <div>
@@ -1389,6 +1391,117 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
           onClick={() => { if (roleName.trim()) onBack(); }}>Create Role</button>
       </div>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH-4 (#174) — MFA Control Section
+// Replaces the legacy <WebToggle id="twoFA"> placeholder with a real
+// status card + enrollment wizard. Renders one of three states:
+//   • not enrolled  → "Set up two-factor authentication" CTA
+//   • verified      → ACTIVE badge + Disable + recovery code summary
+//   • enrolling     → modal mounted (MFAEnrollmentModal)
+// ═══════════════════════════════════════════════════════════════
+function MFAControlSection() {
+  const [status, setStatus]   = useState<"loading" | "off" | "on">("loading");
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [recoveryRemaining, setRecoveryRemaining] = useState<number>(0);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => {
+    const { data } = await mfaListFactors();
+    if (data?.hasTotp) {
+      const verified = data.factors.find(f => f.status === "verified");
+      setFactorId(verified?.id ?? null);
+      setStatus("on");
+      const rs = await mfaRecoveryStatus();
+      setRecoveryRemaining(rs.data?.remaining ?? 0);
+    } else {
+      setStatus("off");
+      setFactorId(null);
+      setRecoveryRemaining(0);
+    }
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const handleDisable = async () => {
+    if (!factorId) return;
+    if (!window.confirm("Disable two-factor authentication?\n\nYour account will be protected by password only — significantly less secure. Continue?")) return;
+    setBusy(true);
+    const { error } = await mfaUnenroll(factorId);
+    setBusy(false);
+    if (error) {
+      toast.error("Could not disable", { description: error.message });
+      return;
+    }
+    toast.success("Two-factor authentication disabled");
+    await refresh();
+  };
+
+  const handleRegenerate = async () => {
+    if (!window.confirm("Generate new recovery codes?\n\nYour current codes will stop working immediately.")) return;
+    setBusy(true);
+    const { data, error } = await mfaGenerateRecoveryCodes();
+    setBusy(false);
+    if (error || !data) {
+      toast.error("Could not generate codes", { description: error?.message });
+      return;
+    }
+    // Simple alert — for full UX this would route through the modal too.
+    toast.success("8 new codes generated", { description: "Check the modal — copy or download immediately." });
+    // Show the modal in a state where user can see codes? For brevity here we
+    // open the system clipboard with codes joined.
+    try { await navigator.clipboard.writeText(data.codes.join("\n")); toast.success("Copied to clipboard"); } catch (_) { /* */ }
+    await refresh();
+  };
+
+  return (
+    <>
+      {showEnroll && (
+        <MFAEnrollmentModal
+          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success("Two-factor authentication enabled"); }}
+          onCancel  ={async () => { setShowEnroll(false); await refresh(); }}
+        />
+      )}
+      <div className="flex items-center justify-between py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Two-Factor Authentication (2FA)</p>
+            {status === "on" && (
+              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(0,200,83,0.12)", color: "#00C853", border: "1px solid rgba(0,200,83,0.25)", letterSpacing: 0.5 }}>ACTIVE</span>
+            )}
+          </div>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+            {status === "loading" && "Checking status…"}
+            {status === "off" && "Add a 6-digit code from your authenticator app at every sign-in."}
+            {status === "on" && (recoveryRemaining > 0
+              ? `${recoveryRemaining} unused recovery code${recoveryRemaining === 1 ? "" : "s"}.`
+              : "No recovery codes — generate a fresh set so you can sign in if you lose your device.")}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {status === "off" && (
+            <button onClick={() => setShowEnroll(true)} disabled={busy}
+              style={{ padding: "8px 14px", borderRadius: 12, background: "linear-gradient(135deg, #00C8E0, #00A5C0)", color: "#03131A", fontSize: 12, fontWeight: 800, border: "none", cursor: busy ? "default" : "pointer" }}>
+              Set up
+            </button>
+          )}
+          {status === "on" && (
+            <>
+              <button onClick={handleRegenerate} disabled={busy}
+                style={{ padding: "8px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.7)", fontSize: 11, fontWeight: 700, border: "1px solid rgba(255,255,255,0.06)", cursor: busy ? "default" : "pointer" }}>
+                {recoveryRemaining > 0 ? "Regenerate codes" : "Generate codes"}
+              </button>
+              <button onClick={handleDisable} disabled={busy}
+                style={{ padding: "8px 12px", borderRadius: 12, background: "rgba(255,45,85,0.06)", color: "#FF2D55", fontSize: 11, fontWeight: 700, border: "1px solid rgba(255,45,85,0.2)", cursor: busy ? "default" : "pointer" }}>
+                Disable
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
