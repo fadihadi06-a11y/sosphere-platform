@@ -848,8 +848,9 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     },
 
     resolveEmergencyById: async (emergencyId: string) => {
-      const { data: { session } } = await import("../api/supabase-client").then(m => m.supabase.auth.getSession());
-      const resolvedBy = session?.user?.email || "admin";
+      // E1.6-PHASE3: lock-free actor-email lookup for audit trail.
+      const { getStoredUser } = await import("../api/safe-rpc");
+      const resolvedBy = getStoredUser()?.email || "admin";
       const success = await resolveEmergency(emergencyId, resolvedBy);
       if (success) {
         set(s => ({

@@ -1018,8 +1018,9 @@ export function MobileApp() {
       try {
         const { fetchCivilianTier } = await import("./utils/subscription-server");
         const { supabase } = await import("./api/supabase-client");
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+        // E1.6-PHASE3: lock-free session check.
+        const { hasValidStoredSession } = await import("./api/safe-rpc");
+        if (!hasValidStoredSession()) return;
         const tierRes = await fetchCivilianTier(
           async () => await supabase.rpc("get_my_subscription_tier"),
           userPlan,
