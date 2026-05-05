@@ -1080,6 +1080,35 @@ export function DashboardWebPage() {
               >{k}</button>
             ))}
           </div>
+          {/* #145 — Forgot PIN reset (2026-05-04). Clears the user-scoped
+              PIN hash + per-install salt, then redirects to "Set Dashboard
+              PIN". The Supabase session is untouched, so the user lands on
+              PIN-setup not the email/password form. */}
+          <button onClick={() => {
+              const ok = window.confirm(
+                "Reset your dashboard PIN?\n\n" +
+                "You'll be asked to choose a new 6-digit PIN. " +
+                "Your account, data, and login session are not affected."
+              );
+              if (!ok) return;
+              try {
+                const k = pinKeyFor(authUserId);
+                if (k) localStorage.removeItem(k);
+                // Salt regenerates automatically on first PIN set.
+                localStorage.removeItem("sosphere_dashboard_pin_salt");
+                pinVerifiedRef.current = false;
+                setPinInput("");
+                setPinConfirm("");
+                setPinError("");
+                setPinStage("enter");
+                setStep("pin-setup");
+              } catch (_) {
+                setPinError("Could not reset PIN. Try 'Sign in with different account'.");
+              }
+            }}
+            style={{ color: "rgba(0,200,224,0.7)", fontSize: 12, background: "none", border: "none", cursor: "pointer", marginBottom: 8 }}>
+            Forgot PIN? Reset
+          </button>
           <button onClick={async () => {
               // Audit 2026-05-01: explicitly close the PIN gate on
               // "Sign in with different account" so the next user
