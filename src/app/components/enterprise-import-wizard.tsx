@@ -16,6 +16,7 @@ import {
   FileCheck, TrendingUp, Send, Bell, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
+import { safeRpc } from "./api/safe-rpc";
 import { hapticLight } from "./haptic-feedback";
 import Papa from "papaparse";
 import { supabase } from "./api/supabase-client";
@@ -400,18 +401,27 @@ Khalid Omar,خالد عمر,EMP-003,+966509876543,khalid@company.com,Operations,
     setImportPhase("email");
     setImportProgress(60);
 
-    const { data, error } = await supabase.rpc("enqueue_job", {
-      p_job_type:        "bulk_invite",
-      p_company_id:      companyId,
-      p_payload: {
-        items,
-        company_id:      companyId,
-        estimated_count: items.length,
-        source:          "csv_wizard",
+    // E1.6-PHASE3 (2026-05-04): use safeRpc (direct fetch, bypasses
+    // supabase-js auth lock). If the lock is wedged by an unrelated
+    // boot-time holder, supabase.rpc here would hang the wizard at
+    // "Sending welcome email invitations…" forever — exactly what the
+    // user observed during the live E1 test.
+    const { data, error } = await safeRpc<{ ok?: boolean; job_id?: string; deduplicated?: boolean; error?: string }>(
+      "enqueue_job",
+      {
+        p_job_type:        "bulk_invite",
+        p_company_id:      companyId,
+        p_payload: {
+          items,
+          company_id:      companyId,
+          estimated_count: items.length,
+          source:          "csv_wizard",
+        },
+        p_idempotency_key: idempotencyKey,
+        p_max_attempts:    3,
       },
-      p_idempotency_key: idempotencyKey,
-      p_max_attempts:    3,
-    });
+      { timeoutMs: 12000 },
+    );
 
     if (error) {
       // RPC raised — likely auth (42501) or unknown job_type (22023). The
@@ -424,16 +434,15 @@ Khalid Omar,خالد عمر,EMP-003,+966509876543,khalid@company.com,Operations,
       return;
     }
 
-    const result = data as { ok?: boolean; job_id?: string; deduplicated?: boolean; error?: string } | null;
-    if (!result?.ok || !result.job_id) {
-      toast.error(`Could not queue import: ${result?.error ?? "no job id returned"}`);
+    if (!data?.ok || !data.job_id) {
+      toast.error(`Could not queue import: ${data?.error ?? "no job id returned"}`);
       setImportPhase("done");
       setStep(2);
       return;
     }
 
-    setQueuedJobId(result.job_id);
-    setQueuedDeduped(!!result.deduplicated);
+    setQueuedJobId(data.job_id);
+    setQueuedDeduped(!!data.deduplicated);
     setImportProgress(100);
     setImportCount(items.length);
     setImportPhase("done");
