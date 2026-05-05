@@ -91,17 +91,6 @@ const JOB_TYPE_LABEL: Record<string, string> = {
   data_export: "Data Export",
 };
 
-// ── E1.6-DIAG: localStorage breadcrumbs (bypass EnvShield) ──
-// TEMPORARY diagnostic for why useEffect's IIFE never reaches setCompanyId.
-// Read from DevTools Console: localStorage.getItem('_dbg_jobs')
-function dlog(msg: string): void {
-  try {
-    const cur = localStorage.getItem('_dbg_jobs') || '';
-    const next = cur + `\n[${new Date().toISOString().slice(11, 23)}] ${msg}`;
-    // Cap at 32KB so we don't blow up storage
-    localStorage.setItem('_dbg_jobs', next.slice(-32768));
-  } catch (_) { /* non-fatal */ }
-}
 
 // ── Helpers ───────────────────────────────────────────────────
 function relativeTime(iso: string | null): string {
@@ -136,20 +125,17 @@ export function DashboardJobsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingIds, setCancellingIds] = useState<Set<string>>(new Set());
   // E1.6-DIAG: render counter to see if parent re-renders us excessively
-  dlog('E1.RENDER');
 
   // ── Initial load: identity → fetch jobs ─────────────────────
   // E1.6-PHASE3 (2026-05-04): use safeRpc (direct fetch, bypasses
   // supabase-js auth lock) so the Jobs page can never be wedged by an
   // unrelated boot-time _acquireLock holder.
   const loadJobs = useCallback(async (cid: string) => {
-    dlog(`E1.LOADJOBS_CALLED cid=${cid.slice(0,8)}`);
     const { data, error } = await safeRpc<{ ok?: boolean; jobs?: AsyncJob[] }>(
       "get_my_jobs",
       { p_company_id: cid, p_limit: 50 },
       { timeoutMs: 8000 },
     );
-    dlog(`E1.LOADJOBS_RPC_RETURNED err=${error?.message?.slice(0,40) || 'null'} jobs=${(data as any)?.jobs?.length ?? 'NF'}`);
     if (error) {
       toast.error(`Failed to load jobs: ${error.message}`);
       return;
@@ -159,39 +145,29 @@ export function DashboardJobsPage() {
 
   useEffect(() => {
     const runId = Math.random().toString(36).slice(2, 6);
-    dlog(`E1.MOUNT runId=${runId} cfg=${SUPABASE_CONFIG.isConfigured}`);
     if (!SUPABASE_CONFIG.isConfigured) {
-      dlog(`E1.NO_CFG_BAIL runId=${runId}`);
       setLoading(false);
       return;
     }
     let cancelled = false;
     (async () => {
-      dlog(`E1.IIFE_START runId=${runId}`);
       try {
         const id = await loadCanonicalIdentity(supabase);
         const ac = id?.active_company?.id;
-        dlog(`E1.LCID_DONE runId=${runId} cancelled=${cancelled} ac=${ac ? ac.slice(0,8) : 'null'} role=${id?.primary_role || 'null'}`);
         if (cancelled) {
-          dlog(`E1.BAIL_CANCELLED runId=${runId}`);
           return;
         }
         const cid = ac || null;
         setCompanyId(cid);
-        dlog(`E1.SET_CID runId=${runId} cid=${cid ? cid.slice(0,8) : 'null'}`);
         if (cid) {
           await loadJobs(cid);
-          dlog(`E1.LOADJOBS_DONE runId=${runId}`);
         }
         setLoading(false);
-        dlog(`E1.SET_LOADING_FALSE runId=${runId}`);
       } catch (e) {
-        dlog(`E1.IIFE_THREW runId=${runId} err=${(e as Error)?.message?.slice(0, 80) || 'unknown'}`);
       }
     })();
     return () => {
       cancelled = true;
-      dlog(`E1.CLEANUP runId=${runId}`);
     };
   }, [loadJobs]);
 

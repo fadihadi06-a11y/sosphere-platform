@@ -69,65 +69,9 @@ export function validateSupabaseConfig(): { ready: boolean; warnings: string[] }
   return { ready: _isConfigured, warnings };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// E1.6-DIAG-PHASE1: instrument supabase.auth._acquireLock to identify
-// the caller that leaves lockAcquired=true (the original deadlock cause).
-// Logs to localStorage._dbg_lock so EnvShield doesn't filter it.
-// REMOVE after root-cause caller is identified and fixed.
-// ═══════════════════════════════════════════════════════════════════════
-if (_isConfigured && typeof window !== "undefined") {
-  const _ldlog = (msg: string) => {
-    try {
-      const cur = localStorage.getItem("_dbg_lock") || "";
-      const next = cur + "\n[" + new Date().toISOString().slice(11, 23) + "] " + msg;
-      localStorage.setItem("_dbg_lock", next.slice(-65536));
-    } catch (_) { /* non-fatal */ }
-  };
-  // Wrap auth._acquireLock to log every invocation + caller + outcome
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const auth = supabase.auth as any;
-  const origAcquire = auth._acquireLock?.bind(auth);
-  if (typeof origAcquire === "function") {
-    auth._acquireLock = function (timeout: number, fn: () => Promise<unknown>) {
-      const callId = Math.random().toString(36).slice(2, 6);
-      const stackLines = (new Error().stack || "")
-        .split("\n")
-        .slice(2, 6)
-        .map((l) => l.trim().replace(/https?:\/\/[^/]+\/assets\//g, ""))
-        .join(" || ");
-      _ldlog(
-        "ACQ_BEGIN id=" + callId +
-        " pending=" + (auth.pendingInLock?.length ?? "?") +
-        " held=" + auth.lockAcquired +
-        " ttl=" + timeout
-      );
-      _ldlog("  STK[" + callId + "]: " + stackLines.slice(0, 240));
-      const t0 = Date.now();
-      const wrappedFn = async () => {
-        _ldlog("  FN_START id=" + callId + " t=" + (Date.now() - t0));
-        try {
-          const r = await fn();
-          _ldlog("  FN_END   id=" + callId + " t=" + (Date.now() - t0));
-          return r;
-        } catch (e) {
-          _ldlog("  FN_THREW id=" + callId + " t=" + (Date.now() - t0) +
-                 " err=" + (e instanceof Error ? e.message : String(e)).slice(0, 80));
-          throw e;
-        }
-      };
-      const p = origAcquire(timeout, wrappedFn);
-      Promise.resolve(p).then(
-        () => _ldlog("ACQ_END   id=" + callId + " t=" + (Date.now() - t0) +
-                     " pending=" + (auth.pendingInLock?.length ?? "?") +
-                     " held=" + auth.lockAcquired),
-        (e) => _ldlog("ACQ_THREW id=" + callId + " t=" + (Date.now() - t0) +
-                      " err=" + (e instanceof Error ? e.message : String(e)).slice(0, 80))
-      );
-      return p;
-    };
-    console.log("[Supabase] _acquireLock instrumentation installed (E1.6-DIAG-PHASE1)");
-  }
-}
+// E1.6-PHASE3 (2026-05-04): _acquireLock instrumentation removed after
+// root cause identified — see git history for the full diagnostic
+// wrapper if it ever needs to be re-introduced for future debugging.
 
 // ── Auto-configure Storage Adapter when Supabase is connected ──
 if (_isConfigured) {
