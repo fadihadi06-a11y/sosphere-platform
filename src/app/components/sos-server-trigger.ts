@@ -19,6 +19,7 @@
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel, getPositionAgeMs, isPositionStale } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
+import { getStoredBearerToken } from "./api/safe-rpc";
 import { publishNeighborAlert, publishNeighborRetract, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 import { buildAiScriptPayload } from "./ai-voice-call-service";
 import {
@@ -182,9 +183,12 @@ function getTierString(): "free" | "basic" | "elite" {
 
 // Get JWT access token for server-side auth
 async function getAuthToken(): Promise<string | null> {
+  // E1.6-PHASE3 (2026-05-04): read JWT directly from localStorage — never
+  // go through supabase.auth.getSession() on the SOS hot path. If the auth
+  // lock is wedged, getSession() hangs forever and the SOS alert is never
+  // sent. Lives are worth more than SDK ergonomics here.
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ?? null;
+    return getStoredBearerToken();
   } catch {
     return null;
   }
@@ -997,13 +1001,12 @@ export async function replayPendingSOS(): Promise<{
   // If there's no session yet, bail silently; the auth-state-change
   // trigger in startSOSReplayWatcher will re-fire the drain the moment
   // a session exists.
-  try {
-    const { data } = await supabase.auth.getSession();
-    if (!data?.session) {
-      console.log("[SOS-Replay] skipped — no auth session yet");
-      return summary;
-    }
-  } catch {
+  // E1.6-PHASE3 (2026-05-04): JWT-from-localStorage check, lock-free.
+  // Auth-state-change handler in startSOSReplayWatcher wakes us as soon
+  // as a session is hydrated, so missing the auth lock here costs us
+  // nothing.
+  if (!getStoredBearerToken()) {
+    console.log("[SOS-Replay] skipped — no auth session yet");
     return summary;
   }
 

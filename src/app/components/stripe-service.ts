@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from "./api/supabase-client";
+import { getStoredBearerToken } from "./api/safe-rpc";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -39,8 +40,11 @@ export interface StartCheckoutOpts {
 }
 
 async function authedHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  // E1.6-PHASE3 (2026-05-04): JWT from localStorage — bypass auth lock.
+  // If the lock is wedged, getSession() hangs and the user can't even
+  // start a Stripe checkout. Payment surfaces are too sensitive to leak
+  // SDK deadlocks into.
+  const token = getStoredBearerToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     apikey: SUPABASE_ANON_KEY,

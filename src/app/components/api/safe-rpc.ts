@@ -220,3 +220,16 @@ export async function safeSelect<T = unknown>(
 export function hasValidStoredSession(): boolean {
   return _getBearer() !== null;
 }
+
+/**
+ * Returns the stored bearer token from localStorage without touching the
+ * supabase-js auth lock. Use this in SOS / payment / any hot path that
+ * needs to call an Edge Function with Authorization: Bearer <jwt>, where
+ * deadlocking on auth.getSession() is not an acceptable failure mode.
+ *
+ * Returns null if no session is stored, the token can't be parsed, or
+ * the token has expired.
+ */
+export function getStoredBearerToken(): string | null {
+  return _getBearer();
+}
