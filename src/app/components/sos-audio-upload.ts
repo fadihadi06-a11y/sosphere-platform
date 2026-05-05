@@ -28,6 +28,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { getStoredBearerToken } from "./api/safe-rpc";
 import {
   queuePendingAudio,
   getUnsyncedAudio,
@@ -186,16 +187,9 @@ export async function replayPendingAudio(): Promise<{
   if (typeof navigator !== "undefined" && !navigator.onLine) return summary;
   if (!SUPABASE_CONFIG.isConfigured) return summary;
 
-  // Auth gate — don't burn the retry budget before the session exists.
-  try {
-    const { data } = await supabase.auth.getSession();
-    if (!data?.session) {
-      console.log("[SOS-Audio] replay skipped — no auth session yet");
-      return summary;
-    }
-  } catch {
-    // If getSession throws (network, misconfigured client), behave as
-    // if no session — skip replay, let the auth-change listener retry.
+  // E1.6-PHASE3: lock-free auth gate.
+  if (!getStoredBearerToken()) {
+    console.log("[SOS-Audio] replay skipped — no auth session yet");
     return summary;
   }
 

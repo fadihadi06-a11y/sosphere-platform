@@ -38,6 +38,7 @@
  */
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { getStoredUser } from "./api/safe-rpc";
 import type { IncidentRecord } from "./sos-emergency";
 
 const TABLE = "civilian_incidents";
@@ -125,8 +126,8 @@ export async function syncIncidentToSupabase(
   if (!record?.id) return false;
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id || null;
+    // E1.6-PHASE3: read user id from JWT, never go through auth lock.
+    const userId = getStoredUser()?.id ?? null;
 
     const row = shapeRow(record, userId);
     const { error } = await supabase
