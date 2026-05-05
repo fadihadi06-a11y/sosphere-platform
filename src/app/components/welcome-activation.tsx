@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Shield, Eye, EyeOff, CheckCircle2, AlertTriangle, Loader2, ArrowRight, Smartphone } from "lucide-react";
 import { supabase } from "./api/supabase-client";
+import { safeRpc } from "./api/safe-rpc";
 import { useLang } from "./useLang";
 
 type ActivationStep = "loading" | "set-password" | "success" | "error" | "already-active";
@@ -166,13 +167,18 @@ export function WelcomeActivation() {
     // card still shows, but a console warning helps debug if the
     // invitation lookup failed.
     try {
-      const { data: claim, error: claimErr } = await supabase.rpc("accept_invitation");
+      // E1.6-PHASE3 (2026-05-04): use safeRpc — supabase.rpc here goes
+      // through _acquireLock right after auth.updateUser(), so it can
+      // hang the new employee at "set password → activate" forever.
+      const { data: claim, error: claimErr } = await safeRpc<{ ok?: boolean; reason?: string; company_id?: string; role?: string }>(
+        "accept_invitation", {}, { timeoutMs: 8000 },
+      );
       if (claimErr) {
         console.warn("[Welcome] accept_invitation RPC failed (non-fatal):", claimErr.message);
-      } else if (claim && (claim as any).ok === false) {
-        console.warn("[Welcome] No matching invitation:", (claim as any).reason);
+      } else if (claim && claim.ok === false) {
+        console.warn("[Welcome] No matching invitation:", claim.reason);
       } else {
-        console.log("[Welcome] Joined company:", (claim as any)?.company_id, "as", (claim as any)?.role);
+        console.log("[Welcome] Joined company:", claim?.company_id, "as", claim?.role);
       }
     } catch (e) {
       console.warn("[Welcome] accept_invitation threw (non-fatal):", e);
