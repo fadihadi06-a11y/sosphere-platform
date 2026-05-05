@@ -14,10 +14,15 @@ async function fireServerMirror(kind: "tos" | "gps", opts: { version?: string; d
   try {
     const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
     if (!SUPABASE_CONFIG.isConfigured) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    // E1.6-PHASE3: lock-free session check; consent mirror is best-effort.
+    const { hasValidStoredSession, safeRpc } = await import("./api/safe-rpc");
+    if (!hasValidStoredSession()) return;
     await mirrorConsentToServer(
-      async (name, args) => await supabase.rpc(name, args as any),
+      async (name, args) => {
+        const { data, error } = await safeRpc(name, args as Record<string, unknown>);
+        // Mirror supabase.rpc shape (data + error fields).
+        return { data, error };
+      },
       kind,
       opts,
     );
