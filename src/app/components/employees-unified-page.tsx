@@ -658,13 +658,16 @@ export function UnifiedEmployeesPage({
         return;
       }
       // 2) Call the invite-employees edge function to send the email.
-      const { data: { session } } = await supabase.auth.getSession();
+      // E1.6-PHASE3 (2026-05-04): JWT from localStorage — never block invite
+      // on auth lock.
+      const { getStoredBearerToken } = await import("./api/safe-rpc");
+      const token = getStoredBearerToken();
       const url = `${SUPABASE_CONFIG.url}/functions/v1/invite-employees`;
       const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session?.access_token || ""}`,
+          "Authorization": `Bearer ${token || ""}`,
         },
         // Audit 2026-05-02 (CRITICAL employee onboarding fix): without an
         // explicit redirect_to, invite-employees falls back to

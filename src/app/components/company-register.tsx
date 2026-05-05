@@ -1307,10 +1307,12 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                 whileTap={{ scale: 0.97 }}
                 onClick={async () => {
                   try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session?.user) { toast.error("Session expired. Please sign in again."); return; }
+                    // E1.6-PHASE3: lock-free session check + user id read.
+                    const { getStoredUser } = await import("./api/safe-rpc");
+                    const u = getStoredUser();
+                    if (!u) { toast.error("Session expired. Please sign in again."); return; }
 
-                    const userId = session.user.id;
+                    const userId = u.id;
                     // W3-17 (B-20, 2026-04-26): crypto-strong invite code.
                     // Pre-fix used Math.random (32-bit entropy → ~1B combinations
                     // per 6 chars, brute-forceable in <1k attempts). Now:

@@ -18,3 +18,7 @@ supabase/.temp/
 
 .vercel
 .env*.local
+
+# Test artifacts (E2E live tests)
+test-*.csv
+test-e1-*
