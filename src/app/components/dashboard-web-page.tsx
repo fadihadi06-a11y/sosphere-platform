@@ -12,6 +12,7 @@ import {
   XCircle, AlertCircle, ChevronDown,
 } from "lucide-react";
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
+import { safeRpc } from "./api/safe-rpc";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
@@ -671,7 +672,8 @@ export function DashboardWebPage() {
           // [Auth] Unexpected error we kept seeing on every page load.
           // Correct pattern: await + destructure { error } from the result.
           {
-            const { error: invErr } = await supabase.rpc("accept_invitation");
+            // E1.6-PHASE3: safeRpc bypasses auth lock that wedges the dashboard mount path
+            const { error: invErr } = await safeRpc("accept_invitation", {}, { timeoutMs: 8000 });
             if (invErr) {
               console.warn("[Auth] accept_invitation prefetch failed (non-fatal):", invErr.message);
             }
@@ -802,7 +804,7 @@ export function DashboardWebPage() {
     setEmailOtpLoading(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const { data: rl } = await supabase.rpc("check_rate_limit", {
+      const { data: rl } = await safeRpc<unknown>("check_rate_limit", {
         p_bucket: "otp_send",
         p_identifier: normalizedEmail,
         p_max_attempts: 5,
@@ -876,7 +878,7 @@ export function DashboardWebPage() {
   const handleEmailResend = async () => {
     if (emailResendTimer > 0) return;
     const normalizedEmail = email.trim().toLowerCase();
-    const { data: rl } = await supabase.rpc("check_rate_limit", {
+    const { data: rl } = await safeRpc<unknown>("check_rate_limit", {
       p_bucket: "otp_send",
       p_identifier: normalizedEmail,
       p_max_attempts: 5,
