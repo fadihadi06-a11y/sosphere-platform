@@ -37,7 +37,45 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
   const [emailPassword, setEmailPassword] = useState("");
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
+  // AUTH-1 (#171): forgot-password flow state
+  const [resetSending, setResetSending] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const [emailError, setEmailError] = useState("");
+
+  // AUTH-1 (#171): trigger Supabase password recovery email.
+  // The recovery link delivered to the inbox lands on /welcome with
+  // ?type=recovery, where welcome-activation handles the new-password
+  // form. Same UX as initial invite, single code path.
+  const handleForgotPassword = async () => {
+    setEmailError("");
+    setResetMessage("");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError(isAr
+        ? "أدخل بريداً إلكترونياً صحيحاً ثم اضغط نسيت كلمة المرور"
+        : "Enter a valid email first, then tap Forgot password");
+      return;
+    }
+    setResetSending(true);
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${origin}/welcome?type=recovery`,
+      });
+      if (error) {
+        setEmailError(error.message);
+      } else {
+        // Don't reveal whether the address exists — keep the message
+        // identical for "found" and "not found" inputs (anti-enumeration).
+        setResetMessage(isAr
+          ? "تم إرسال رابط إعادة تعيين كلمة المرور إن كان البريد مسجّلاً. تحقّق من صندوق الوارد."
+          : "If that email is registered, a reset link has been sent. Check your inbox.");
+      }
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : "Could not send reset email.");
+    } finally {
+      setResetSending(false);
+    }
+  };
 
   const handleEmailPasswordSubmit = async () => {
     setEmailError("");
@@ -393,6 +431,28 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
               {emailError && (
                 <p style={{ fontSize: 11, color: "#FF2D55", marginBottom: 8, textAlign: "center", ...S }}>{emailError}</p>
               )}
+              {resetMessage && (
+                <p style={{ fontSize: 11, color: "#00C853", marginBottom: 8, textAlign: "center", ...S }}>{resetMessage}</p>
+              )}
+
+              {/* AUTH-1 (#171): Forgot password trigger */}
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetSending}
+                style={{
+                  background: "transparent", border: "none", cursor: resetSending ? "default" : "pointer",
+                  color: "rgba(0,200,224,.7)", fontSize: 11, fontWeight: 600,
+                  marginBottom: 10, alignSelf: "flex-start",
+                  textDecoration: "underline", padding: 0,
+                  opacity: resetSending ? 0.5 : 1,
+                  ...S,
+                }}
+              >
+                {resetSending
+                  ? (isAr ? "جاري الإرسال..." : "Sending...")
+                  : (isAr ? "نسيت كلمة المرور؟" : "Forgot password?")}
+              </button>
 
               <button
                 onClick={handleEmailPasswordSubmit}
