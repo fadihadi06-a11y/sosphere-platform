@@ -40,6 +40,8 @@ export function WelcomeActivation() {
   const [errorMsg, setErrorMsg] = useState("");
   const [userName, setUserName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  // AUTH-1 (#171): true when arrived via password-recovery link.
+  const [isRecovery, setIsRecovery] = useState(false);
 
   // ── Parse Supabase invite tokens from URL hash OR PKCE code ──
   // Audit 2026-04-30 (BREAKING after PKCE pivot): Supabase invites
@@ -59,6 +61,7 @@ export function WelcomeActivation() {
       const queryType    = queryParams.get("type");
 
       const inviteType = hashType || queryType || "invite";
+      if (inviteType === "recovery") setIsRecovery(true);
       // ESLint no-useless-assignment + TS strictNullChecks both happy:
       // declare without initial value; every reachable path either assigns
       // both or returns early before the post-assignment read.
@@ -112,7 +115,10 @@ export function WelcomeActivation() {
         setCompanyName((empData.companies as any).name || "");
       }
 
-      if (inviteType === "invite" || !user.user_metadata?.password_set) {
+      // AUTH-1 (#171): recovery (forgot-password) routes through the same
+      // set-password screen — the user has a session, they just need to
+      // pick a new password. Title/subtitle adapt below.
+      if (inviteType === "invite" || inviteType === "recovery" || !user.user_metadata?.password_set) {
         setStep("set-password");
       } else {
         setStep("already-active");
@@ -234,9 +240,11 @@ export function WelcomeActivation() {
                 <Shield className="size-8" style={{ color: "#00C8E0" }} />
               </div>
               <h1 style={{ fontSize: 24, fontWeight: 800, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.4px", marginBottom: 8 }}>
-                {isAr ? `مرحباً، ${userName || "بك"}` : `Welcome, ${userName || "there"}`}
+                {isRecovery
+                  ? (isAr ? "إعادة تعيين كلمة المرور" : "Reset Your Password")
+                  : (isAr ? `مرحباً، ${userName || "بك"}` : `Welcome, ${userName || "there"}`)}
               </h1>
-              {companyName && (
+              {!isRecovery && companyName && (
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
                   {isAr ? `تمت دعوتك للانضمام إلى` : `You've been invited to join`}
                   {" "}
@@ -244,7 +252,9 @@ export function WelcomeActivation() {
                 </p>
               )}
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)" }}>
-                {isAr ? "اختر كلمة مرور لحساب SOSphere الخاص بك" : "Set a password for your SOSphere account"}
+                {isRecovery
+                  ? (isAr ? "اختر كلمة مرور جديدة لحسابك" : "Choose a new password for your account")
+                  : (isAr ? "اختر كلمة مرور لحساب SOSphere الخاص بك" : "Set a password for your SOSphere account")}
               </p>
             </div>
 
