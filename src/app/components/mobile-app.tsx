@@ -655,19 +655,21 @@ export function MobileApp() {
           try {
             // FOUNDATION-1 / Phase 5b (2026-05-02): canonical identity from
             // get_my_identity() RPC instead of ad-hoc multi-table queries.
-            // The RPC derives primary_role from the AUTHORITATIVE
-            // company_memberships row (not the often-broken profiles.role)
-            // and pulls live employee_data. Replaces 2-query block, gains
-            // honest data even when profiles is stale, full employee_data,
-            // capabilities[], and warnings[] for invariant violations.
-            const { data: identity, error: idErr } = await supabase
-              .rpc("get_my_identity");
+            // E1.6-PHASE3 (2026-05-04): use loadCanonicalIdentity which goes
+            // through safeRpc first (lock-free), preventing the mobile employee
+            // fast-path from being wedged by an unrelated auth-lock holder.
+            const { loadCanonicalIdentity } = await import("./api/canonical-identity");
+            const identity = await loadCanonicalIdentity(supabase);
+            const idErr = identity.warnings.includes("fallback_path_used")
+              ? { message: "fallback path used" }
+              : null;
 
-            const role = (identity as any)?.primary_role;
+            const role = identity?.primary_role;
             if (idErr) {
-              console.warn("[Auth] get_my_identity RPC failed; falling back:", idErr.message);
-            } else if (role === "employee" || role === "dispatcher") {
-              const id = identity as any;
+              console.warn("[Auth] canonical identity used fallback path:", idErr.message);
+            }
+            if (role === "employee" || role === "dispatcher") {
+              const id = identity;
               const empName =
                 id?.employee_data?.name ||
                 id?.profile?.full_name ||
