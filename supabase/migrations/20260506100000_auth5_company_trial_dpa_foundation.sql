@@ -1,10 +1,22 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- AUTH-5 (#175) Phase 1 — Company trial + DPA acceptance FOUNDATION
--- Version:   20260506100000
+-- Version:   20260506100000  (re-applied with two fixes after live testing)
 -- Purpose:   Server-side foundation for B2B trial signup. Mirrors the
 --            civilian_trial_history pattern (CRIT-#12 / 20260428100000)
 --            but adapted for company-level subscriptions and EU/KSA
 --            compliance (DPA acceptance is mandatory before billing).
+--
+-- v2 fixes (2026-05-06, found via integration tests T1-T14 against company "dell"):
+--   FIX-1: ON CONFLICT (company_id) requires the WHERE company_id IS NOT NULL
+--          predicate to match the partial unique index. Without it, every
+--          INSERT raised 42P10 inside the SECDEF function, which the outer
+--          WHEN OTHERS handler swallowed as "internal_error".
+--   FIX-2: Removed UPDATE public.companies. That table has a BEFORE UPDATE
+--          trigger (lock_company_billing_columns) that explicitly forbids
+--          plan / trial_ends_at / billing_cycle changes from anything
+--          other than service_role. Bypassing it would break the security
+--          invariant. The subscriptions row is the single source of truth;
+--          get_company_subscription_state() already reads from there.
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Why we don't add a `company_trial_history` table
 -- ────────────────────────────────────────────────
@@ -364,7 +376,13 @@ BEGIN
     p_employee_limit, p_zone_limit,
     false, now()
   )
-  ON CONFLICT (company_id) DO NOTHING
+  -- ON CONFLICT WHERE clause matches the partial unique-index predicate
+  -- (subscriptions_company_unique_idx). Without the explicit predicate
+  -- Postgres cannot infer the partial index → 42P10 error. With it, the
+  -- conflict arbiter is unambiguous and DO NOTHING returns no row when
+  -- a concurrent caller already inserted.
+  ON CONFLICT (company_id) WHERE company_id IS NOT NULL
+  DO NOTHING
   RETURNING * INTO v_new;
 
   -- Race detector: a parallel call inserted first.
@@ -378,15 +396,16 @@ BEGIN
     );
   END IF;
 
-  -- ── 7) Mirror the trial deadline to companies.trial_ends_at so the
-  --    legacy `companies` field stays in sync with subscriptions. The
-  --    column already exists with a 14-day default; we update it here
-  --    to reflect the actual chosen duration.
-  UPDATE public.companies
-     SET trial_ends_at = v_new.trial_ends_at,
-         plan          = p_plan,
-         billing_cycle = p_billing_cycle
-   WHERE id = p_company_id;
+  -- ── 7) NOTE: we deliberately do NOT mirror trial state to public.companies.
+  --    The companies table has a security trigger
+  --    (lock_company_billing_columns) that, by design, only lets
+  --    service_role mutate plan / trial_ends_at / billing_cycle — Stripe
+  --    webhook is the canonical writer. Bypassing the trigger would defeat
+  --    that invariant. Instead the subscriptions row is the single source
+  --    of truth, and get_company_subscription_state() reads from it. Once
+  --    the trial converts to paid, the Stripe webhook (running as
+  --    service_role) will populate companies.* through the trigger as
+  --    intended.
 
   -- ── 8) Audit ────────────────────────────────────────────────────────
   BEGIN

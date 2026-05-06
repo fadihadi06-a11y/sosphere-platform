@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-06T20:08:33.209Z",
+  "generated_at": "2026-05-06T20:35:07.115Z",
   "total_migrations": 96,
-  "manifest_sha256": "9c34917bb7c37761ed604c1e31e9240ba160f23d1601616d01e296c8d6619893",
+  "manifest_sha256": "8b076901ea2ffae4b823ee71d63ceb96656d85126e0ae90cffe4378b26a7fe03",
   "migrations": [
     {
       "version": "20260415",
@@ -672,8 +672,8 @@
       "version": "20260506100000",
       "name": "auth5_company_trial_dpa_foundation",
       "file": "20260506100000_auth5_company_trial_dpa_foundation.sql",
-      "sha256": "9bb70726723a515df93936ad689db8a7cb3f7ca07c80ed1447db41adeab65da3",
-      "bytes": 25974
+      "sha256": "975cfaa498fc2110e86b4fb839cc819a9c51843af4fc4b566e955a44a52b852b",
+      "bytes": 27430
     }
   ]
 }
