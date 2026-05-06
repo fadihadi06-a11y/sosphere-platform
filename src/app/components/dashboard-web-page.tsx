@@ -560,6 +560,16 @@ export function DashboardWebPage() {
           useDashboardStore.getState().initDashboard();
           pendingLoginRef.current = { name, company: identity.active_company.name };
           setLoginName(name);
+          // PIN INVESTIGATION fix (#5, 2026-05-06):
+          //   The PIN verify screen uses `authUserId` to look up the
+          //   per-user hash. Previously this state was set ONLY by the
+          //   auth-state-change handler (SIGNED_IN event). On a page
+          //   reload of an already-authenticated session, that event
+          //   does NOT fire — only this mount path runs — so authUserId
+          //   stayed null and checkPin(null, pin) failed every time,
+          //   forcing the user to "Forgot PIN? Reset".
+          //   Fix: set authUserId here too, so reloads work.
+          setAuthUserId(session.user.id);
           if (getStoredPin(session.user.id)) {
             setPinInput(""); setPinError("");
             // AUTH-4 Part 2: route through MFA challenge if TOTP factor exists.
