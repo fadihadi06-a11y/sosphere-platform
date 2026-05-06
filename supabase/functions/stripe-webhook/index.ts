@@ -1,4 +1,7 @@
 // SOSphere - Stripe Webhook Handler
+// v8 (AUTH-5 P2 / 2026-05-06): B2B routing — metadata.companyId on the
+//    Checkout Session is now treated as the canonical target for upserts.
+//    Civilian (user_id) flow remains the default when companyId is absent.
 // v6 (B-17): civilian plans + civilian subscriptions schema.
 // v7 (G-29 B-20 2026-04-26): event-id dedup. Pre-fix Stripe at-least-once
 //    delivery could fire `customer.subscription.deleted` twice within ms,
@@ -60,24 +63,62 @@ class UnmappedPriceError extends Error {
   }
 }
 
-async function upsertSubscription(supabase: ReturnType<typeof createClient>, userId: string, sub: StripeSubscription, planIdOverride?: string): Promise<void> {
+/**
+ * AUTH-5 P2 (2026-05-06): polymorphic upsert.
+ *
+ * Old behaviour: always wrote `user_id`, conflict-resolved on `user_id`.
+ * New behaviour: caller passes EITHER `userId` or `companyId` — never
+ * both. The function uses the appropriate UNIQUE constraint:
+ *   - civilian: ON CONFLICT (user_id)
+ *   - company:  ON CONFLICT (company_id)  ← partial unique index added
+ *                                            in 20260506100000.
+ *
+ * The `tier`/`plan` mapping is unchanged; an unmapped price still throws
+ * UnmappedPriceError so the existing recovery path (stripe_unmapped_events)
+ * keeps working.
+ */
+type UpsertTarget = { kind: "user"; userId: string } | { kind: "company"; companyId: string };
+
+async function upsertSubscription(
+  supabase: ReturnType<typeof createClient>,
+  target: UpsertTarget,
+  sub: StripeSubscription,
+  planIdOverride?: string,
+): Promise<void> {
   const priceId = sub.items?.data?.[0]?.price?.id;
   const planId = planIdOverride || sub.metadata?.planId || lookupPlanByPriceEnv(priceId);
   if (!planId) {
-    console.warn(`[stripe-webhook] unmapped price id=${priceId ?? "(none)"} (user=${userId})`);
+    const tag = target.kind === "user" ? `user=${target.userId}` : `company=${target.companyId}`;
+    console.warn(`[stripe-webhook] unmapped price id=${priceId ?? "(none)"} (${tag})`);
     throw new UnmappedPriceError(priceId);
   }
-  await supabase.from("subscriptions").upsert({
-    user_id: userId,
+  // Trial deadline: when Stripe reports status='trialing' the subscription
+  // object exposes trial_end (unix). Mirror it to subscriptions.trial_ends_at
+  // so the in-app countdown stays accurate after Stripe takes over the
+  // lifecycle.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trialEnd = (sub as any).trial_end;
+  const row: Record<string, unknown> = {
     stripe_customer_id: sub.customer,
     stripe_subscription_id: sub.id,
     stripe_price_id: priceId,
     tier: planId,
+    plan: planId,
     status: sub.status,
     current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
     cancel_at_period_end: sub.cancel_at_period_end,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "user_id" });
+  };
+  if (trialEnd && Number.isFinite(trialEnd)) {
+    row.trial_ends_at = new Date(trialEnd * 1000).toISOString();
+  }
+  if (target.kind === "user") {
+    row.user_id = target.userId;
+    await supabase.from("subscriptions").upsert(row, { onConflict: "user_id" });
+  } else {
+    row.company_id = target.companyId;
+    await supabase.from("subscriptions").upsert(row, { onConflict: "company_id" });
+  }
 }
 
 function lookupPlanByPriceEnv(priceId: string | undefined): string | null {
@@ -165,21 +206,25 @@ serve(async (req: Request) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
-        const userId = session.client_reference_id;
-        const subId = session.subscription;
-        if (!userId || !subId) {
-          console.log(`[stripe-webhook] ${evtType} id=${evtId} missing userId/subId, skipping`);
+        const userId    = session.client_reference_id;
+        const companyId = session.metadata?.companyId as string | undefined;
+        const subId     = session.subscription;
+        if (!subId || (!userId && !companyId)) {
+          console.log(`[stripe-webhook] ${evtType} id=${evtId} missing target/subId, skipping`);
           break;
         }
         const sub = await stripeGet(`/subscriptions/${subId}`);
-        await upsertSubscription(supabase, userId, sub, session.metadata?.planId);
+        const target: UpsertTarget = companyId
+          ? { kind: "company", companyId }
+          : { kind: "user", userId: userId as string };
+        await upsertSubscription(supabase, target, sub, session.metadata?.planId);
         // Audit #5 / B1 (2026-04-29): record the paid-plan transition.
         // Required for compliance + GDPR export. Fire-and-forget — Stripe
         // already retries the webhook on failure, no need to fail twice.
         await supabase.rpc("log_sos_audit", {
           p_action: "stripe_checkout_completed",
           p_actor_user_id: userId,
-          p_actor_level: "user",
+          p_actor_level: companyId ? "owner" : "user",
           p_category: "billing",
           p_operation: "CREATE",
           p_metadata: {
@@ -187,33 +232,45 @@ serve(async (req: Request) => {
             stripe_event_type: evtType,
             subscription_id: subId,
             plan_id: session.metadata?.planId || null,
+            company_id: companyId || null,
           },
         }).then((r: { error?: unknown }) => {
           if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
         });
-        console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${userId} sub=${subId}`);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} ${companyId ? `company=${companyId}` : `user=${userId}`} sub=${subId}`);
         break;
       }
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object;
+        // AUTH-5 P2: look up both user_id and company_id columns. If neither
+        // is present yet (first-touch race with checkout.session.completed)
+        // we fall back to the metadata.companyId on the Stripe subscription
+        // object itself — Stripe carries metadata across to subscription
+        // events when set on the Checkout Session.
         const { data: row, error: selErr } = await supabase
-          .from("subscriptions").select("user_id")
+          .from("subscriptions").select("user_id, company_id")
           .eq("stripe_customer_id", sub.customer).maybeSingle();
         if (selErr) {
           console.error(`[stripe-webhook] ${evtType} id=${evtId} DB select failed:`, selErr);
           return new Response(JSON.stringify({ error: "db_read_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
         }
-        if (!row?.user_id) {
-          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no user mapped to customer ${sub.customer}`);
+        const metadataCompanyId = (sub as { metadata?: Record<string, string> }).metadata?.companyId as string | undefined;
+        const target: UpsertTarget | null =
+          row?.company_id   ? { kind: "company", companyId: row.company_id as string }
+        : row?.user_id      ? { kind: "user",    userId:    row.user_id as string }
+        : metadataCompanyId ? { kind: "company", companyId: metadataCompanyId }
+        : null;
+        if (!target) {
+          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no user/company mapped to customer ${sub.customer}`);
           break;
         }
-        await upsertSubscription(supabase, row.user_id, sub);
+        await upsertSubscription(supabase, target, sub);
         // Audit #5 / B1: record the subscription change.
         await supabase.rpc("log_sos_audit", {
           p_action: "stripe_subscription_changed",
-          p_actor_user_id: row.user_id,
-          p_actor_level: "user",
+          p_actor_user_id: target.kind === "user" ? target.userId : (row?.user_id ?? null),
+          p_actor_level: target.kind === "company" ? "owner" : "user",
           p_category: "billing",
           p_operation: "UPDATE",
           p_metadata: {
@@ -222,11 +279,12 @@ serve(async (req: Request) => {
             subscription_id: sub.id,
             status: sub.status,
             cancel_at_period_end: sub.cancel_at_period_end,
+            company_id: target.kind === "company" ? target.companyId : null,
           },
         }).then((r: { error?: unknown }) => {
           if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
         });
-        console.log(`[stripe-webhook] ${evtType} id=${evtId} user=${row.user_id}`);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} ${target.kind}=${target.kind === "user" ? target.userId : target.companyId}`);
         break;
       }
       case "customer.subscription.deleted": {
@@ -241,9 +299,9 @@ serve(async (req: Request) => {
         // Audit #5 / B1: record the cancellation.
         // We re-fetch the user_id so the audit row is correlated.
         const { data: deletedRow } = await supabase
-          .from("subscriptions").select("user_id")
+          .from("subscriptions").select("user_id, company_id")
           .eq("stripe_subscription_id", sub.id).maybeSingle();
-        if (deletedRow?.user_id) {
+        if (deletedRow?.user_id || deletedRow?.company_id) {
           await supabase.rpc("log_sos_audit", {
             p_action: "stripe_subscription_cancelled",
             p_actor_user_id: deletedRow.user_id,
@@ -254,6 +312,7 @@ serve(async (req: Request) => {
               stripe_event_id: evtId,
               stripe_event_type: evtType,
               subscription_id: sub.id,
+              company_id: deletedRow?.company_id ?? null,
             },
           }).then((r: { error?: unknown }) => {
             if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
@@ -276,9 +335,9 @@ serve(async (req: Request) => {
         // Audit #5 / B1: record payment failure for forensics.
         if (inv.subscription) {
           const { data: failRow } = await supabase
-            .from("subscriptions").select("user_id")
+            .from("subscriptions").select("user_id, company_id")
             .eq("stripe_subscription_id", inv.subscription).maybeSingle();
-          if (failRow?.user_id) {
+          if (failRow?.user_id || failRow?.company_id) {
             await supabase.rpc("log_sos_audit", {
               p_action: "stripe_payment_failed",
               p_actor_user_id: failRow.user_id,
@@ -291,6 +350,7 @@ serve(async (req: Request) => {
                 subscription_id: inv.subscription,
                 amount_due: inv.amount_due || null,
                 attempt_count: inv.attempt_count || null,
+                company_id: failRow?.company_id ?? null,
               },
             }).then((r: { error?: unknown }) => {
               if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
@@ -367,4 +427,3 @@ serve(async (req: Request) => {
     headers: { "Content-Type": "application/json" },
   });
 });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
