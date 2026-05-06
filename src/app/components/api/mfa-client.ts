@@ -265,7 +265,11 @@ export async function mfaListFactorsLockFree(): Promise<MfaResult<{
   const ctrl = new AbortController();
   const tmId = setTimeout(() => ctrl.abort(), 6000);
   try {
-    const resp = await fetch(`${SUPABASE_URL}/auth/v1/factors`, {
+    // Live test 2026-05-06 finding: GET /auth/v1/factors returns 405.
+    // Supabase Auth doesn't expose a separate factors endpoint — the SDK
+    // reads from the user object. So we GET /auth/v1/user and pull from
+    // user.factors[].
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: {
         apikey: ANON_KEY,
         Authorization: `Bearer ${token}`,
@@ -275,10 +279,9 @@ export async function mfaListFactorsLockFree(): Promise<MfaResult<{
     if (!resp.ok) {
       return { data: null, error: { message: `HTTP ${resp.status}` } };
     }
-    const body = await resp.json();
-    // The endpoint returns { all: [...], totp: [...] } in supabase-js v2.39+
-    // and just an array in older versions. Normalize.
-    const totpRaw = (body && (body.totp || (Array.isArray(body) ? body.filter((f: { factor_type?: string; status?: string }) => f.factor_type === "totp") : []))) || [];
+    const user = await resp.json();
+    const totpRaw = (Array.isArray(user.factors) ? user.factors : [])
+      .filter((f: { factor_type?: string; status?: string }) => f.factor_type === "totp");
     const factors = (totpRaw as { id: string; status: string }[]).map(f => ({ id: f.id, type: "totp", status: f.status }));
     return {
       data: {
