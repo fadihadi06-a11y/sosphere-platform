@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Card as DSCard, Badge, Divider } from "./design-system";
 import { employeeUsagePercent, createCompanyState, trialDaysRemaining, isTrial as isTrialFn, isTrialExpired, type PlanTier } from "./mobile-company";
+import { LiveBillingPanel } from "./live-billing-panel";  // AUTH-5 P4b (#175)
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, calculateMonthlyBill } from "../constants/pricing";
@@ -370,6 +371,17 @@ export function BillingPage({ companyState, webMode = false }: {
             <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{statusLabel[billingStatus] ?? "Active"}</span>
           </div>
         </div>
+
+        {/* AUTH-5 P4b (#175): live server-of-truth billing panel.
+            Renders at the very top of the page so the owner sees the
+            actual subscription state (status / trial deadline / DPA
+            version) before the legacy mock UI below it. Reads via
+            get_company_subscription_state RPC; takes ownership of the
+            Cancel Trial / Manage Payment / Upgrade buttons which now
+            route through the new B2B Stripe edge functions. */}
+        <LiveBillingPanel
+          companyId={typeof window !== "undefined" ? localStorage.getItem("sosphere_company_id") : null}
+        />
 
         {/* PART E: Data Deletion Warning — shown when trial expired */}
         {trialExpired && deletionDate && (
