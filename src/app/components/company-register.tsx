@@ -189,6 +189,15 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
+  // AUTH-5 P3 (#175): DPA acceptance is required before the company
+  // trial can begin. Captured at Step 5 so the owner cannot proceed to
+  // Step 6 (Launch) without explicit consent. signerTitle defaults to
+  // "Owner" but is editable — the legal record stores whatever the
+  // signer attests.
+  const [dpaAccepted, setDpaAccepted] = useState<boolean>(false);
+  const [signerTitle, setSignerTitle] = useState<string>("Owner");
+  const DPA_VERSION = "2026-05-06";
+
   // Step 6: Success
   // W3-17 (B-20, 2026-04-26): crypto-strong invite display code matching the
   // submit-time generator at the bottom of this file. Pre-fix used Math.random
@@ -211,7 +220,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
       case 2: return hasZones !== null;
       case 3: return hasZones ? zones.length >= 1 : true;
       case 4: return empMethod === "later" || (empMethod === "manual" && manualEmployees.length >= 1) || (empMethod === "csv" && csvUploaded);
-      case 5: return selectedPlan !== null;
+      case 5: return selectedPlan !== null && dpaAccepted && signerTitle.trim().length >= 2;
       default: return true;
     }
   };
@@ -1153,6 +1162,60 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                   <span style={{ color: "#00C853", fontWeight: 700 }}>14-day free trial.</span> Card saved but not charged until trial ends. Cancel anytime.
                 </p>
               </div>
+
+              {/* AUTH-5 P3: DPA acceptance gate. Required before the trial
+                  can be activated server-side (start_company_trial enforces
+                  current_dpa_version is accepted). The acceptance row goes
+                  to company_dpa_acceptances with IP / UA / signer snapshot
+                  for legal forensics (EU GDPR Art. 28, KSA PDPL Art. 7). */}
+              <div className="mt-3 p-3 rounded-xl"
+                style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.15)" }}>
+                <div className="flex items-start gap-2.5 mb-3">
+                  <ShieldCheck className="size-4 shrink-0 mt-0.5" style={{ color: "#00C8E0" }} />
+                  <div className="flex-1">
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
+                      Data Processing Agreement
+                    </p>
+                    <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.55 }}>
+                      As employer, you are the data controller for your employees\' data.
+                      SOSphere processes it on your behalf under the DPA (v{DPA_VERSION}).
+                      Required by GDPR Art. 28 and KSA PDPL Art. 7.
+                    </p>
+                    <a href="/legal/dpa" target="_blank" rel="noopener"
+                       style={{ fontSize: 10, color: "#00C8E0", textDecoration: "underline", marginTop: 4, display: "inline-block" }}>
+                      Read full DPA →
+                    </a>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    Your title (signer of record)
+                  </label>
+                  <input type="text" value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="e.g. CEO, CTO, DPO, IT Manager"
+                    maxLength={80}
+                    className="w-full px-3 py-2 rounded-lg outline-none"
+                    style={{
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "#fff", fontSize: 12,
+                    }} />
+                </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={dpaAccepted}
+                    onChange={(e) => setDpaAccepted(e.target.checked)}
+                    style={{
+                      marginTop: 2, accentColor: "#00C8E0",
+                      width: 14, height: 14, cursor: "pointer",
+                    }} />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.5 }}>
+                    I, <span style={{ color: "#00C8E0", fontWeight: 700 }}>{ownerName || "the signer"}</span>{signerTitle.trim() ? ` (${signerTitle.trim()})` : ""}, accept the SOSphere DPA v{DPA_VERSION} on behalf of <span style={{ color: "#00C8E0", fontWeight: 700 }}>{companyName || "this company"}</span>.
+                  </span>
+                </label>
+              </div>
             </motion.div>
           )}
 
@@ -1492,6 +1555,52 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     }
 
                     console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: invitationsPayload.length, invited_via_email: inviteableEmployees.length });
+
+                    // ──────────────────────────────────────────────────────
+                    // AUTH-5 P3 (#175): record DPA acceptance + start trial.
+                    //
+                    // Order matters: accept_company_dpa MUST land first, because
+                    // start_company_trial validates the current DPA version is
+                    // accepted before allowing the subscription row to be
+                    // inserted. Both calls are idempotent server-side.
+                    //
+                    // Failure handling: if either RPC fails we surface a soft
+                    // toast but DO NOT roll back the company registration —
+                    // the registration itself succeeded, and the owner can
+                    // retry trial activation from Settings later. Safer than
+                    // aborting a half-created company that already has
+                    // employees seeded.
+                    // ──────────────────────────────────────────────────────
+                    try {
+                      const dpaRes = await supabase.rpc("accept_company_dpa", {
+                        p_company_id:       companyId,
+                        p_dpa_version:      DPA_VERSION,
+                        p_signer_full_name: ownerName,
+                        p_signer_title:     signerTitle.trim() || "Owner",
+                      });
+                      if (dpaRes.error || !(dpaRes.data as { success?: boolean })?.success) {
+                        console.warn("[Register] accept_company_dpa failed:", dpaRes.error?.message || (dpaRes.data as { reason?: string })?.reason);
+                        toast.error("DPA acceptance failed — you can retry from Settings.");
+                      } else {
+                        const trialRes = await supabase.rpc("start_company_trial", {
+                          p_company_id:     companyId,
+                          p_plan:           planId,
+                          p_duration_days:  14,
+                          p_billing_cycle:  billing,
+                          p_employee_limit: recommendedPlan.id === "enterprise" ? 35000 : (recommendedPlan.id === "business" ? 500 : (recommendedPlan.id === "growth" ? 100 : 25)),
+                          p_zone_limit:     recommendedPlan.id === "enterprise" ? 999 : (recommendedPlan.id === "business" ? 999 : (recommendedPlan.id === "growth" ? 10 : 3)),
+                        });
+                        if (trialRes.error || !(trialRes.data as { success?: boolean })?.success) {
+                          console.warn("[Register] start_company_trial failed:", trialRes.error?.message || (trialRes.data as { reason?: string })?.reason);
+                          toast.error("Trial activation failed — you can retry from Settings.");
+                        } else {
+                          console.log("[Register] Trial active:", trialRes.data);
+                        }
+                      }
+                    } catch (e) {
+                      console.warn("[Register] DPA/trial RPC threw (non-fatal):", e);
+                    }
+
                     toast.success("Company registered successfully!");
 
                     onComplete(companyName, { companyName, plan: planId, billing, employeeCount: totalEmp });
