@@ -53,17 +53,26 @@ export function MFAEnrollmentModal({ onComplete, onCancel }: MFAEnrollmentModalP
   // Track unmount: if user dismisses mid-enrollment, unenroll the dangling
   // factor so they don't leave Supabase with an unverified TOTP factor that
   // would prevent re-enrollment until manually cleaned up.
-  const factorIdRef = useRef<string | null>(null);
+  //
+  // BUG FIX (AUTH-4 P2 live test, 2026-05-06):
+  //   The previous version captured `codes` from the first render's closure
+  //   (deps = []), so at unmount it ALWAYS saw `codes = null` and ALWAYS
+  //   unenrolled — even after a fully successful flow. The result was that
+  //   every successful enrollment was immediately silently undone, leaving
+  //   the user with NO factor (aal1 forever, no MFA gate).
+  //
+  //   Fix: use a ref `completedRef` that the post-verify path flips to
+  //   true. The cleanup checks the ref (always current) instead of the
+  //   stale `codes` closure. Successful flows skip unenroll; only true
+  //   mid-enrollment dismissals get cleaned up.
+  const factorIdRef  = useRef<string | null>(null);
+  const completedRef = useRef<boolean>(false);
   useEffect(() => {
     return () => {
-      // Component is unmounting. If we have an in-progress factor and the
-      // user did NOT complete (no codes shown), unenroll it best-effort.
-      if (factorIdRef.current && !codes) {
+      if (factorIdRef.current && !completedRef.current) {
         void mfaUnenroll(factorIdRef.current);
       }
     };
-    // codes intentionally outside deps — we only want this on real unmount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Step transitions ──────────────────────────────────────────────
@@ -103,10 +112,12 @@ export function MFAEnrollmentModal({ onComplete, onCancel }: MFAEnrollmentModalP
     if (r.error || !r.data) {
       // Factor IS verified, but codes failed. Move on but warn.
       setVerifyError(r.error?.message || "Could not generate recovery codes.");
+      completedRef.current = true;
       setCodes([]);
       setStep("codes");
       return;
     }
+    completedRef.current = true;
     setCodes(r.data.codes);
     setStep("codes");
   };
