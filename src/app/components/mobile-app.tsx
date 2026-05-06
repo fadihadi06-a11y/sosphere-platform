@@ -31,6 +31,7 @@ import { LoginWelcome } from "./login-welcome";
 import { EvacuationScreen, EvacuationAlertOverlay } from "./evacuation-screen";
 import { NeighborAlertOverlay } from "./neighbor-alert-overlay";
 import { BiometricGateModal } from "./biometric-gate-modal-v2";
+import { MFAChallengeModal } from "./mfa-challenge-modal";
 import { getBiometricLockEnabled } from "./biometric-lock-settings";
 import { clearBiometricSession } from "./biometric-gate";
 import {
@@ -218,7 +219,8 @@ type Screen =
   | "help"
   | "elite-features"
   | "mission-tracker"
-  | "safe-walk";
+  | "safe-walk"
+  | "mfa-challenge";
 
 export function MobileApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
@@ -705,7 +707,8 @@ export function MobileApp() {
               screenHistoryRef.current = [];
 
               setIsRestoring(false);
-              navigate("employee-dashboard");
+              // AUTH-4 P3b: MFA gate before employee dashboard.
+              await gateMfaThenNavigate("employee-dashboard");
               console.log(`[Auth] FOUNDATION-1 P5: ${empName} → employee-dashboard (${companyName || companyId}, role=${role})`);
               return;
             }
@@ -788,9 +791,11 @@ export function MobileApp() {
 
           if (!ageRes.verified) {
             console.log(`[Auth] age-verification ${ageRes.reason} → routing to register`);
-            navigate("individual-register");
+            // AUTH-4 P3b: MFA gate before age-gate register too.
+            await gateMfaThenNavigate("individual-register");
           } else {
-            navigate("individual-home");
+            // AUTH-4 P3b: MFA gate before civilian home.
+            await gateMfaThenNavigate("individual-home");
             console.log("[Auth] Fully restored user:", savedProfile.name);
           }
           return;
@@ -1292,6 +1297,43 @@ export function MobileApp() {
       screenHistoryRef.current = screenHistoryRef.current.slice(0, -1);
       setScreen(to);
     }
+  };
+
+  // AUTH-4 Part 3b (#174): MFA login gate for the mobile app.
+  // Before navigating to a terminal screen (employee-dashboard,
+  // individual-home, individual-register) we check whether the user has a
+  // verified TOTP factor + an AAL1 session. If so we re-route to a
+  // "mfa-challenge" screen and remember the original destination, mirroring
+  // dashboard-web-page.tsx. SOS resume DOES NOT route through this — life
+  // safety must never be gated by MFA.
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaPendingNext, setMfaPendingNext] = useState<Screen | null>(null);
+
+  const gateMfaThenNavigate = async (next: Screen) => {
+    try {
+      const [{ mfaListFactorsLockFree }, { getStoredBearerToken }] = await Promise.all([
+        import("./api/mfa-client"),
+        import("./api/safe-rpc"),
+      ]);
+      const tok = getStoredBearerToken();
+      let aal: string | null = null;
+      if (tok) {
+        try {
+          const payload = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+          aal = typeof payload.aal === "string" ? payload.aal : null;
+        } catch { /* malformed token claim — fall through */ }
+      }
+      if (aal === "aal2") { navigate(next); return; }
+      const { data } = await mfaListFactorsLockFree();
+      const verified = data?.factors?.find(f => f.status === "verified");
+      if (data?.hasTotp && verified) {
+        setMfaFactorId(verified.id);
+        setMfaPendingNext(next);
+        navigate("mfa-challenge");
+        return;
+      }
+    } catch { /* network / parse failure — never block the user, fall through */ }
+    navigate(next);
   };
 
   // Android hardware back button handler — goBack must be declared above this
@@ -2041,6 +2083,33 @@ export function MobileApp() {
                   navigate("welcome", -1);
                 }}
                 t={t}
+              />
+            )}
+
+            {/* AUTH-4 Part 3b (#174): MFA challenge gate. Rendered when
+                gateMfaThenNavigate detected a verified TOTP factor + AAL1
+                session. On verify → navigate to mfaPendingNext. On cancel →
+                sign out + welcome (the only safe escape from a half-elevated
+                state). */}
+            {screen === "mfa-challenge" && mfaFactorId && (
+              <MFAChallengeModal
+                factorId={mfaFactorId}
+                onVerified={() => {
+                  const dest = mfaPendingNext || "individual-home";
+                  setMfaFactorId(null);
+                  setMfaPendingNext(null);
+                  navigate(dest);
+                }}
+                onCancel={async () => {
+                  try {
+                    const { supabase } = await import("./api/supabase-client");
+                    await supabase.auth.signOut();
+                  } catch { /* offline — local clear still happens */ }
+                  clearUserDataOnLogout();
+                  setMfaFactorId(null);
+                  setMfaPendingNext(null);
+                  navigate("welcome", -1);
+                }}
               />
             )}
 
