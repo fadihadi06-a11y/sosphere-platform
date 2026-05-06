@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-03T20:32:50.774Z",
-  "total_migrations": 93,
-  "manifest_sha256": "f2a9931e7d434cdb2696c3846d5704af8b66382fd6e4b21a7b27e5fd152eddb9",
+  "generated_at": "2026-05-06T19:47:54.133Z",
+  "total_migrations": 95,
+  "manifest_sha256": "bdfa6c1202cbb7216ce2ddd0e405226d1ae091b06bb4c3e1a6f2bb4b9c49791d",
   "migrations": [
     {
       "version": "20260415",
@@ -653,6 +653,20 @@
       "file": "20260503201336_e1_6_1_seat_limit_in_enqueue_job.sql",
       "sha256": "d49e9cf064db3e52a625280584825c86eaf49c04611031ded7708abbb4fd5963",
       "bytes": 9040
+    },
+    {
+      "version": "20260505000000",
+      "name": "auth4_mfa_recovery_codes",
+      "file": "20260505000000_auth4_mfa_recovery_codes.sql",
+      "sha256": "5e4a13dfbd43839c649fe43846382051453f47234e2ab8504082a749d3393897",
+      "bytes": 10266
+    },
+    {
+      "version": "20260506000000",
+      "name": "auth4_part3a_mfa_audit_events",
+      "file": "20260506000000_auth4_part3a_mfa_audit_events.sql",
+      "sha256": "ab7ac9d24fb44b2a0f4b91653b30b9b4f8da65bb43e3310ce2b1ec6551e3932f",
+      "bytes": 8894
     }
   ]
 }
