@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
 import { safeRpc } from "./api/safe-rpc";
+import { MFAChallengeModal } from "./mfa-challenge-modal";
+import { mfaListFactors } from "./api/mfa-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
@@ -36,7 +38,8 @@ type LoginStep =
   | "dashboard"
   | "register"
   | "pin-setup"
-  | "pin-verify";
+  | "pin-verify"
+  | "mfa-challenge";
 
 // ── Lightweight Toast ─────────────────────────────────────────
 type ToastType = "error" | "success" | "info";
@@ -345,6 +348,38 @@ export function DashboardWebPage() {
   const PIN_LEGACY_SALT = "sosphere_pin_salt_2026";    // for legacy hash recognition
   const pinKeyFor = (userId: string | null | undefined): string | null =>
     userId && userId.length >= 8 ? PIN_KEY_PREFIX + userId : null;
+
+  // AUTH-4 Part 2 (#208): check for a verified TOTP factor; if present
+  // and the current AAL hasn't been elevated to aal2, route to the
+  // mfa-challenge step. Otherwise route to whatever step was requested.
+  // The web flow always sets the next step to "pin-verify" after auth,
+  // so this helper takes the place of those direct setStep calls.
+  const gateNextStep = async (next: "pin-verify" | "pin-setup") => {
+    try {
+      const { data } = await mfaListFactors();
+      if (data?.hasTotp && data.factors.length > 0) {
+        // Pull session AAL — if already aal2 (rare, but possible after
+        // recent challenge), skip the prompt.
+        const sess = await import("./api/safe-rpc").then(m => m.getStoredBearerToken());
+        let aal: string | null = null;
+        if (sess) {
+          try {
+            const payload = JSON.parse(atob(sess.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+            aal = typeof payload.aal === "string" ? payload.aal : null;
+          } catch { /* ignore */ }
+        }
+        if (aal !== "aal2") {
+          const verified = data.factors.find(f => f.status === "verified");
+          if (verified) {
+            setMfaFactorId(verified.id);
+            setStep("mfa-challenge");
+            return;
+          }
+        }
+      }
+    } catch { /* MFA listing failed → fall through to original step */ }
+    setStep(next);
+  };
   const getStoredPin = (userId: string | null | undefined): string | null => {
     const k = pinKeyFor(userId);
     if (!k) return null;
@@ -458,6 +493,8 @@ export function DashboardWebPage() {
     return false;
   };
   const [step, setStep] = useState<LoginStep>("loading");
+  // AUTH-4 Part 2 (#208): factor id for the active MFA challenge.
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [loginName, setLoginName] = useState("Admin");
   const [loginCompany, setLoginCompany] = useState("Your Company");
 
@@ -523,7 +560,8 @@ export function DashboardWebPage() {
           setLoginName(name);
           if (getStoredPin(session.user.id)) {
             setPinInput(""); setPinError("");
-            setStep("pin-verify");
+            // AUTH-4 Part 2: route through MFA challenge if TOTP factor exists.
+            await gateNextStep("pin-verify");
           } else {
             doLogin(name, identity.active_company.name);
           }
@@ -570,7 +608,7 @@ export function DashboardWebPage() {
   // 6 historical bypass paths (handler #1 + handler #2 catch-alls,
   // DB-error paths, no-PIN owner branch) all funnel through here
   // and are now safe.
-  const doLogin = useCallback((name: string, company: string) => {
+  const doLogin = useCallback(async (name: string, company: string) => {
     if (!mountedRef.current) return;
 
     // ── PIN GATE ──
@@ -581,10 +619,12 @@ export function DashboardWebPage() {
       setLoginName(name);
       if (getStoredPin(session.user.id)) {
         setPinInput(""); setPinError("");
-        setStep("pin-verify");
+        // AUTH-4 Part 2: route through MFA challenge if TOTP factor exists.
+        await gateNextStep("pin-verify");
       } else {
         setPinInput(""); setPinConfirm(""); setPinStage("enter");
-        setStep("pin-setup");
+        // AUTH-4 Part 2: same gate before initial PIN setup.
+        await gateNextStep("pin-setup");
       }
       return;
     }
@@ -690,10 +730,11 @@ export function DashboardWebPage() {
             setLoginName(name);
             if (getStoredPin(session.user.id)) {
               setPinInput(""); setPinError("");
-              setStep("pin-verify");
+              // AUTH-4 Part 2: gate via MFA challenge.
+              await gateNextStep("pin-verify");
             } else {
               setPinInput(""); setPinConfirm(""); setPinStage("enter");
-              setStep("pin-setup");
+              await gateNextStep("pin-setup");
             }
           } else {
             // ── NEW USER → REGISTER ──
@@ -1009,6 +1050,34 @@ export function DashboardWebPage() {
   }
 
   // ── Render: PIN Verify ──
+  if (step === "mfa-challenge") {
+    // AUTH-4 Part 2 (#208): block the dashboard until MFA is verified.
+    if (!mfaFactorId) {
+      // Defensive — should never happen; fall back to PIN.
+      setStep("pin-verify");
+      return null;
+    }
+    return (
+      <MFAChallengeModal
+        factorId={mfaFactorId}
+        onVerified={() => {
+          // Once aal2 is reached (TOTP) or recovery code is consumed,
+          // proceed to the existing PIN gate.
+          setMfaFactorId(null);
+          setStep("pin-verify");
+        }}
+        onCancel={async () => {
+          // Sign out completely if user bails on MFA.
+          pinVerifiedRef.current = false;
+          const { completeLogout } = await import("./api/complete-logout");
+          await completeLogout();
+          setMfaFactorId(null);
+          setStep("form");
+        }}
+      />
+    );
+  }
+
   if (step === "pin-verify") {
     return (
       <div className="relative flex items-center justify-center w-screen h-screen overflow-hidden"
