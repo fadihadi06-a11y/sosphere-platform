@@ -111,6 +111,7 @@ import { ComplianceReportsPage } from "./compliance-reports";
 // ── NEW: Smart Admin Hints ──────────────────────────────────────
 import { AdminHintBar } from "./admin-hints";
 import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout";
+import { LiveTrialBanner } from "./trial-banner-live";  // AUTH-5 P4 (#175)
 import { LeaderboardPage } from "./dashboard-leaderboard-page";
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
@@ -1418,6 +1419,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         isSuspended={sessionTimeoutState.isSuspended}
         onStayLoggedIn={sessionTimeoutState.resetTimer}
       />
+      {/* AUTH-5 P4 (#175): live trial countdown / past_due / DPA renewal.
+          Reads server-of-truth via get_company_subscription_state RPC,
+          NEVER trusts localStorage for billing decisions. The banner
+          self-hides for everything except the four states it knows
+          about, so we can mount it unconditionally and let it decide. */}
+      <LiveTrialBanner companyId={typeof window !== "undefined" ? localStorage.getItem("sosphere_company_id") : null} />
       {/* FIX 3: Trial Expired Overlay — blocks all pages except Settings + Billing */}
       {isTrialExpired(companyState) && isPageBlockedByTrial(currentPage, companyState) && (
         <TrialExpiredOverlay
