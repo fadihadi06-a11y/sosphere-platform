@@ -33,6 +33,10 @@ export interface StartCheckoutOpts {
   cycle: StripeCycle;
   /** Extra seats beyond the plan's bundled count (optional). */
   seats?: number;
+  /** AUTH-5 P2 (#175): when set, the checkout subscribes the COMPANY
+   *  (B2B) instead of the individual user. Caller MUST be company owner;
+   *  the edge function verifies via is_company_owner RPC. */
+  companyId?: string;
   /** Absolute URL to return to on success — defaults to current page + `?ok=1`. */
   successUrl?: string;
   /** Absolute URL to return to on cancel — defaults to current page + `?cancelled=1`. */
@@ -72,11 +76,12 @@ export async function startCheckout(opts: StartCheckoutOpts): Promise<void> {
     method: "POST",
     headers: await authedHeaders(),
     body: JSON.stringify({
-      planId: opts.planId,
-      cycle: opts.cycle,
-      seats: opts.seats,
+      planId:    opts.planId,
+      cycle:     opts.cycle,
+      seats:     opts.seats,
+      companyId: opts.companyId,           // AUTH-5 P2: optional B2B target.
       successUrl: opts.successUrl || fallbackOk,
-      cancelUrl: opts.cancelUrl || fallbackCancel,
+      cancelUrl:  opts.cancelUrl  || fallbackCancel,
     }),
   });
 
@@ -96,11 +101,19 @@ export async function startCheckout(opts: StartCheckoutOpts): Promise<void> {
 }
 
 /**
- * Open the Stripe Billing Portal for the current user. Redirects
- * the browser on success. Throws if the user has no Stripe customer
- * on file (i.e. they never subscribed through us).
+ * Open the Stripe Billing Portal for the user or for a company they
+ * own. Redirects the browser on success. Throws if no Stripe customer
+ * is on file for the chosen target (the user has never subscribed via
+ * us, or the company has no paid subscription yet).
+ *
+ * AUTH-5 P2: pass `companyId` to manage a company subscription. The
+ * edge function verifies ownership via is_company_owner before issuing
+ * the portal session.
  */
-export async function openBillingPortal(returnUrl?: string): Promise<void> {
+export async function openBillingPortal(
+  returnUrl?: string,
+  companyId?: string,
+): Promise<void> {
   if (!SUPABASE_URL) throw new Error("Supabase URL not configured");
 
   const res = await fetch(PORTAL_URL, {
@@ -108,6 +121,7 @@ export async function openBillingPortal(returnUrl?: string): Promise<void> {
     headers: await authedHeaders(),
     body: JSON.stringify({
       returnUrl: returnUrl || `${window.location.origin}${window.location.pathname}`,
+      companyId,
     }),
   });
 
