@@ -7,7 +7,9 @@
 // download invoices) on Stripe's hosted UI. We never handle card
 // data ourselves — PCI compliance stays Stripe's problem.
 //
-// Request:  (no body required)
+// Request:  { companyId?: string }   (AUTH-5 P2: B2B-aware)
+//            When companyId is present, caller MUST be company owner.
+//            Portal session is opened against the COMPANY's Stripe customer.
 // Response: { url: string }
 //
 // Env vars: STRIPE_SECRET_KEY, SOSPHERE_BASE_URL
@@ -100,13 +102,46 @@ serve(async (req: Request) => {
     );
   }
 
+  // ── AUTH-5 P2: parse body once. companyId optional; if present,
+  // verify the JWT user is the company owner before issuing a portal
+  // session that would expose billing controls to a non-owner.
+  const body = await req.json().catch(() => ({}));
+  const companyId  = (body && typeof body === "object" ? body.companyId  : undefined) as string | undefined;
+  const returnUrl  = (body && typeof body === "object" ? body.returnUrl  : undefined) as string | undefined;
+
+  let safeCompanyId: string | null = null;
+  if (companyId !== undefined && companyId !== null) {
+    if (typeof companyId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
+      return new Response(JSON.stringify({ error: "Invalid companyId" }), {
+        status: 400, headers: cors,
+      });
+    }
+    const supaUser = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: ownerOk, error: ownerErr } = await supaUser.rpc("is_company_owner", { p_company_id: companyId });
+    if (ownerErr || !ownerOk) {
+      return new Response(JSON.stringify({ error: "Forbidden: not company owner" }), {
+        status: 403, headers: cors,
+      });
+    }
+    safeCompanyId = companyId;
+  }
+
   // Look up the stripe customer id we stashed during checkout. If the
-  // user has never subscribed there's nothing to manage — tell them.
-  const { data: row } = await supabase
+  // caller has never subscribed there's nothing to manage — tell them.
+  // For B2B (safeCompanyId set), scope the lookup to the company subscription
+  // row; otherwise to the civilian (user_id) row.
+  const subQuery = supabase
     .from("subscriptions")
     .select("stripe_customer_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+    .limit(1);
+  const { data: row } = safeCompanyId
+    ? await subQuery.eq("company_id", safeCompanyId).maybeSingle()
+    : await subQuery.eq("user_id", userId).maybeSingle();
 
   if (!row?.stripe_customer_id) {
     return new Response(
@@ -114,8 +149,6 @@ serve(async (req: Request) => {
       { status: 404, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
-
-  const { returnUrl } = await req.json().catch(() => ({}));
 
   // DD-2 (2026-04-27): origin allowlist for return_url (mirrors E-16 on
   // stripe-checkout). Without this, a client could set return_url to an

@@ -14,10 +14,15 @@
 //
 // Request shape:
 //   {
-//     planId: "starter" | "growth" | "business" | "enterprise",
-//     cycle:  "monthly" | "annual",
-//     seats?: number,              // optional: extra-seat quantity
-//     successUrl?: string,         // optional override
+//     planId:    "starter" | "growth" | "business" | "enterprise" | "basic" | "elite",
+//     cycle:     "monthly" | "annual",
+//     seats?:    number,              // optional: extra-seat quantity
+//     companyId?: string,             // AUTH-5 P2: B2B subscription target.
+//                                     //   When present, caller MUST be company owner.
+//                                     //   Subscription is attributed to company_id, not user_id.
+//                                     //   If a trialing subscription exists for the company,
+//                                     //   Stripe is told to honor the existing trial_ends_at.
+//     successUrl?: string,
 //     cancelUrl?:  string,
 //   }
 //
@@ -135,7 +140,7 @@ serve(async (req: Request) => {
   const userEmail = userData.user.email;
 
   // ── Payload validation ──
-  const { planId, cycle, seats, successUrl, cancelUrl } = await req.json().catch(() => ({}));
+  const { planId, cycle, seats, companyId, successUrl, cancelUrl } = await req.json().catch(() => ({}));
   const validPlans: PlanId[] = ["starter", "growth", "business", "enterprise", "basic", "elite"];
   const validCycles: Cycle[] = ["monthly", "annual"];
   if (!validPlans.includes(planId) || !validCycles.includes(cycle)) {
@@ -144,6 +149,37 @@ serve(async (req: Request) => {
       headers: cors,
     });
   }
+
+  // ── AUTH-5 P2: B2B ownership gate ─────────────────────────────────────
+  // If the caller passed a companyId, they're subscribing the company,
+  // not themselves. We MUST verify they're the company owner before
+  // letting Stripe attribute charges to that company. The is_company_owner
+  // RPC consults company_memberships server-side — anyone can be a member,
+  // but only the owner gets to authorize billing.
+  let safeCompanyId: string | null = null;
+  if (companyId !== undefined && companyId !== null) {
+    if (typeof companyId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
+      return new Response(JSON.stringify({ error: "Invalid companyId" }), {
+        status: 400, headers: cors,
+      });
+    }
+    // We need the caller's JWT context for is_company_owner (uses auth.uid()),
+    // so create a second supabase client bound to the user's bearer token.
+    const supaUser = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: ownerOk, error: ownerErr } = await supaUser.rpc("is_company_owner", { p_company_id: companyId });
+    if (ownerErr || !ownerOk) {
+      return new Response(JSON.stringify({ error: "Forbidden: not company owner" }), {
+        status: 403, headers: cors,
+      });
+    }
+    safeCompanyId = companyId;
+  }
+
 
   // E-16 / W3 TIER 2 (B-20, 2026-04-26): allowlist successUrl + cancelUrl
   // origins so Stripe can't be coerced into redirecting to attacker-controlled
@@ -179,22 +215,29 @@ serve(async (req: Request) => {
     );
   }
 
-  // ── Look up an existing Stripe customer id on file — so repeated
-  // checkouts for the same user reuse the same customer record ──
-  const { data: existing } = await supabase
+  // ── Look up an existing Stripe customer id + trial state on file ──
+  // For B2B: scoped to (company_id). For B2C: (user_id). The subscription
+  // table has a partial UNIQUE INDEX on company_id WHERE NOT NULL, so this
+  // SELECT is at most one row in either branch.
+  const subQuery = supabase
     .from("subscriptions")
-    .select("stripe_customer_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+    .select("stripe_customer_id, status, trial_ends_at")
+    .limit(1);
+  const { data: existing } = safeCompanyId
+    ? await subQuery.eq("company_id", safeCompanyId).maybeSingle()
+    : await subQuery.eq("user_id", userId).maybeSingle();
 
-  // ── Build the Checkout Session params. `client_reference_id` is
-  // the ONLY identity the webhook trusts. ──
+  // ── Build the Checkout Session params. ──
+  // For B2B (safeCompanyId set), we add `metadata.companyId` so the
+  // webhook routes the resulting subscription to the company row. The
+  // webhook checks metadata.companyId first, then falls back to
+  // client_reference_id treated as a user_id (preserves civilian flow).
   const form: Record<string, string> = {
     mode: "subscription",
     "payment_method_types[]": "card",
     "line_items[0][price]": priceId,
     "line_items[0][quantity]": "1",
-    client_reference_id: userId,
+    client_reference_id: userId,            // owner who initiated (audit trail)
     "metadata[userId]": userId,
     "metadata[planId]": planId,
     "metadata[cycle]": cycle,
@@ -202,6 +245,22 @@ serve(async (req: Request) => {
     cancel_url: safeCancel,
     allow_promotion_codes: "true",
   };
+  if (safeCompanyId) {
+    form["metadata[companyId]"] = safeCompanyId;
+    // AUTH-5 P2: if the company is currently in start_company_trial-issued
+    // 'trialing' state, tell Stripe to HONOR the existing trial deadline
+    // instead of starting a fresh trial or charging immediately. Matches
+    // Linear / Notion: paying mid-trial does not extend, just upgrades.
+    const existingRow = existing as
+      | { status?: string | null; trial_ends_at?: string | null; stripe_customer_id?: string | null }
+      | null;
+    if (existingRow?.status === "trialing" && existingRow.trial_ends_at) {
+      const trialEndUnix = Math.floor(new Date(existingRow.trial_ends_at).getTime() / 1000);
+      if (Number.isFinite(trialEndUnix) && trialEndUnix > Math.floor(Date.now() / 1000)) {
+        form["subscription_data[trial_end]"] = String(trialEndUnix);
+      }
+    }
+  }
 
   // Optional: per-seat line item if the plan supports extra seats.
   // DD-7 (2026-04-27): seats must be a non-negative integer ≤ 1000.
@@ -230,9 +289,16 @@ serve(async (req: Request) => {
   // {userId, plan, tier, day} so retries within the same UX session
   // map to the same Stripe-side request. Different retry windows
   // (different days) get fresh keys — correct behavior.
+  // AUTH-5 P2: previously hashed `plan ?? ""` and `tier ?? ""` —
+  // both were undefined identifiers, so EVERY user got the SAME daily
+  // idempotency key. That meant retries from different users on the
+  // same day silently mapped to ONE Stripe-side request. Fixed by
+  // hashing planId + cycle (the actual values), and including
+  // safeCompanyId so the same owner subscribing two different
+  // companies in one day does not collide.
   const idemKey = "ck_" + (await crypto.subtle.digest("SHA-256",
     new TextEncoder().encode(
-      `${userId}:${plan ?? ""}:${tier ?? ""}:${new Date().toISOString().slice(0,10)}`
+      `${userId}:${safeCompanyId ?? ""}:${planId}:${cycle}:${new Date().toISOString().slice(0,10)}`
     )).then(buf => Array.from(new Uint8Array(buf)).slice(0, 16)
       .map(b => b.toString(16).padStart(2, "0")).join("")));
   const res = await stripePost("/checkout/sessions", form, idemKey);
