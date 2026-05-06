@@ -14,7 +14,7 @@ import {
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
 import { safeRpc } from "./api/safe-rpc";
 import { MFAChallengeModal } from "./mfa-challenge-modal";
-import { mfaListFactors } from "./api/mfa-client";
+import { mfaListFactors, mfaListFactorsLockFree } from "./api/mfa-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
@@ -356,7 +356,9 @@ export function DashboardWebPage() {
   // so this helper takes the place of those direct setStep calls.
   const gateNextStep = async (next: "pin-verify" | "pin-setup") => {
     try {
-      const { data } = await mfaListFactors();
+      // AUTH-4 P2 (#208): use lock-free direct fetch — supabase.auth.mfa.*
+      // goes through the SDK auth lock, which can wedge mid-OAuth callback.
+      const { data } = await mfaListFactorsLockFree();
       if (data?.hasTotp && data.factors.length > 0) {
         // Pull session AAL — if already aal2 (rare, but possible after
         // recent challenge), skip the prompt.

@@ -234,3 +234,62 @@ function friendly(msg: string): string {
   if (m.includes("already") && m.includes("exists")) return "An MFA factor is already enrolled. Disable it first to re-enroll.";
   return msg;
 }
+
+/**
+ * AUTH-4 Part 2 (#208) — lock-free factors listing for the login gate.
+ *
+ * supabase.auth.mfa.listFactors() goes through the SDK's _acquireLock,
+ * which we have proven can wedge mid-OAuth callback. That meant the
+ * MFA gate silently fell through to pin-verify, defeating the whole
+ * point of the second factor.
+ *
+ * This implementation goes directly to /auth/v1/factors with the
+ * bearer token from localStorage and a hard 6 s timeout. It returns
+ * the same shape as mfaListFactors so callers can swap in.
+ */
+export async function mfaListFactorsLockFree(): Promise<MfaResult<{
+  factors: { id: string; type: string; status: string }[];
+  hasTotp: boolean;
+}>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SUPABASE_URL: string = ((import.meta as any).env?.VITE_SUPABASE_URL as string | undefined) || "";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ANON_KEY: string = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined) || "";
+  if (!SUPABASE_URL || !ANON_KEY) {
+    return { data: null, error: { message: "Supabase not configured" } };
+  }
+  const { getStoredBearerToken } = await import("./safe-rpc");
+  const token = getStoredBearerToken();
+  if (!token) return { data: null, error: { message: "no-session" } };
+
+  const ctrl = new AbortController();
+  const tmId = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/factors`, {
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      return { data: null, error: { message: `HTTP ${resp.status}` } };
+    }
+    const body = await resp.json();
+    // The endpoint returns { all: [...], totp: [...] } in supabase-js v2.39+
+    // and just an array in older versions. Normalize.
+    const totpRaw = (body && (body.totp || (Array.isArray(body) ? body.filter((f: { factor_type?: string; status?: string }) => f.factor_type === "totp") : []))) || [];
+    const factors = (totpRaw as { id: string; status: string }[]).map(f => ({ id: f.id, type: "totp", status: f.status }));
+    return {
+      data: {
+        factors,
+        hasTotp: factors.some(f => f.status === "verified"),
+      },
+      error: null,
+    };
+  } catch (e) {
+    return { data: null, error: { message: e instanceof Error ? e.message : String(e) } };
+  } finally {
+    clearTimeout(tmId);
+  }
+}
