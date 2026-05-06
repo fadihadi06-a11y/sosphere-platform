@@ -20,6 +20,40 @@
 import { supabase } from "./supabase-client";
 import { safeRpc } from "./safe-rpc";
 
+/**
+ * AUTH-4 Part 3a (#174) — fire-and-forget audit hook.
+ *
+ * The recovery-code RPCs already write audit_log entries server-side
+ * inside SECURITY DEFINER. This client helper covers the events that
+ * Supabase manages internally (enroll/verify/unenroll/challenge) — the
+ * auth.users trigger doesn't fire on auth.mfa_factors changes, so we
+ * have to log them from here.
+ *
+ * Best-effort: never blocks the user-facing flow on a logging failure.
+ * Whitelisted action names match the log_auth_event server contract:
+ *   mfa_enrolled | mfa_disabled | mfa_failed
+ */
+function fireAudit(
+  action: "mfa_enrolled" | "mfa_disabled" | "mfa_failed",
+  outcome: "success" | "failure",
+  reason?: string,
+  metadata?: Record<string, unknown>,
+): void {
+  // Don't await — audit must never block the UX path. Errors are silently
+  // swallowed (the server-side trigger captures most events anyway).
+  void safeRpc(
+    "log_auth_event",
+    {
+      p_action:   action,
+      p_outcome:  outcome,
+      p_reason:   reason ?? null,
+      p_target_id: null,
+      p_metadata: metadata ?? {},
+    },
+    { timeoutMs: 4000 },
+  ).catch(() => { /* swallow — best effort */ });
+}
+
 export interface MfaEnrollData {
   factorId: string;
   qrCodeSvg: string;     // SVG <svg>...</svg> — render via dangerouslySetInnerHTML
@@ -86,8 +120,12 @@ export async function mfaVerifyEnroll(
       code: code.trim(),
     });
     if (verify.error) {
+      // AUTH-4 P3a: log enrollment verification failure (failed code).
+      fireAudit("mfa_failed", "failure", "enroll_verify_invalid_code", { phase: "enroll" });
       return { data: null, error: { message: friendly(verify.error.message), code: verify.error.code } };
     }
+    // AUTH-4 P3a: log enrollment success.
+    fireAudit("mfa_enrolled", "success", undefined, { factor_type: "totp" });
     return { data: { activated: true }, error: null };
   } catch (e) {
     return { data: null, error: { message: e instanceof Error ? e.message : String(e) } };
@@ -108,6 +146,8 @@ export async function mfaChallengeAndVerify(
       code: code.trim(),
     });
     if (r.error) {
+      // AUTH-4 P3a: log failed login-time TOTP attempt (warning severity).
+      fireAudit("mfa_failed", "failure", "challenge_invalid_code", { phase: "login" });
       return { data: null, error: { message: friendly(r.error.message), code: r.error.code } };
     }
     return { data: { aal: "aal2" }, error: null };
@@ -155,6 +195,8 @@ export async function mfaUnenroll(factorId: string): Promise<MfaResult<{ removed
     if (error) {
       return { data: null, error: { message: friendly(error.message) } };
     }
+    // AUTH-4 P3a: log MFA disablement (compliance-relevant).
+    fireAudit("mfa_disabled", "success", undefined, { factor_id: factorId });
     return { data: { removed: true }, error: null };
   } catch (e) {
     return { data: null, error: { message: e instanceof Error ? e.message : String(e) } };
