@@ -52,4 +52,8 @@ export const router = createBrowserRouter([
       { path: "/reset-password", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.ResetPasswordHandler })), HydrateFallback: RouteLoading },
       { path: "/payment-success", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.PaymentSuccessHandler })), HydrateFallback: RouteLoading },
       { path: "/payment-cancelled", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.PaymentCancelledHandler })), HydrateFallback: RouteLoading },
-  
+      { path: "/shared-sos/:emergencyId", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.SharedSosViewerHandler })), HydrateFallback: RouteLoading },
+      { path: "*", lazy: () => import("./components/not-found-page").then(m => ({ Component: m.NotFoundPage })), HydrateFallback: RouteLoading },
+    ],
+  },
+]);
