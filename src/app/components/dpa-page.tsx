@@ -45,124 +45,320 @@ interface DpaSignature {
   acceptedAt?:     string;
 }
 
-const DPA_VERSION = "2026-05-06";
+const DPA_VERSION = "2026-05-07";
 
 const SECTIONS: { title: string; body: string }[] = [
+  // CITES: GDPR Recital 81; Stripe DPA Recitals — sets context for processor relationship.
+  {
+    title: "Recitals",
+    body: "(A) The Controller and SOSphere have entered into a Subscription Agreement under " +
+      "which SOSphere provides field-worker safety services (the \"Services\"). (B) In " +
+      "providing the Services, SOSphere processes Personal Data on behalf of the Controller. " +
+      "(C) This Data Processing Agreement (\"DPA\") sets out the parties\' obligations under " +
+      "EU Regulation 2016/679 (GDPR), the UK Data Protection Act 2018, the Saudi Arabian " +
+      "Personal Data Protection Law of 2021 (PDPL), and equivalent legislation. (D) Where " +
+      "this DPA conflicts with the Subscription Agreement on data-protection matters, this " +
+      "DPA prevails.",
+  },
+  // CITES: GDPR Art. 4; Stripe DPA §1; AWS DPA §1.1.
   {
     title: "1. Definitions",
-    body: '"Controller" means the company that signed up as the SOSphere employer. ' +
-      '"Processor" means SOSphere ("we"). "Personal Data" means any information relating to ' +
-      'an identified or identifiable natural person processed on the Controller\'s behalf, ' +
-      'including employee profiles, GPS location, emergency-event metadata, and incident ' +
-      'reports. "GDPR" means Regulation (EU) 2016/679. "PDPL" means the Saudi Arabian Personal ' +
-      'Data Protection Law (Royal Decree M/19, 2021).',
+    body: "Capitalised terms used but not defined here have the meaning given in the GDPR. " +
+      "\"Controller\" means the company that signed up as a SOSphere customer. \"Processor\" " +
+      "means SOSphere Ltd. (\"we\", \"us\"). \"Personal Data\" means data relating to an " +
+      "identified or identifiable natural person processed on the Controller\'s behalf, " +
+      "including employee profiles, GPS location, emergency-event metadata, evidence vault " +
+      "contents, and incident reports. \"Personal Data Breach\" means a breach of security " +
+      "leading to accidental or unlawful destruction, loss, alteration, unauthorised " +
+      "disclosure of, or access to Personal Data. \"Sub-processor\" means any third party " +
+      "engaged by SOSphere to process Personal Data. \"SCCs\" means the Standard Contractual " +
+      "Clauses approved by EU Commission Decision 2021/914 (Module 2: Controller-to-Processor). " +
+      "\"TOMs\" means the technical and organisational measures described in Annex II.",
   },
+  // CITES: GDPR Art. 28(3)(a); Stripe DPA §3.1.
   {
-    title: "2. Subject matter and duration",
-    body: "We process Personal Data only to deliver the SOSphere field-worker safety service " +
-      "to the Controller's organisation. Processing continues for the lifetime of the active " +
-      "subscription plus the retention windows set out in Section 8.",
+    title: "2. Subject matter, duration, and nature of processing",
+    body: "We process Personal Data only to provide the Services to the Controller. Processing " +
+      "operations include: collection of employee profile data submitted by the Controller; " +
+      "ingestion of GPS coordinates during active emergencies and check-ins; storage of " +
+      "audio, image, and location evidence captured by the on-device emergency flow; " +
+      "delivery of SMS, push, and call dispatches via integrated providers; and aggregation " +
+      "of operational metrics for the Controller\'s dashboard. The duration of processing is " +
+      "the term of the Subscription Agreement plus the retention windows in Section 17.",
   },
+  // CITES: AWS DPA §1.4 + Annex I; Stripe DPA Annex I.
   {
-    title: "3. Nature and purpose of processing",
-    body: "Processing operations include: collection of employee profile data submitted by the " +
-      "Controller; ingestion of GPS coordinates during active emergencies and check-ins; " +
-      "storage of audio / image / location evidence captured by the on-device emergency flow; " +
-      "delivery of SMS, push, and call dispatches via integrated providers (Twilio, FCM, APNS); " +
-      "and aggregation of operational metrics for the Controller's dashboard.",
+    title: "3. Categories of Personal Data and data subjects",
+    body: "Data subjects are the Controller\'s employees, contractors, and any individuals " +
+      "designated as emergency contacts. Categories of Personal Data include: identifiers " +
+      "(name, work email, phone number); employment metadata (role, department, work zone, " +
+      "shift schedule); location data (real-time during emergencies, GPS trail during active " +
+      "SOS sessions); emergency event records (timestamp, severity classification, " +
+      "responder log); audio / image / video evidence captured during emergencies; and " +
+      "optional medical-ID fields when explicitly volunteered by the data subject.",
   },
+  // CITES: GDPR Art. 28(3)(a)+(h); Stripe DPA §3.2; Salesforce DPA §4.
   {
-    title: "4. Categories of Personal Data and data subjects",
-    body: "Data subjects are the Controller's employees and any individuals invited as " +
-      "emergency contacts. Categories include: identifiers (name, email, phone), employment " +
-      "metadata (role, department, work zone), location data (real-time during emergencies, " +
-      "trail during active SOS sessions), emergency event records (timestamp, severity, " +
-      "responder log), and optional medical-ID fields when explicitly provided.",
+    title: "4. Controller obligations",
+    body: "The Controller represents and warrants that: (a) it has a lawful basis under " +
+      "applicable data-protection law for sharing Personal Data with us, typically " +
+      "performance of an employment contract (GDPR Art. 6(1)(b)) or legitimate interest in " +
+      "worker safety (GDPR Art. 6(1)(f); PDPL Art. 6(2)); (b) it has informed data subjects " +
+      "of this processing as required by GDPR Arts. 13–14 / PDPL Art. 9; (c) it will issue " +
+      "documented instructions to us in accordance with GDPR Art. 28(3)(a); (d) it will " +
+      "promptly notify us of changes to those instructions; and (e) it will not request " +
+      "processing that would violate applicable law.",
   },
+  // CITES: GDPR Art. 28(3)(a)–(h) verbatim; Stripe DPA §3.3.
   {
-    title: "5. Controller obligations",
-    body: "The Controller represents that it has a lawful basis for sharing Personal Data with " +
-      "us — typically employment contract (Art. 6(1)(b)) or legitimate interest in worker " +
-      "safety (Art. 6(1)(f) GDPR; PDPL Art. 6(2)). The Controller is responsible for informing " +
-      "data subjects of this processing and for honouring data-subject requests received through " +
-      "any channel other than the SOSphere in-app SAR flow.",
+    title: "5. Processor obligations",
+    body: "We agree to: (a) process Personal Data only on documented instructions from the " +
+      "Controller, including with regard to international transfers, except where required " +
+      "by law (in which case we will inform the Controller unless the law prohibits notice " +
+      "on important grounds of public interest); (b) ensure persons authorised to process " +
+      "Personal Data are bound by enforceable confidentiality obligations; (c) implement " +
+      "the TOMs in Annex II; (d) engage Sub-processors only in accordance with Section 8; " +
+      "(e) assist the Controller, taking into account the nature of the processing, in " +
+      "fulfilling its obligation to respond to data-subject requests under GDPR Arts. 12–22 " +
+      "and equivalent laws; (f) assist the Controller with breach notification, data-" +
+      "protection impact assessments, and prior consultation with supervisory authorities; " +
+      "(g) at the Controller\'s choice, delete or return all Personal Data after end of " +
+      "service; and (h) make available all information necessary to demonstrate compliance " +
+      "and contribute to audits under Section 12.",
   },
+  // CITES: GitHub DPA §6; Stripe DPA §3.4 — personnel-binding language.
   {
-    title: "6. Processor obligations",
-    body: "We will: process Personal Data only on documented Controller instructions; ensure " +
-      "personnel with access are bound by confidentiality; implement the technical and " +
-      "organisational measures listed in Section 7; assist the Controller with data-subject " +
-      "requests and breach notifications; delete or return Personal Data at the end of the " +
-      "service in line with Section 8; and make available the audit-log records that demonstrate " +
-      "compliance with this DPA.",
+    title: "6. Confidentiality",
+    body: "We will ensure that any person authorised to process Personal Data on our behalf " +
+      "is subject to a duty of confidentiality (whether contractual or statutory) that " +
+      "survives termination of their engagement. Access to production credentials and " +
+      "Personal Data is limited to named engineers under documented role-based access " +
+      "controls, logged via the audit_log, and subject to quarterly review. Personnel must " +
+      "complete data-protection training within 30 days of role start and annually thereafter.",
   },
+  // CITES: GDPR Art. 32; Stripe DPA Annex II; ISO 27002:2022 controls.
   {
-    title: "7. Security measures",
-    body: "Encryption in transit (TLS 1.2+) and at rest (AES-256). Authentication requires " +
-      "email + password OR Google OAuth, with optional TOTP MFA. Database access is row-level " +
-      "scoped per company via Postgres RLS (FORCE RLS on every PII table). Server-side audit_log " +
-      "records every authentication event, billing change, DPA acceptance, and SOS escalation " +
-      "with timestamp, actor, and IP. Backups are encrypted and retained for 30 days. Access to " +
-      "production credentials is limited to named engineers, logged, and rotated quarterly.",
+    title: "7. Technical and organisational measures (Annex II)",
+    body: "We have implemented and will maintain the TOMs detailed in Annex II below, " +
+      "including: TLS 1.2+ in transit and AES-256 at rest; row-level security with FORCE " +
+      "RLS on every PII table; per-tenant logical isolation (partial UNIQUE on " +
+      "subscriptions.company_id); MFA-protected administrative access; encrypted backups " +
+      "with 30-day retention; quarterly access review; vulnerability scanning and " +
+      "patch-management programme; secure software-development lifecycle with mandatory " +
+      "code review; tamper-evident audit logging of every authentication event, billing " +
+      "change, DPA acceptance, and emergency escalation. The TOMs reflect the current " +
+      "state of the art and the costs of implementation in relation to the risks for the " +
+      "rights and freedoms of data subjects.",
   },
+  // CITES: GDPR Art. 28(2)+(4); Stripe DPA §6 — 30-day notice + general written authorisation.
   {
-    title: "8. Data retention",
-    body: "SOS session records: 90 days from session close. GPS trail data: 30 days. Audio / " +
-      "image evidence vaults: 90 days. Audit logs: indefinite (required for ISO 27001 / SOC 2 " +
-      "evidence). Employee profile + emergency-contact data: deleted within 30 days of " +
-      "subscription cancellation, subject to legal-hold exceptions. Cron-driven retention is " +
-      "enforced server-side; the schedule is published in our public privacy notice.",
+    title: "8. Sub-processors",
+    body: "The Controller provides general written authorisation for us to engage Sub-" +
+      "processors. Annex III lists current Sub-processors. We will: (a) provide at least " +
+      "30 days\' notice (via in-app banner and email) before adding or replacing a " +
+      "Sub-processor; (b) impose data-protection obligations on the Sub-processor that are " +
+      "no less protective than those in this DPA; and (c) remain liable to the Controller " +
+      "for the Sub-processor\'s performance. The Controller may object to a new Sub-" +
+      "processor on reasonable data-protection grounds within the notice period; if the " +
+      "objection cannot be resolved, the Controller may terminate the Subscription Agreement " +
+      "for the affected Service without penalty.",
   },
+  // CITES: EU SCCs 2021/914 Module 2; Schrems II case C-311/18; KSA PDPL Art. 29.
   {
     title: "9. International transfers",
-    body: "Where Personal Data is transferred outside the European Economic Area, the United " +
-      "Kingdom, or the Kingdom of Saudi Arabia, the parties agree that the EU Standard " +
-      "Contractual Clauses (2021/914) and the UK International Data Transfer Addendum apply, " +
-      "incorporated by reference. KSA cross-border transfers comply with PDPL Art. 29 and the " +
-      "implementing regulations.",
+    body: "Where we transfer Personal Data outside the European Economic Area, the United " +
+      "Kingdom, or the Kingdom of Saudi Arabia to a country not the subject of an adequacy " +
+      "decision, the parties agree that the EU SCCs (Module 2: Controller-to-Processor, " +
+      "Decision 2021/914) and, for UK transfers, the UK International Data Transfer " +
+      "Addendum, are incorporated into this DPA by reference. The Controller is the data " +
+      "exporter and SOSphere is the data importer. The supervisory authority of the data " +
+      "exporter\'s establishment is the competent authority. KSA cross-border transfers " +
+      "comply with PDPL Art. 29 and the Implementing Regulations of 2024. The Controller " +
+      "may at its option execute the SCCs as a separate document; until then, this DPA " +
+      "constitutes the parties\' written agreement to the SCCs.",
+  },
+  // CITES: AWS DPA §3.3; GDPR Art. 28(3)(e).
+  {
+    title: "10. Data subject rights and assistance",
+    body: "We will, taking into account the nature of the processing, assist the Controller " +
+      "by appropriate technical and organisational measures, insofar as this is possible, " +
+      "in fulfilling its obligations to respond to requests from data subjects under " +
+      "applicable data-protection law. If we receive a data-subject request directly, we " +
+      "will forward it to the Controller without undue delay (target: within 5 business " +
+      "days) and not respond to the data subject ourselves except to acknowledge receipt and " +
+      "redirect them to the Controller. The in-app SAR / data-export tool gives controllers " +
+      "self-service capability to satisfy access and portability requests.",
+  },
+  // CITES: GDPR Arts. 33–34; KSA PDPL Art. 28; Stripe DPA §5.
+  {
+    title: "11. Personal Data Breach",
+    body: "We will notify the Controller of any confirmed Personal Data Breach affecting " +
+      "their data without undue delay and in any event no later than 72 hours after we " +
+      "become aware of it (regardless of weekends or holidays). The notification will " +
+      "include, to the extent then known: (a) the nature of the breach including the " +
+      "categories and approximate number of data subjects and records affected; (b) likely " +
+      "consequences; (c) measures taken or proposed to address the breach and mitigate " +
+      "adverse effects; and (d) the contact for further information. We will cooperate with " +
+      "the Controller in any required notification to supervisory authorities (within 72 " +
+      "hours per GDPR Art. 33; within 72 hours per KSA PDPL Art. 28) and to data subjects.",
+  },
+  // CITES: GDPR Art. 28(3)(h); Stripe DPA §10 — annual cap + SOC 2 in lieu.
+  {
+    title: "12. Audit rights",
+    body: "On reasonable written notice (≥ 30 days, no more than once per calendar year " +
+      "except after a confirmed Personal Data Breach affecting the Controller), the " +
+      "Controller may audit our compliance with this DPA. Audits must be conducted by a " +
+      "mutually agreed independent third party bound by professional confidentiality. We " +
+      "may satisfy the audit obligation by providing a current SOC 2 Type II report (or " +
+      "equivalent independent assessment) covering the relevant control objectives. The " +
+      "Controller bears its own costs of audit; we bear the costs of remediation of any " +
+      "compliance gaps identified.",
+  },
+  // CITES: Salesforce DPA §15 — concrete insurance amounts.
+  {
+    title: "13. Insurance",
+    body: "We will maintain throughout the term of this DPA: (a) cyber liability insurance " +
+      "with limits of not less than US $5,000,000 per occurrence; (b) errors and omissions " +
+      "insurance with limits of not less than US $2,000,000 per occurrence; and (c) " +
+      "commercial general liability insurance with limits of not less than US $1,000,000 " +
+      "per occurrence. Within 5 business days of written request, we will provide the " +
+      "Controller with a current Certificate of Insurance evidencing such coverage. " +
+      "[LEGAL: this clause assumes the policies will be in place by first paid enterprise " +
+      "contract — counsel must verify before public reliance.]",
+  },
+  // CITES: Stripe MSA §11; AWS Service Terms §11 — 12-month cap with carve-outs.
+  {
+    title: "14. Liability and indemnification",
+    body: "Each party\'s aggregate liability arising out of or related to this DPA, whether " +
+      "in contract, tort, or any other theory, is limited to the GREATER of (i) the total " +
+      "fees paid or payable by the Controller to SOSphere for the Services in the twelve " +
+      "(12) months immediately preceding the event giving rise to liability, or (ii) US " +
+      "$100,000. The cap does NOT apply to: (a) breach of confidentiality (Section 6); " +
+      "(b) gross negligence or wilful misconduct; (c) indemnification obligations under " +
+      "this Section; (d) liability that cannot be limited under applicable law (death, " +
+      "personal injury, fraud); or (e) Personal Data Breaches caused by our failure to " +
+      "implement the TOMs in Annex II, where a separate enhanced cap of twenty-four (24) " +
+      "months\' fees plus US $250,000 applies. We will indemnify the Controller against " +
+      "third-party claims arising from our material breach of this DPA, subject to the " +
+      "Controller\'s prompt written notice, our sole control of the defence, and the " +
+      "Controller\'s reasonable cooperation.",
+  },
+  // CITES: GDPR Art. 28(3)(g); Stripe DPA §11.
+  {
+    title: "15. Term, termination, and effects",
+    body: "This DPA takes effect on the Controller\'s acceptance and continues for the term " +
+      "of the Subscription Agreement plus any post-termination retention period required " +
+      "by Section 17. On termination of the Services, the Controller may export all of " +
+      "its Personal Data via the in-app export tool within 30 days. After 30 days we will " +
+      "delete or anonymise the Personal Data, except: (a) data we are required to retain by " +
+      "law (e.g. tax records); and (b) audit_log entries retained per Section 17. We will " +
+      "issue a Deletion Certificate within 15 business days of completion on written request.",
+  },
+  // CITES: published privacy notice + retention cron implementation.
+  {
+    title: "16. Data retention",
+    body: "We retain categories of Personal Data for the following maximum periods, after " +
+      "which automated cron jobs delete the data: SOS session records — 90 days from " +
+      "session close; GPS trail data — 30 days; audio / image / video evidence vaults — " +
+      "90 days; employee profile and emergency-contact data — 30 days after the " +
+      "Controller\'s subscription ends. The audit_log is retained indefinitely for ISO 27001 " +
+      "/ SOC 2 evidence purposes; entries are not subject to data-subject erasure requests " +
+      "to the extent necessary for compliance and legal-hold obligations.",
+  },
+  // CITES: GDPR Art. 79; KSA PDPL Art. 35.
+  {
+    title: "17. Governing law and jurisdiction",
+    body: "This DPA is governed by the laws of the State of Delaware, USA, without regard to " +
+      "conflicts-of-law principles, except: (a) for Controllers established in the EEA / " +
+      "United Kingdom, this DPA is governed by the laws of Ireland and the courts of " +
+      "Dublin have exclusive jurisdiction; and (b) for Controllers established in the " +
+      "Kingdom of Saudi Arabia, this DPA is governed by KSA law and the KSA Commercial " +
+      "Court has jurisdiction over PDPL claims. Nothing in this Section limits a data " +
+      "subject\'s rights to bring a claim in their place of habitual residence under GDPR " +
+      "Art. 79 or PDPL Art. 35. [LEGAL: counsel must confirm the EU and KSA carve-outs " +
+      "before public reliance.]",
+  },
+  // CITES: GDPR Art. 28(3) closing; standard SaaS notice/severability/integration.
+  {
+    title: "18. General",
+    body: "(a) Notices: Notices to SOSphere shall be sent to legal@sosphere.co; notices to " +
+      "the Controller shall be sent to the email address on file for the company owner. " +
+      "(b) Severability: If any provision is held unenforceable, the remainder remains in " +
+      "effect. (c) Amendment: Material amendments require the parties\' written agreement; " +
+      "the DPA_VERSION constant on /legal/dpa is bumped on every material change and " +
+      "controllers must re-accept on next dashboard visit. (d) Conflict: If this DPA " +
+      "conflicts with the Subscription Agreement on data-protection matters, this DPA " +
+      "prevails. (e) Counterparts and electronic signatures: Acceptance via the in-app " +
+      "DPA flow constitutes a binding electronic signature under the EU eIDAS Regulation " +
+      "and equivalent laws; the acceptance row in company_dpa_acceptances is the " +
+      "evidence of record.",
+  },
+  // ─── ANNEXES ──────────────────────────────────────────────────────────────
+  {
+    title: "Annex I — Description of processing",
+    body: "Subject matter: provision of the SOSphere field-worker safety service. " +
+      "Duration: term of the Subscription Agreement plus retention windows in Section 16. " +
+      "Nature of processing: see Section 2. " +
+      "Categories of data subjects: see Section 3. " +
+      "Categories of Personal Data: see Section 3. " +
+      "Recipients of Personal Data: SOSphere personnel under Section 6, Sub-processors in " +
+      "Annex III, and the Controller\'s designated administrators. " +
+      "Frequency of processing: continuous during active subscription. " +
+      "Storage location: EU and US regions of Supabase Inc. by default; data residency " +
+      "options available on enterprise tiers.",
   },
   {
-    title: "10. Sub-processors",
-    body: "The Controller authorises us to engage the following sub-processors: Supabase Inc. " +
-      "(database + auth + edge runtime, EU/US regions), Stripe Inc. (payment processing), " +
-      "Twilio Inc. (SMS / voice dispatch), Google Firebase Cloud Messaging (Android push), " +
-      "Apple Push Notification Service (iOS push), and Vercel Inc. (web frontend hosting). " +
-      "We will give 30 days' notice of additions or changes via in-app notification and the " +
-      "Controller may object on reasonable security grounds.",
+    title: "Annex II — Technical and organisational measures",
+    body: "Confidentiality: TLS 1.2+ in transit; AES-256 at rest (Supabase managed); MFA " +
+      "for administrative access; named-engineer credential model with quarterly rotation. " +
+      "Integrity: row-level security with FORCE RLS on every PII table; partial UNIQUE on " +
+      "subscriptions(company_id); tamper-evident audit_log. Availability: multi-AZ " +
+      "Postgres replication; encrypted backups with 30-day retention; documented disaster-" +
+      "recovery procedures with annual tabletop exercises; service-level objectives for " +
+      "SOS critical paths (heartbeat, escalate, end). Resilience: rate-limiting per user " +
+      "and per company; circuit-breakers on third-party integrations; graceful degradation " +
+      "on partial outages. Personnel: background checks for engineers with production " +
+      "access; annual data-protection training; immediate credential revocation on role " +
+      "change. Software development: mandatory code review; static analysis on every " +
+      "commit; vulnerability scanning of dependencies; CI-gated migration drift guard. " +
+      "Incident management: 24-hour engineer on-call; documented incident-response runbook; " +
+      "post-incident review and corrective-action tracking.",
   },
   {
-    title: "11. Audit rights",
-    body: "On reasonable notice (≥ 30 days, no more than once per calendar year except after a " +
-      "security incident) the Controller may audit our compliance with this DPA via a mutually-" +
-      "agreed independent third party. We will make available our most recent SOC 2 Type II " +
-      "report or equivalent in lieu of on-site audit at the Controller's option.",
+    title: "Annex III — Authorised Sub-processors",
+    body: "Supabase Inc. — database, authentication, edge runtime; regions: EU-West and " +
+      "US-East. Stripe Inc. — payment processing; region: US. Twilio Inc. — SMS and voice " +
+      "dispatch; region: global. Google Firebase Cloud Messaging — Android push; region: " +
+      "global. Apple Push Notification Service — iOS push; region: global. Vercel Inc. — " +
+      "web frontend hosting; region: global edge. Resend (or equivalent transactional email " +
+      "provider) — invitation and notification email delivery; region: EU/US. We give 30 " +
+      "days\' notice via in-app banner and the company-owner email of record before adding " +
+      "or replacing any Sub-processor.",
   },
   {
-    title: "12. Personal data breach",
-    body: "We will notify the Controller without undue delay (target: within 24 hours of " +
-      "discovery) of any confirmed breach affecting their Personal Data. Notification will " +
-      "include the nature of the breach, categories and approximate number of data subjects " +
-      "affected, likely consequences, and the measures taken or proposed.",
+    title: "Annex IV — Standard Contractual Clauses (referenced)",
+    body: "The EU SCCs in Commission Implementing Decision 2021/914 (Module 2: Controller-" +
+      "to-Processor) are incorporated into this DPA by reference and apply where Section 9 " +
+      "applies. The UK International Data Transfer Addendum (issued under Section 119A of " +
+      "the Data Protection Act 2018) similarly applies for UK-relevant transfers. The " +
+      "parties agree the inclusions are: Module 2; the supervisory authority of the data " +
+      "exporter\'s establishment is the competent authority; Clauses 8.6, 14, and 15 of " +
+      "the SCCs apply with the time-periods stated in Sections 8, 11, and 12 of this DPA. " +
+      "The Controller may at its option execute the SCCs as a separate document; until then, " +
+      "this DPA constitutes the parties\' written agreement to the SCCs and the data importer\'s " +
+      "(SOSphere\'s) signature is given by the act of providing the Services.",
   },
   {
-    title: "13. Termination and return of data",
-    body: "On termination of the underlying service the Controller may export all of its data " +
-      "via the in-app export tool within 30 days. After 30 days we will delete the data, " +
-      "subject to legal-hold or audit-trail retention obligations. A deletion certificate is " +
-      "available on request.",
-  },
-  {
-    title: "14. Liability",
-    body: "Each party's liability under this DPA is subject to the liability cap stated in the " +
-      "underlying SOSphere Terms of Service. Nothing in this DPA limits the parties' liability " +
-      "for matters that cannot be limited by law (death or personal injury, fraud, or breaches " +
-      "that the parties cannot lawfully exclude).",
-  },
-  {
-    title: "15. Governing law",
-    body: "This DPA is governed by the law agreed in the underlying SOSphere Terms of Service. " +
-      "Where this DPA conflicts with the underlying terms in matters of data protection, this " +
-      "DPA prevails.",
+    title: "Annex V — KSA PDPL specific addendum",
+    body: "Where the Controller is established in the Kingdom of Saudi Arabia or processes " +
+      "the Personal Data of KSA residents, the parties additionally agree: (a) we will " +
+      "comply with the PDPL Implementing Regulations of 2024, including the cross-border " +
+      "transfer authorisation requirements and any mandatory data-residency obligations " +
+      "for sensitive categories; (b) we will notify the Saudi Data and Artificial " +
+      "Intelligence Authority (SDAIA) of any reportable Personal Data Breach within the " +
+      "72-hour window required by PDPL Art. 28, in coordination with the Controller; and " +
+      "(c) the Controller may at any time request migration of its data to a SOSphere KSA " +
+      "data residency tier (subject to availability and pricing).",
   },
 ];
 
