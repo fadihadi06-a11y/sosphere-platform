@@ -81,15 +81,19 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
   if (!employee) return null;
 
   // ── Real activity from audit log, filtered by employee name ───────────────
+  // CRIT #164/B: every fallback to MOCK_ACTIVITY is now DEV-gated. A new
+  // employee with no audit-log activity yet renders the empty list — same
+  // pattern Linear / Notion use on day 1.
+  const ACTIVITY_FALLBACK = import.meta.env.DEV ? MOCK_ACTIVITY : [];
   const realActivity = useMemo(() => {
-    if (!employee) return MOCK_ACTIVITY;
+    if (!employee) return ACTIVITY_FALLBACK;
     try {
       const logs = getRealAuditLog();
       const empLogs = logs.filter(e =>
         e.actor?.toLowerCase().includes(employee.name.toLowerCase()) ||
         e.detail?.toLowerCase().includes(employee.name.toLowerCase())
       );
-      if (empLogs.length === 0) return MOCK_ACTIVITY; // fall back to demo data
+      if (empLogs.length === 0) return ACTIVITY_FALLBACK;
       return empLogs.slice(0, 12).map(e => {
         const d = new Date(e.timestamp);
         const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -102,12 +106,13 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
           icon: isEmergency ? AlertTriangle : isCheckin ? CheckCircle2 : Activity,
         };
       });
-    } catch { return MOCK_ACTIVITY; }
+    } catch { return ACTIVITY_FALLBACK; }
   }, [employee?.id]);
 
   // ── Real incidents from audit log ───────────────────────────
+  const INCIDENTS_FALLBACK = import.meta.env.DEV ? MOCK_INCIDENTS : [];
   const realIncidents = useMemo(() => {
-    if (!employee) return MOCK_INCIDENTS;
+    if (!employee) return INCIDENTS_FALLBACK;
     try {
       const logs = getRealAuditLog();
       const emergencyLogs = logs.filter(e =>
@@ -115,7 +120,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
         (e.actor?.toLowerCase().includes(employee.name.toLowerCase()) ||
          e.detail?.toLowerCase().includes(employee.name.toLowerCase()))
       );
-      if (emergencyLogs.length === 0) return MOCK_INCIDENTS;
+      if (emergencyLogs.length === 0) return INCIDENTS_FALLBACK;
       return emergencyLogs.slice(0, 8).map(e => {
         const d = new Date(e.timestamp);
         const isResolved = e.action?.includes("resolved") || e.action?.includes("closed");
@@ -127,7 +132,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
           resolved: isResolved,
         };
       });
-    } catch { return MOCK_INCIDENTS; }
+    } catch { return INCIDENTS_FALLBACK; }
   }, [employee?.id]);
 
   const statusColor = employee.status === "sos" ? "#FF2D55"
@@ -335,7 +340,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                           // the server-backed and mock paths.
                           status: t.status === "expiring_soon" ? "expiring" : t.status,
                         }))
-                      : MOCK_CERTIFICATIONS
+                      : (import.meta.env.DEV ? MOCK_CERTIFICATIONS : [])
                     ).map((cert, i) => {
                       const c = cert.status === "valid" ? "#00C853" : cert.status === "expiring" ? "#FF9500" : "#FF2D55";
                       return (
@@ -439,7 +444,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Shift Schedule</p>
                   <Calendar className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
                 </div>
-                {MOCK_SHIFTS.map((shift, i) => {
+                {(import.meta.env.DEV ? MOCK_SHIFTS : []).map((shift, i) => {
                   const c = shift.status === "on-shift" ? "#00C853" : shift.status === "scheduled" ? "#00C8E0" : "rgba(255,255,255,0.2)";
                   return (
                     <div key={i} className="flex items-center gap-3 p-4 rounded-xl"

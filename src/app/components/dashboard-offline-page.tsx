@@ -285,12 +285,21 @@ export function OfflineMonitoringPage() {
     return () => clearInterval(iv);
   }, []);
 
+  // CRIT #164/B: production owners with no offline workers should not
+  // see 12 fake "Ahmed Al-Rashidi / Yusuf Al-Harthi" entries. The DISPLAY_FLEET
+  // and DISPLAY_SYNC_HISTORY constants are kept as DEV-only fixtures so demos
+  // and screenshot recording still render rich content. Production starts
+  // empty and the existing filter/reduce/map plumbing renders 0-of-0 cards
+  // and an empty list — the world-class day-1 state.
+  const DISPLAY_FLEET = import.meta.env.DEV ? MOCK_FLEET : [];
+  const DISPLAY_SYNC_HISTORY = import.meta.env.DEV ? MOCK_SYNC_HISTORY : [];
+
   // FIX 1: Sync SOS_QUEUED workers → shared emergency store
   const sosInjectedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const { addEmergency, emergencies } = useDashboardStore.getState();
     const existingIds = new Set(emergencies.map(e => e.id));
-    MOCK_FLEET.filter(w => w.lastSOS !== null).forEach(worker => {
+    DISPLAY_FLEET.filter(w => w.lastSOS !== null).forEach(worker => {
       const emgId = `SOS-QUEUE-${worker.id}`;
       if (!existingIds.has(emgId) && !sosInjectedRef.current.has(emgId)) {
         sosInjectedRef.current.add(emgId);
@@ -311,15 +320,19 @@ export function OfflineMonitoringPage() {
   }, []);
 
   // Fleet stats
-  const onlineCount = MOCK_FLEET.filter(w => w.isOnline).length;
-  const offlineCount = MOCK_FLEET.filter(w => !w.isOnline).length;
-  const criticalCount = MOCK_FLEET.filter(w => !w.isOnline && (Date.now() - w.lastSeen > 3600000)).length;
-  const totalPending = MOCK_FLEET.reduce((sum, w) => sum + w.pendingSync, 0);
-  const totalGPS = MOCK_FLEET.reduce((sum, w) => sum + w.gpsPointsCached, 0);
-  const avgBattery = Math.round(MOCK_FLEET.reduce((sum, w) => sum + w.batteryLevel, 0) / MOCK_FLEET.length * 100);
-  const sosQueued = MOCK_FLEET.filter(w => w.lastSOS !== null).length;
+  const onlineCount = DISPLAY_FLEET.filter(w => w.isOnline).length;
+  const offlineCount = DISPLAY_FLEET.filter(w => !w.isOnline).length;
+  const criticalCount = DISPLAY_FLEET.filter(w => !w.isOnline && (Date.now() - w.lastSeen > 3600000)).length;
+  const totalPending = DISPLAY_FLEET.reduce((sum, w) => sum + w.pendingSync, 0);
+  const totalGPS = DISPLAY_FLEET.reduce((sum, w) => sum + w.gpsPointsCached, 0);
+  // CRIT #164/B: empty production fleet → divide-by-zero would render 'NaN%'.
+  // Guard with a length check; the empty-state UI hides this card anyway.
+  const avgBattery = DISPLAY_FLEET.length > 0
+    ? Math.round(DISPLAY_FLEET.reduce((sum, w) => sum + w.batteryLevel, 0) / DISPLAY_FLEET.length * 100)
+    : 0;
+  const sosQueued = DISPLAY_FLEET.filter(w => w.lastSOS !== null).length;
 
-  const filteredFleet = MOCK_FLEET.filter(w => {
+  const filteredFleet = DISPLAY_FLEET.filter(w => {
     if (filter === "online") return w.isOnline;
     if (filter === "offline") return !w.isOnline;
     if (filter === "critical") return !w.isOnline && (Date.now() - w.lastSeen > 3600000);
@@ -344,8 +357,10 @@ export function OfflineMonitoringPage() {
     setSWStatus(getSWStatus());
   }, []);
 
-  const networkScore = Math.round(
-    ((onlineCount / MOCK_FLEET.length) * 40) +
+  // CRIT #164/B: 0/0 in the score formula would yield NaN. Skip the
+  // calculation entirely when the fleet is empty.
+  const networkScore = DISPLAY_FLEET.length === 0 ? 0 : Math.round(
+    ((onlineCount / DISPLAY_FLEET.length) * 40) +
     ((1 - Math.min(totalPending / 1000, 1)) * 30) +
     ((avgBattery / 100) * 20) +
     ((sosQueued === 0 ? 1 : 0) * 10)
@@ -385,9 +400,9 @@ export function OfflineMonitoringPage() {
 
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: "Online", value: onlineCount, total: MOCK_FLEET.length, color: "#00C853" },
-              { label: "Offline", value: offlineCount, total: MOCK_FLEET.length, color: "#FF9500" },
-              { label: "Critical", value: criticalCount, total: MOCK_FLEET.length, color: "#FF2D55" },
+              { label: "Online", value: onlineCount, total: DISPLAY_FLEET.length, color: "#00C853" },
+              { label: "Offline", value: offlineCount, total: DISPLAY_FLEET.length, color: "#FF9500" },
+              { label: "Critical", value: criticalCount, total: DISPLAY_FLEET.length, color: "#FF2D55" },
               { label: "SOS Queued", value: sosQueued, total: null, color: "#FF2D55" },
             ].map(item => (
               <div key={item.label} className="px-3 py-2 rounded-lg text-center" style={{ background: `${item.color}04`, border: `1px solid ${item.color}08` }}>
@@ -437,7 +452,7 @@ export function OfflineMonitoringPage() {
           {/* Filter pills */}
           <div className="flex items-center gap-2">
             {([
-              { key: "all", label: `All (${MOCK_FLEET.length})`, color: "#00C8E0" },
+              { key: "all", label: `All (${DISPLAY_FLEET.length})`, color: "#00C8E0" },
               { key: "online", label: `Online (${onlineCount})`, color: "#00C853" },
               { key: "offline", label: `Offline (${offlineCount})`, color: "#FF9500" },
               { key: "critical", label: `Critical (${criticalCount})`, color: "#FF2D55" },
@@ -518,19 +533,19 @@ export function OfflineMonitoringPage() {
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 rounded-xl text-center" style={{ background: "rgba(0,200,83,0.03)", border: "1px solid rgba(0,200,83,0.06)" }}>
               <p style={{ fontSize: 22, fontWeight: 800, color: "#00C853" }}>
-                {MOCK_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsSynced, 0).toLocaleString()}
+                {DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsSynced, 0).toLocaleString()}
               </p>
               <p style={{ fontSize: 9, color: "rgba(0,200,83,0.5)", fontWeight: 600 }}>Items Synced</p>
             </div>
             <div className="p-3 rounded-xl text-center" style={{ background: "rgba(255,45,85,0.03)", border: "1px solid rgba(255,45,85,0.06)" }}>
-              <p style={{ fontSize: 22, fontWeight: 800, color: MOCK_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0) > 0 ? "#FF2D55" : "#00C853" }}>
-                {MOCK_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0)}
+              <p style={{ fontSize: 22, fontWeight: 800, color: DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0) > 0 ? "#FF2D55" : "#00C853" }}>
+                {DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0)}
               </p>
               <p style={{ fontSize: 9, color: "rgba(255,45,85,0.5)", fontWeight: 600 }}>Failed</p>
             </div>
             <div className="p-3 rounded-xl text-center" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.06)" }}>
               <p style={{ fontSize: 22, fontWeight: 800, color: "#00C8E0" }}>
-                {(MOCK_SYNC_HISTORY.reduce((sum, e) => sum + e.durationMs, 0) / MOCK_SYNC_HISTORY.length / 1000).toFixed(1)}s
+                {DISPLAY_SYNC_HISTORY.length > 0 ? (DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.durationMs, 0) / DISPLAY_SYNC_HISTORY.length / 1000).toFixed(1) : '0.0'}s
               </p>
               <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>Avg Duration</p>
             </div>
@@ -538,7 +553,7 @@ export function OfflineMonitoringPage() {
 
           {/* History list */}
           <div className="space-y-2">
-            {MOCK_SYNC_HISTORY.map(event => (
+            {DISPLAY_SYNC_HISTORY.map(event => (
               <SyncHistoryRow key={event.id} event={event} />
             ))}
           </div>

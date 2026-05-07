@@ -264,7 +264,8 @@ function CreateScheduleModal({ onClose, onSave }: { onClose: () => void; onSave:
                   RECIPIENTS ({selectedRecipients.size} selected)
                 </label>
                 <div className="space-y-1.5 mt-2">
-                  {MOCK_RECIPIENTS.map(email => (
+                  {/* CRIT #164/B: production shows owner-managed recipient list when wired to email_recipients table; until then, DEV-only fixture renders so the picker is visible during development. */}
+                  {(import.meta.env.DEV ? MOCK_RECIPIENTS : []).map(email => (
                     <motion.button
                       key={email}
                       whileTap={{ scale: 0.98 }}
