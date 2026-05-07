@@ -196,7 +196,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   // signer attests.
   const [dpaAccepted, setDpaAccepted] = useState<boolean>(false);
   const [signerTitle, setSignerTitle] = useState<string>("Owner");
-  const DPA_VERSION = "2026-05-06";
+  const DPA_VERSION = "2026-05-07";  // Bumped 2026-05-07: peer-borrowed liability cap + insurance + SCC reference + KSA addendum.
 
   // Step 6: Success
   // W3-17 (B-20, 2026-04-26): crypto-strong invite display code matching the
