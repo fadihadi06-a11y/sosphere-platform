@@ -148,13 +148,6 @@ function getLiveActivity(): Array<{ time: string; text: string; color: string; i
     .eq('company_id', companyId)
     .eq('on_duty', true)
 */
-const MOCK_ON_DUTY = [
-  { name: "Ahmad R.",   role: "Supervisor", zone: "Zone A", status: "available"  as const },
-  { name: "Fatima H.",  role: "Responder",  zone: "Zone B", status: "responding" as const },
-  { name: "Sara A.",    role: "Medic",      zone: "Zone C", status: "available"  as const },
-  { name: "Khalid M.", role: "Security",   zone: "Zone A", status: "available"  as const },
-];
-
 /*
   SUPABASE_MIGRATION_POINT: emergency_timeline
   Replace with:
