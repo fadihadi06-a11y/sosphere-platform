@@ -123,11 +123,17 @@ export function BuddySystemPage({ t, webMode }: { t: (k: string) => string; webM
         id: e.id, name: e.name, role: e.role || "Worker", zone: e.zone || "Unknown",
         avatar: e.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
       }));
-    } catch { /* fallback */ }
-    return ALL_WORKERS;
+    } catch { /* localStorage parse failure — fall through */ }
+    // CRIT #164/B: production owners with no employees see an empty list +
+    // the existing 'Add a buddy' empty state below. ALL_WORKERS is kept as
+    // a DEV-only fixture for storybook / screenshot recording.
+    return import.meta.env.DEV ? ALL_WORKERS : [];
   }, [storeEmployees]);
 
-  const [pairs, setPairs] = useState(MOCK_PAIRS);
+  // CRIT #164/B: same gate for the initial pairs state. MOCK_PAIRS render
+  // 'Ahmed → Mohammed' style demo pairs the new owner has not actually
+  // created. DEV keeps the fixture; production starts empty.
+  const [pairs, setPairs] = useState(() => import.meta.env.DEV ? MOCK_PAIRS : []);
   const [filter, setFilter] = useState<"all" | "active" | "inactive" | "unassigned">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [calledPairs, setCalledPairs] = useState<Set<string>>(new Set());
