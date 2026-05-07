@@ -624,12 +624,18 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         timeline: inv.timeline.map(t => ({ ...t, date: new Date(t.date) })),
         actions: inv.actions.map(a => ({ ...a, dueDate: new Date(a.dueDate), completedDate: a.completedDate ? new Date(a.completedDate) : undefined })),
       }));
-      // Merge: real saved + mock (for demo). Real ones come first.
+      // CRIT #164: previously merged MOCK_INVESTIGATIONS into the
+      // initial state so a brand-new owner saw fake 3-month incident
+      // history. Now we only include mocks in DEV so demos / storybook
+      // still render rich content; production owners see only their
+      // real data plus the EmptyState rendered downstream.
       const realIds = new Set(restored.map(r => r.id));
-      const mockFiltered = MOCK_INVESTIGATIONS.filter(m => !realIds.has(m.id));
+      const mockFiltered = import.meta.env.DEV
+        ? MOCK_INVESTIGATIONS.filter(m => !realIds.has(m.id))
+        : [];
       return [...restored, ...mockFiltered];
     } catch {
-      return MOCK_INVESTIGATIONS;
+      return import.meta.env.DEV ? MOCK_INVESTIGATIONS : [];
     }
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
