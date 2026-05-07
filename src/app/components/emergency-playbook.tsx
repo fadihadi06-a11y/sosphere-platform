@@ -672,7 +672,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                         background: newAutoTrigger ? "rgba(255,149,0,0.3)" : "rgba(255,255,255,0.06)",
                         transition: "background 0.2s",
                       }}>
-                        <motion.div animate={{ x: newAutoTrigger ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        <motion.div initial={false} animate={{ x: newAutoTrigger ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
                           className="absolute top-0.5 left-0.5 size-4 rounded-full" style={{
                             background: newAutoTrigger ? "#FF9500" : "rgba(255,255,255,0.2)",
                           }} />

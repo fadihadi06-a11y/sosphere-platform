@@ -622,7 +622,7 @@ export function PdfEmailModal({
                             border: `1.5px solid ${includePassword ? "rgba(255,149,0,0.3)" : "rgba(255,255,255,0.08)"}`,
                             transition: "all 0.2s",
                           }}>
-                            <motion.div animate={{ x: includePassword ? 16 : 2 }}
+                            <motion.div initial={false} animate={{ x: includePassword ? 16 : 2 }}
                               transition={{ type: "spring", stiffness: 500, damping: 30 }}
                               className="absolute top-[2px]"
                               style={{ width: 14, height: 14, borderRadius: 7, background: includePassword ? "#FF9500" : "rgba(255,255,255,0.25)" }} />

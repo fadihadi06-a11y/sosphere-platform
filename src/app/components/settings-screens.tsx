@@ -225,7 +225,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                     background: t.value ? `${t.color}25` : "rgba(255,255,255,0.06)",
                     border: `1.5px solid ${t.value ? `${t.color}35` : "rgba(255,255,255,0.08)"}`,
                   }}>
-                    <motion.div animate={{ x: t.value ? 19 : 3 }}
+                    <motion.div initial={false} animate={{ x: t.value ? 19 : 3 }}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       className="absolute top-[2px]"
                       style={{ width: 18, height: 18, borderRadius: 9, left: 0, background: t.value ? t.color : "rgba(255,255,255,0.25)", boxShadow: t.value ? `0 2px 6px ${t.color}50` : "0 1px 3px rgba(0,0,0,0.3)" }} />
