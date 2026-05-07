@@ -12,6 +12,9 @@
     "audit:check": "npm audit --audit-level=high",
     "postinstall": "node scripts/fix-capacitor-gradle.cjs"
   },
+  "overrides": {
+    "dompurify": "^3.4.2"
+  },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^8.0.0",
     "@capacitor/app": "^6.0.0",
