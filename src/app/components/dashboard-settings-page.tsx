@@ -145,7 +145,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       </div>
       <button onClick={() => toggle(key)} className="w-9 h-5 rounded-full relative transition-all"
         style={{ background: toggles[key] ? `${color}40` : "rgba(255,255,255,0.08)" }}>
-        <motion.div animate={{ x: toggles[key] ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        <motion.div initial={false} animate={{ x: toggles[key] ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className="absolute top-0.5 left-0.5 size-4 rounded-full" style={{ background: toggles[key] ? color : "rgba(255,255,255,0.3)" }} />
       </button>
     </div>
@@ -182,7 +182,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
         </div>
         <button onClick={() => toggle(id)} className="relative flex-shrink-0"
           style={{ width: 44, height: 24, borderRadius: 12, background: toggles[id] ? color : "rgba(255,255,255,0.08)", transition: "background 0.3s" }}>
-          <motion.div animate={{ x: toggles[id] ? 22 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          <motion.div initial={false} animate={{ x: toggles[id] ? 22 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className="absolute top-1 size-4 rounded-full" style={{ background: toggles[id] ? "#fff" : "rgba(255,255,255,0.4)", boxShadow: toggles[id] ? `0 2px 8px ${color}60` : "none" }} />
         </button>
       </div>
@@ -322,7 +322,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                       </div>
                       <button onClick={() => toggle("hybridMode")} className="relative flex-shrink-0"
                         style={{ width: 52, height: 28, borderRadius: 14, background: toggles.hybridMode ? "#7B5EFF" : "rgba(255,255,255,0.08)", transition: "background 0.3s", boxShadow: toggles.hybridMode ? "0 0 16px rgba(123,94,255,0.3)" : "none" }}>
-                        <motion.div animate={{ x: toggles.hybridMode ? 26 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        <motion.div initial={false} animate={{ x: toggles.hybridMode ? 26 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
                           className="absolute top-1 size-5 rounded-full" style={{ background: toggles.hybridMode ? "#fff" : "rgba(255,255,255,0.4)", boxShadow: toggles.hybridMode ? "0 2px 8px rgba(123,94,255,0.6)" : "none" }} />
                       </button>
                     </div>
@@ -836,7 +836,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
               </div>
               <button onClick={() => toggle("hybridMode")} className="w-9 h-5 rounded-full relative transition-all"
                 style={{ background: toggles.hybridMode ? "rgba(123,94,255,0.5)" : "rgba(255,255,255,0.08)" }}>
-                <motion.div animate={{ x: toggles.hybridMode ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                <motion.div initial={false} animate={{ x: toggles.hybridMode ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   className="absolute top-0.5 left-0.5 size-4 rounded-full" style={{ background: toggles.hybridMode ? "#7B5EFF" : "rgba(255,255,255,0.3)" }} />
               </button>
             </div>
@@ -1243,7 +1243,7 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
 
   const ToggleSwitch = ({ on, onToggle, color = "#00C853" }: { on: boolean; onToggle: () => void; color?: string }) => (
     <button onClick={onToggle} className="relative flex-shrink-0 transition-all" style={{ width: 40, height: 22, borderRadius: 11, background: on ? `${color}50` : "rgba(255,255,255,0.08)" }}>
-      <motion.div animate={{ x: on ? 18 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      <motion.div initial={false} animate={{ x: on ? 18 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
         className="absolute top-1 size-4 rounded-full" style={{ background: on ? color : "rgba(255,255,255,0.3)" }} />
     </button>
   );

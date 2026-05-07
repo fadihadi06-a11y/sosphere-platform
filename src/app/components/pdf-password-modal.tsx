@@ -340,7 +340,7 @@ export function PdfPasswordModal({
                     border: `1.5px solid ${enableProtection ? "rgba(0,200,224,0.3)" : "rgba(255,255,255,0.08)"}`,
                     transition: "all 0.2s",
                   }}>
-                    <motion.div animate={{ x: enableProtection ? 18 : 2 }}
+                    <motion.div initial={false} animate={{ x: enableProtection ? 18 : 2 }}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       className="absolute top-[2px]"
                       style={{ width: 16, height: 16, borderRadius: 8, background: enableProtection ? "#00C8E0" : "rgba(255,255,255,0.25)" }} />
@@ -509,7 +509,7 @@ export function PdfPasswordModal({
                       border: `1.5px solid ${rememberPrefs ? "rgba(139,92,246,0.3)" : "rgba(255,255,255,0.08)"}`,
                       transition: "all 0.2s",
                     }}>
-                      <motion.div animate={{ x: rememberPrefs ? 16 : 2 }}
+                      <motion.div initial={false} animate={{ x: rememberPrefs ? 16 : 2 }}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                         className="absolute top-[2px]"
                         style={{ width: 14, height: 14, borderRadius: 7, background: rememberPrefs ? "#8B5CF6" : "rgba(255,255,255,0.25)" }} />
