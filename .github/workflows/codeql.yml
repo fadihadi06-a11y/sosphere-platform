@@ -1,0 +1,81 @@
+name: CodeQL
+
+# ───────────────────────────────────────────────────────────────────────
+# Static security scanner for SOSphere — runs GitHub's CodeQL queries
+# against every JS/TS source file looking for:
+#   • XSS / unsafe innerHTML usage
+#   • SQL / NoSQL injection patterns
+#   • Hardcoded secrets, tokens, API keys committed to source
+#   • Insecure regex (ReDoS)
+#   • Prototype pollution
+#   • Path traversal
+#   • Unsafe deserialization
+#   • Open redirect
+#   • Missing CSRF / CORS / origin checks
+#   • Use of eval / Function() / setTimeout-with-string
+#
+# Results land in:
+#   1. GitHub Security tab → "Code scanning alerts"
+#   2. Email to repo owner if a NEW alert appears
+#   3. PR-level comments showing introduced issues per change
+#
+# Cost: FREE for public repos and any repo with GitHub Advanced
+# Security enabled. SOSphere's repo is private; if Advanced Security
+# isn't enabled this workflow will fail with a clear error and we
+# can either enable it (~$49/dev/month) or switch to ESLint-security
+# rules for similar coverage at zero cost.
+# ───────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 03:14 UTC — catches new CVE patterns CodeQL adds
+    # to its query database, even when the source code hasn't changed.
+    - cron: "14 3 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # CodeQL needs to read the code, write SARIF results, and update
+      # security alerts. These are minimum required permissions.
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+        # If we add other languages later (e.g. Go for a sidecar service),
+        # add them here. Each language gets its own job in parallel.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Use the security-extended query suite — broader than default,
+          # catches more low-confidence issues. Free for public repos.
+          queries: security-extended,security-and-quality
+          # Custom config to exclude generated/vendor code from analysis.
+          config-file: ./.github/codeql-config.yml
+
+      - name: Autobuild (TypeScript/JavaScript needs no build step)
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          # Upload SARIF to GitHub Security tab so issues are tracked
+          # over time and compared across PRs.
+          upload: true
