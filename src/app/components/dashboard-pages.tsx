@@ -1155,8 +1155,12 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
                         time: new Date(l.timestamp || Date.now()).toLocaleTimeString("en-SA", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
                         event: l.action || "System event",
                       }));
-                    } catch { /* fallback */ }
-                    return MOCK_TIMELINE;
+                    } catch { /* localStorage parse failure — fall through */ }
+                    // CRIT #164: a brand-new owner has no audit log yet. Showing
+                    // MOCK_TIMELINE makes them think SOSphere has invented activity.
+                    // In DEV the mock is helpful; in production we render an empty
+                    // 'no recent activity' single-line stub the parent JSX picks up.
+                    return import.meta.env.DEV ? MOCK_TIMELINE : [{ time: "", event: "No recent activity" }];
                   })()).map((entry, i) => (
                     <div key={i} className="flex gap-2 py-1.5">
                       <div className="flex flex-col items-center" style={{ width: 12 }}>

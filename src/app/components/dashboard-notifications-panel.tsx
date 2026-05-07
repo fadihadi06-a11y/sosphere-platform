@@ -293,8 +293,10 @@ export function NotificationsPanel({
       actorName: e.employeeName,
       navigateTo: "emergencyHub",
     }));
-    // Show real data if available; otherwise show mock as demo
-    return fromStore.length > 0 ? fromStore : MOCK_NOTIFS;
+    // CRIT #164: never fall back to MOCK_NOTIFS on Day 1 — owner
+    // would see fake emergencies before any real activity. Empty
+    // state is rendered by the panel below.
+    return import.meta.env.DEV && fromStore.length === 0 ? MOCK_NOTIFS : fromStore;
   });
   const [filterCat, setFilterCat] = useState<NotifCategory | "all">("all");
   const [soundEnabled, setSoundEnabled] = useState(true);
