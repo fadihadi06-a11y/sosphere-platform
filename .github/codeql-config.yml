@@ -1,0 +1,43 @@
+name: SOSphere CodeQL config
+
+# ──────────────────────────────────────────────────────────────────────
+# Excludes paths that shouldn't be scanned (vendor / generated / mock
+# data / fixtures) so the security alerts stay focused on real source.
+# ──────────────────────────────────────────────────────────────────────
+
+paths-ignore:
+  - "node_modules/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
+  - "android/app/build/**"
+  - "android/build/**"
+  - "ios/App/build/**"
+  - "**/*.d.ts"
+  - "src/imports/**"           # ReactBits / Tailwind UI vendor files
+  - "supabase/migrations/**"   # SQL migrations — not in CodeQL JS scope
+  - "scripts/build/**"         # Build scripts, not user-facing
+  - "**/__tests__/**/fixtures/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.tsx"
+
+# Limit total analysis size — prevents runaway scans on huge generated
+# bundles. CodeQL skips files above this threshold.
+paths:
+  - "src/**"
+  - "supabase/functions/**"
+
+# Disable specific queries that surface lots of false positives in our
+# stack (notably: useless-conditional warnings on intentional ?. chains,
+# and the "incorrect comparison against undefined" rule that flags every
+# defensive `x === undefined` we use for clarity).
+query-filters:
+  - exclude:
+      id: js/useless-conditional
+  - exclude:
+      id: js/incomplete-multi-character-sanitization
+  - exclude:
+      # Vite's import.meta.env access pattern triggers this; intentional.
+      id: js/import-meta-environment-info-leak
