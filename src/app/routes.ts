@@ -37,6 +37,10 @@ export const router = createBrowserRouter([
       // ── LEGAL: Privacy Policy and Terms of Service ──
       { path: "/privacy", lazy: () => import("./components/privacy-page").then(m => ({ Component: m.PrivacyPage })), HydrateFallback: RouteLoading },
       { path: "/terms", lazy: () => import("./components/terms-page").then(m => ({ Component: m.TermsPage })), HydrateFallback: RouteLoading },
+      // AUTH-5 P5 (#175): Data Processing Agreement — public legal page;
+      // shows signed-copy banner + PDF download when visitor is signed in
+      // and their active company has accepted.
+      { path: "/legal/dpa", lazy: () => import("./components/dpa-page").then(m => ({ Component: m.DpaPage })), HydrateFallback: RouteLoading },
       // ── COMPLIANCE: Hidden ISO 27001 Auditor Dashboard (requires admin PIN) ──
       { path: "/compliance", lazy: () => import("./components/compliance-dashboard-v2").then(m => ({ Component: m.ComplianceDashboard })), HydrateFallback: RouteLoading },
       // ── DEEP-LINK HANDLERS (BLOCKER #21 / Beehive fix #2, 2026-04-28) ──
@@ -48,8 +52,4 @@ export const router = createBrowserRouter([
       { path: "/reset-password", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.ResetPasswordHandler })), HydrateFallback: RouteLoading },
       { path: "/payment-success", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.PaymentSuccessHandler })), HydrateFallback: RouteLoading },
       { path: "/payment-cancelled", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.PaymentCancelledHandler })), HydrateFallback: RouteLoading },
-      { path: "/shared-sos/:emergencyId", lazy: () => import("./components/deep-link-handlers").then(m => ({ Component: m.SharedSosViewerHandler })), HydrateFallback: RouteLoading },
-      { path: "*", lazy: () => import("./components/not-found-page").then(m => ({ Component: m.NotFoundPage })), HydrateFallback: RouteLoading },
-    ],
-  },
-]);
+  
