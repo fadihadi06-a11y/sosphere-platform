@@ -19,6 +19,7 @@ import { setHybridMode as setHybridModeStore, getHybridMode, assignEmployeeZone,
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import { MFAEnrollmentModal } from "./mfa-enrollment-modal";
+import { DpaSettingsSection } from "./dpa-settings-section";  // AUTH-5 P6
 import { mfaListFactors, mfaUnenroll, mfaRecoveryStatus, mfaGenerateRecoveryCodes } from "./api/mfa-client";
 
 type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents" | "attendance" | "settings" | "commandCenter" | "riskMap" | "billing" | "analytics" | "shiftScheduling" | "geofencing";
@@ -805,6 +806,14 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       {/* Company Tab */}
       {activeTab === "company" && (
         <div className="space-y-3">
+          {/* AUTH-5 P6 (#175): DPA acceptance status + renewal flow.
+              Reads server truth via current_dpa_version() + get_dpa_acceptance.
+              Shows green confirmation when up-to-date, cyan renewal CTA when
+              the server version has moved ahead of the accepted version. */}
+          <DpaSettingsSection
+            companyId={typeof window !== "undefined" ? localStorage.getItem("sosphere_company_id") : null}
+            ownerNameHint={ownerName}
+          />
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
             {renderRow(Building2, tr("st.profile"), companyName, "#FF9500")}
             {renderRow(Globe, tr("st.lang"), lang ? LANG_META[lang].native : "English", "#00C8E0")}

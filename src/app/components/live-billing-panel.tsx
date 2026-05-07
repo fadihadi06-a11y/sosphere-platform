@@ -227,7 +227,16 @@ export function LiveBillingPanel({ companyId, onStateChange }: LiveBillingPanelP
             <SecondaryBtn
               label={`Sign DPA v${state.dpaVersion || "?"}`}
               busy={false}
-              onClick={() => alert("DPA acceptance lives in Settings → Company. Coming in a follow-up.")}
+              onClick={() => {
+                // AUTH-5 P6 (#175): the renewal modal lives in Settings →
+                // Company, mounted by dashboard-settings-page.tsx via
+                // <DpaSettingsSection />. Drop a one-shot localStorage flag
+                // so the destination page can auto-open the modal once.
+                try { localStorage.setItem("sosphere_dpa_renewal_intent", "1"); } catch { /* */ }
+                // Hard navigate to the settings billing tab. The page reads
+                // ?settingsTab=company from the URL on mount.
+                window.location.href = "/dashboard?page=settings&settingsTab=company";
+              }}
               icon={<ShieldCheck size={12} />}
             />
           )}
