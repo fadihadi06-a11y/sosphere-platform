@@ -816,9 +816,68 @@ Even Elite at full saturation (1000 incidents/month, all 100 photos at 15 MB) co
 - **L4-I.** Right to be Forgotten flow — user-facing UI, 24h cancel window, anonymized audit log. ⏱️ 2 days.
 - **L4-J.** GDPR-compliance test — synthetic deletion verification end-to-end every quarter. ⏱️ 1 day.
 
-### ⏳ Q8 — Forensic export gating
+### ✅ Q8 — Forensic evidence export — **RESOLVED 2026-05-08**
 
-(Pending.)
+**Decision:** Option B (modified) + direct-to-lawyer export + GPG signing on all forensic exports. All 3 owner recommendations accepted.
+
+**Tier matrix:**
+
+| Tier | Full forensic ZIP | Basic audit log CSV | Direct-to-lawyer export |
+|------|-------------------|----------------------|--------------------------|
+| Free | ❌ | ✅ free (2/year) | ❌ |
+| Basic | $5/export | ✅ free (unlimited) | $2/export |
+| Elite | ✅ unlimited free | ✅ free | ✅ free |
+
+**What's in a Full Forensic ZIP (ISO/IEC 27037 compliant):**
+- All audio recordings (call + voice memo + witness/covert) — original WebM + transcribed VTT
+- All photos (originals with EXIF + GPS + Hash metadata preserved)
+- Chat transcript (JSON + human-readable PDF)
+- Audit log filtered to this `trace_id` (CSV)
+- GPS trail data (GeoJSON)
+- `manifest.json` listing every file with its SHA-256 hash + capture timestamp
+- `manifest.sig` — GPG digital signature of the manifest, signed with SOSphere's server key
+- `chain-of-custody.txt` — human-readable timeline of who-did-what-when
+
+**Why GPG signing is mandatory (Q8 part 3):**
+- ISO/IEC 27037 standard for digital evidence requires verifiable integrity
+- Court-admissible without expert testimony to prove non-tampering
+- Anyone can verify with public key: `gpg --verify manifest.sig manifest.json`
+- Without it, evidence weight in court drops significantly
+
+**Direct-to-lawyer export (Q8 part 2):**
+- Owner enters lawyer/police email + phone in dashboard
+- Encrypted ZIP generated with random password
+- Password sent separately via SMS to lawyer's phone (never via email)
+- Audit log entry: who initiated, recipient, when, why
+- Recipient gets: secure download link (24h expiry) + SMS with password
+- Optional: chain-of-custody affidavit signed by Owner attached
+- This avoids:
+  - Owner forwarding sensitive evidence through their personal email
+  - Evidence being intercepted in transit
+  - Disputes about "did the lawyer actually receive it?"
+
+**Basic audit log CSV (Free tier baseline):**
+Even Free users get CSV export of audit_log filtered to their incidents — not full forensic, but enough for personal record-keeping and basic legal use. Limited to 2 exports per year to prevent abuse.
+
+**Cost analysis per export:**
+- Server processing (zip + manifest + GPG sign): ~10 seconds CPU
+- TSA timestamping (Comodo/DigiCert): ~$0.10-0.50 per stamp
+- Bandwidth egress (Cloudflare R2 → user): zero (R2 has no egress fees)
+- Total cost per export: ~$0.20-0.70
+- Basic charge $5/export = ~85% margin
+- Direct-to-lawyer add-on $2 = ~$0.10 SMS cost + $1.90 margin
+
+**Implementation tasks (added to Layer 6 — Business Protection):**
+- **L6-F.** Forensic ZIP builder — collect all artifacts by trace_id, compute hashes, build manifest, generate ZIP. ⏱️ 3 days.
+- **L6-G.** GPG signing infrastructure — server key generation, KMS-secured private key, sign manifest, document verification process for end-users. ⏱️ 2 days.
+- **L6-H.** TSA integration — Comodo or DigiCert API call at export time, stamp added to manifest. ⏱️ 1 day.
+- **L6-I.** Direct-to-lawyer flow — encrypted ZIP password generation, SMS delivery, 24h-expiry secure link, optional Owner-signed affidavit. ⏱️ 3 days.
+- **L6-J.** Basic-tier paid export billing — Stripe one-time charge integration, $5 per forensic export, $2 per direct-to-lawyer. ⏱️ 2 days.
+- **L6-K.** Audit log CSV export (all tiers) — filtered query + CSV download, rate-limited per Free quota. ⏱️ 1 day.
+
+8 of 8 questions resolved. Design phase complete. Implementation
+roadmap (~52 net new days of focused engineering) waiting in
+LIFE_SAFETY_FOUNDATION.md.
 
 ---
 
