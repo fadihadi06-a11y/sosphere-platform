@@ -752,9 +752,69 @@ Even Elite at full saturation (1000 incidents/month, all 100 photos at 15 MB) co
 - **L2-M.** Quality compression per tier — client-side resize to per-tier max, preserve EXIF. ⏱️ 1.5 days.
 - **L2-N.** 24-hour user-deletable window — user can remove specific photos via UI; after window, locked. ⏱️ 1 day.
 
-### ⏳ Q7 — Audio retention vs cost
+### ✅ Q7 — Evidence retention + storage tiering — **RESOLVED 2026-05-08**
 
-(Pending.)
+**Decision:** Hot + Cold storage hybrid model with Cloudflare R2 for cold layer. Right to be Forgotten supported on all tiers.
+
+**Retention by tier:**
+
+| Tier | Hot Storage (Supabase) | Cold Storage (Cloudflare R2) | Total Retention |
+|------|------------------------|------------------------------|-----------------|
+| Free | 30 days | ❌ deleted at cap | 30 days |
+| Basic | 30 days | up to 1 year | 1 year |
+| Elite | 90 days | up to 7 years | 7 years |
+
+**Why Hot + Cold split:**
+- Hot Storage = instant access (ms latency), Supabase Storage at ~$0.021/GB/month
+- Cold Storage = slower access (2-5 min retrieval), Cloudflare R2 at ~$0.015/GB/month + ZERO egress fees
+- ~80% cost savings on long-tail data with no functional loss for legal compliance
+
+**Why Cloudflare R2 (not AWS S3 Glacier):**
+- ✅ Zero egress fees — critical when Owner exports old evidence
+- ✅ S3-compatible API → simple integration with existing tooling
+- ✅ Lower per-GB cost than Glacier Deep Archive at our scale
+- ✅ EU + ME data residency available
+- ✅ No retrieval-time minimums (Glacier requires hours for cheapest tier)
+
+**Evidence types covered by retention rules:**
+- Audio recordings (call, voice memo, witness/covert)
+- Photos (with EXIF + GPS + Hash metadata)
+- Chat transcripts
+- Audit logs (kept indefinitely separately — these are legal records, not evidence artifacts)
+- GPS trail data
+- Tracking link visit history
+
+**Right to be Forgotten (GDPR Art. 17, mandatory all tiers):**
+- User → Settings → "Delete all my data"
+- Confirmation flow with 24h cancel window
+- After confirmation, all evidence + chat + GPS deleted from BOTH Hot and Cold
+- Audit log entry retained (legally required) but anonymized — user_id replaced with "DELETED-${original_id}-${date}"
+- Exception: data under active criminal investigation (with court-issued hold) — user notified, deletion paused, automated alerts to Owner
+- Process must complete within 30 days per GDPR; SOSphere commits to 7 days target
+
+**Migration path (Hot → Cold):**
+- Daily cron job at 02:00 UTC scans `evidence/*` and `incident_photos.uploaded_at`
+- Files older than tier's Hot threshold get migrated to R2 in `cold-archive/${trace_id}/...`
+- DB row updated: `cold_storage_url`, `migrated_at`, `hot_purged_at` columns
+- Hot copy purged 7 days after successful Cold copy + verification
+
+**Retrieval from Cold (Owner request):**
+- Owner clicks "Restore from archive" on incident X
+- Background job pulls files from R2 into a temp Supabase bucket
+- ETA shown to Owner: ~2-5 minutes
+- Files become Hot-accessible for 24 hours, then auto-purged back to Cold
+- Audit log entry: who requested restore, when, why
+
+**Regional consideration (Iraq):**
+- Iraq doesn't yet have GDPR-equivalent law, but draft is under parliamentary review (2026)
+- We follow GDPR as our default standard → future-proofs us + sells to European/Gulf companies that have such requirements
+
+**Implementation tasks (added to Layer 4 — Infrastructure Resilience):**
+- **L4-F.** Cloudflare R2 account setup + IAM keys + DPA addendum. ⏱️ 0.5 day (admin work).
+- **L4-G.** Cold-storage migration cron — daily job, transactional move from Supabase to R2 with verification. ⏱️ 3 days.
+- **L4-H.** Restore-from-archive flow — Owner UI button, async job, progress notifications, 24h temp lifetime. ⏱️ 2 days.
+- **L4-I.** Right to be Forgotten flow — user-facing UI, 24h cancel window, anonymized audit log. ⏱️ 2 days.
+- **L4-J.** GDPR-compliance test — synthetic deletion verification end-to-end every quarter. ⏱️ 1 day.
 
 ### ⏳ Q8 — Forensic export gating
 
