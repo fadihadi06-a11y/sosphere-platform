@@ -35,10 +35,16 @@ describe("PIN gate (root-cause fix for 6 historical bypass paths)", () => {
   });
 
   it("doLogin() redirects to BOTH pin-setup and pin-verify when gate is closed", () => {
+    // Audit 2026-05-08: AUTH-4 Part 2 (commit 3711fbf area) introduced
+    // gateNextStep() to route the redirect through the MFA challenge
+    // before landing on the pin-* screen. The contract — both PIN setup
+    // and PIN verify are reachable from a closed gate — is preserved,
+    // but the call site uses gateNextStep("pin-verify"|"pin-setup")
+    // instead of setStep() directly. Tests track the new gate function.
     const m = SRC.match(/const\s+doLogin\s*=\s*useCallback\([\s\S]*?\}\s*,\s*\[\]\s*\)/);
     const body = m![0];
-    expect(body).toMatch(/setStep\("pin-verify"\)/);
-    expect(body).toMatch(/setStep\("pin-setup"\)/);
+    expect(body).toMatch(/gateNextStep\("pin-verify"\)/);
+    expect(body).toMatch(/gateNextStep\("pin-setup"\)/);
   });
 
   it("only ONE setStep('dashboard') in entire file (inside doLogin)", () => {
@@ -47,7 +53,11 @@ describe("PIN gate (root-cause fix for 6 historical bypass paths)", () => {
   });
 
   it("pin-verify success opens gate before doLogin", () => {
-    const i1 = SRC.indexOf("const valid = await checkPin(next)");
+    // Audit 2026-05-08: checkPin signature is now (userId, pin) — the
+    // userId argument was added so the PIN store can be partitioned per
+    // identity. The temporal contract is unchanged: verify → open gate
+    // → resume doLogin in that order, no setStep("dashboard") between.
+    const i1 = SRC.indexOf("const valid = await checkPin(authUserId, next)");
     const i2 = SRC.indexOf("pinVerifiedRef.current = true", i1);
     const i3 = SRC.indexOf("doLogin(pending.name", i2);
     expect(i1).toBeGreaterThan(-1);
