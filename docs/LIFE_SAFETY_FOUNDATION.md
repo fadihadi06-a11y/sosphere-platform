@@ -5,6 +5,7 @@
 > **Owner:** Fadi Hadi
 > **Author:** Claude (audit + design)
 > **Priority:** Above all feature work
+> **Companion:** [`SOS_FLOW_DESIGN.md`](./SOS_FLOW_DESIGN.md) — authoritative spec for the SOS user flow across all 3 civilian tiers + Employee/Admin/Owner roles. Read alongside this document.
 
 This document is the master plan for converting SOSphere from "B2B emergency-response SaaS" into a **life-safety platform that customers can trust with workers' lives**.
 
@@ -159,6 +160,20 @@ Effort: half day. New: 1 test file, ~12 assertions.
 
 After observability, we lock down the pipeline behavior under failure. Most of this is already in place — Layer 2 is verification + filling specific gaps.
 
+> **Cross-reference:** the user-flow spec in [`SOS_FLOW_DESIGN.md`](./SOS_FLOW_DESIGN.md) drives sub-tasks L2-E through L2-H below — Free-tier call cascade, "answered" SMS, post-call capture flow, and evidence hash chain. These are net-new work surfaced by the flow design and slot into Layer 2 because they harden the pipeline behavior.
+
+### L2-E. Free-tier call cascade (currently FREE has no call)
+Per `SOS_FLOW_DESIGN.md` §3.2: 3 calls × 30s ring per contact, 5s retry SMS between attempts, cascade to next contact after 3 fails. ⏱️ 2 days.
+
+### L2-F. "Answered" SMS during live call
+Per §3.2 Phase B: when Twilio reports a human answered, fire SMS to that contact in parallel with the call so the location link is delivered even after hang-up. ⏱️ Half day.
+
+### L2-G. Post-call automatic audio + photo capture
+Per §3.2 Phase C: on `CallStatus=completed`, auto-start background audio recording (60s Free / 5min Basic / unlimited Elite, hidden indicator), then prompt photo capture with 10s auto-skip. Hash + upload to `evidence/${trace_id}/`. ⏱️ 2 days.
+
+### L2-H. Evidence chain-of-custody
+SHA-256 hashes already exist in `evidence-hash.ts` but aren't wired through. Wire so every audio + photo upload writes its hash to a dedicated column, and the audit_log row references it. ⏱️ 1 day.
+
 ### L2-A. Formal circuit breaker per Twilio account
 
 Goal: when Twilio API fails 5 times in 30s, the breaker opens for 30s. Future SOS in that window skip Twilio and go straight to backup channel.
@@ -209,6 +224,15 @@ Of the 159 empty catches, audit them in this order:
 
 Other 100+ can wait. The 30-40 in the SOS path cannot.
 
+### L3-D. Panic-mode UI redesign
+Per `SOS_FLOW_DESIGN.md` §1.2: large red "End SOS" button only after acknowledgement, single status sentence, live state pill ("Calling X..." / "X answered" / "No answer — calling Y"), no menus, no inputs, high contrast, one-handed operation. ⏱️ 3 days.
+
+### L3-E. "I'm OK now" stand-down button (Employee role only)
+Per §6.3: appears 90s after SOS commit. One tap → marks session ended, notifies admin, suppresses next-stage escalation. Prevents needlessly waking the response chain when the worker self-recovers. ⏱️ Half day.
+
+### L3-F. Pre-flight check on app open
+Per §9.2: warn on app open if battery <20%, GPS permission missing, notification permission denied, location services off. Surfaces silent failure modes before they bite during a real emergency. ⏱️ 1 day.
+
 ---
 
 ## Layer 4 Plan — Infrastructure Resilience
@@ -224,6 +248,12 @@ Inverse model: instead of "pressed SOS → alert", model = "hasn't checked in fo
 ### L4-C. Buddy system auto-activation (S-11)
 
 Workers paired by shift. If one's app fires SOS, the other gets immediate proximity alert.
+
+### L4-D. Buddy auto-activation push (partial code exists)
+Per `SOS_FLOW_DESIGN.md` §6.1.B: bypass DND, ETA computation from buddy GPS, "I'm responding" one-tap update visible to victim. Some scaffolding in `shared-store` already; needs wiring + push priority + tone bypass. ⏱️ 2 days.
+
+### L4-E. Smart call routing by hour (S-10 refinement)
+Per §9.10: time-of-day-aware contact prioritization. Spouse first 6am-10pm, sibling/parent first 10pm-6am. Configurable per user. ~40% reduction in no-answer rate per emergency-call studies. ⏱️ 1 day.
 
 ---
 
@@ -243,6 +273,9 @@ Workers paired by shift. If one's app fires SOS, the other gets immediate proxim
 
 Every failure (even minor) → postmortem doc. What happened? When detected? How fixed? How prevent? Fix systems, not people.
 
+### L5-E. Drill mode (`is_drill=true` end-to-end)
+Per `SOS_FLOW_DESIGN.md` §7.3: dedicated button "Run drill — no real responders" in admin console. Triggers a fake SOS that exercises the entire pipeline (audit log, dispatch, chat) with `is_drill=true` flag so no Twilio cost, no real contact rings, no responder dispatched. Builds worker muscle memory. Major sales lever. ⏱️ 2 days.
+
 ---
 
 ## Layer 6 Plan — Business Protection
@@ -258,6 +291,12 @@ $5-15k/year. Mandatory before first paying customer. Without it, one fatal failu
 ### L6-C. Pre-emergency profile (S-10)
 
 Each worker pre-fills emergency contacts, allergies, blood type, medical conditions. At SOS time, this auto-attaches to dispatch payload.
+
+### L6-D. Pre-emergency profile expansion
+Per `SOS_FLOW_DESIGN.md` §9.6: add language preference (TTS), insurance info, special instructions ("I'm deaf — text only", "Call my doctor first"). Saves 30s of "what does the victim need" — life-or-death in cardiac events. ⏱️ 2 days.
+
+### L6-E. Forensic export bundle (Elite-only)
+Per §5.2: ZIP with all audio (raw + transcribed VTT), photos with EXIF, chat (JSON + PDF), audit log filtered by trace_id (CSV), `manifest.json` with SHA-256 of every file + GPG signature from server's signing key. Court-admissible. ⏱️ 3 days.
 
 ---
 
