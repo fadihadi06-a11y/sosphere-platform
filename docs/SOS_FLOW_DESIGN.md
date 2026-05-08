@@ -532,21 +532,63 @@ These tasks slot into the foundation pyramid:
 
 ## 12. Open questions (need owner decision)
 
-1. **Default call retry count for Basic/Elite** — Free is 3 by your spec. Basic/Elite default? My proposal: Basic=2, Elite=2 (tighter because the announcement is shorter and the bridge connects faster).
+> **DECISION LOG** — questions are resolved one at a time during owner review sessions. Each answer locks in the spec for that area; future code MUST conform.
 
-2. **AI call to user on Basic+ if no contact reached** — yes/no? My proposal: yes, with toggle in user settings.
+### ✅ Q1 — Call retry count per tier — **RESOLVED 2026-05-08**
 
-3. **Voice command wake-word** — "OK SOS" English, or also "اتصل طوارئ" Arabic? My proposal: both, configurable per user.
+**Decision:** Decay pattern, not flat retry.
 
-4. **Witness/covert recording duration** — 5 min default. Adjustable per company? My proposal: yes, capped at 30 min for Elite, 5 min for Basic, off for Free.
+- **Free tier** — Contact #1: 3 retries. Contact #2: 2 retries. Contacts #3, #4, #5: 1 attempt each.
+- **Basic tier** — Contact #1: 2 retries. Contact #2: 2 retries. Contacts #3, #4, #5: 1 attempt each.
+- **Elite tier** — Contact #1: 1 attempt. If no answer → parallel cascade to all remaining contacts simultaneously (conference bridge fans out).
 
-5. **Drill mode permitted on Free?** — My proposal: Free gets 1 drill per month. Basic = unlimited per user. Elite = scheduled drills + reports.
+Rationale: Contact #1 is the most likely to know what to do; later contacts are backups. Decay budget time toward whoever has the highest probability of effective response. Worst-case time-to-SMS-broadcast: Free ~6.5 min, Basic ~5 min, Elite ~1 min.
 
-6. **Photo storage limit per incident?** — My proposal: Free 10 / Basic 25 / Elite 100.
+### ✅ Q2 — AI call-back to the user when no contact answers — **RESOLVED 2026-05-08**
 
-7. **Audio retention vs cost** — 7 years on Elite is expensive. My proposal: tier 0-30 days hot storage, then archive to cold storage (Supabase doesn't have this natively → S3 with lifecycle? deferred until cost-pressure).
+**Decision:** REMOVED. The original idea (AI calls the user back if no contact answers) was rejected as theatre — it doesn't save the unconscious user (they can't pick up either) and adds nothing for the conscious user (who could just dial 122/115 themselves).
 
-8. **Forensic export gating** — Elite-only or available to Basic on per-incident basis (with a $5 per-export charge)? My proposal: Basic = on-demand for $5/export; Elite = unlimited.
+**Replaced with tier-based geographic + social escalation** after all contact retries fail (T+6 min):
+
+**Free tier:**
+- Final SMS broadcast to all 5 contacts with strong wording: "🚨 SOS UNRESOLVED — ${userName} pressed SOS at ${time}, no contact reached. Last known location: ${trackUrl}. Call them or 122/115 directly."
+- One-tap-dial push notification to user themselves: "No one answered. Tap to call 122 directly." (Uses native dialer.)
+- End. No AI call-back.
+
+**Basic tier (additional layer):**
+- 🆕 **Geofence broadcast** — alert any opted-in SOSphere user within 500m radius. Critical for industrial sites (refineries, factories) where coworkers are nearby.
+- 🆕 **Voice memo auto-attach** — if the user recorded a voice memo before / during SOS, attach as a Twilio MMS / chat link to all contact SMS so the first contact who opens hears the user's actual voice.
+
+**Elite tier (additional layer):**
+- 🆕 **Admin team paging** — every admin on the company gets push (priority bypass DND) + SMS + ringtone-override.
+- 🆕 **Auto-escalation to local emergency services** (122/115/999/112) — **OFF by default**. Owner must explicitly enable in company settings, after acknowledging a clear legal warning ("By enabling this, you authorize SOSphere to contact emergency services on behalf of your employees. Verify this complies with your jurisdiction's regulations.").
+- 🆕 **Continuous ambient recording** — from the moment of last cascade failure, microphone records 5 additional minutes for evidence chain-of-custody.
+
+Rationale: AI call-back gave the illusion of safety without saving lives. Geographic + social escalation actually surfaces help that's nearby, and tier gating makes Elite's value proposition concrete (your company + emergency services come in, not just an AI voice).
+
+### ⏳ Q3 — Voice command wake-word
+
+(Pending owner decision.)
+
+### ⏳ Q4 — Witness/covert recording duration
+
+(Pending.)
+
+### ⏳ Q5 — Drill mode on Free tier
+
+(Pending.)
+
+### ⏳ Q6 — Photo storage limit per incident
+
+(Pending.)
+
+### ⏳ Q7 — Audio retention vs cost
+
+(Pending.)
+
+### ⏳ Q8 — Forensic export gating
+
+(Pending.)
 
 ---
 
