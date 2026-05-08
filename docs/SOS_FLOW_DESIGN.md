@@ -593,9 +593,48 @@ Rationale: AI call-back gave the illusion of safety without saving lives. Geogra
 - **L3-H.** Delete shake-to-SOS — remove `shake-to-sos.tsx`, references in `mobile-app.tsx`, related settings. ⏱️ 1 day including regression test.
 - **L3-I.** Voice cancel detection during 3s countdown ("إلغاء" / "Cancel"). ⏱️ 1 day.
 
-### ⏳ Q4 — Witness/covert recording duration
+### ✅ Q4 — Witness/covert recording duration — **RESOLVED 2026-05-08**
 
-(Pending.)
+**Decision:** Fixed durations per tier with explicit DPA consent + audit log. Owner confirmed legal protection requirements.
+
+**Durations:**
+
+Civilian users:
+- Free .............. 1 minute
+- Basic ............. 5 minutes
+- Elite ............. 10 minutes
+
+B2B employees (no Free at company level — companies always have a plan):
+- Basic Plan ........ 5 minutes
+- Elite Plan ........ 10 minutes
+
+**Legal protections (mandatory):**
+- ✅ Explicit DPA consent at first activation. The user sees a pop-up:
+  > "بتفعيل هذه الميزة، توافق على أن SOSphere قد يسجّل الصوت المحيطي حول هاتفك عند تفعيل SOS أو فشل الوصول لجهات اتصالك. التسجيل يُحفظ بشكل آمن، يُستخدم فقط لأغراض الأدلة القانونية، وله مدة أقصى محددة. يمكنك إيقاف هذه الميزة في الإعدادات في أي وقت."
+- ✅ Audit log row written for every recording session: trigger source (SOS-active / cascade-failure / discreet-mode), start time, duration, user_id, trace_id.
+- ✅ Recording stops automatically at the duration cap — no infinite recordings.
+- ✅ The user can disable this feature in settings (must remain a one-tap option).
+
+**Trigger sources:**
+1. **Discreet Mode (manual)** — user explicitly activates "discreet SOS" mode, recording starts at T+0
+2. **Post-SOS automatic** — recording starts when SOS commits (after 3-second long-press / voice trigger)
+3. **Cascade-failure automatic** — recording starts when all contact retries fail (Elite only, per Q2 decision)
+
+**Storage costs (Supabase pricing):**
+- 1 min audio @ moderate quality: ~500 KB
+- 10 min @ moderate: ~5 MB
+- 1000 incidents/month at 10 min each: ~5 GB/month = ~$0.10/month storage cost (negligible)
+
+**Battery impact:**
+- ~1-2% battery per 5 minutes of recording
+- 10 minutes = up to ~4% battery — acceptable trade-off
+
+**Trial period:**
+3 months from launch — durations may be adjusted based on real-world usage data. If users frequently hit the cap and the situation is still active, durations may extend. If most recordings are short, they may shrink.
+
+**Implementation tasks (added to Layer 2 — Pipeline Hardening):**
+- **L2-I.** Witness/covert recording duration enforcement per tier — wire `audio_evidence_max_seconds` from subscription tier into MediaRecorder + auto-stop. Hash + upload + audit log row. ⏱️ 2 days.
+- **L2-J.** DPA consent flow for witness recording — one-time pop-up at first activation, settings toggle, signed consent logged. ⏱️ 1 day.
 
 ### ⏳ Q5 — Drill mode on Free tier
 
