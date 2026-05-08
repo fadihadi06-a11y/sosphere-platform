@@ -31,14 +31,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # O-M1: intermediate cap of 300 warnings (long-term goal <100)
+      # O-M1: intermediate cap of 1100 warnings (long-term goal <100)
       - run: npx eslint src/app/ --max-warnings 1100
 
   # ── Job 3: Vitest Test Suite ───────────────────────────
   # FOUNDATION-3: every push runs the full test suite. ~32 tests
   # cover risk scoring, audit-log RLS, civilian trial server,
   # consent migration, complete logout, AUTH-5 architectural
-  # invariants, and more. Catches regressions before production.
+  # invariants, L1-A observability, and more.
   test:
     name: Vitest Test Suite
     runs-on: ubuntu-latest
@@ -53,9 +53,8 @@ jobs:
 
   # ── Job 4: Migration Drift Guard ───────────────────────
   # L0.5 (#182): catches migrations applied to live Supabase that never
-  # made it to git. Before this guard, foundation_canonical_identity_rpc
-  # lived only in production for ~24h. Lock file is the single source of
-  # truth for "what migrations git knows about" — see scripts/check-migration-drift.mjs
+  # made it to git. Lock file is the single source of truth for
+  # "what migrations git knows about" — see scripts/check-migration-drift.mjs
   migration-drift:
     name: Migration Drift Guard
     runs-on: ubuntu-latest
@@ -66,6 +65,23 @@ jobs:
           node-version: 20
       - run: node scripts/check-migration-drift.mjs --check
 
-  # ── Job 4: Build ───────────────────────────────────────
+  # ── Job 5: Vite Build ──────────────────────────────────
   build:
-    name: Vite Build
+    name: Vite Build
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # O-M4: write secrets to .env in a single masked step instead of
+      # exposing them as step-level env vars (reduces surface for log leakage)
+      - name: Create .env (secrets)
+        run: |
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
+        shell: bash
+      - run: npx vite build
