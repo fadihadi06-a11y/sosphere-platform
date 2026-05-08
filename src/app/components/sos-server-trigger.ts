@@ -197,7 +197,7 @@ async function getAuthToken(): Promise<string | null> {
 async function fetchSOS(
   action: string | null,
   body: Record<string, unknown>,
-  opts: { timeoutMs?: number; idempotencyKey?: string } = {}
+  opts: { timeoutMs?: number; idempotencyKey?: string; traceId?: string } = {}
 ): Promise<Response> {
   const url = action ? `${SOS_ALERT_URL}?action=${action}` : SOS_ALERT_URL;
   const token = await getAuthToken();
@@ -212,6 +212,11 @@ async function fetchSOS(
   // responses so network retries never double-fire conferences, SMS
   // bursts, or end broadcasts.
   if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
+  // L1-A observability: propagate the SOS trace_id to the edge function
+  // so server-side logs, audit_log rows, and Twilio statusCallback URLs
+  // all carry the same correlation key. This is what makes "what
+  // happened during emergency X?" reconstructible as a single timeline.
+  if (opts.traceId) headers["X-SOS-Trace-Id"] = opts.traceId;
 
   const controller = new AbortController();
   const timeoutId = opts.timeoutMs
@@ -409,6 +414,23 @@ export async function triggerServerSOS(opts: {
   const tier = getTierString();
   const now = Date.now();
 
+  // ── L1-A/B observability: generate trace_id + client_claimed_at ─
+  // These are generated as early as possible so they capture the
+  // moment of intent (button-press) rather than network arrival.
+  // trace_id is a UUID v4 propagated through every layer (HTTP
+  // header, edge function, audit_log, Twilio statusCallback,
+  // Sentry tag). client_claimed_at is the user's wall-clock time
+  // at trigger; the server stamps server_received_at on receipt
+  // and the delta is a forensic signal (negative or >30s = clock
+  // skew, manipulation, or offline replay). Both are deterministic
+  // — replay through the offline queue uses the original values,
+  // never regenerated, so the timeline reconstruction is exact.
+  const traceId = (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const clientClaimedAt = new Date().toISOString();
+  console.log(`[SOS-Server] trace_id=${traceId} client_claimed_at=${clientClaimedAt}`);
+
   // ── E-H8: validate contact phones BEFORE Twilio ─────────────
   // Strip invalid E.164 numbers so Twilio doesn't silently fail on a
   // 21211 error the victim never learns about. If NO valid contacts
@@ -550,6 +572,9 @@ export async function triggerServerSOS(opts: {
 
     const res = await fetchSOS(null, {
       emergencyId: opts.emergencyId,
+      // L1-A/B observability — propagated from trigger to server
+      traceId,
+      clientClaimedAt,
       userId: opts.userId,
       userName: opts.userName,
       userPhone: opts.userPhone,
@@ -586,6 +611,9 @@ export async function triggerServerSOS(opts: {
       // Key on emergencyId alone — any retry of the SAME emergency must
       // land in the existing conference, never spawn a parallel bridge.
       idempotencyKey: `trigger:${opts.emergencyId}`,
+      // L1-A: propagate trace_id via HTTP header for server logs +
+      // statusCallback URL building.
+      traceId,
     });
 
     if (!res.ok) {
@@ -1185,49 +1213,4 @@ export function startSOSReplayWatcher(): void {
   onlineHandler = () => fire("online");
   window.addEventListener("online", onlineHandler);
 
-  // Trigger 2: visibility restore — named handler.
-  if (typeof document !== "undefined") {
-    if (visibilityHandler) document.removeEventListener("visibilitychange", visibilityHandler);
-    visibilityHandler = () => {
-      if (document.visibilityState === "visible") fire("visibility");
-    };
-    document.addEventListener("visibilitychange", visibilityHandler);
-  }
-
-  // Trigger 3: auth session available.
-  // W3-43 (B-20, 2026-04-26): capture subscription so we can unsubscribe
-  // on stopSOSReplayWatcher / module reload. Pre-fix: every HMR / re-init
-  // accumulated another listener, multiplying replay calls per token-refresh.
-  try {
-    if (authSubscription) { try { authSubscription.unsubscribe(); } catch {} }
-    const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) fire(`auth:${event.toLowerCase()}`);
-    });
-    authSubscription = data?.subscription ?? null;
-  } catch {
-    // Auth listener is best-effort; never fatal.
-  }
-
-  // Trigger 4: immediate replay if already online at mount
-  if (navigator.onLine) {
-    fire("startup");
-  }
-
-  console.log("[SOS-Replay] watcher installed (online + visibility + auth + startup)");
-}
-
-/**
- * Stop and de-register the replay watcher. Useful for tests + HMR.
- * Idempotent — safe to call multiple times.
- */
-export function stopSOSReplayWatcher(): void {
-  if (onlineHandler) {
-    window.removeEventListener("online", onlineHandler);
-    onlineHandler = null;
-  }
-  if (visibilityHandler && typeof document !== "undefined") {
-    document.removeEventListener("visibilitychange", visibilityHandler);
-    visibilityHandler = null;
-  }
-  replayListenerAttached = false;
-}
+  // Trigger 2: visibility restore — named ha
