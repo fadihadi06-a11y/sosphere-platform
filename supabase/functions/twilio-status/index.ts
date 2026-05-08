@@ -177,6 +177,32 @@ serve(async (req) => {
           }
         }
         await logCallEvent(supabase, callId, "accepted", data);
+
+        // L1-C: this is the SLA-critical "acknowledged" event — a contact
+        // pressed 1 to confirm receipt. Resolve trace_id from either the
+        // gather URL query param (sos-alert appends &trace_id=… per the
+        // L1-A wiring) OR from the session row by callId. UPDATE WHERE
+        // responder_acked_at IS NULL means first ack wins (idempotent).
+        // Best-effort — never block the TwiML response.
+        try {
+          let ackTraceId = url.searchParams.get("trace_id") || null;
+          if (!ackTraceId && callId) {
+            const { data: sess } = await supabase
+              .from("sos_sessions")
+              .select("trace_id")
+              .eq("id", callId)
+              .maybeSingle();
+            ackTraceId = (sess as unknown as { trace_id?: string | null })?.trace_id || null;
+          }
+          if (ackTraceId) {
+            await supabase.rpc("record_sos_pipeline_acked", {
+              p_trace_id: ackTraceId,
+              p_contacts_reached: 1,
+            });
+          }
+        } catch (e) {
+          console.warn("[twilio-status] pipeline_metrics acked failed (non-fatal):", e);
+        }
         await supabase.channel(`call-${callId}`).send({
           type: "broadcast",
           event: "call_status",
