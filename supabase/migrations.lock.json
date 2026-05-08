@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-08T13:39:53.777Z",
-  "total_migrations": 100,
-  "manifest_sha256": "b88cf18db86528eac4b7a83e451618ed1a9a2cbdfa812b565e26d3740336fd56",
+  "generated_at": "2026-05-08T16:21:17.493Z",
+  "total_migrations": 101,
+  "manifest_sha256": "e273ccf6f8085f9c40031b9b3f2a0ae2d52aeeafb4a0af59e284094fdc555094",
   "migrations": [
     {
       "version": "20260415",
@@ -702,6 +702,13 @@
       "file": "20260508140000_l1a_log_sos_audit_trace_id_param.sql",
       "sha256": "58ba1c9eb67ca60f0ec4d169f597f972f400802b048a145bf88fc378e6370137",
       "bytes": 6897
+    },
+    {
+      "version": "20260508150000",
+      "name": "l1c_sos_pipeline_metrics",
+      "file": "20260508150000_l1c_sos_pipeline_metrics.sql",
+      "sha256": "722bbf830811a3c17d6b3d5fac309397979acd6902f519321bf6266e1be5109e",
+      "bytes": 7570
     }
   ]
 }
