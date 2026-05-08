@@ -706,9 +706,51 @@ B2B employees (no Free at company level — companies always have a plan):
 - **L5-H.** Drill report generator — per-employee + per-company metrics, PDF export. ⏱️ 2 days.
 - **L5-I.** Auto-scheduling for Elite — cron-based drills (e.g. "every 1st Sunday at 10am"), email digest of upcoming drills. ⏱️ 1.5 days.
 
-### ⏳ Q6 — Photo storage limit per incident
+### ✅ Q6 — Photo storage limit per incident — **RESOLVED 2026-05-08**
 
-(Pending.)
+**Decision:** Tiered photo limits with full forensic metadata on every photo + tiered quality.
+
+**Limits per incident:**
+
+| Tier | Max photos | Quality cap | EXIF + GPS + Hash |
+|------|------------|-------------|-------------------|
+| Free | 10 | ~2 MB / photo (moderate) | ✅ |
+| Basic | 25 | ~5 MB / photo (high) | ✅ |
+| Elite | 100 | ~15 MB / photo (raw OK) | ✅ |
+
+**Forensic metadata on EVERY photo (all tiers):**
+
+Stored as columns in `incident_photos` table:
+- `taken_at` — client-claimed capture timestamp
+- `received_at` — server timestamp at upload
+- `gps_lat` + `gps_lng` — coordinates at capture
+- `gps_accuracy_m` — accuracy radius
+- `device_camera` — front/back/external
+- `sha256_hash` — SHA-256 of original bytes
+- `exif_json` — full EXIF blob preserved (manufacturer, lens, ISO, etc.)
+
+This makes photos legally admissible per ISO/IEC 27037 standard for digital evidence (chain-of-custody requirement).
+
+**Quality / size cost analysis:**
+
+| Tier | Per photo | Per max-incident | Storage cost/month at 1000 incidents |
+|------|-----------|------------------|--------------------------------------|
+| Free | 2 MB | 20 MB | ~$0.42 |
+| Basic | 5 MB | 125 MB | ~$2.63 |
+| Elite | 15 MB | 1.5 GB | ~$31.50 |
+
+Even Elite at full saturation (1000 incidents/month, all 100 photos at 15 MB) costs ~$31.50/month total — fully covered by Elite margin (~$22 net per user).
+
+**Privacy guardrails:**
+- DPA disclosure: "صور قد تحتوي على وجوه أشخاص آخرين، تُحتفظ للأغراض القانونية فقط"
+- 24-hour user-deletable window after SOS — user can remove specific photos before they lock in
+- After 24h, only Owner (with audit-log entry) can request deletion
+
+**Implementation tasks (added to Layer 2 — Pipeline Hardening):**
+- **L2-K.** Tier-aware photo upload — server reads `subscription.tier` and rejects photo #N+1 with friendly error. ⏱️ 1 day.
+- **L2-L.** EXIF + GPS + Hash extraction at upload time — hash before storage, persist all metadata atomically. ⏱️ 2 days.
+- **L2-M.** Quality compression per tier — client-side resize to per-tier max, preserve EXIF. ⏱️ 1.5 days.
+- **L2-N.** 24-hour user-deletable window — user can remove specific photos via UI; after window, locked. ⏱️ 1 day.
 
 ### ⏳ Q7 — Audio retention vs cost
 
