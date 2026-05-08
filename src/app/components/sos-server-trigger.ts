@@ -30,6 +30,7 @@ import {
   type SOSRecord,
 } from "./offline-database";
 import { parseRateLimit, waitForRetry, logRateLimit } from "./rate-limit-client";
+import { setSentryTraceId } from "./sentry-client";
 
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
@@ -119,6 +120,11 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let heartbeatInFlight = false;
 let heartbeatMissed = 0;
 let activeEmergencyId: string | null = null;
+// L1-A: trace_id for the currently-active SOS lifecycle. Set when
+// triggerServerSOS commits, propagated to heartbeat/end/prewarm via
+// HTTP header so server-side audit_log + Twilio statusCallback all
+// stay correlated. Cleared on endServerSOS.
+let activeTraceId: string | null = null;
 let serverTriggerResult: ServerTriggerResult | null = null;
 
 // ── Dedup guard (double-tap / re-render protection) ─────────
@@ -316,6 +322,11 @@ async function firePrewarm(opts: {
   userName: string;
   tier: "free" | "basic" | "elite";
   location: { lat: number; lng: number; accuracy: number } | null;
+  // L1-A: optional trace_id propagated through prewarm body so the
+  // server-side prewarm row carries the same correlation key as the
+  // later main trigger. sendBeacon cannot set headers, hence body.
+  traceId?: string;
+  clientClaimedAt?: string;
 }): Promise<void> {
   // ─────────────────────────────────────────────────────────────
   // G-4 (B-20, 2026-04-25): include the JWT in the body so the server
@@ -333,6 +344,11 @@ async function firePrewarm(opts: {
     location: opts.location,
     accessToken,                    // ← server reads this if no Authorization header
     ts: Date.now(),
+    // L1-A: thread the trace_id and client_claimed_at through prewarm
+    // so the server-side prewarm row carries them. The later main
+    // trigger UPDATE will see them already present and skip overwriting.
+    traceId: opts.traceId,
+    clientClaimedAt: opts.clientClaimedAt,
   });
 
   // Path 1: sendBeacon (browser-guaranteed delivery during unload/crash)
@@ -417,19 +433,17 @@ export async function triggerServerSOS(opts: {
   // ── L1-A/B observability: generate trace_id + client_claimed_at ─
   // These are generated as early as possible so they capture the
   // moment of intent (button-press) rather than network arrival.
-  // trace_id is a UUID v4 propagated through every layer (HTTP
-  // header, edge function, audit_log, Twilio statusCallback,
-  // Sentry tag). client_claimed_at is the user's wall-clock time
-  // at trigger; the server stamps server_received_at on receipt
-  // and the delta is a forensic signal (negative or >30s = clock
-  // skew, manipulation, or offline replay). Both are deterministic
-  // — replay through the offline queue uses the original values,
-  // never regenerated, so the timeline reconstruction is exact.
   const traceId = (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const clientClaimedAt = new Date().toISOString();
   console.log(`[SOS-Server] trace_id=${traceId} client_claimed_at=${clientClaimedAt}`);
+
+  // L1-A: stash trace_id in module state so heartbeat/end/prewarm
+  // (which fire later) all carry the same correlation key.
+  activeTraceId = traceId;
+  // L1-A: surface trace_id in Sentry for end-to-end forensics.
+  setSentryTraceId(traceId);
 
   // ── E-H8: validate contact phones BEFORE Twilio ─────────────
   // Strip invalid E.164 numbers so Twilio doesn't silently fail on a
@@ -513,6 +527,11 @@ export async function triggerServerSOS(opts: {
     userName: opts.userName,
     tier,
     location: gps,
+    // L1-A: prewarm carries the same trace_id + client_claimed_at as
+    // the main trigger so the server-side prewarm row is already
+    // correlated by the time the main trigger arrives.
+    traceId,
+    clientClaimedAt,
   });
 
   // STEP 1b — Fire neighbor alert (Elite + opt-in only).
@@ -719,6 +738,9 @@ function startHeartbeat(emergencyId: string, userId: string) {
         // Per-tick key — if this exact heartbeat retries after a network
         // blip, server treats it as one ping, not two.
         idempotencyKey: `hb:${emergencyId}:${heartbeatCount}`,
+        // L1-A: thread the lifecycle trace_id so server-side heartbeat
+        // logs land in the same forensic timeline as the trigger.
+        traceId: activeTraceId ?? undefined,
       });
       heartbeatMissed = 0; // Reset on successful send
       console.log(`[SOS-Server] Heartbeat #${heartbeatCount} sent (battery=${battery ? Math.round(battery * 100) + "%" : "?"})`);
@@ -773,7 +795,14 @@ export async function endServerSOS(opts: {
     activeNeighborBroadcast = null;
   }
 
+  // L1-A: capture trace_id BEFORE we clear it so the closing fetchSOS
+  // call still carries it as a header.
+  const closingTraceId = activeTraceId;
   activeEmergencyId = null;
+  activeTraceId = null;
+  // L1-A: clear Sentry tag — events emitted AFTER end shouldn't
+  // inherit a stale trace_id.
+  setSentryTraceId(null);
   serverTriggerResult = null;
   // Release dedup guards so a new emergency can be triggered immediately.
   sosInFlight = false;
@@ -795,6 +824,9 @@ export async function endServerSOS(opts: {
       // A user mashing "End SOS" or the network retrying this call must
       // not re-broadcast `sos_ended` to responders.
       idempotencyKey: `end:${opts.emergencyId}`,
+      // L1-A: trace_id continues through the closing leg so the audit
+      // row written by sos-alert/end stays correlated.
+      traceId: closingTraceId ?? undefined,
     });
 
     console.log(`[SOS-Server] SOS ended on server: ${res.ok ? "OK" : "FAILED"}`);
@@ -1213,4 +1245,49 @@ export function startSOSReplayWatcher(): void {
   onlineHandler = () => fire("online");
   window.addEventListener("online", onlineHandler);
 
-  // Trigger 2: visibility restore — named ha
+  // Trigger 2: visibility restore — named handler.
+  if (typeof document !== "undefined") {
+    if (visibilityHandler) document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = () => {
+      if (document.visibilityState === "visible") fire("visibility");
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+  }
+
+  // Trigger 3: auth session available.
+  // W3-43 (B-20, 2026-04-26): capture subscription so we can unsubscribe
+  // on stopSOSReplayWatcher / module reload. Pre-fix: every HMR / re-init
+  // accumulated another listener, multiplying replay calls per token-refresh.
+  try {
+    if (authSubscription) { try { authSubscription.unsubscribe(); } catch {} }
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) fire(`auth:${event.toLowerCase()}`);
+    });
+    authSubscription = data?.subscription ?? null;
+  } catch {
+    // Auth listener is best-effort; never fatal.
+  }
+
+  // Trigger 4: immediate replay if already online at mount
+  if (navigator.onLine) {
+    fire("startup");
+  }
+
+  console.log("[SOS-Replay] watcher installed (online + visibility + auth + startup)");
+}
+
+/**
+ * Stop and de-register the replay watcher. Useful for tests + HMR.
+ * Idempotent — safe to call multiple times.
+ */
+export function stopSOSReplayWatcher(): void {
+  if (onlineHandler) {
+    window.removeEventListener("online", onlineHandler);
+    onlineHandler = null;
+  }
+  if (visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+  replayListenerAttached = false;
+}
