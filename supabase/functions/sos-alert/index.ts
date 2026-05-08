@@ -863,6 +863,20 @@ serve(async (req: Request) => {
         escalated_at: new Date().toISOString(),
       }).eq("id", emergencyId);
 
+      // L1-C: emit pipeline metrics 'escalated' event. Uses GREATEST()
+      // server-side so retries of the same stage are no-ops. escTraceId
+      // was resolved earlier from the session row.
+      if (escTraceId) {
+        try {
+          await supabase.rpc("record_sos_pipeline_escalated", {
+            p_trace_id: escTraceId,
+            p_stage: stage,
+          });
+        } catch (e) {
+          console.warn("[sos-alert] pipeline_metrics escalated failed (non-fatal):", e);
+        }
+      }
+
       // Broadcast escalation to dashboard
       try {
         const ch = supabase.channel(`sos-${emergencyId}`);
@@ -964,6 +978,34 @@ serve(async (req: Request) => {
         photo_count: typeof photos === "number" ? photos : (photos?.length ?? 0),
         comment: comment || null,
       }).eq("id", emergencyId);
+
+      // L1-C: emit pipeline metrics 'ended' event. UPDATE WHERE status =
+      // 'in_progress' — only the first end transition wins. Server-side
+      // computes total_session_ms. Map end-reason to pipeline_status.
+      if (endTraceId) {
+        try {
+          // Map free-text reason to the constrained pipeline_status domain.
+          // success: user ended after help arrived (most common)
+          // cancelled: user-initiated cancel (false alarm, intent reversal)
+          // failed: dispatcher / admin marked failed (no help reached)
+          // partial: at least one channel succeeded but ack never arrived
+          const r = (reason || "user_ended").toLowerCase();
+          const pipelineStatus: string =
+            r.includes("cancel") || r === "false_alarm" ? "cancelled"
+            : r.includes("fail")                         ? "failed"
+            : r.includes("partial") || r === "no_ack"    ? "partial"
+            : "success";
+          await supabase.rpc("record_sos_pipeline_ended", {
+            p_trace_id: endTraceId,
+            p_status: pipelineStatus,
+            p_failure_reason: pipelineStatus === "failed" || pipelineStatus === "partial"
+              ? (reason || null)
+              : null,
+          });
+        } catch (e) {
+          console.warn("[sos-alert] pipeline_metrics ended failed (non-fatal):", e);
+        }
+      }
 
       // Emergency ended — drop the user's SOS priority boost so any
       // non-emergency requests that follow go through normal limits.
@@ -1079,6 +1121,27 @@ serve(async (req: Request) => {
       console.warn(
         `[sos-alert] missing trace_id — older client or direct API call. emergency=${emergencyId}`,
       );
+    }
+
+    // L1-C: emit pipeline metrics 'started' event. ON CONFLICT DO NOTHING
+    // makes this safe under retries. Best-effort — metric write must
+    // NEVER block emergency dispatch (Layer 0 invariant: failsafe over
+    // fail-secure). traceId may be null on legacy callers — the RPC
+    // handles NULL gracefully but skip the call entirely to keep DB
+    // free of orphan rows.
+    if (traceId) {
+      try {
+        await supabase.rpc("record_sos_pipeline_started", {
+          p_trace_id: traceId,
+          p_emergency_id: emergencyId,
+          // user_id resolved post-auth below; deferred to dispatched event
+          // tier resolved server-side below; deferred to dispatched event
+          p_client_claimed_at: clientClaimedAt,
+          p_server_received_at: serverReceivedAt,
+        });
+      } catch (e) {
+        console.warn("[sos-alert] pipeline_metrics started failed (non-fatal):", e);
+      }
     }
 
     // `contacts` is mutable — we may clamp it server-side before fanout
@@ -1578,6 +1641,39 @@ serve(async (req: Request) => {
     await supabase.from("sos_sessions").update({
       server_results: fanoutResults,
     }).eq("id", emergencyId);
+
+    // L1-C: emit pipeline metrics 'dispatched' event. UPDATE WHERE
+    // primary_alert_dispatched_at IS NULL — first dispatch wins, retries
+    // are no-ops. Server-side computes server_to_dispatch_ms (the SLA
+    // target metric). Channel + contact count derived from fanoutResults.
+    if (traceId) {
+      try {
+        // Determine the highest-fidelity channel that succeeded. Order
+        // of preference: voice (Elite bridge) > call (Basic announce) >
+        // sms > push > none. fanoutResults rows look like:
+        //   { method: "sms" | "call" | "conference" | "invalid_number", ... }
+        const channels = new Set<string>();
+        let attemptedCount = 0;
+        for (const r of fanoutResults) {
+          attemptedCount++;
+          if (r?.method && r.method !== "invalid_number") channels.add(r.method);
+        }
+        const dispatchedChannel =
+          channels.has("conference") ? "conference"
+          : channels.has("call")     ? "call"
+          : channels.has("sms")      ? "sms"
+          : channels.size > 0        ? "all"
+          : "none";
+
+        await supabase.rpc("record_sos_pipeline_dispatched", {
+          p_trace_id: traceId,
+          p_channel: dispatchedChannel,
+          p_contacts_attempted: attemptedCount,
+        });
+      } catch (e) {
+        console.warn("[sos-alert] pipeline_metrics dispatched failed (non-fatal):", e);
+      }
+    }
 
     // ──────────────────────────────────────────────────────────────────
     // BLOCKER #19 wiring (2026-04-29): self-confirmation push to caller.
