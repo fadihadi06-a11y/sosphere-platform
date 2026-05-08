@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-08T16:33:32.896Z",
-  "total_migrations": 102,
-  "manifest_sha256": "e4640d0bee4d10ba25491686ca601f9fa7153fa4c2ffed3706c64374906c546b",
+  "generated_at": "2026-05-08T22:09:56.491Z",
+  "total_migrations": 103,
+  "manifest_sha256": "68c7418ae86ca7d97a1f050a200b4768e7b5ce39301159f4c016f6a888906d08",
   "migrations": [
     {
       "version": "20260415",
@@ -716,6 +716,13 @@
       "file": "20260508160000_l1c_pipeline_metrics_rpcs.sql",
       "sha256": "9eadbd93cbc9b46216be635725b32a99b3271e466d5b417e81c75e8b584d338c",
       "bytes": 8721
+    },
+    {
+      "version": "20260508170000",
+      "name": "l1c_security_revoke_anon_from_write_rpcs",
+      "file": "20260508170000_l1c_security_revoke_anon_from_write_rpcs.sql",
+      "sha256": "8adb84e1df150bbc5dd0b93b676a3564b807623dfb31e0dfa6c4d22e01d0e787",
+      "bytes": 4044
     }
   ]
 }

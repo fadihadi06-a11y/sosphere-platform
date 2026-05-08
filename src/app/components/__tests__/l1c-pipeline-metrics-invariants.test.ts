@@ -204,3 +204,37 @@ describe("L1-C: RPC argument validation rejects invalid input", () => {
     );
   });
 });
+
+// ─── 6. SECURITY GRANT POSTURE (REVOKE PUBLIC + anon) ─────────
+describe("L1-C: write-path RPCs are NOT callable by anon", () => {
+  let revokeMig = "";
+  beforeAll(() => {
+    revokeMig = READ("supabase/migrations/20260508170000_l1c_security_revoke_anon_from_write_rpcs.sql");
+  });
+
+  const RPCS_SR_ONLY = [
+    "record_sos_pipeline_started",
+    "record_sos_pipeline_dispatched",
+    "record_sos_pipeline_acked",
+    "record_sos_pipeline_escalated",
+    "record_sos_pipeline_ended",
+  ];
+
+  it.each(RPCS_SR_ONLY)("%s revokes from PUBLIC", (rpc) => {
+    const re = new RegExp("REVOKE EXECUTE ON FUNCTION public\\." + rpc + "[\\s\\S]*?FROM PUBLIC");
+    expect(revokeMig).toMatch(re);
+  });
+
+  it.each(RPCS_SR_ONLY)("%s revokes from anon AND authenticated", (rpc) => {
+    const re = new RegExp("REVOKE EXECUTE ON FUNCTION public\\." + rpc + "[\\s\\S]*?FROM anon, authenticated");
+    expect(revokeMig).toMatch(re);
+  });
+
+  it("log_sos_audit revokes from anon (keeps authenticated)", () => {
+    // Anchored within a single REVOKE statement (terminated by ';').
+    expect(revokeMig).toMatch(/REVOKE EXECUTE ON FUNCTION public\.log_sos_audit\([^;]*?\)\s+FROM anon\s*;/);
+    // Negative: NO REVOKE statement (single-line scoped) targets authenticated for log_sos_audit.
+    expect(revokeMig).not.toMatch(/REVOKE EXECUTE ON FUNCTION public\.log_sos_audit\([^;]*?\)\s+FROM\s+anon,\s*authenticated\s*;/);
+  });
+});
+
