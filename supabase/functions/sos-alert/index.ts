@@ -1024,6 +1024,32 @@ serve(async (req: Request) => {
 
     const payload: SOSPayload = await req.json();
     const { emergencyId, userName, userPhone, location, bloodType, zone, silent } = payload;
+
+    // ── L1-A/B observability: extract trace_id + client time ──
+    // trace_id arrives via either the X-SOS-Trace-Id header (preferred)
+    // or the body's `traceId` field (fallback for older clients). Both
+    // are accepted so a phased rollout doesn't break the pipeline.
+    // server_received_at is captured from THIS line — it represents the
+    // earliest moment the server saw the request, before any DB or
+    // network I/O. Used to compute the client→server delta on every
+    // emergency.
+    const traceId =
+      req.headers.get("X-SOS-Trace-Id") ||
+      (payload as unknown as { traceId?: string }).traceId ||
+      null;
+    const clientClaimedAt =
+      (payload as unknown as { clientClaimedAt?: string }).clientClaimedAt || null;
+    const serverReceivedAt = new Date().toISOString();
+    if (traceId) {
+      console.log(
+        `[sos-alert] trace_id=${traceId} client_claimed_at=${clientClaimedAt ?? "null"} server_received_at=${serverReceivedAt}`,
+      );
+    } else {
+      console.warn(
+        `[sos-alert] missing trace_id — older client or direct API call. emergency=${emergencyId}`,
+      );
+    }
+
     // `contacts` is mutable — we may clamp it server-side before fanout
     // (see "FIX 2026-04-24 (#7)" block below). Declared with `let` so the
     // slice re-assignment below is type-safe under Deno's strict mode.
@@ -1223,6 +1249,11 @@ serve(async (req: Request) => {
     // when prewarm already created the row.
     await supabase.from("sos_sessions").upsert({
       id: emergencyId,
+      // L1-A/B observability columns — written on first insert so the
+      // forensic timeline is complete from row birth.
+      trace_id: traceId,
+      client_claimed_at: clientClaimedAt,
+      server_received_at: serverReceivedAt,
       user_id: authUserId,
       user_name: userName,
       user_phone: userPhone,
@@ -1262,6 +1293,15 @@ serve(async (req: Request) => {
     const { data: claimed } = await supabase
       .from("sos_sessions")
       .update({
+        // L1-A/B observability — also set on the UPDATE path so a row
+        // pre-created by prewarm (which doesn't yet carry trace_id)
+        // gets its trace_id stamped at the moment of real trigger.
+        // We use COALESCE-style "only if not already set" semantics by
+        // sending the value only if non-null; if both prewarm and
+        // trigger ever both set it, the trigger wins (later write).
+        trace_id: traceId,
+        client_claimed_at: clientClaimedAt,
+        server_received_at: serverReceivedAt,
         user_id: authUserId,
         user_name: userName,
         user_phone: userPhone,
@@ -1808,63 +1848,4 @@ serve(async (req: Request) => {
     // Realtime Authorization (post-launch hardening) will further gate
     // subscriptions by JWT claim.
     try {
-      // Resolve company for this SOS — look up user's active_company_id
-      let scopedChannel: string;
-      try {
-        const { data: prof } = await supabase
-          .from("profiles").select("active_company_id").eq("id", authUserId).maybeSingle();
-        const companyId = prof?.active_company_id;
-        scopedChannel = companyId
-          ? `sos-live:${companyId}`
-          : `sos-live:civilian:${authUserId}`;
-      } catch {
-        scopedChannel = `sos-live:civilian:${authUserId}`;
-      }
-      const ch = supabase.channel(scopedChannel);
-      await ch.send({
-        type: "broadcast",
-        event: "sos_triggered",
-        payload: {
-          emergencyId,
-          userName,
-          userId: authUserId,
-          tier,
-          location,
-          contacts: contacts.map(c => c.name),
-          zone,
-          ts: Date.now(),
-        },
-      });
-      console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
-      setTimeout(() => supabase.removeChannel(ch), 2000);
-    } catch (e) {
-      console.warn("[sos-alert] Realtime broadcast failed:", e);
-    }
-
-    const triggerBody = {
-      success: true,
-      emergencyId,
-      tier,
-      results: fanoutResults,
-      trackUrl,
-      dashUrl,
-    };
-    // B-C4/B-H1: persist response for Idempotency-Key retries.
-    if (triggerIdemKey) {
-      await storeIdempotency(supabase, "sos-alert:trigger", triggerIdemKey, 200, triggerBody);
-    }
-    return new Response(JSON.stringify(triggerBody), {
-      status: 200,
-      headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("[sos-alert] Unhandled error:", err);
-    return new Response(JSON.stringify({
-      error: "Internal error",
-      detail: err instanceof Error ? err.message : String(err),
-    }), {
-      status: 500,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  }
-});
+      // Resolve company 

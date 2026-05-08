@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-07T09:21:48.570Z",
-  "total_migrations": 98,
-  "manifest_sha256": "8ada73cbda1da17254f9b88e1366e63f5f903c438b6f83aa4903570cd3972035",
+  "generated_at": "2026-05-08T12:37:55.228Z",
+  "total_migrations": 99,
+  "manifest_sha256": "23ea6d42eeab2eb4d3b0ec40adc919d16f7593cd6d3a8bfd7dea3d99ad546702",
   "migrations": [
     {
       "version": "20260415",
@@ -688,6 +688,13 @@
       "file": "20260507010000_auth5_p5_bump_dpa_version.sql",
       "sha256": "a0b4b3a76115910e23bb9f50643d65a80b9b9f80f96d96f6a64b7cf4fcd84551",
       "bytes": 566
+    },
+    {
+      "version": "20260508130000",
+      "name": "l1_observability_trace_id_timestamps",
+      "file": "20260508130000_l1_observability_trace_id_timestamps.sql",
+      "sha256": "cceebe76fe5dce2a47d7a0ce01eaf039fa777c25a7db6ce7b9a58a15b536819a",
+      "bytes": 4821
     }
   ]
 }
