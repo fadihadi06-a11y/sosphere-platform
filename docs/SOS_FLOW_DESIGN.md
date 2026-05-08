@@ -566,9 +566,32 @@ Rationale: Contact #1 is the most likely to know what to do; later contacts are 
 
 Rationale: AI call-back gave the illusion of safety without saving lives. Geographic + social escalation actually surfaces help that's nearby, and tier gating makes Elite's value proposition concrete (your company + emergency services come in, not just an AI voice).
 
-### ⏳ Q3 — Voice command wake-word
+### ✅ Q3 — Voice command wake-word — **RESOLVED 2026-05-08**
 
-(Pending owner decision.)
+**Decision:** Add wake-word, gated to highest-tier paid plan only (Elite for civilian, top plan for B2B). The existing shake-to-SOS feature is REMOVED from the platform entirely.
+
+**Specs:**
+- **Tier gating:** Elite-only (civilian + employee). Free + Basic do not get wake-word.
+- **Languages:** bilingual — Arabic "نجدة" and English "OK SOS". User can enable one or both in settings.
+- **Default state on Elite:** ON. User sees a one-time privacy warning at first activation:
+  > "هذا التطبيق سيستمع لميكروفونك بشكل محلي للكشف عن كلمة الطوارئ. لا يتم إرسال أي صوت لأي سيرفر، ولا يتم تسجيل أي شيء قبل تفعيل SOS."
+- **Trigger flow:** Voice wake-word does NOT bypass safety. After detection:
+  1. Phone vibrates strongly + plays alert tone
+  2. UI shows 3-second countdown: "إلغاء" / "Cancel" button visible
+  3. During countdown user can cancel by saying "إلغاء" or tapping screen
+  4. After 3s with no cancel → SOS commits with `trigger_method=voice` in audit log
+- **Shake-to-SOS:** REMOVED entirely. Code in `shake-to-sos.tsx` to be deleted, references cleaned up. Rationale: high false-positive rate in real life (running, exercising, vehicles), voice is more deliberate, removing reduces cognitive load and code surface.
+- **Long-press 3s:** REMAINS as the universal primary trigger for ALL tiers and roles.
+- **Cost model:**
+  - Picovoice Pro: ~$2/active device/month, paid by SOSphere (you), baked into Elite pricing.
+  - Margin check (civilian Elite at $15/mo): $15 - $0.74 Stripe - $2.00 Picovoice - $0.70 other infra = **$11.56 net (77% real margin)**. Sustainable.
+  - Margin check (employee Elite at $25/mo): $25 - $0.07 Stripe (shared invoice) - $2.00 Picovoice - $0.80 other infra = **$22.13 net (89% real margin)**. Excellent.
+- **Migration plan:** Phase 2 (after 500 paying users) build a TensorFlow.js custom wake-word model trained on Arabic + English variants, eliminating the per-device Picovoice fee. Estimated 3-4 weeks of focused work. Once shipped, voice wake-word can be opened to Basic + civilian Basic without margin concerns.
+
+**Implementation tasks (added to Layer 3 - Client Hardening):**
+- **L3-G.** Capacitor Picovoice plugin integration (`@picovoice/porcupine-capacitor`), settings UI for enable/disable + language picker, privacy consent flow. ⏱️ 3-4 days.
+- **L3-H.** Delete shake-to-SOS — remove `shake-to-sos.tsx`, references in `mobile-app.tsx`, related settings. ⏱️ 1 day including regression test.
+- **L3-I.** Voice cancel detection during 3s countdown ("إلغاء" / "Cancel"). ⏱️ 1 day.
 
 ### ⏳ Q4 — Witness/covert recording duration
 
@@ -600,4 +623,4 @@ This file should be **updated** every time:
 - A regulator (OSHA / GDPR / Iraqi telecom) imposes a new requirement
 - An incident postmortem reveals a flow gap
 
-Source of truth for what SOSphere does. If code disagrees, update one or the other — never let the gap persist.
+Source of truth for what SOSphere does. If code disagrees, update one or the othe
