@@ -636,9 +636,75 @@ B2B employees (no Free at company level — companies always have a plan):
 - **L2-I.** Witness/covert recording duration enforcement per tier — wire `audio_evidence_max_seconds` from subscription tier into MediaRecorder + auto-stop. Hash + upload + audit log row. ⏱️ 2 days.
 - **L2-J.** DPA consent flow for witness recording — one-time pop-up at first activation, settings toggle, signed consent logged. ⏱️ 1 day.
 
-### ⏳ Q5 — Drill mode on Free tier
+### ✅ Q5 — Drill mode (training simulation) — **RESOLVED 2026-05-08**
 
-(Pending.)
+**Decision:** Drill mode available on ALL tiers with progressive limits. Owner + Admins can launch drills. Drills are ALWAYS transparent (employee sees "this is a drill") — no covert testing, for legal and ethical reasons.
+
+**Rationale:**
+- Industry data (Everbridge / AlertMedia): companies that drill monthly see 22s response times; non-drilling companies see 87s. The 65-second gap = life or death in a cardiac event.
+- Operational cost is essentially zero (no real Twilio calls, no real Picovoice usage, ~$0.001 of DB writes per drill).
+- "Safety above profit" principle (already established) — gating drills behind a paywall would harm customers who matter most.
+
+**Tier limits (per-employee, per-month):**
+
+| Tier | Drills/month | Auto-scheduling | Scenarios | Reports |
+|------|--------------|-----------------|-----------|---------|
+| Free (civilian or B2B) | 1 | ❌ | Basic only | ❌ |
+| Basic | 5 | ❌ | 3 scenarios | Monthly |
+| Elite | Unlimited | ✅ | 10 scenarios | Weekly + Monthly |
+
+**Scenario library (Elite has all 10; Basic has 3 baseline; Free has 1):**
+1. Generic SOS (default)
+2. Medical — fall / cardiac / asthma
+3. Fire / smoke
+4. Gas leak / chemical
+5. Security threat / intruder
+6. Vehicle accident
+7. Confined space
+8. Lone worker check-in failed
+9. Active aggressor
+10. Earthquake / structural collapse
+
+**Who can launch:**
+- B2B: **Owner + Admins** (Admins delegate based on company permissions)
+- Civilian: the user themselves only
+
+**Transparency policy (no covert drills):**
+- Employees ALWAYS see "🟡 هذا تدريب — لا مساعدة حقيقية تُرسل" overlay throughout drill
+- Audit log row marked `is_drill=true`, `is_covert=false`
+- Reasoning: covert drilling creates legal exposure (employee distress claims, post-trauma) and violates the trust contract with employees ("when you press SOS, real help comes"). Better to drill transparent and frequent than covert and rare.
+
+**Drill flow (mirrors real SOS but instrumented):**
+1. Owner/Admin opens "تشغيل تدريب" panel in dashboard
+2. Selects scenario + selects target employee(s) (or "all on shift")
+3. Drill notification fires to employees: "تدريب طوارئ في ${time}" (gives 5min warning)
+4. At T-0, employee sees push: "🟡 هذه تجربة. اضغط SOS كما لو كانت حقيقية"
+5. Employee performs the SOS press exactly as in real emergency
+6. Pipeline runs full path BUT with `is_drill=true` flag at every layer:
+   - sos-alert edge function detects flag, skips Twilio dispatch
+   - Audit log captures every step with timing
+   - No real call/SMS to contacts
+   - Admin dashboard shows drill in progress with mock-status updates
+7. Drill ends after employee taps "تم" or auto-times out after 2 minutes
+8. Report generated immediately:
+   - Employee response time (button-press latency)
+   - Pipeline latency (server-side processing)
+   - Did chat work? Did GPS resolve? Did audio recording start?
+   - Pass/Fail per checkpoint
+
+**Reports (Basic monthly, Elite weekly + monthly):**
+- Per-employee drill participation rate
+- Per-employee average response time
+- Top 3 longest pipeline stages
+- Failed drills with root cause
+- Trend chart vs previous period
+- Compliance-ready PDF for OSHA / regulator audits
+
+**Implementation tasks (added to Layer 5 — Operations Discipline):**
+- **L5-F.** Drill mode end-to-end — `is_drill=true` flag propagation through every pipeline layer (client → sos-alert → contacts → audit_log). ⏱️ 3 days.
+- **L5-G.** Drill panel in admin dashboard — scenario picker, target selection, schedule, history. ⏱️ 2 days.
+- **L5-H.** Drill report generator — per-employee + per-company metrics, PDF export. ⏱️ 2 days.
+- **L5-I.** Auto-scheduling for Elite — cron-based drills (e.g. "every 1st Sunday at 10am"), email digest of upcoming drills. ⏱️ 1.5 days.
 
 ### ⏳ Q6 — Photo storage limit per incident
 
