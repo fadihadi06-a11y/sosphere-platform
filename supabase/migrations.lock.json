@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-08T16:21:17.493Z",
-  "total_migrations": 101,
-  "manifest_sha256": "e273ccf6f8085f9c40031b9b3f2a0ae2d52aeeafb4a0af59e284094fdc555094",
+  "generated_at": "2026-05-08T16:33:32.896Z",
+  "total_migrations": 102,
+  "manifest_sha256": "e4640d0bee4d10ba25491686ca601f9fa7153fa4c2ffed3706c64374906c546b",
   "migrations": [
     {
       "version": "20260415",
@@ -709,6 +709,13 @@
       "file": "20260508150000_l1c_sos_pipeline_metrics.sql",
       "sha256": "722bbf830811a3c17d6b3d5fac309397979acd6902f519321bf6266e1be5109e",
       "bytes": 7570
+    },
+    {
+      "version": "20260508160000",
+      "name": "l1c_pipeline_metrics_rpcs",
+      "file": "20260508160000_l1c_pipeline_metrics_rpcs.sql",
+      "sha256": "9eadbd93cbc9b46216be635725b32a99b3271e466d5b417e81c75e8b584d338c",
+      "bytes": 8721
     }
   ]
 }
