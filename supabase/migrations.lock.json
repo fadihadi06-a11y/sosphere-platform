@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-08T12:37:55.228Z",
-  "total_migrations": 99,
-  "manifest_sha256": "23ea6d42eeab2eb4d3b0ec40adc919d16f7593cd6d3a8bfd7dea3d99ad546702",
+  "generated_at": "2026-05-08T12:51:07.498Z",
+  "total_migrations": 100,
+  "manifest_sha256": "7bace1bd811b7f12292d254236c87d6b32f357f78e68f4038c223c7f5ec7cefa",
   "migrations": [
     {
       "version": "20260415",
@@ -695,6 +695,13 @@
       "file": "20260508130000_l1_observability_trace_id_timestamps.sql",
       "sha256": "cceebe76fe5dce2a47d7a0ce01eaf039fa777c25a7db6ce7b9a58a15b536819a",
       "bytes": 4821
+    },
+    {
+      "version": "20260508140000",
+      "name": "l1a_log_sos_audit_trace_id_param",
+      "file": "20260508140000_l1a_log_sos_audit_trace_id_param.sql",
+      "sha256": "0851d08cca4ec4560704ecf156a8323e77f2b0e120b87207522fda6180257449",
+      "bytes": 3173
     }
   ]
 }

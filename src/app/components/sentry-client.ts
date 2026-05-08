@@ -183,6 +183,24 @@ export function setSentryCompany(companyId: string | null): void {
   } catch {}
 }
 
+/**
+ * L1-A observability: attach the SOS trace_id as a Sentry tag so any
+ * exception captured DURING an active SOS lifecycle is filterable in
+ * the Sentry dashboard by the same correlation key used in DB logs +
+ * Twilio statusCallback + audit_log rows.
+ *
+ * Set at the moment of button-press (sos-server-trigger.ts) and
+ * cleared when the session ends (endServerSOS) so cross-incident
+ * Sentry events don't inherit stale trace_ids. Pass `null` to clear.
+ */
+export function setSentryTraceId(traceId: string | null): void {
+  if (!sentryReady) return;
+  try {
+    Sentry.setTag("sos_trace_id", traceId ?? "none");
+  } catch {}
+}
+
+
 // ── Internal scrubbing helpers ───────────────────────────────
 // Strip common token-bearing query params from any URL that lands
 // in an event. We keep the path + host so you can still see where

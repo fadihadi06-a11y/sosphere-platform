@@ -613,10 +613,25 @@ serve(async (req: Request) => {
       const rl = checkRateLimit(pwAuth.userId, "sos", true);
       markSosPriority(pwAuth.userId);
 
+      // L1-A/B observability: extract trace_id + client_claimed_at
+      // from the prewarm body (sendBeacon can't set headers, so they
+      // arrive in the JSON). server_received_at is captured here for
+      // forensic delta — even if the trigger never arrives, we know
+      // when the device first reached out.
+      const pwTraceId = pw.traceId || req.headers.get("X-SOS-Trace-Id") || null;
+      const pwClientClaimedAt = pw.clientClaimedAt || null;
+      const pwServerReceivedAt = new Date().toISOString();
+
       // Idempotent upsert. Tier is hard-coded "free" here — the real tier
       // is resolved server-side from `subscriptions` during `trigger`.
       await supabase.from("sos_sessions").upsert({
         id: pw.emergencyId,
+        // L1-A/B: prewarm row already carries trace_id + client time
+        // so even if trigger never arrives (device dies mid-handshake)
+        // we have a correlated forensic anchor.
+        trace_id: pwTraceId,
+        client_claimed_at: pwClientClaimedAt,
+        server_received_at: pwServerReceivedAt,
         user_id: pwAuth.userId,             // ← from token, not body
         user_name: pw.userName || "Unknown",
         status: "prewarm",
@@ -630,7 +645,7 @@ serve(async (req: Request) => {
         tier: "free",                       // ← never trust client tier
       }, { onConflict: "id", ignoreDuplicates: false });
 
-      console.log(`[sos-alert] PREWARM received: ${pw.emergencyId} user=${pwAuth.userId}`);
+      console.log(`[sos-alert] PREWARM received: ${pw.emergencyId} user=${pwAuth.userId} trace_id=${pwTraceId ?? "null"}`);
       return new Response(JSON.stringify({ ok: true, prewarmed: true }), {
         headers: { ...cors, ...getRateLimitHeaders(rl), "Content-Type": "application/json" },
       });
@@ -756,12 +771,19 @@ serve(async (req: Request) => {
       }
       const { data: escSession } = await supabase
         .from("sos_sessions")
-        .select("user_id, company_id")
+        .select("user_id, company_id, trace_id")
         .eq("id", emergencyId)
         .maybeSingle();
       if (!escSession) {
         return new Response(JSON.stringify({ error: "Session not found" }), { status: 404, headers: cors });
       }
+      // L1-A: pull trace_id from the session row so any audit_log
+      // events emitted during escalation stay correlated to the
+      // original SOS lifecycle.
+      const escTraceId =
+        (escSession as unknown as { trace_id?: string | null }).trace_id ||
+        req.headers.get("X-SOS-Trace-Id") ||
+        null;
       // Allowed callers: the SOS owner OR a company member if the session
       // is company-scoped (admin dashboard escalation path).
       let escAllowed = (escSession.user_id === escAuth.userId);
@@ -892,11 +914,19 @@ serve(async (req: Request) => {
       // mashing "End SOS", a network retry, or the offline replay worker
       // all land here; we must NOT re-broadcast sos_ended (which would
       // dismiss responders twice and muddy audit logs).
+      // L1-A: also pull trace_id from the session — needed to thread
+      // through the closing audit_log row so the timeline stays
+      // correlated end-to-end. Falls back to header for synthetic cases
+      // where the row doesn't yet exist.
       const { data: current } = await supabase
         .from("sos_sessions")
-        .select("status, ended_at, user_id, company_id")
+        .select("status, ended_at, user_id, company_id, trace_id")
         .eq("id", emergencyId)
         .maybeSingle();
+      const endTraceId =
+        (current as unknown as { trace_id?: string | null })?.trace_id ||
+        req.headers.get("X-SOS-Trace-Id") ||
+        null;
       if (!current) {
         return new Response(JSON.stringify({ error: "Session not found" }), { status: 404, headers: cors });
       }
@@ -959,6 +989,7 @@ serve(async (req: Request) => {
             hasComment: !!comment,
             source: "sos-alert/end",
           },
+          p_trace_id: endTraceId,
         });
       } catch (e) {
         console.warn("[sos-alert] audit log (end) failed:", e);
@@ -1169,6 +1200,7 @@ serve(async (req: Request) => {
               error_message: usageErr.message ?? String(usageErr),
               source: "sos-alert",
             },
+            p_trace_id: traceId,
           });
         } catch (auditEx) {
           console.error("[sos-alert] audit of rate-limit failure also failed:", auditEx);
@@ -1223,7 +1255,14 @@ serve(async (req: Request) => {
 
     const trackUrl = `${BASE_URL}/track?eid=${emergencyId}`;
     const dashUrl  = `${BASE_URL}/emergency/${emergencyId}`;
-    const statusCb = `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}`;
+    // L1-A: include trace_id in the Twilio statusCallback URL so when
+    // the call status webhook fires, we can correlate it back to the
+    // original SOS lifecycle without an extra DB lookup. Empty string
+    // is omitted so older synthetic / test fixtures without a trace_id
+    // still produce a valid URL.
+    const statusCb = traceId
+      ? `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}&trace_id=${encodeURIComponent(traceId)}`
+      : `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}`;
 
     console.log(`[sos-alert] ═══ SOS TRIGGERED ═══ id=${emergencyId} tier=${tier} contacts=${contacts.length}/${originalCount} silent=${!!silent}`);
 
@@ -1294,11 +1333,8 @@ serve(async (req: Request) => {
       .from("sos_sessions")
       .update({
         // L1-A/B observability — also set on the UPDATE path so a row
-        // pre-created by prewarm (which doesn't yet carry trace_id)
-        // gets its trace_id stamped at the moment of real trigger.
-        // We use COALESCE-style "only if not already set" semantics by
-        // sending the value only if non-null; if both prewarm and
-        // trigger ever both set it, the trigger wins (later write).
+        // pre-created by prewarm gets its trace_id stamped at the
+        // moment of real trigger.
         trace_id: traceId,
         client_claimed_at: clientClaimedAt,
         server_received_at: serverReceivedAt,
@@ -1384,6 +1420,7 @@ serve(async (req: Request) => {
           checkpoint: "pre_fanout",
           severity: "info",
         },
+        p_trace_id: traceId,
       });
     } catch (e) {
       console.warn("[sos-alert] pre-fanout audit checkpoint failed (non-fatal):", e);
@@ -1812,6 +1849,7 @@ serve(async (req: Request) => {
         p_operation: "sos_trigger",
         p_target: emergencyId,
         p_target_name: userName,
+        p_trace_id: traceId,
         p_metadata: {
           tier,
           contactCount: contacts.length,
@@ -1848,4 +1886,63 @@ serve(async (req: Request) => {
     // Realtime Authorization (post-launch hardening) will further gate
     // subscriptions by JWT claim.
     try {
-      // Resolve company 
+      // Resolve company for this SOS — look up user's active_company_id
+      let scopedChannel: string;
+      try {
+        const { data: prof } = await supabase
+          .from("profiles").select("active_company_id").eq("id", authUserId).maybeSingle();
+        const companyId = prof?.active_company_id;
+        scopedChannel = companyId
+          ? `sos-live:${companyId}`
+          : `sos-live:civilian:${authUserId}`;
+      } catch {
+        scopedChannel = `sos-live:civilian:${authUserId}`;
+      }
+      const ch = supabase.channel(scopedChannel);
+      await ch.send({
+        type: "broadcast",
+        event: "sos_triggered",
+        payload: {
+          emergencyId,
+          userName,
+          userId: authUserId,
+          tier,
+          location,
+          contacts: contacts.map(c => c.name),
+          zone,
+          ts: Date.now(),
+        },
+      });
+      console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
+      setTimeout(() => supabase.removeChannel(ch), 2000);
+    } catch (e) {
+      console.warn("[sos-alert] Realtime broadcast failed:", e);
+    }
+
+    const triggerBody = {
+      success: true,
+      emergencyId,
+      tier,
+      results: fanoutResults,
+      trackUrl,
+      dashUrl,
+    };
+    // B-C4/B-H1: persist response for Idempotency-Key retries.
+    if (triggerIdemKey) {
+      await storeIdempotency(supabase, "sos-alert:trigger", triggerIdemKey, 200, triggerBody);
+    }
+    return new Response(JSON.stringify(triggerBody), {
+      status: 200,
+      headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[sos-alert] Unhandled error:", err);
+    return new Response(JSON.stringify({
+      error: "Internal error",
+      detail: err instanceof Error ? err.message : String(err),
+    }), {
+      status: 500,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+});
