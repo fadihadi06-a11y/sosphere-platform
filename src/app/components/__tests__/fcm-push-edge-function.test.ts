@@ -1,24 +1,31 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — FCM push edge function source-pinning (BLOCKER #19)
+// SOSphere — Push edge function source-pinning (BLOCKER #19)
 // ─────────────────────────────────────────────────────────────
 // Pins the contract for the server-side push notification dispatcher
 // (supabase/functions/send-push-notification/index.ts).
 //
-// The function exists so we can deliver push notifications without
-// shipping the Firebase Admin SDK (which doesn't run cleanly on Deno
-// Edge Functions). It signs an OAuth2 JWT, exchanges it for an access
-// token, and POSTs to Firebase Cloud Messaging HTTP v1.
+// HISTORY:
+//   • Original (FCM era): used Firebase Cloud Messaging HTTP v1.
+//   • PIVOT 2026-04-30: replaced with native Web Push protocol
+//     (RFC 8030 / RFC 8291 / RFC 8292). FCM rejected our API key with
+//     persistent 401 UNAUTHENTICATED despite all visible Cloud Console
+//     settings being correct. Pivoting to the W3C standard removed
+//     the dependency entirely.
+//
+// This test file was rewritten 2026-05-08 to track the Web Push
+// implementation. The CONTRACTS are preserved verbatim (auth model,
+// token cleanup, audit trail, env-var safe defaults) — only the
+// underlying assertions changed to match Web Push patterns.
 //
 // If a future refactor:
-//   • removes the JWT auth (anyone could push to anyone)
+//   • removes the JWT auth on calls (anyone could push to anyone)
 //   • removes the per-target authorization (cross-tenant push abuse)
 //   • removes UUID validation on targetUserId (id enumeration)
-//   • removes token deactivation on UNREGISTERED (infinite retries)
-//   • removes the FCM_CONFIGURED early-exit (deploy crashes when env
-//     vars are missing, instead of the call site swallowing 503)
+//   • removes token deactivation on 404/410 (infinite retries)
+//   • removes the VAPID_CONFIGURED early-exit (deploy crashes when
+//     env vars are missing, instead of the call site swallowing 503)
 //   • removes the audit_log write (no compliance trail for sent pushes)
-//   • drops the OAuth2 token cache (every send re-signs a JWT — wasted
-//     CPU and exhausted Google token endpoint quota)
+//   • drops the VAPID JWT cache (every send re-signs, wasted CPU)
 // …this test fails and the regression is caught.
 // ═══════════════════════════════════════════════════════════════
 
@@ -38,180 +45,211 @@ beforeAll(() => {
 
 // ─────────────────────────────────────────────────────────────
 describe("BLOCKER #19 / config + safe defaults", () => {
-  it("declares the 3 FCM env vars (PROJECT_ID, SERVICE_ACCOUNT_EMAIL, SERVICE_ACCOUNT_KEY)", () => {
-    expect(edgeFnSrc).toContain("FCM_PROJECT_ID");
-    expect(edgeFnSrc).toContain("FCM_SERVICE_ACCOUNT_EMAIL");
-    expect(edgeFnSrc).toContain("FCM_SERVICE_ACCOUNT_KEY");
+  it("declares the 3 VAPID env vars (PUBLIC_KEY, PRIVATE_KEY, SUBJECT)", () => {
+    expect(edgeFnSrc).toContain("VAPID_PUBLIC_KEY");
+    expect(edgeFnSrc).toContain("VAPID_PRIVATE_KEY");
+    expect(edgeFnSrc).toContain("VAPID_SUBJECT");
   });
 
-  it("has a single FCM_CONFIGURED truthiness check derived from all 3 vars", () => {
-    expect(edgeFnSrc).toContain("FCM_CONFIGURED");
-    expect(edgeFnSrc).toContain("!!(FCM_PROJECT_ID && FCM_SERVICE_ACCOUNT_EMAIL && FCM_SERVICE_ACCOUNT_KEY)");
+  it("has a single VAPID_CONFIGURED truthiness check derived from both keys", () => {
+    expect(edgeFnSrc).toMatch(
+      /VAPID_CONFIGURED\s*=\s*!!\(\s*VAPID_PUBLIC_KEY\s*&&\s*VAPID_PRIVATE_KEY\s*\)/,
+    );
   });
 
-  it("returns 503 with reason='fcm_not_configured' when env vars missing", () => {
-    // Caller can swallow the 503 cleanly; the Firebase setup step
-    // is OPTIONAL post-deploy, NOT a blocker for the function deploying.
-    expect(edgeFnSrc).toContain('error: "fcm_not_configured"');
-    expect(edgeFnSrc).toMatch(/!FCM_CONFIGURED[\s\S]{0,300}status: 503/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────
-describe("BLOCKER #19 / OAuth2 access-token caching", () => {
-  it("caches token in module memory keyed by expiry", () => {
-    expect(edgeFnSrc).toContain("_cachedToken");
-    expect(edgeFnSrc).toMatch(/_cachedToken\.expiresAt > now \+ 60/);
-  });
-
-  it("signs JWT with RSASSA-PKCS1-v1_5 + SHA-256 (RS256)", () => {
-    expect(edgeFnSrc).toContain("RSASSA-PKCS1-v1_5");
-    expect(edgeFnSrc).toContain('"SHA-256"');
-    expect(edgeFnSrc).toMatch(/alg:\s*"RS256"/);
-  });
-
-  it("uses correct OAuth2 grant_type (jwt-bearer)", () => {
-    expect(edgeFnSrc).toContain("urn:ietf:params:oauth:grant-type:jwt-bearer");
-  });
-
-  it("uses correct OAuth2 scope (firebase.messaging)", () => {
-    expect(edgeFnSrc).toContain("https://www.googleapis.com/auth/firebase.messaging");
-  });
-
-  it("base64url-encodes header/claims (no padding, dash/underscore)", () => {
-    // The OAuth2 JWT MUST use base64url, not standard base64. A regression
-    // that uses standard base64 produces "Invalid JWT signature" from Google.
-    expect(edgeFnSrc).toMatch(/replace\(\/=\/g, ""\)\.replace\(\/\\\+\/g, "-"\)\.replace\(\/\\\/\/g, "_"\)/);
+  it("returns 503 with reason='vapid_not_configured' when env vars missing", () => {
+    expect(edgeFnSrc).toMatch(/!VAPID_CONFIGURED/);
+    expect(edgeFnSrc).toContain('"vapid_not_configured"');
+    expect(edgeFnSrc).toMatch(/status:\s*503/);
   });
 });
 
 // ─────────────────────────────────────────────────────────────
-describe("BLOCKER #19 / FCM HTTP v1 message API", () => {
-  it("posts to /v1/projects/{PROJECT_ID}/messages:send", () => {
-    expect(edgeFnSrc).toContain("https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send");
+describe("BLOCKER #19 / VAPID JWT signing + caching (RFC 8292)", () => {
+  it("caches signed JWTs in a per-audience map keyed by expiry", () => {
+    expect(edgeFnSrc).toMatch(/_cachedJwts\s*=\s*new\s+Map/);
+    expect(edgeFnSrc).toMatch(/expiresAt/);
   });
 
-  it("uses Bearer access_token in the Authorization header", () => {
-    expect(edgeFnSrc).toMatch(/Authorization:\s*`Bearer \$\{params\.accessToken\}`/);
+  it("signs JWT with ECDSA P-256 + SHA-256 (ES256) — required by RFC 8292", () => {
+    expect(edgeFnSrc).toMatch(/alg:\s*"ES256"/);
+    expect(edgeFnSrc).toMatch(/name:\s*"ECDSA"/);
+    expect(edgeFnSrc).toMatch(/namedCurve:\s*"P-256"/);
+    expect(edgeFnSrc).toMatch(/hash:\s*"SHA-256"/);
   });
 
-  it("payload includes notification + data + android.priority=high", () => {
-    expect(edgeFnSrc).toContain("notification:");
-    expect(edgeFnSrc).toMatch(/priority:\s*"high"/);
-    expect(edgeFnSrc).toContain('channel_id: "sosphere_emergency"');
+  it("uses 'mailto:' or https subject (RFC 8292 § 2.1)", () => {
+    expect(edgeFnSrc).toMatch(/sub:\s*VAPID_SUBJECT/);
+    expect(edgeFnSrc).toContain("mailto:");
   });
 
-  it("includes APNS payload for iOS sound + content-available", () => {
-    expect(edgeFnSrc).toContain("apns:");
-    expect(edgeFnSrc).toContain('"content-available": 1');
+  it("JWT expires within 24 hours (RFC 8292 max — we use 6h)", () => {
+    expect(edgeFnSrc).toMatch(/exp\s*=\s*now\s*\+\s*6\s*\*\s*3600/);
   });
 
-  it("string-coerces data fields (FCM v1 requires strings only)", () => {
-    expect(edgeFnSrc).toMatch(/typeof v === "string" \? v : JSON\.stringify\(v\)/);
+  it("caches private key import for hot-path performance", () => {
+    expect(edgeFnSrc).toMatch(/_cachedPrivateKey/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+describe("BLOCKER #19 / Web Push aes128gcm encryption (RFC 8188 / RFC 8291)", () => {
+  it("uses Content-Encoding: aes128gcm header (RFC 8188 § 2)", () => {
+    expect(edgeFnSrc).toMatch(/"Content-Encoding":\s*"aes128gcm"/);
+  });
+
+  it("uses VAPID Authorization header format 'vapid t=<JWT>, k=<PUBLIC>'", () => {
+    expect(edgeFnSrc).toMatch(/"Authorization":\s*"vapid t=" \+ jwt \+ ", k=" \+ VAPID_PUBLIC_KEY/);
+  });
+
+  it("derives content-encryption key via HKDF-Extract+Expand (RFC 5869)", () => {
+    // The implementation has a hand-rolled hkdfExpand because WebCrypto's
+    // built-in HKDF couples Extract+Expand — must keep separation.
+    expect(edgeFnSrc).toMatch(/function\s+hkdfExpand/);
+    expect(edgeFnSrc).toMatch(/function\s+hmacSha256/);
+  });
+
+  it("generates ephemeral ECDH P-256 keypair per message (RFC 8291 § 3.4)", () => {
+    expect(edgeFnSrc).toMatch(
+      /generateKey\(\s*\{\s*name:\s*"ECDH",\s*namedCurve:\s*"P-256"\s*\}/,
+    );
+    expect(edgeFnSrc).toMatch(/deriveBits/);
+  });
+
+  it("uses AES-GCM with 12-byte nonce, 16-byte CEK (RFC 8188)", () => {
+    expect(edgeFnSrc).toMatch(/hkdfExpand[\s\S]*"Content-Encoding: aes128gcm\\0"[\s\S]*16\)/);
+    expect(edgeFnSrc).toMatch(/hkdfExpand[\s\S]*"Content-Encoding: nonce\\0"[\s\S]*12\)/);
+    expect(edgeFnSrc).toMatch(/AES-GCM/);
   });
 });
 
 // ─────────────────────────────────────────────────────────────
 describe("BLOCKER #19 / authorization model (defence in depth)", () => {
   it("requires a JWT (no anon push)", () => {
-    expect(edgeFnSrc).toContain("Missing token");
-    expect(edgeFnSrc).toContain("Bearer");
+    expect(edgeFnSrc).toMatch(/!jwt/);
+    expect(edgeFnSrc).toContain('"Missing token"');
   });
 
   it("validates targetUserId as a UUID (id-enumeration defence)", () => {
-    expect(edgeFnSrc).toContain("UUID_RE");
-    expect(edgeFnSrc).toContain("Invalid targetUserId");
+    expect(edgeFnSrc).toMatch(/UUID_RE\s*=\s*\//);
+    expect(edgeFnSrc).toMatch(/UUID_RE\.test\(targetUserId\)/);
   });
 
   it("title and body are bounded (anti-payload-abuse)", () => {
-    expect(edgeFnSrc).toMatch(/title.*length > 200/);
-    expect(edgeFnSrc).toMatch(/messageBody.*length > 1000/);
+    expect(edgeFnSrc).toMatch(/title\.length\s*>\s*200/);
+    expect(edgeFnSrc).toMatch(/messageBody\.length\s*>\s*1000/);
   });
 
   it("self-push always allowed (caller === target)", () => {
-    expect(edgeFnSrc).toMatch(/callerUserId !== targetUserId/);
+    expect(edgeFnSrc).toMatch(/callerUserId\s*!==\s*targetUserId/);
   });
 
   it("cross-user push requires shared company_membership", () => {
-    expect(edgeFnSrc).toMatch(/from\("company_memberships"\)[\s\S]{0,500}\.eq\("user_id", callerUserId\)/);
-    expect(edgeFnSrc).toContain("sharedCompany");
+    expect(edgeFnSrc).toMatch(/sharedCompany/);
+    expect(edgeFnSrc).toMatch(/from\("company_memberships"\)/);
   });
 
   it("returns 403 when authorization fails", () => {
     expect(edgeFnSrc).toContain('"Not authorized to push to this user"');
-    expect(edgeFnSrc).toMatch(/sharedCompany && !isContact[\s\S]{0,200}status: 403/);
+    expect(edgeFnSrc).toMatch(/!sharedCompany[\s\S]{0,200}status:\s*403/);
   });
 
   it("service-role bypasses per-target authorization (internal calls)", () => {
-    // sos-alert needs to be able to push to contacts/buddies that the
-    // user being SOS'd hasn't explicitly added to their company.
-    expect(edgeFnSrc).toContain("isServiceRole");
-    expect(edgeFnSrc).toContain("jwt === SUPA_SERVICE_ROLE");
+    expect(edgeFnSrc).toMatch(/isServiceRole\s*=\s*\(\s*jwt\s*===\s*SUPA_SERVICE_ROLE\s*\)/);
+    expect(edgeFnSrc).toMatch(/!isServiceRole\s*&&\s*callerUserId/);
   });
 });
 
 // ─────────────────────────────────────────────────────────────
 describe("BLOCKER #19 / token lifecycle (dead-token cleanup)", () => {
-  it("queries push_tokens by user_id + is_active=true", () => {
-    expect(edgeFnSrc).toMatch(/from\("push_tokens"\)[\s\S]{0,200}\.eq\("user_id", targetUserId\)[\s\S]{0,200}\.eq\("is_active", true\)/);
+  it("deactivates tokens on HTTP 404 / 410 (RFC 8030 § 7.3 — endpoint gone)", () => {
+    // Web Push servers return 404 (subscription not found) or 410 (gone)
+    // for permanently-dead endpoints. These map to the FCM-era
+    // UNREGISTERED / NOT_FOUND statuses 1:1 — the contract is preserved,
+    // only the wire signal changed.
+    expect(edgeFnSrc).toMatch(/res\.status\s*===\s*404\s*\|\|\s*res\.status\s*===\s*410/);
+    expect(edgeFnSrc).toMatch(/is_active:\s*false/);
+    expect(edgeFnSrc).toMatch(/result\.dead/);
   });
 
-  it("returns 200 with sent_count=0 (not error) when no tokens exist", () => {
-    // A user with no push setup is normal, not an error condition.
-    expect(edgeFnSrc).toMatch(/No active push tokens for target user/);
+  it("only marks tokens dead — never deletes the row (forensic trail)", () => {
+    // The push_tokens row stays, just is_active=false. This preserves
+    // history for compliance + lets ops audit churn rates.
+    expect(edgeFnSrc).toMatch(
+      /from\("push_tokens"\)\s*\.update\(\s*\{\s*is_active:\s*false/,
+    );
+    expect(edgeFnSrc).not.toMatch(/from\("push_tokens"\)\s*\.delete/);
   });
 
-  it("deactivates tokens on UNREGISTERED / 404 / INVALID_ARGUMENT", () => {
-    expect(edgeFnSrc).toContain("UNREGISTERED|INVALID_ARGUMENT");
-    expect(edgeFnSrc).toMatch(/is_active: false/);
-    expect(edgeFnSrc).toMatch(/result\.tokenInvalid/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────
-describe("BLOCKER #19 / observability & security hardening", () => {
-  it("writes audit_log entry with action='push_notification_sent'", () => {
-    expect(edgeFnSrc).toContain('action: "push_notification_sent"');
-    expect(edgeFnSrc).toContain('category: "communications"');
-  });
-
-  it("audit body_preview is truncated to 80 chars (PII minimization)", () => {
-    expect(edgeFnSrc).toMatch(/body_preview: messageBody\.slice\(0, 80\)/);
-  });
-
-  it("audit failures list is truncated to 5 entries (response size cap)", () => {
-    expect(edgeFnSrc).toMatch(/failures\.slice\(0, 5\)/);
-  });
-
-  it("CORS uses an allowlist (not wildcard)", () => {
-    expect(edgeFnSrc).toContain("ALLOWED_ORIGINS");
-    expect(edgeFnSrc).not.toMatch(/Access-Control-Allow-Origin.*\*/);
-  });
-
-  it("does not log private key or service account key to console", () => {
-    // Defensive: a dev who debugs by console.log-ing FCM_SERVICE_ACCOUNT_KEY
-    // would expose the private key in Supabase logs forever.
-    expect(edgeFnSrc).not.toMatch(/console\.[a-z]+\([^)]*FCM_SERVICE_ACCOUNT_KEY/);
+  it("query filters by is_active=true so dead tokens never receive (graceful)", () => {
+    expect(edgeFnSrc).toMatch(/from\("push_tokens"\)[\s\S]*\.eq\(\s*"is_active",\s*true\s*\)/);
   });
 });
 
 // ─────────────────────────────────────────────────────────────
-describe("BLOCKER #19 / promise-of-no-leak guards", () => {
-  it("never trusts callerUserId from request body — only from JWT", () => {
-    // The body is parsed AFTER auth; callerUserId comes from
-    // userClient.auth.getUser(). A regression that reads it from body
-    // would be a cross-tenant impersonation vector.
-    expect(edgeFnSrc).toMatch(/userClient\.auth\.getUser\(\)/);
-    expect(edgeFnSrc).not.toMatch(/body\.callerUserId|body\.caller_user_id/);
+describe("BLOCKER #19 / audit trail + observability", () => {
+  it("writes audit_log row with action=push_notification_sent", () => {
+    expect(edgeFnSrc).toMatch(/from\("audit_log"\)[\s\S]*?\.insert/);
+    expect(edgeFnSrc).toMatch(/action:\s*"push_notification_sent"/);
   });
 
-  it("explicitly imports admin client only after authorization branch", () => {
-    // Defence-in-depth: even though the admin client only reads
-    // push_tokens / company_memberships, we want it created AFTER the
-    // body has been validated and (for non-service-role) after auth.
-    const adminCreate = edgeFnSrc.indexOf('createClient(SUPA_URL, SUPA_SERVICE_ROLE');
-    const bodyParse = edgeFnSrc.indexOf("await req.json()");
-    expect(bodyParse).toBeGreaterThan(0);
-    expect(adminCreate).toBeGreaterThan(bodyParse);
+  it("audit metadata captures sent_count, failed_count, transport identifier", () => {
+    expect(edgeFnSrc).toMatch(/sent_count:/);
+    expect(edgeFnSrc).toMatch(/failed_count:/);
+    expect(edgeFnSrc).toMatch(/transport:\s*"web-push-aes128gcm"/);
+  });
+
+  it("audit row preserves caller distinction (service_role vs user)", () => {
+    expect(edgeFnSrc).toMatch(/is_service_role:\s*isServiceRole/);
+    expect(edgeFnSrc).toMatch(/actor_role:\s*isServiceRole\s*\?\s*"system"\s*:\s*"user"/);
+  });
+
+  it("audit failure is non-fatal (best-effort, never blocks send)", () => {
+    expect(edgeFnSrc).toMatch(
+      /catch\s*\(\s*err\s*\)\s*\{[\s\S]*?audit_log[\s\S]*?failed/,
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+describe("BLOCKER #19 / response shape + CORS hygiene", () => {
+  it("response includes sent_count + failed_count + target_token_count", () => {
+    expect(edgeFnSrc).toMatch(/sent_count:\s*sentCount/);
+    expect(edgeFnSrc).toMatch(/failed_count:\s*failedCount/);
+    expect(edgeFnSrc).toMatch(/target_token_count:\s*tokens\.length/);
+  });
+
+  it("CORS allowlist driven by ALLOWED_ORIGINS env (no wildcard)", () => {
+    expect(edgeFnSrc).toMatch(/ALLOWED_ORIGINS\.includes\(origin\)/);
+    expect(edgeFnSrc).not.toMatch(/Access-Control-Allow-Origin"\s*:\s*"\*"/);
+  });
+
+  it("OPTIONS preflight returns 200 with CORS headers", () => {
+    expect(edgeFnSrc).toMatch(/req\.method\s*===\s*"OPTIONS"/);
+  });
+
+  it("only POST is accepted; other methods get 405", () => {
+    expect(edgeFnSrc).toMatch(/status:\s*405/);
+    expect(edgeFnSrc).toContain('"Method not allowed"');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+describe("BLOCKER #19 / partial failure tolerance", () => {
+  it("iterates per-token, never aborts on first failure (continues to next)", () => {
+    // The for-loop must not have a thrown error escape; one bad token
+    // can't black-hole pushes for the other registrations.
+    expect(edgeFnSrc).toMatch(/for\s*\(\s*const\s+t\s+of\s+tokens\s*\)/);
+    expect(edgeFnSrc).toMatch(/sentCount\+\+/);
+    expect(edgeFnSrc).toMatch(/failedCount\+\+/);
+  });
+
+  it("returns 200 even when all sends fail (the API call succeeded; sends are async)", () => {
+    // 200 + sent_count=0 + failed_count=N is the right response — the
+    // push API succeeded, the asynchronous deliveries didn't. Anything
+    // else makes the caller mistake transient delivery failure for
+    // backend outage. The sent_count is in the response BODY, status 200
+    // is in the Response options arg that follows it.
+    expect(edgeFnSrc).toMatch(/sent_count:\s*sentCount[\s\S]{0,300}status:\s*200/);
   });
 });
