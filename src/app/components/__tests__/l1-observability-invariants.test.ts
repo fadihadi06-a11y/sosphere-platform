@@ -206,11 +206,11 @@ describe("L1-A complete: log_sos_audit RPC migration", () => {
 
   it("inserts the trace_id into audit_log on every call", () => {
     expect(migration2).toMatch(/insert into public\.audit_log[\s\S]*trace_id[\s\S]*\)\s*values/);
-    expect(migration2).toMatch(/p_trace_id,/);
+    expect(migration2).toMatch(/p_trace_id\)/);
   });
 
   it("grants execute to service_role + authenticated", () => {
-    expect(migration2).toMatch(/grant execute on function public\.log_sos_audit\(text, text, text, text, text, text, jsonb, uuid\)/);
+    expect(migration2).toMatch(/grant execute on function public\.log_sos_audit\(text, text, text, text, text, text, jsonb, uuid, uuid\)/);
     expect(migration2).toMatch(/to service_role, authenticated/);
   });
 
