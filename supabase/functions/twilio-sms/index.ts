@@ -28,6 +28,10 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// L2-A: same circuit breaker as twilio-call. Both functions share the
+// 'global' breaker key — one Twilio outage trips both. When L4
+// introduces per-tenant Twilio subaccounts, we'll switch to per-key.
+import { checkBreaker, recordBreaker, breakerShortCircuitResponse } from "../_shared/twilio-breaker.ts";
 import {
   checkRateLimit,
   getRateLimitHeaders,
@@ -203,18 +207,41 @@ serve(async (req) => {
       formData.append("StatusCallback", `${supabaseUrl}/functions/v1/twilio-status?type=sms&callId=${callId || ""}`);
     }
 
-    const response = await fetch(twilioUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
+    // ── L2-A: ASK THE BREAKER ─────────────────────────────────────────
+    const breakerClient = createClient(SUPA_URL, SUPA_KEY);
+    const breaker = await checkBreaker(breakerClient, "global");
+    if (!breaker.allow) {
+      console.warn(
+        `[twilio-sms] short-circuit: breaker=${breaker.state} (failure_count=${breaker.failureCount}). Skipping SMS.`,
+      );
+      return breakerShortCircuitResponse(breaker, { ...corsHeaders, ...getRateLimitHeaders(rl) });
+    }
 
-    const result = await response.json();
+    let response: Response;
+    let result: { sid?: string; code?: number | null } & Record<string, unknown>;
+    let twilioOk = false;
+    try {
+      response = await fetch(twilioUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      });
+      result = await response.json();
+      twilioOk = response.ok;
+    } catch (fetchErr) {
+      // Network-level failure. Trip the breaker so subsequent calls
+      // skip Twilio rather than wait for the same timeout.
+      await recordBreaker(breakerClient, false, "global");
+      throw fetchErr;
+    }
 
-    if (!response.ok) {
+    // Record outcome on the breaker before branching on success/failure.
+    await recordBreaker(breakerClient, twilioOk, "global");
+
+    if (!twilioOk) {
       // W3-32 (B-20, 2026-04-26): redact Twilio raw response from client.
       // Twilio errors leak account SID, sub-resources, and verbose messages
       // that aid attacker reconnaissance. Log full detail server-side, but
