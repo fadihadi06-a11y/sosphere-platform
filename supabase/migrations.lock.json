@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T18:53:21.285Z",
-  "total_migrations": 112,
-  "manifest_sha256": "1d640f651ccb2cbafc9440c3a162db94ff6842e95469b22cad757b9c78ca928a",
+  "generated_at": "2026-05-09T19:13:41.534Z",
+  "total_migrations": 113,
+  "manifest_sha256": "57fe69032bcb87cb464f60c7a3080e2244f177e7675f4ade4f34a08bd5285916",
   "migrations": [
     {
       "version": "20260415",
@@ -786,6 +786,13 @@
       "file": "20260509210000_fix47_cron_shared_secret_rpc.sql",
       "sha256": "d7b98dd757addf7c92c1b1bcdaf38997a7d58347084442eb0b2b889bd76c9566",
       "bytes": 2899
+    },
+    {
+      "version": "20260509220000",
+      "name": "audit_uuid_cast_and_anon_lockdown",
+      "file": "20260509220000_audit_uuid_cast_and_anon_lockdown.sql",
+      "sha256": "a886c9dca41821de4e1ca7bc193e80e09fbe4e29ae00c2e4d6f4c6a0060b504f",
+      "bytes": 6109
     }
   ]
 }
