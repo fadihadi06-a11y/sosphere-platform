@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T15:30:38.900Z",
-  "total_migrations": 105,
-  "manifest_sha256": "9620a708fb9e5f57864180c2767a8b6b14658f8959413534b8ba4455c5763af3",
+  "generated_at": "2026-05-09T17:22:33.884Z",
+  "total_migrations": 107,
+  "manifest_sha256": "7d6ca73675a54fa0b139a788df1ab90163e612d238bb2a0a9129082760047413",
   "migrations": [
     {
       "version": "20260415",
@@ -737,6 +737,20 @@
       "file": "20260508190000_l1e_pipeline_health_dashboard_rpc.sql",
       "sha256": "0d38ed8633a1dd1f3ca3ea266fc99dd51deb241d034d34a9dc8cba0276e7eefe",
       "bytes": 6388
+    },
+    {
+      "version": "20260509171557",
+      "name": "l2d_audit_log_hash_chain",
+      "file": "20260509171557_l2d_audit_log_hash_chain.sql",
+      "sha256": "b336e580dcfb41b5498056b217e4ddf8fd4578b90e8b3c8c6a70d8d7518ae1a7",
+      "bytes": 13996
+    },
+    {
+      "version": "20260509171843",
+      "name": "l2d_audit_chain_seq_fix",
+      "file": "20260509171843_l2d_audit_chain_seq_fix.sql",
+      "sha256": "bb23a04ef38e701350fe276dd78f1f615f813cfcf0c83e81d7556e335dd51b2b",
+      "bytes": 9458
     }
   ]
 }
