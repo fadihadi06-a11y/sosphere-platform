@@ -11,7 +11,7 @@ import {
   XCircle, AlertCircle, ChevronDown,
 } from "lucide-react";
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
-import { safeRpc } from "./api/safe-rpc";
+import { safeRpc, getStoredUser } from "./api/safe-rpc";
 import { MFAChallengeModal } from "./mfa-challenge-modal";
 import { mfaListFactors, mfaListFactorsLockFree } from "./api/mfa-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
@@ -628,7 +628,15 @@ export function DashboardWebPage() {
       // success handler can resume it.
       pendingLoginRef.current = { name, company };
       setLoginName(name);
-      if (getStoredPin(session.user.id)) {
+      // 2026-05-09 BUGFIX (Sentry: ReferenceError "session is not defined"):
+      // this branch used `session.user.id` even though `session` was never
+      // a parameter of doLogin — a free reference that exploded as soon as
+      // any caller hit the PIN gate. Use the JWT-cached user via
+      // getStoredUser() (lock-free, same pattern as initSentry / mobile-app
+      // session restore). If somehow we have no user yet, fall back to
+      // pin-setup rather than crashing the dashboard mount.
+      const u = getStoredUser();
+      if (u && getStoredPin(u.id)) {
         setPinInput(""); setPinError("");
         // AUTH-4 Part 2: route through MFA challenge if TOTP factor exists.
         await gateNextStep("pin-verify");
