@@ -67,6 +67,10 @@ import { RolesPermissionsPage } from "./dashboard-roles-page";
 // ── NEW: Audit Log Page ──────────────���────────────────────────
 import { AuditLogPage } from "./dashboard-audit-log-page";
 import { PipelineHealthPage } from "./dashboard-pipeline-health-page";
+// Inline import — see comment on `authUserId` prop. Lives at top of the
+// banner stack (above TrialBanner / HazardAlert / Tenant) so all four
+// banners stack vertically without overlapping.
+import { NotificationPermissionBanner } from "./notification-permission-banner";
 
 // ── NEW: CSV Field Guide ────────────────────────────────────────
 import { CSVFieldGuide } from "./csv-field-guide";
@@ -217,6 +221,12 @@ interface CompanyDashboardProps {
   onSOSTrigger: () => void;
   onLogout: () => void;
   webMode?: boolean;
+  /** Auth user id, threaded through so NotificationPermissionBanner
+   *  can render INLINE at the top of the banner stack instead of as
+   *  a fixed-position overlay. Fixes the visual collision where the
+   *  Enable-Alerts banner overlapped the trial / urgent banners
+   *  because all three rendered at roughly the same screen Y. */
+  authUserId?: string | null;
 }
 
 // Mock data now served from Zustand store (single source of truth)
@@ -543,7 +553,7 @@ function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
 // ═══════════════════════════════════════════════════════════════
 // Main Dashboard Component
 // ═══════════════════════════════════════════════════════════════
-export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogout, webMode = false }: CompanyDashboardProps) {
+export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogout, webMode = false, authUserId = null }: CompanyDashboardProps) {
   // ── Init Supabase Realtime channels on mount ────────────────
   // Uses Supabase session company_id for isolated realtime channel
   useEffect(() => {
@@ -1590,6 +1600,14 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         {/* Page content */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: "none" }}>
           <div className="pb-6">
+            {/* ── Notification Permission Banner — INLINE (not fixed overlay)
+                 so it stacks vertically with the trial / hazard / tenant
+                 banners below instead of floating on top of them and
+                 colliding visually. The banner self-hides when permission
+                 is granted/denied/snoozed, so on most renders this is a
+                 zero-cost null. */}
+            {authUserId && <NotificationPermissionBanner userId={authUserId} />}
+
             {/* ── Trial Banner — shows when on trial ── */}
             <AnimatePresence>
               {isOnTrial && (!trialBannerDismissed || (trialDaysLeft <= 0 && !isTrialActive)) && (

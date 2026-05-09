@@ -2,7 +2,6 @@
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { CompanyDashboard } from "./company-dashboard";
-import { NotificationPermissionBanner } from "./notification-permission-banner";
 import { CompanyRegister } from "./company-register";
 import { setDashboardSession, clearDashboardSession, getDashboardSession, isSessionExpired } from "./utils/dashboard-auth-guard";
 import {
@@ -1215,18 +1214,17 @@ export function DashboardWebPage() {
             Web Push if permission is "default". Without this, browsers
             silently block requestPermission() outside user gestures and
             push_tokens stays empty -> SOS alerts never reach the owner.
-            Banner overlays on top of the dashboard so it does not
-            disturb the existing CompanyDashboard layout. Hides itself
-            when permission is granted, denied, or snoozed for 24h. */}
-        <div style={{
-          position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)",
-          zIndex: 100, width: "min(720px, calc(100% - 32px))", pointerEvents: "auto",
-        }}>
-          <NotificationPermissionBanner userId={authUserId ?? undefined} />
-        </div>
+            Hides itself when permission is granted/denied/snoozed for 24h.
+
+            2026-05-09: moved INSIDE CompanyDashboard's banner stack
+            (was a position:fixed overlay at top:70 that visually
+            collided with the trial + URGENT-emergency banners). The
+            authUserId is threaded through so the dashboard can render
+            it inline above the other banners. */}
         <CompanyDashboard
           companyName={loginCompany}
           webMode={true}
+          authUserId={authUserId}
           onSOSTrigger={() => {}}
           onLogout={async () => {
             // S-H5: completeLogout handles dashboard session + all
