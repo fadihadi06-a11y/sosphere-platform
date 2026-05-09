@@ -129,7 +129,33 @@ describe("L1-E: PipelineHealthPage Sentry alarm contract", () => {
   });
 });
 
-// ─── 4. PAGE CONTRACT — RPC & auth handling ──────────────────
+// ─── 4. PAGE TYPES MUST MATCH synthetic_probe_health VIEW ──
+// Regression: a hand-rolled SyntheticHealth interface had a phantom
+// `successes_last_24h` field that the view doesn't expose. The UI read
+// `undefined`, divided by it, and rendered "0% success rate" in orange
+// on production while the pipeline was actually 100% healthy. This test
+// keeps the interface honest by enforcing the LACK of phantom fields.
+describe("L1-E: SyntheticHealth interface matches the view", () => {
+  it("does NOT declare phantom successes_last_* fields (view only exposes failures)", () => {
+    // Strip line + block comments so the documentation explaining WHY the
+    // phantom field was removed doesn't trip the regex (this regression
+    // already happened once during the initial fix).
+    const codeOnly = page
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(codeOnly).not.toMatch(/successes_last_hour\b/);
+    expect(codeOnly).not.toMatch(/successes_last_24h\b/);
+    expect(codeOnly).not.toMatch(/last_success_at\b/);
+  });
+
+  it("derives the success-rate metric from (probes - failures), not a phantom field", () => {
+    expect(page).toMatch(/probes_last_24h\s*\??\?\?\s*0/);
+    expect(page).toMatch(/failures_last_24h\s*\??\?\?\s*0/);
+    expect(page).toMatch(/probes24\s*-\s*failures24/);
+  });
+});
+
+// ─── 5. PAGE CONTRACT — RPC & auth handling ──────────────────
 describe("L1-E: PipelineHealthPage RPC integration", () => {
   it("calls get_pipeline_health_summary via safeRpc (auth-lock-free)", () => {
     expect(page).toMatch(/safeRpc<HealthPayload>\(\s*\n?\s*["']get_pipeline_health_summary["']/);
