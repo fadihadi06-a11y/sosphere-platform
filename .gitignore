@@ -22,3 +22,14 @@ supabase/.temp/
 # Test artifacts (E2E live tests)
 test-*.csv
 test-e1-*
+
+.vercel
+
+# Database backups — kept locally only, never committed.
+# Pre-migration snapshots, ad-hoc pg_dump output, etc. May contain
+# secrets / PII / large blobs. Keep them in a top-level `backups/`
+# folder for organisation, or use the date-prefixed pattern below.
+backups/
+backup-*.sql
+*.dump
+*.sql.gz
