@@ -48,18 +48,23 @@ import { safeRpc } from "./api/safe-rpc";
 import { captureException } from "./sentry-client";
 
 // ── Types — match the jsonb payload from get_pipeline_health_summary ──
+// IMPORTANT: keep this in sync with the synthetic_probe_health VIEW columns
+// (supabase/migrations/20260508180000_l1d_synthetic_sos_probe.sql). The
+// view DOES NOT expose `successes_last_*` directly — successes are derived
+// in the UI as (probes - failures). Keeping a phantom `successes_last_24h`
+// field here would silently read `undefined`, divide by it, and paint a
+// life-safety dashboard with a misleading "0% success rate" warning when
+// the pipeline is actually 100% healthy. Discovered live on production
+// after L1-E deploy: 217 probes / 0 failures rendered as 0% orange.
 interface SyntheticHealth {
   probes_last_hour: number | null;
   probes_last_24h: number | null;
-  successes_last_hour: number | null;
-  successes_last_24h: number | null;
   failures_last_hour: number | null;
   failures_last_24h: number | null;
   p50_total_ms_last_hour: number | null;
   p95_total_ms_last_hour: number | null;
   p99_total_ms_last_hour: number | null;
   last_probe_at: string | null;
-  last_success_at: string | null;
   seconds_since_last_probe: number | null;
 }
 
@@ -364,13 +369,17 @@ function AnomalyBanner({ anomaly }: { anomaly: Anomaly }) {
 function SyntheticCard({ health }: { health: SyntheticHealth | null }) {
   if (!health) return <Card title="Synthetic probe" subtitle="No data yet"><EmptyInline /></Card>;
   const last = fmtRelative(health.last_probe_at);
-  const successPct = health.probes_last_24h
-    ? Math.round(((health.successes_last_24h ?? 0) / health.probes_last_24h) * 100)
+  // Derive success from (probes - failures). The view exposes failures but
+  // not successes — see comment on SyntheticHealth.
+  const probes24 = health.probes_last_24h ?? 0;
+  const failures24 = health.failures_last_24h ?? 0;
+  const successPct = probes24 > 0
+    ? Math.round(((probes24 - failures24) / probes24) * 100)
     : null;
   return (
     <Card
       title="Synthetic probe"
-      subtitle={`Last run ${last} · ${health.probes_last_24h ?? 0} runs / 24h`}
+      subtitle={`Last run ${last} · ${probes24} runs / 24h`}
       icon={Heart}
       iconColor="#00C853"
     >
@@ -383,7 +392,7 @@ function SyntheticCard({ health }: { health: SyntheticHealth | null }) {
         <Metric
           label="Success rate (24h)"
           value={successPct !== null ? `${successPct}%` : "—"}
-          tone={successPct !== null && successPct < 100 ? "warning" : "ok"}
+          tone={successPct === null ? "neutral" : successPct < 100 ? "warning" : "ok"}
         />
         <Metric
           label="Failures (1h)"
