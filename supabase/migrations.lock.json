@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T18:00:04.453Z",
-  "total_migrations": 109,
-  "manifest_sha256": "2539bdf6643046f0e821509720a68bb521420704a38851706b718f765c7e0f0a",
+  "generated_at": "2026-05-09T18:07:34.678Z",
+  "total_migrations": 111,
+  "manifest_sha256": "cb60e897b6b528797b06249745845c21f7a3a4c378aa8ca5a42fa1e6efd2d732",
   "migrations": [
     {
       "version": "20260415",
@@ -765,6 +765,20 @@
       "file": "20260509190000_l2b_sos_dispatch_attempts.sql",
       "sha256": "677b555941467e163f267be8977c9160f0d12d77b8b312507c01e80d50d9ea05",
       "bytes": 15362
+    },
+    {
+      "version": "20260509200000",
+      "name": "l2h_evidence_chain_of_custody",
+      "file": "20260509200000_l2h_evidence_chain_of_custody.sql",
+      "sha256": "fe78a81cfa9618aef74db3cc11d9c2da510b90059d03f0bc6111430d9c7d8846",
+      "bytes": 8289
+    },
+    {
+      "version": "20260509200001",
+      "name": "l2h_evidence_chain_uuid_cast_fix",
+      "file": "20260509200001_l2h_evidence_chain_uuid_cast_fix.sql",
+      "sha256": "c999e42574aa5960f2da84e4093fc5b64deee9cc999fb859b08aecb16756aa91",
+      "bytes": 4135
     }
   ]
 }
