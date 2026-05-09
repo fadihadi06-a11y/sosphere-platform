@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T18:07:34.678Z",
-  "total_migrations": 111,
-  "manifest_sha256": "cb60e897b6b528797b06249745845c21f7a3a4c378aa8ca5a42fa1e6efd2d732",
+  "generated_at": "2026-05-09T18:53:21.285Z",
+  "total_migrations": 112,
+  "manifest_sha256": "1d640f651ccb2cbafc9440c3a162db94ff6842e95469b22cad757b9c78ca928a",
   "migrations": [
     {
       "version": "20260415",
@@ -779,6 +779,13 @@
       "file": "20260509200001_l2h_evidence_chain_uuid_cast_fix.sql",
       "sha256": "c999e42574aa5960f2da84e4093fc5b64deee9cc999fb859b08aecb16756aa91",
       "bytes": 4135
+    },
+    {
+      "version": "20260509210000",
+      "name": "fix47_cron_shared_secret_rpc",
+      "file": "20260509210000_fix47_cron_shared_secret_rpc.sql",
+      "sha256": "d7b98dd757addf7c92c1b1bcdaf38997a7d58347084442eb0b2b889bd76c9566",
+      "bytes": 2899
     }
   ]
 }

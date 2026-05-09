@@ -8,13 +8,49 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const CRON_SECRET               = Deno.env.get("CRON_SECRET") || "";
+// FIX #47 (root cause): legacy CRON_SECRET env var drifted from the
+// vault.cron_shared_secret used by the cron — every minute the function
+// rejected its own cron caller with 401. The new architecture reads the
+// secret from the same vault the cron uses (via get_cron_shared_secret
+// SECURITY DEFINER RPC), removing the drift surface entirely. Env var
+// remains as a CI/local-dev fallback only.
+const CRON_SECRET_ENV           = Deno.env.get("CRON_SECRET") || "";
 
 const VISIBILITY_TIMEOUT_SECS = 300;
 const BATCH_QTY               = 10;
 const CHUNK_SIZE              = 100;
 const MAX_RUNTIME_MS          = 50_000;
 const BACKOFF_SCHEDULE        = [60, 300, 1800];
+
+// Module-level cache so we don't hit the RPC on every request — Edge
+// Function isolates persist for ~5 min idle, so this is cached for the
+// whole lifetime of an isolate. Re-read on cold start.
+let _cachedCronSecret: string | null = null;
+let _cachedCronSecretAt = 0;
+const CRON_SECRET_TTL_MS = 5 * 60 * 1000;
+
+async function getCronSharedSecret(client: ReturnType<typeof createClient>): Promise<string> {
+  // Cache hit
+  if (_cachedCronSecret !== null && Date.now() - _cachedCronSecretAt < CRON_SECRET_TTL_MS) {
+    return _cachedCronSecret;
+  }
+  try {
+    const { data, error } = await client.rpc("get_cron_shared_secret");
+    if (!error && typeof data === "string" && data.length > 0) {
+      _cachedCronSecret = data;
+      _cachedCronSecretAt = Date.now();
+      return data;
+    }
+    if (error) console.warn("[process-bulk-invite] vault RPC failed:", error.message);
+  } catch (e) {
+    console.warn("[process-bulk-invite] vault RPC threw:", e);
+  }
+  // Fallback to env var (CI / local dev where vault isn't configured).
+  // We still cache the env value so the warning above doesn't repeat.
+  _cachedCronSecret = CRON_SECRET_ENV;
+  _cachedCronSecretAt = Date.now();
+  return CRON_SECRET_ENV;
+}
 
 interface JobMetadata {
   id: string;
@@ -54,19 +90,25 @@ interface PgmqMessage {
 }
 
 Deno.serve(async (req: Request) => {
+  const startedAt = Date.now();
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // FIX #47: read the secret from vault (same source the cron uses) so
+  // there's no second source of truth that can drift. Falls back to the
+  // CRON_SECRET env var only if the vault returns null/empty.
   const providedSecret = req.headers.get("x-cron-secret") || "";
-  if (!CRON_SECRET || providedSecret !== CRON_SECRET) {
-    console.warn("[process-bulk-invite] rejected: missing/invalid CRON_SECRET");
+  const expectedSecret = await getCronSharedSecret(supabase);
+  if (!expectedSecret || providedSecret !== expectedSecret) {
+    console.warn(
+      `[process-bulk-invite] rejected: header_len=${providedSecret.length} expected_len=${expectedSecret.length} (vault=${_cachedCronSecret === CRON_SECRET_ENV ? "fallback" : "ok"})`,
+    );
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  const startedAt = Date.now();
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   try {
     const { data: msgs, error: readErr } = await supabase.rpc("worker_read_jobs", {
