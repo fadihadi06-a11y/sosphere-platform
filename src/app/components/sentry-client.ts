@@ -119,6 +119,39 @@ export async function initSentry(): Promise<void> {
     });
     sentryReady = true;
 
+    // ── Diagnostic helper — exposed on window for one-shot verification ──
+    // Allows operators to verify Sentry is wired correctly without
+    // depending on uncaught-error nuances (different browsers handle
+    // anonymous-source errors differently, some are filtered by Sentry's
+    // ignoreErrors, etc.). This calls captureMessage explicitly which
+    // bypasses ALL integration questions and tests just one thing:
+    //   "does the DSN reach Sentry's ingest endpoint?"
+    //
+    // Usage from browser DevTools Console on the production site:
+    //   window.__sosSentryTest();
+    //
+    // Then check https://sosphere.sentry.io/issues/ — a message titled
+    // "[Sentry diagnostic] sosphere-platform — <timestamp>" should
+    // appear within ~30 seconds. If it doesn't, the DSN is wrong or
+    // the network can't reach ingest.de.sentry.io.
+    try {
+      (window as unknown as { __sosSentryTest?: () => string }).__sosSentryTest = () => {
+        const marker = `[Sentry diagnostic] sosphere-platform — ${new Date().toISOString()}`;
+        try {
+          Sentry.captureMessage(marker, "info");
+          console.log(
+            "[sentry] Diagnostic message sent:\n  '%s'\nCheck https://sosphere.sentry.io/issues/ — should appear within 30s.",
+            marker,
+          );
+        } catch (e) {
+          console.error("[sentry] Diagnostic capture failed:", e);
+        }
+        return marker;
+      };
+    } catch {
+      // window may not exist in worker contexts — non-fatal.
+    }
+
     // Keep Sentry's user identity in sync with Supabase auth. One
     // subscription, set up once — we never unsubscribe because the
     // Sentry context should live for the whole app lifetime. If
