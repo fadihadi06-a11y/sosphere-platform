@@ -277,7 +277,46 @@ export async function lockVault(vaultId: string): Promise<boolean> {
     didLock = true;
     return current;  // mutated in place inside the lock
   });
-  if (didLock) console.info(`[EvidenceVault] Locked: ${vaultId}`);
+  if (didLock) {
+    console.info(`[EvidenceVault] Locked: ${vaultId}`);
+    // L2-H: write a chain-covered audit_log row at the moment the vault
+    // becomes immutable. The L2-D BEFORE INSERT trigger then computes
+    // prev_hash + row_hash automatically — any later edit to this audit
+    // row OR to evidence_vaults.integrity_hash will break the chain.
+    // Fire-and-forget — never blocks the lock op.
+    void (async () => {
+      try {
+        const { vaults } = { vaults: loadVaults() };
+        const v = vaults.find(x => x.vaultId === vaultId);
+        if (!v?.emergencyId || !v?.integrityHash) return;
+        // SHA-256 hex must be lowercase 64 chars to satisfy the RPC's format
+        // validator. Defensive normalize — computeHash already returns lowercase
+        // but a future helper might not.
+        const hash = String(v.integrityHash).toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hash)) return;
+        await supabase.rpc("log_evidence_event", {
+          p_emergency_id: v.emergencyId,
+          p_event_type:   "evidence.vault_locked",
+          p_file_kind:    "manifest",
+          p_file_hash:    hash,
+          p_vault_id:     vaultId,
+          p_extra: {
+            photo_count:        v.photoCount,
+            audio_available:    v.audioRecording?.available ?? false,
+            audio_duration_sec: v.audioRecording?.durationSec ?? 0,
+            duration_sec:       v.durationSec,
+            tier:               v.tier,
+            gps_trail_points:   Array.isArray(v.gpsTrail) ? v.gpsTrail.length : 0,
+          },
+        });
+      } catch (e) {
+        // Audit-row failure must never block evidence operations. The
+        // integrity_hash is already saved on evidence_vaults; this just
+        // means the chain-of-custody trail is one row shorter.
+        console.warn("[EvidenceVault] log_evidence_event(vault_locked) failed (non-fatal):", e);
+      }
+    })();
+  }
   return didLock;
 }
 
@@ -307,6 +346,10 @@ async function uploadVault(vaultId: string): Promise<boolean> {
         audio_available: vault.audioRecording?.available ?? false,
         audio_duration_sec: vault.audioRecording?.durationSec ?? 0,
         integrity_hash: vault.integrityHash,
+        // L2-H: write the same hash to the new manifest_hash column so
+        // it's directly indexed for forensic 'does this hash exist?'
+        // queries. integrity_hash stays as the legacy alias.
+        manifest_hash: vault.integrityHash,
         locked_at: vault.lockedAt ? new Date(vault.lockedAt).toISOString() : null,
         created_at: new Date(vault.createdAt).toISOString(),
       }, { onConflict: "vault_id" });

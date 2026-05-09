@@ -1642,6 +1642,85 @@ serve(async (req: Request) => {
       server_results: fanoutResults,
     }).eq("id", emergencyId);
 
+    // ── L2-B: per-channel dispatch ledger ──────────────────────────────
+    // Append-only ledger of every fanout leg so the foundation contract
+    // "every alert tier must reach the responder via at least one
+    // channel" is verifiable from DB state alone (not from edge logs).
+    // Best-effort — a logging failure must never block emergency dispatch.
+    void (async () => {
+      try {
+        for (let i = 0; i < fanoutResults.length; i++) {
+          const r = fanoutResults[i] as {
+            contactName?: string;
+            phone?: string;
+            callSid?: string | null;
+            smsSid?: string | null;
+            method?: string;
+            error?: string;
+          };
+          // SMS leg — always attempted in fanout (every tier sends SMS).
+          // Map fanoutResult fields to L2-B outcome enum.
+          let smsOutcome: string;
+          if (r?.error === "invalid_number" || r?.method === "invalid_number") smsOutcome = "invalid";
+          else if (r?.smsSid) smsOutcome = "sent";
+          else smsOutcome = "failed";  // null sid after timeout race counts as failed
+          await supabase.rpc("record_sos_dispatch_attempt", {
+            p_emergency_id:  emergencyId,
+            p_contact_index: i,
+            p_channel:       "sms",
+            p_outcome:       smsOutcome,
+            p_trace_id:      traceId ?? null,
+            p_company_id:    companyIdForLog ?? null,
+            p_user_id:       userId ?? null,
+            p_contact_name:  r?.contactName ?? null,
+            p_contact_phone: r?.phone ?? null,
+            p_provider_sid:  r?.smsSid ?? null,
+          });
+          // Call leg — only basic/elite tiers attempt a call. Free tier
+          // gets 'skipped' so the ledger explicitly records the design
+          // decision (rather than a missing row that's ambiguous).
+          const callChannel = tier === "elite" ? "bridge_call"
+                            : tier === "basic" ? "tts_call"
+                            : null;
+          if (callChannel) {
+            let callOutcome: string;
+            if (r?.error === "invalid_number" || r?.method === "invalid_number") callOutcome = "invalid";
+            else if (r?.callSid) callOutcome = "sent";
+            else callOutcome = "failed";
+            await supabase.rpc("record_sos_dispatch_attempt", {
+              p_emergency_id:  emergencyId,
+              p_contact_index: i,
+              p_channel:       callChannel,
+              p_outcome:       callOutcome,
+              p_trace_id:      traceId ?? null,
+              p_company_id:    companyIdForLog ?? null,
+              p_user_id:       userId ?? null,
+              p_contact_name:  r?.contactName ?? null,
+              p_contact_phone: r?.phone ?? null,
+              p_provider_sid:  r?.callSid ?? null,
+            });
+          } else if (tier === "free") {
+            // Free tier: explicit 'skipped' row for the call leg, so a
+            // forensic auditor can see "we deliberately didn't call this
+            // contact" vs "we tried and failed".
+            await supabase.rpc("record_sos_dispatch_attempt", {
+              p_emergency_id:  emergencyId,
+              p_contact_index: i,
+              p_channel:       "tts_call",
+              p_outcome:       "skipped",
+              p_trace_id:      traceId ?? null,
+              p_company_id:    companyIdForLog ?? null,
+              p_user_id:       userId ?? null,
+              p_contact_name:  r?.contactName ?? null,
+              p_contact_phone: r?.phone ?? null,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[sos-alert] L2-B dispatch ledger write failed (non-fatal):", e);
+      }
+    })();
+
     // L1-C: emit pipeline metrics 'dispatched' event. UPDATE WHERE
     // primary_alert_dispatched_at IS NULL — first dispatch wins, retries
     // are no-ops. Server-side computes server_to_dispatch_ms (the SLA
