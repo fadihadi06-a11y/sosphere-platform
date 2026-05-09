@@ -15,6 +15,10 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, markSosPriority, getRateLimitHeaders } from "../_shared/rate-limiter.ts";
 import { signGatherToken } from "../_shared/gather-token.ts";
+// L2-A: circuit breaker. Wrap every fetch() to api.twilio.com so a Twilio
+// outage doesn't stack up doomed calls (thundering-herd). The check runs
+// before the fetch; the record runs after.
+import { checkBreaker, recordBreaker, breakerShortCircuitResponse } from "../_shared/twilio-breaker.ts";
 
 function escapeXml(unsafe: string | null | undefined): string {
   if (unsafe === null || unsafe === undefined) return "";
@@ -272,22 +276,54 @@ serve(async (req) => {
       StatusCallbackEvent: "initiated ringing answered completed",
       StatusCallbackMethod: "POST", Timeout: "30", MachineDetection: "Enable",
     });
-    const response = await fetch(twilioUrl, {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData.toString(),
-    });
-    const result = await response.json();
-    if (!response.ok) {
+
+    // ── L2-A: ASK THE BREAKER FIRST ─────────────────────────────────────
+    // If Twilio has been failing, we skip the call entirely instead of
+    // stacking another doomed fetch on top. Returns 503 with a structured
+    // marker so callers (sos-alert, dashboard) can detect & fall back.
+    const breakerClient = createClient(SUPA_URL, SUPA_KEY);
+    const breaker = await checkBreaker(breakerClient, "global");
+    if (!breaker.allow) {
+      console.warn(
+        `[twilio-call] short-circuit: breaker=${breaker.state} (failure_count=${breaker.failureCount}, opened_at=${breaker.openedAt}). Skipping call.`,
+      );
+      return breakerShortCircuitResponse(breaker, { ...corsHeaders, ...getRateLimitHeaders(rl) });
+    }
+
+    let response: Response;
+    let result: unknown;
+    let twilioOk = false;
+    try {
+      response = await fetch(twilioUrl, {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString(),
+      });
+      result = await response.json();
+      twilioOk = response.ok;
+    } catch (fetchErr) {
+      // Network-level failure (DNS, TCP, TLS, abort). Treat as breaker
+      // failure so the breaker can trip on a Twilio regional outage that
+      // doesn't even get to HTTP.
+      await recordBreaker(breakerClient, false, "global");
+      throw fetchErr;
+    }
+
+    // Record outcome BEFORE returning so the breaker stays in sync even
+    // when the caller hangs up before reading the response.
+    await recordBreaker(breakerClient, twilioOk, "global");
+
+    if (!twilioOk) {
       console.error("[twilio-call] Twilio API error:", result);
       return new Response(
         JSON.stringify({ error: "Twilio call failed" }),
         { status: response.status, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
       );
     }
-    console.log(`[twilio-call] mode=${mode} call initiated: ${result.sid} -> ${to} (callId=${callId}, user=${userId}, company=${companyIdForLog})`);
+    const okResult = result as { sid?: string; status?: string; to?: string; from?: string };
+    console.log(`[twilio-call] mode=${mode} call initiated: ${okResult.sid} -> ${to} (callId=${callId}, user=${userId}, company=${companyIdForLog})`);
     return new Response(
-      JSON.stringify({ callSid: result.sid, status: result.status, to: result.to, from: result.from, callId, mode }),
+      JSON.stringify({ callSid: okResult.sid, status: okResult.status, to: okResult.to, from: okResult.from, callId, mode }),
       { status: 200, headers: { ...corsHeaders, ...getRateLimitHeaders(rl), "Content-Type": "application/json" } },
     );
   } catch (err) {

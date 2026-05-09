@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T17:22:33.884Z",
-  "total_migrations": 107,
-  "manifest_sha256": "7d6ca73675a54fa0b139a788df1ab90163e612d238bb2a0a9129082760047413",
+  "generated_at": "2026-05-09T17:47:31.784Z",
+  "total_migrations": 108,
+  "manifest_sha256": "857fff0139c23c51e33a90008e930263dba8696009f5c5505faf01247a9c5053",
   "migrations": [
     {
       "version": "20260415",
@@ -751,6 +751,13 @@
       "file": "20260509171843_l2d_audit_chain_seq_fix.sql",
       "sha256": "bb23a04ef38e701350fe276dd78f1f615f813cfcf0c83e81d7556e335dd51b2b",
       "bytes": 9458
+    },
+    {
+      "version": "20260509180000",
+      "name": "l2a_twilio_circuit_breaker",
+      "file": "20260509180000_l2a_twilio_circuit_breaker.sql",
+      "sha256": "c7e712028df5bb3f3345886fca1cad4932688f2952a5c1573b380621742b9aa5",
+      "bytes": 11117
     }
   ]
 }
