@@ -69,10 +69,27 @@ export async function initSentry(): Promise<void> {
       // Lower sample rate than default; SOS is a low-traffic / high-impact
       // app so we don't need full tracing, but we do want every hard error.
       tracesSampleRate: 0.05,
-      // Replay integration is not enabled by default — recording touches
-      // PII surfaces (dashboards show worker names, zones, etc.). Opt-in
-      // per-page later if we need it, but never globally.
-      integrations: [],
+      // KEEP Sentry's default integrations so uncaught errors, unhandled
+      // promise rejections, console errors, breadcrumbs, and linked
+      // errors are all captured automatically. ONLY filter out:
+      //   • Replay — touches PII surfaces (worker names, zones, photos);
+      //              opt-in per-page later if/when we need it
+      //   • BrowserTracing auto-instrumentation — performance overhead
+      //                                         we don't need at this stage
+      //
+      // Audit 2026-05-09 (FZ verify): the previous `integrations: []`
+      // unintentionally disabled globalHandlersIntegration too, so
+      // every uncaught error in production was invisible — Sentry only
+      // received the manual captureException calls from error boundary
+      // + supabase-client + rate-limit-client. Filter approach restores
+      // the safety net without re-introducing the PII risks.
+      integrations: (defaults) =>
+        defaults.filter(
+          (i) =>
+            i.name !== "Replay" &&
+            i.name !== "BrowserTracing" &&
+            i.name !== "BrowserProfiling",
+        ),
       environment: (import.meta.env.VITE_ENVIRONMENT as string | undefined) ?? "production",
       release: (import.meta.env.VITE_APP_VERSION as string | undefined) ?? undefined,
 
