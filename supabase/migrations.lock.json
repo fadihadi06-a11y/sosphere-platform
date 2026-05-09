@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-08T22:29:51.405Z",
-  "total_migrations": 104,
-  "manifest_sha256": "169b0739df21dff2b0367fc5d8aa47fefe99b981c77a62b26869e2c4248f74d5",
+  "generated_at": "2026-05-09T15:30:38.900Z",
+  "total_migrations": 105,
+  "manifest_sha256": "9620a708fb9e5f57864180c2767a8b6b14658f8959413534b8ba4455c5763af3",
   "migrations": [
     {
       "version": "20260415",
@@ -730,6 +730,13 @@
       "file": "20260508180000_l1d_synthetic_sos_probe.sql",
       "sha256": "7c07ec2c1f97d2031c785fdb03178898ea8e06e285b4b3c0aaa0954e324df830",
       "bytes": 8775
+    },
+    {
+      "version": "20260508190000",
+      "name": "l1e_pipeline_health_dashboard_rpc",
+      "file": "20260508190000_l1e_pipeline_health_dashboard_rpc.sql",
+      "sha256": "0d38ed8633a1dd1f3ca3ea266fc99dd51deb241d034d34a9dc8cba0276e7eefe",
+      "bytes": 6388
     }
   ]
 }

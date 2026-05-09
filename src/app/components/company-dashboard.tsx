@@ -66,6 +66,7 @@ import { RolesPermissionsPage } from "./dashboard-roles-page";
 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
 import { AuditLogPage } from "./dashboard-audit-log-page";
+import { PipelineHealthPage } from "./dashboard-pipeline-health-page";
 
 // ── NEW: CSV Field Guide ────────────────────────────────────────
 import { CSVFieldGuide } from "./csv-field-guide";
@@ -297,6 +298,10 @@ const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: any; col
   governance: [
     { id: "audit", label: "Audit Trail", icon: ScrollText, color: "#8090A5" },
     { id: "roles", label: "Roles & Access", icon: UserCog, color: "#9B59B6" },
+    // L1-E: pipeline health (operator-only — admin/owner gate enforced server-side
+    // by get_pipeline_health_summary()). Lives in governance because it's a
+    // compliance/operational surface, not a tenant-facing one.
+    { id: "pipelineHealth", label: "Pipeline Health", icon: Activity, color: "#00C8E0" },
   ],
 };
 
@@ -1823,6 +1828,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                       <motion.div key={getHubTab("governance")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("governance") === "audit" && <PlanGate feature="audit_logs" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><AuditLogPage t={t} webMode={webMode} /></PlanGate>}
                         {getHubTab("governance") === "roles" && <RolesPermissionsPage t={t} webMode={webMode} onNavigate={(page) => navigateTo(page)} />}
+                        {getHubTab("governance") === "pipelineHealth" && <PipelineHealthPage />}
                       </motion.div>
                     </AnimatePresence>
                   </div>
