@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+// L3-B / F-02 (2026-05-09): mobile-app chunk was 787KB + emergency-chat
+// 391KB extra. Workers carry this in the field; every KB = ms during
+// emergency. Convert non-hot-path screens to React.lazy() so they only
+// load on first navigation. SOS button, login, sensors, and bootstrap
+// screens stay eager — they're either always-running or on the
+// critical path.
 import { Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { WelcomeOnboarding } from "./welcome-onboarding";
@@ -15,14 +21,14 @@ import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layo
 import { safeTelCall } from "./utils/safe-tel";
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
-import { PostEmergencyDebrief } from "./post-emergency-debrief";
+const PostEmergencyDebrief = lazy(() => import("./post-emergency-debrief").then(m => ({ default: m.PostEmergencyDebrief })));
 import { syncIncidentToSupabase, resyncPendingIncidents } from "./incident-sync";
-import { EmergencyResponseRecord } from "./emergency-response-record";
+const EmergencyResponseRecord = lazy(() => import("./emergency-response-record").then(m => ({ default: m.EmergencyResponseRecord })));
 import { CheckinTimer } from "./checkin-timer";
 import { MedicalID } from "./medical-id";
-import { SubscriptionPlans } from "./subscription-plans";
+const SubscriptionPlans = lazy(() => import("./subscription-plans").then(m => ({ default: m.SubscriptionPlans })));
 import { hasFeature } from "./subscription-service";
-import { IncidentHistory } from "./incident-history";
+const IncidentHistory = lazy(() => import("./incident-history").then(m => ({ default: m.IncidentHistory })));
 import { EmergencyPacket } from "./emergency-packet";
 import { EmergencyServices } from "./emergency-services";
 import { EmergencyContacts } from "./emergency-contacts";
@@ -59,7 +65,7 @@ import { useShakeDetection } from "./shake-to-sos";
 // relying on a "feature" that doesn't work at the critical moment. Reliable
 // SOS triggers (Hold 3s, Shake×3, 911/999/112 buttons) are preserved.
 import { useT, type Lang } from "./dashboard-i18n";
-import { MobileEmergencyChat } from "./emergency-chat";
+const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ default: m.MobileEmergencyChat })));
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
 import { Toaster, toast } from "sonner";
@@ -1790,8 +1796,11 @@ export function MobileApp() {
           )}
         </AnimatePresence>
 
-        {/* -- Emergency Chat (during SOS) -- */}
+        {/* -- Emergency Chat (during SOS) -- L3-B: lazy-loaded (391KB chunk).
+             The chat opens AFTER the SOS alarm has already fired, so the
+             one-time fetch delay does not block emergency dispatch. */}
         {screen === "sos-emergency" && (
+          <Suspense fallback={null}>
           <MobileEmergencyChat
             emergencyId={currentEmergencyId}
             employeeName={loginName}
@@ -1800,6 +1809,7 @@ export function MobileApp() {
             onToggle={() => setMobileChatCollapsed(!mobileChatCollapsed)}
             collapsed={mobileChatCollapsed}
           />
+          </Suspense>
         )}
 
         {/* -- Offline Status Indicator -- */}
@@ -1869,6 +1879,8 @@ export function MobileApp() {
               </div>
             )}
 
+            {/* L3-B: Suspense boundary for lazy screen chunks below. */}
+            <Suspense fallback={<div style={{ padding: 24, color: "rgba(255,255,255,0.35)", fontSize: 12, textAlign: "center" }}>Loading…</div>}>
             {screen === "welcome" && (
               <WelcomeOnboarding onComplete={handleWelcomeComplete} />
             )}
@@ -2348,6 +2360,7 @@ export function MobileApp() {
                 onUpgrade={() => navigate("subscription")}
               />
             )}
+            </Suspense>
           </div>
         </div>
 
