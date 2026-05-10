@@ -248,13 +248,78 @@ serve(async (req) => {
           setTimeout(() => supabase.removeChannel(channel), 3000);
         }
       }
+
+      // ── L2-E Phase 2 (2026-05-10): retry-or-escalate decision ─────────
+      // The original-fanout call leg from sos-alert carries
+      // contactIndex, attemptN, tier in the statusCallback URL. On final
+      // status:
+      //   • no-answer / busy + attemptN < MAX_CALL_ATTEMPTS  → retry call.
+      //                                                        SKIP SMS so
+      //                                                        the contact
+      //                                                        doesn't get
+      //                                                        spammed during
+      //                                                        the in-flight
+      //                                                        retry ring.
+      //   • no-answer / busy + attemptN ≥ MAX_CALL_ATTEMPTS  → fire SMS
+      //                                                        (cascade
+      //                                                        exhausted).
+      //   • failed                                          → fire SMS
+      //                                                        (Twilio-side
+      //                                                        fault, retry
+      //                                                        unlikely to
+      //                                                        help and may
+      //                                                        amplify load).
+      //   • completed + machine_start (voicemail)           → fire SMS
+      //                                                        (contact has
+      //                                                        a chance to
+      //                                                        see voicemail
+      //                                                        AND text).
+      //   • completed + human                               → no SMS
+      //                                                        (already
+      //                                                        reached).
+      // Twilio fires StatusCallback for many statuses; we only act on
+      // FINAL statuses (no-answer, busy, failed, completed) to avoid
+      // duplicate decisions on `initiated`/`ringing`/`answered`.
+      const MAX_CALL_ATTEMPTS = 2;
+      const contactIndex = parseInt(url.searchParams.get("contactIndex") || "-1", 10);
+      const attemptN     = parseInt(url.searchParams.get("attemptN") || "1", 10);
+      const tierParam    = url.searchParams.get("tier") || "";
+      const isFinalStatus = ["completed", "no-answer", "busy", "failed", "canceled"].includes(callStatus);
+      const isRecoverableNoAnswer = callStatus === "no-answer" || callStatus === "busy";
+      const isVoicemail = callStatus === "completed" && answeredBy === "machine_start";
+      const isFailed = callStatus === "failed";
+
+      let didFireRetry = false;
+      if (
+        isFinalStatus &&
+        isRecoverableNoAnswer &&
+        attemptN < MAX_CALL_ATTEMPTS &&
+        callId &&
+        contactIndex >= 0
+      ) {
+        try {
+          didFireRetry = await fireRetryCall(
+            supabase,
+            callId,
+            contactIndex,
+            tierParam,
+            attemptN + 1,
+            url.searchParams.get("trace_id"),
+          );
+        } catch (e) {
+          console.error("[twilio-status] retry call failed (will fall through to SMS):", e);
+        }
+      }
+
       const shouldEscalateToSMS =
-        callStatus === "no-answer" ||
-        callStatus === "busy" ||
-        callStatus === "failed" ||
-        (callStatus === "completed" && answeredBy === "machine_start");
+        !didFireRetry &&
+        (
+          (isRecoverableNoAnswer && attemptN >= MAX_CALL_ATTEMPTS) ||
+          isFailed ||
+          isVoicemail
+        );
       if (shouldEscalateToSMS && callId) {
-        console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus})`);
+        console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus}, attemptN=${attemptN}, didFireRetry=${didFireRetry})`);
         const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "";
         const adminPhoneRaw = data.Called || data.To;
         if (adminPhoneRaw && baseUrl) {
@@ -386,6 +451,169 @@ async function resolveAllowedEscalationPhones(
     console.warn("[twilio-status] resolveAllowedEscalationPhones failed:", e);
   }
   return allowed;
+}
+
+// ── L2-E Phase 2 (2026-05-10) ─────────────────────────────────────────
+// Fire ONE retry call for a fanout leg that ended in no-answer/busy.
+// Rebuilds the same tier-appropriate TwiML URL from sos_sessions
+// (we don't trust any field from the Twilio webhook payload for this
+// — the same allowlist principle as escalation SMS).
+//
+// Returns true if the retry was successfully dispatched (or attempted),
+// false if we couldn't dispatch (missing session, bad contact index,
+// Twilio API error). False => caller falls through to SMS escalation
+// so the contact still gets *some* signal.
+async function fireRetryCall(
+  supabase: any,
+  callId: string,
+  contactIndex: number,
+  tierParam: string,
+  nextAttemptN: number,
+  traceId: string | null,
+): Promise<boolean> {
+  const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const twilioFrom  = Deno.env.get("TWILIO_FROM_NUMBER");
+  const supaUrl     = Deno.env.get("SUPABASE_URL");
+  const baseUrl     = Deno.env.get("SOSPHERE_BASE_URL") || "";
+  if (!twilioSid || !twilioToken || !twilioFrom || !supaUrl) {
+    console.warn("[twilio-status] retry: missing Twilio/Supabase env — skipping retry");
+    return false;
+  }
+
+  // Resolve session + contact from DB (trusted source). We use
+  // contact_snapshot (frozen at trigger time) so a mid-SOS phone edit
+  // does NOT change the dialed number for the retry — that would
+  // diverge from the L2-B audit ledger expectation.
+  const { data: session } = await supabase
+    .from("sos_sessions")
+    .select("id, user_id, company_id, user_name, user_phone, tier, contact_snapshot, trace_id, lat, lng, accuracy, blood_type, started_at, status")
+    .eq("id", callId)
+    .maybeSingle();
+  if (!session) {
+    console.warn(`[twilio-status] retry: no session for callId=${callId} — skipping`);
+    return false;
+  }
+  // If the SOS is already resolved (responder ack'd, user canceled, or
+  // auto-closed) — don't retry. The L1-C contract is already satisfied.
+  if (session.status && session.status !== "active") {
+    console.log(`[twilio-status] retry: session status=${session.status} — skipping retry (SOS already resolved)`);
+    return false;
+  }
+  const snapshot = Array.isArray(session.contact_snapshot) ? session.contact_snapshot : [];
+  const contact = snapshot[contactIndex];
+  if (!contact?.phone || !contact?.name) {
+    console.warn(`[twilio-status] retry: contact_snapshot[${contactIndex}] missing for callId=${callId}`);
+    return false;
+  }
+  const cleanPhone = String(contact.phone).replace(/[^+\d]/g, "");
+  // Use the session's tier as the authoritative source; tierParam from
+  // the URL is best-effort (tamper-resistant only because the URL was
+  // built by sos-alert, but DB is the trust root).
+  const tier = String(session.tier || tierParam || "basic").toLowerCase();
+  const userName = String(session.user_name || "Unknown");
+  const userPhone = String(session.user_phone || "");
+  const trackUrl = `${baseUrl}/track?eid=${callId}`;
+
+  // Tier-appropriate TwiML URL — must match what sos-alert built on
+  // the first attempt so the contact hears the same script. Free +
+  // Basic use announce mode; Elite uses bridge conference.
+  let twimlUrl: string;
+  let timeLimitSec: number;
+  if (tier === "elite") {
+    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&userPhone=${encodeURIComponent(userPhone)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    timeLimitSec = 120;
+  } else if (tier === "basic") {
+    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    timeLimitSec = 60;
+  } else {
+    // free (or unknown — fall through to safest minimal call)
+    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    timeLimitSec = 30;
+  }
+
+  // New per-attempt statusCallback so the NEXT final-status webhook
+  // sees attemptN=2 and skips retry. trace_id is preserved end-to-end
+  // so the L1-A timeline links every retry to the original SOS.
+  const statusCbParams = new URLSearchParams({
+    callId,
+    contactIndex: String(contactIndex),
+    attemptN: String(nextAttemptN),
+    tier,
+  });
+  const effectiveTrace = traceId || session.trace_id;
+  if (effectiveTrace) statusCbParams.set("trace_id", effectiveTrace);
+  const statusCb = `${supaUrl}/functions/v1/twilio-status?${statusCbParams.toString()}`;
+
+  // Fire the Twilio call. Same shape as sos-alert's twilioCall() —
+  // we keep this inline (rather than importing) because edge functions
+  // are independently deployed and we don't want a coupling that
+  // breaks if sos-alert is mid-deploy.
+  const auth = btoa(`${twilioSid}:${twilioToken}`);
+  const params = new URLSearchParams({
+    To: cleanPhone,
+    From: twilioFrom,
+    Url: twimlUrl,
+    StatusCallback: statusCb,
+    StatusCallbackMethod: "POST",
+    StatusCallbackEvent: "initiated ringing answered completed",
+    Timeout: "30",
+    TimeLimit: String(timeLimitSec),
+    MachineDetection: "Enable",
+  });
+  let retrySid: string | null = null;
+  let retryOutcome: "sent" | "failed" = "failed";
+  try {
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params,
+      },
+    );
+    const body = await res.json();
+    if (res.ok && body?.sid) {
+      retrySid = body.sid;
+      retryOutcome = "sent";
+      console.log(`[twilio-status] retry call dispatched: callId=${callId} idx=${contactIndex} attempt=${nextAttemptN} sid=${retrySid}`);
+    } else {
+      console.error(`[twilio-status] retry call API error:`, body);
+    }
+  } catch (err) {
+    console.error(`[twilio-status] retry call fetch threw:`, err);
+  }
+
+  // L2-B ledger: append the retry attempt regardless of outcome so the
+  // dispatch_attempts table is the canonical "what we tried" record.
+  // Failure to log must not block — same best-effort pattern as the
+  // primary fanout writes in sos-alert.
+  try {
+    const channel = tier === "elite" ? "bridge_call" : "tts_call";
+    await supabase.rpc("record_sos_dispatch_attempt", {
+      p_emergency_id:  callId,
+      p_contact_index: contactIndex,
+      p_channel:       channel,
+      p_outcome:       retryOutcome,
+      p_trace_id:      effectiveTrace ?? null,
+      p_company_id:    session.company_id ?? null,
+      p_user_id:       session.user_id ?? null,
+      p_contact_name:  contact.name,
+      p_contact_phone: cleanPhone,
+      p_provider_sid:  retrySid,
+    });
+  } catch (e) {
+    console.warn("[twilio-status] retry ledger write failed (non-fatal):", e);
+  }
+
+  // We "fired" the retry only if Twilio accepted it. If the API call
+  // failed, return false so the caller falls through to SMS escalation
+  // — the contact still gets something.
+  return retryOutcome === "sent";
 }
 
 async function sendEscalationSMS(
