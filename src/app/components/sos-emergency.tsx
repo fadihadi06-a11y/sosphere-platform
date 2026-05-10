@@ -1461,6 +1461,124 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   // FIX 8: Unique incident ID per SOS session (was module-level singleton)
   const errIdRef = useRef(generateErrId());
 
+  // ── L2-F-UI (2026-05-10): inbound SMS reply state ──────────────────
+  // Each entry mirrors the broadcast payload from sos-sms-inbound's
+  // `sms_reply` event. Deduped by messageSid so a Twilio retry that
+  // re-fires the same MessageSid does not double-render.
+  const [smsReplies, setSmsReplies] = useState<Array<{
+    contactIndex: number;
+    contactName: string;
+    body: string;
+    isAck: boolean;
+    ackKeyword: string | null;
+    ts: number;
+    messageSid: string;
+    fromPhone: string;
+  }>>([]);
+  // First-ack banner — when the first positive ack arrives this is
+  // populated and rendered prominently. Subsequent acks update the
+  // list but don't replace the banner (the FIRST ack is what
+  // satisfies the L1-C SLA contract — that's the operationally
+  // meaningful event).
+  const [firstAckBanner, setFirstAckBanner] = useState<{ name: string; keyword: string | null } | null>(null);
+
+  // L2-F-UI subscriber: joins the SAME tenant-scoped Realtime channel
+  // that sos-alert broadcasts on (`sos-live:<companyId>` for B2B,
+  // `sos-live:civilian:<userId>` for civilian). Filters incoming
+  // `sms_reply` events by emergencyId so a stale subscriber from a
+  // previous SOS doesn't surface replies for an unrelated active SOS.
+  //
+  // Resubscribes if userId changes (rare — typically only on logout).
+  // Subscription is created LAZILY (only after the SOS is "calling"
+  // or later) to avoid wasting a Realtime connection during the
+  // pre-trigger / starting phase.
+  useEffect(() => {
+    // Only subscribe during active phases. "starting" and "ended" are
+    // boundary states with no fanout in progress.
+    const liveSet: Phase[] = ["calling", "no_answer", "pausing", "answered", "recording", "monitoring"];
+    if (!liveSet.includes(phase)) return;
+    if (!userId) return;
+    const emergencyId = errIdRef.current;
+    if (!emergencyId) return;
+
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+    (async () => {
+      try {
+        const { supabase } = await import("./api/supabase-client");
+        // Resolve the same channel scoping sos-alert uses. Falls back
+        // to civilian-scope on any error — never global `sos-live`
+        // (W3-3 cross-tenant guard).
+        let scopedChannel: string;
+        try {
+          const { data: prof } = await supabase
+            .from("profiles").select("active_company_id").eq("id", userId).maybeSingle();
+          const companyId = (prof as { active_company_id?: string | null } | null)?.active_company_id;
+          scopedChannel = companyId
+            ? `sos-live:${companyId}`
+            : `sos-live:civilian:${userId}`;
+        } catch {
+          scopedChannel = `sos-live:civilian:${userId}`;
+        }
+        if (!mounted) return;
+
+        const ch = supabase.channel(scopedChannel);
+        ch.on("broadcast", { event: "sms_reply" }, (msg: { payload?: unknown }) => {
+          const p = msg?.payload as {
+            emergencyId?: string;
+            contactIndex?: number;
+            contactName?: string;
+            fromPhone?: string;
+            body?: string;
+            isAck?: boolean;
+            ackKeyword?: string | null;
+            ts?: number;
+            messageSid?: string;
+          } | undefined;
+          if (!p || p.emergencyId !== emergencyId) return;
+          const entry = {
+            contactIndex: typeof p.contactIndex === "number" ? p.contactIndex : -1,
+            contactName: String(p.contactName || p.fromPhone || "Unknown"),
+            body: String(p.body || ""),
+            isAck: !!p.isAck,
+            ackKeyword: p.ackKeyword ?? null,
+            ts: Number(p.ts) || Date.now(),
+            messageSid: String(p.messageSid || ""),
+            fromPhone: String(p.fromPhone || ""),
+          };
+          setSmsReplies((prev) => {
+            // L2-F idempotency: dedupe by messageSid so a Realtime
+            // re-emit (e.g., reconnect) does not double-render.
+            if (entry.messageSid && prev.some(r => r.messageSid === entry.messageSid)) return prev;
+            return [...prev, entry];
+          });
+          if (entry.isAck) {
+            setFirstAckBanner((prevBanner) => prevBanner ?? { name: entry.contactName, keyword: entry.ackKeyword });
+            // Toast only on first ack — operationally meaningful event.
+            try {
+              toast.success(
+                isAr
+                  ? `${entry.contactName} رد: ${entry.ackKeyword || "إقرار"}`
+                  : `${entry.contactName} replied: ${entry.ackKeyword || "ACK"}`,
+              );
+            } catch { /* toast not critical */ }
+          }
+        });
+        await ch.subscribe();
+        cleanup = () => {
+          try { supabase.removeChannel(ch); } catch { /* noop */ }
+        };
+      } catch (e) {
+        console.warn("[L2-F-UI] sms_reply subscribe failed:", e);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      if (cleanup) cleanup();
+    };
+  }, [phase, userId]);
+
   // DMS
   const [showDMS, setShowDMS]       = useState(false);
   const [dmsCheckNum, setDmsCheckNum] = useState(1);
@@ -3064,6 +3182,64 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none"
         style={{ width: 500, height: 500, background: `radial-gradient(ellipse, ${statusColor}08 0%, transparent 65%)`, transition: "background 1.5s" }}
       />
+
+      {/* L2-F-UI: first-ack banner. Operationally the most meaningful
+          live-SOS update — "someone is responding". Slides down from
+          the top once the first ack arrives, stays visible for the
+          rest of the session, and shows the matched keyword so the
+          user knows the nature of the response (ON MY WAY vs 911 vs OK).
+          Aria-live=assertive so screen readers announce immediately. */}
+      <AnimatePresence>
+        {firstAckBanner && (
+          <motion.div
+            key="l2f-ack-banner"
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 260, damping: 22 }}
+            role="status"
+            aria-live="assertive"
+            style={{
+              position: "fixed",
+              top: "calc(env(safe-area-inset-top) + 8px)",
+              left: 12,
+              right: 12,
+              zIndex: 45,
+              background: "linear-gradient(135deg, rgba(40,200,90,0.95), rgba(20,160,70,0.95))",
+              border: "1.5px solid rgba(80,255,140,0.55)",
+              borderRadius: 14,
+              padding: "10px 14px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 0 24px rgba(40,200,90,0.35)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 16 }}>✓</span>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.4px", color: "rgba(255,255,255,0.85)", textTransform: "uppercase" }}>
+                  {isAr ? "تم الإقرار" : "Acknowledged"}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#FFFFFF", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {firstAckBanner.name}
+                  {firstAckBanner.keyword ? (
+                    <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, opacity: 0.85 }}>
+                      — {firstAckBanner.keyword}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {smsReplies.length > 1 && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.85)", background: "rgba(0,0,0,0.25)", padding: "3px 8px", borderRadius: 10 }}>
+                  +{smsReplies.length - 1}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* FIX I: Bypass Supervisor Modal */}
       <AnimatePresence>
