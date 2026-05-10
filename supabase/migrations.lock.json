@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-09T19:13:41.534Z",
-  "total_migrations": 113,
-  "manifest_sha256": "57fe69032bcb87cb464f60c7a3080e2244f177e7675f4ade4f34a08bd5285916",
+  "generated_at": "2026-05-10T17:35:15.550Z",
+  "total_migrations": 114,
+  "manifest_sha256": "67a68ea8c0f2be390b9f8aae251f19dea84d92a794db35281f7ff20f8da97703",
   "migrations": [
     {
       "version": "20260415",
@@ -793,6 +793,13 @@
       "file": "20260509220000_audit_uuid_cast_and_anon_lockdown.sql",
       "sha256": "a886c9dca41821de4e1ca7bc193e80e09fbe4e29ae00c2e4d6f4c6a0060b504f",
       "bytes": 6109
+    },
+    {
+      "version": "20260509230000",
+      "name": "l3c_audit_chain_trigger_index_optimization",
+      "file": "20260509230000_l3c_audit_chain_trigger_index_optimization.sql",
+      "sha256": "43462275914630bf3d2a93ab6741d24641d2640a3212285f6ed7c8d26c55e489",
+      "bytes": 4510
     }
   ]
 }
