@@ -20,15 +20,19 @@
 //  • Sync history and error log
 // ═══════════════════════════════════════════════════════════════
 
+// L3-D cleanup (2026-05-09): removed unused imports.
+//   • markSOSSynced — no longer called here (L2-C delegated to replayPendingSOS)
+//   • markCheckinSynced/markIncidentSynced — no longer called (L2-C2 stubs)
+//   • simulateNetworkSend referenced markMessageSynced via dead branch — removed
+//   • Unused type imports — only kept the ones actually used in signatures
 import {
-  getUnsyncedSOS, markSOSSynced, incrementSOSRetry,
-  getUnsyncedCheckins, markCheckinSynced,
+  getUnsyncedSOS, incrementSOSRetry,
+  getUnsyncedCheckins,
   getUnsyncedGPS, markGPSBatchSynced,
-  getUnsyncedIncidents, markIncidentSynced,
-  getUnsyncedMessages, markMessageSynced,
+  getUnsyncedIncidents,
+  getUnsyncedMessages,
   getStorageStats,
-  type SOSRecord, type CheckinRecord, type GPSPoint,
-  type IncidentRecord, type OfflineMessage, type OfflineStorageStats,
+  type GPSPoint,
 } from "./offline-database";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -176,31 +180,6 @@ export function getSyncProgress(): SyncProgress {
 // When offline or unconfigured, data stays in localStorage queue until sync.
 
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
-
-async function simulateNetworkSend(data: any, category: string): Promise<boolean> {
-  // ── REAL PATH: Supabase is configured ──────────────────────
-  if (SUPABASE_CONFIG.isConfigured) {
-    const { error } = await supabase.from(category).insert(data);
-    if (error) {
-      // O-H2: surface optimistic-lock conflicts distinctly so the caller
-      // can stop retrying and flag the record for manual merge.
-      const msg = `[Supabase] ${category}: ${error.message}`;
-      if (/\b409\b/.test(error.message || "") || /optimistic\s+lock/i.test(error.message || "") || /conflict/i.test(error.message || "")) {
-        const e = new Error(msg);
-        (e as any).isConflict = true;
-        throw e;
-      }
-      // Supabase error — will be retried via exponential backoff
-      throw new Error(msg);
-    }
-    return true;
-  }
-
-  // ── OFFLINE/DEMO PATH: localStorage only ──────────────────
-  // No fake failures — data is safely stored locally
-  await new Promise(r => setTimeout(r, syncConfig.simulatedLatencyMs));
-  return true;
-}
 
 async function simulateBatchGPSSend(points: GPSPoint[]): Promise<boolean> {
   // Compress GPS points (reduces storage/bandwidth)
@@ -370,23 +349,6 @@ async function syncMessages(): Promise<void> {
   }
 }
 
-// ── Original broken loops removed (L2-C2). The unused branches below are
-// preserved as dead-code stubs in case future wiring needs the structure.
-async function _legacySyncMessages_DEAD(): Promise<void> {
-  for (const msg of [] as Array<{ id: string }>) {
-    if (syncAborted) return;
-    try {
-      await markMessageSynced(msg.id);
-      updateCategory("messages", { synced: currentProgress.categories.messages.synced + 1 });
-    } catch (err) {
-      updateCategory("messages", { failed: currentProgress.categories.messages.failed + 1 });
-      currentProgress.errors.push(`Message ${msg.id}: ${err}`);
-      emitProgress();
-    }
-  }
-
-  updateCategory("messages", { status: "done" });
-}
 
 async function syncGPSTrail(): Promise<void> {
   const allPoints = await getUnsyncedGPS();
