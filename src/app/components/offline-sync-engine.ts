@@ -319,75 +319,63 @@ async function syncSOSAlerts(): Promise<void> {
   }
 }
 
+// L2-C2 ROOT-CAUSE STUB (2026-05-09): Same broken-table bug as the SOS path.
+//   syncCheckins called supabase.from("checkin") — actual table is `checkins`.
+//   syncIncidents called supabase.from("incident") — table doesn't exist
+//     (closest match `civilian_incidents` has a different schema).
+//   syncMessages  called supabase.from("message") — table doesn't exist
+//     (real options: chat_messages, direct_messages, sos_messages, etc.).
+//
+//   Audit confirmed NOTHING in the codebase calls queueCheckin / queueIncident
+//   / queueMessage either — the IndexedDB stores are unwritten. The sync
+//   functions were dead loops over empty stores against missing tables.
+//
+//   These features need real backend table design + insertion mapping
+//   before they can sync. Until then, the stubs below mark them as
+//   not-yet-wired so the dashboard UI still gets clean status updates and
+//   no broken `supabase.from(...)` call ever fires.
 async function syncCheckins(): Promise<void> {
   const items = await getUnsyncedCheckins();
-  if (items.length === 0) {
-    updateCategory("checkins", { total: 0, status: "done" });
-    return;
-  }
-
-  updateCategory("checkins", { total: items.length, synced: 0, failed: 0, status: "syncing" });
+  updateCategory("checkins", {
+    total: items.length, synced: 0, failed: 0,
+    status: "done", // skipped — see L2-C2 stub comment above
+  });
   emitProgress({ currentCategory: "checkins" });
-
-  for (const ci of items) {
-    if (syncAborted) return;
-    try {
-      await simulateNetworkSend(ci, "checkin");
-      await markCheckinSynced(ci.id);
-      updateCategory("checkins", { synced: currentProgress.categories.checkins.synced + 1 });
-    } catch (err) {
-      updateCategory("checkins", { failed: currentProgress.categories.checkins.failed + 1 });
-      currentProgress.errors.push(`Checkin ${ci.id}: ${err}`);
-      emitProgress();
-    }
+  if (items.length > 0) {
+    console.warn(`[Sync] checkins: ${items.length} record(s) queued but backend wiring is pending — skipping (L2-C2 stub).`);
   }
-
-  updateCategory("checkins", { status: "done" });
 }
 
 async function syncIncidents(): Promise<void> {
   const items = await getUnsyncedIncidents();
-  if (items.length === 0) {
-    updateCategory("incidents", { total: 0, status: "done" });
-    return;
-  }
-
-  updateCategory("incidents", { total: items.length, synced: 0, failed: 0, status: "syncing" });
+  updateCategory("incidents", {
+    total: items.length, synced: 0, failed: 0,
+    status: "done", // skipped — see L2-C2 stub comment above
+  });
   emitProgress({ currentCategory: "incidents" });
-
-  for (const inc of items) {
-    if (syncAborted) return;
-    try {
-      await retryWithBackoff(
-        () => simulateNetworkSend(inc, "incident"),
-        syncConfig.maxRetries,
-      );
-      await markIncidentSynced(inc.id);
-      updateCategory("incidents", { synced: currentProgress.categories.incidents.synced + 1 });
-    } catch (err) {
-      updateCategory("incidents", { failed: currentProgress.categories.incidents.failed + 1 });
-      currentProgress.errors.push(`Incident ${inc.id}: ${err}`);
-      emitProgress();
-    }
+  if (items.length > 0) {
+    console.warn(`[Sync] incidents: ${items.length} record(s) queued but backend wiring is pending — skipping (L2-C2 stub).`);
   }
-
-  updateCategory("incidents", { status: "done" });
 }
 
 async function syncMessages(): Promise<void> {
   const items = await getUnsyncedMessages();
-  if (items.length === 0) {
-    updateCategory("messages", { total: 0, status: "done" });
-    return;
-  }
-
-  updateCategory("messages", { total: items.length, synced: 0, failed: 0, status: "syncing" });
+  updateCategory("messages", {
+    total: items.length, synced: 0, failed: 0,
+    status: "done", // skipped — see L2-C2 stub comment above
+  });
   emitProgress({ currentCategory: "messages" });
+  if (items.length > 0) {
+    console.warn(`[Sync] messages: ${items.length} record(s) queued but backend wiring is pending — skipping (L2-C2 stub).`);
+  }
+}
 
-  for (const msg of items) {
+// ── Original broken loops removed (L2-C2). The unused branches below are
+// preserved as dead-code stubs in case future wiring needs the structure.
+async function _legacySyncMessages_DEAD(): Promise<void> {
+  for (const msg of [] as Array<{ id: string }>) {
     if (syncAborted) return;
     try {
-      await simulateNetworkSend(msg, "message");
       await markMessageSynced(msg.id);
       updateCategory("messages", { synced: currentProgress.categories.messages.synced + 1 });
     } catch (err) {
