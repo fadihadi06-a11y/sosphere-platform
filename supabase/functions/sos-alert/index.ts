@@ -1323,9 +1323,27 @@ serve(async (req: Request) => {
     // original SOS lifecycle without an extra DB lookup. Empty string
     // is omitted so older synthetic / test fixtures without a trace_id
     // still produce a valid URL.
-    const statusCb = traceId
-      ? `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}&trace_id=${encodeURIComponent(traceId)}`
-      : `${SUPA_URL}/functions/v1/twilio-status?callId=${emergencyId}`;
+    //
+    // L2-E Phase 2 (2026-05-10): the statusCallback URL is now PER-CONTACT
+    // and carries contactIndex + attemptN + tier so the twilio-status
+    // webhook can decide whether to fire a retry call on no-answer/busy.
+    // contactIndex correlates with sos_sessions.contact_snapshot[i] so
+    // the retry path can rebuild the same TwiML URL without trusting
+    // any attacker-controllable webhook payload field.
+    function buildStatusCb(opts: { contactIndex: number; attemptN: number; tierStr: string }): string {
+      const params = new URLSearchParams({
+        callId: emergencyId,
+        contactIndex: String(opts.contactIndex),
+        attemptN: String(opts.attemptN),
+        tier: opts.tierStr,
+      });
+      if (traceId) params.set("trace_id", traceId);
+      return `${SUPA_URL}/functions/v1/twilio-status?${params.toString()}`;
+    }
+    // Legacy alias for non-fanout call sites (none today, but kept so the
+    // diff is small and intentional). Defaults to contactIndex=-1 to make
+    // the "this came from a non-fanout path" case explicit in logs.
+    const statusCb = buildStatusCb({ contactIndex: -1, attemptN: 1, tierStr: tier });
 
     console.log(`[sos-alert] ═══ SOS TRIGGERED ═══ id=${emergencyId} tier=${tier} contacts=${contacts.length}/${originalCount} silent=${!!silent}`);
 
@@ -1548,6 +1566,12 @@ serve(async (req: Request) => {
       // ── Call (tier-dependent) ──
       let callPromise: Promise<{ sid: string; status: string } | null> = Promise.resolve(null);
 
+      // L2-E Phase 2: per-contact statusCallback so twilio-status can
+      // attribute retry decisions to the correct (emergencyId, contactIdx)
+      // pair. attemptN=1 marks the original-fanout attempt; the retry path
+      // in twilio-status bumps to attemptN=2 with a cap there.
+      const perContactStatusCb = buildStatusCb({ contactIndex: idx, attemptN: 1, tierStr: tier });
+
       if (tier === "basic") {
         // FIX 2026-04-23: previously pointed to `twilio-twiml` which does
         // NOT exist in this codebase — Basic tier calls always failed
@@ -1557,7 +1581,7 @@ serve(async (req: Request) => {
         // actually get their outbound call with emergency details.
         const twimlUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
         callPromise = twilioCall(cleanPhone, twimlUrl, {
-          statusCallback: statusCb,
+          statusCallback: perContactStatusCb,
           machineDetection: true,
           timeout: 30,
           timeLimitSec: tierLimits.callDurationSec, // 60s for basic
@@ -1582,7 +1606,7 @@ serve(async (req: Request) => {
             }
             // Path A failed or not connected — fire bridge
             return twilioCall(cleanPhone, bridgeTwimlUrl, {
-              statusCallback: statusCb,
+              statusCallback: perContactStatusCb,
               record: false, // Recording happens in TwiML <Conference>
               machineDetection: true,
               timeout: 30,
@@ -1591,7 +1615,7 @@ serve(async (req: Request) => {
           })();
         } else {
           callPromise = twilioCall(cleanPhone, bridgeTwimlUrl, {
-            statusCallback: statusCb,
+            statusCallback: perContactStatusCb,
             record: false,
             machineDetection: true,
             timeout: 30,
@@ -1601,20 +1625,20 @@ serve(async (req: Request) => {
       } else {
         // ── L2-E Phase 1 (2026-05-09): Free tier now gets ONE TTS call
         // in parallel with SMS, breaking the prior SMS-only silence.
-        // Per SOS_FLOW_DESIGN.md §3.2: a Free user whose contact missed
-        // the SMS had ZERO voice escalation. Phase 1 closes that gap
-        // with a single 30s-ring announce call. Phase 2 (separate
-        // commit) adds the full 3-call cascade + 5s retry SMS +
-        // multi-contact escalation orchestrated via twilio-status
-        // StatusCallback events.
+        // ── L2-E Phase 2 (2026-05-10): added 1 retry call on
+        //    no-answer / busy, orchestrated by twilio-status. machine_start
+        //    (voicemail) and `failed` (Twilio-side fault) do NOT retry —
+        //    they go straight to the existing SMS escalation. Cap = 2
+        //    attempts total per contact to bound billing + spam risk.
         //
-        // Tier disposition snapshot:
-        //   free:  1× TTS announce, 30s ring                  ← THIS COMMIT
-        //   basic: 1× TTS announce, 30s ring, 60s duration    (unchanged)
-        //   elite: 1× Bridge conference, 30s ring, 120s       (unchanged)
+        // Tier disposition snapshot after Phase 2:
+        //   free:  ≤2× TTS announce (30s ring each)             ← THIS COMMIT
+        //   basic: ≤2× TTS announce (30s ring, 60s duration)    ← THIS COMMIT
+        //   elite: ≤2× Bridge conference (30s ring, 120s)       ← THIS COMMIT
+        // Retry behavior is uniform across tiers; only the TwiML differs.
         const freeAnnounceUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
         callPromise = twilioCall(cleanPhone, freeAnnounceUrl, {
-          statusCallback: statusCb,
+          statusCallback: perContactStatusCb,
           machineDetection: true,
           timeout: 30,
           // Free tier call duration is capped intentionally — the
@@ -2139,4 +2163,3 @@ serve(async (req: Request) => {
     });
   }
 });
-                                                                                                     
