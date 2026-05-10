@@ -1579,6 +1579,66 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     };
   }, [phase, userId]);
 
+  // ── L2-G (2026-05-10): post-call forensic photo capture ────────────
+  // Fires ONCE per SOS session, when phase first transitions out of
+  // the in-call states into "monitoring" / "documenting" — i.e., the
+  // call has ended and the user is in the aftermath window. Captures
+  // ONE rear-camera frame, uploads to evidence storage, hashes for
+  // the manifest chain. Best-effort: any failure (permission denied,
+  // no camera, offline) returns silently.
+  //
+  // Why ONE photo, not a burst: the L2-G evidence value is "what does
+  // the scene look like in the seconds after the call". A burst would
+  // burn battery + storage during the most fragile window of the SOS.
+  // The audio continuation (already wired, recordingTiming="after")
+  // handles the temporal coverage; the photo handles the spatial.
+  const forensicPhotoFiredRef = useRef(false);
+  useEffect(() => {
+    const aftermathPhases: Phase[] = ["monitoring", "documenting"];
+    if (!aftermathPhases.includes(phase)) return;
+    if (forensicPhotoFiredRef.current) return;
+    const emergencyId = errIdRef.current;
+    if (!emergencyId) return;
+    forensicPhotoFiredRef.current = true;
+    (async () => {
+      try {
+        const { captureForensicPhoto } = await import("./sos-forensic-capture");
+        const result = await captureForensicPhoto(emergencyId);
+        if (result) {
+          console.log(`[L2-G] forensic photo captured: emergencyId=${emergencyId} sha256=${result.sha256.slice(0, 16)} bytes=${result.bytes} facing=${result.facing}`);
+          // Best-effort audit-log mirror so the photo capture is visible
+          // in the unified compliance timeline alongside the audio/dispatch
+          // events. Failure is non-fatal — the capture itself is recorded
+          // in evidence storage; this is just the audit-trail breadcrumb.
+          try {
+            const { supabase } = await import("./api/supabase-client");
+            await supabase.rpc("log_sos_audit", {
+              p_action:      "forensic_photo_captured",
+              p_actor:       "device",
+              p_actor_level: "system",
+              p_operation:   "evidence",
+              p_target:      emergencyId,
+              p_target_name: result.facing,
+              p_metadata: {
+                sha256:    result.sha256,
+                bytes:     result.bytes,
+                width:     result.width,
+                height:    result.height,
+                facing:    result.facing,
+                captured_at: result.capturedAt,
+                upload_path: result.url,
+              },
+            });
+          } catch (e) {
+            console.warn("[L2-G] audit_log mirror failed (non-fatal):", e);
+          }
+        }
+      } catch (e) {
+        console.warn("[L2-G] forensic photo capture threw:", e);
+      }
+    })();
+  }, [phase]);
+
   // DMS
   const [showDMS, setShowDMS]       = useState(false);
   const [dmsCheckNum, setDmsCheckNum] = useState(1);
