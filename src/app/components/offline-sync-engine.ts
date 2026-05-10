@@ -266,53 +266,57 @@ async function retryWithBackoff<T>(
 // ═══════════════════════════════════════════════════════════════
 
 async function syncSOSAlerts(): Promise<void> {
+  // L2-C ROOT-CAUSE FIX (2026-05-09): the prior implementation called
+  // simulateNetworkSend(sos, "sos") which translated to
+  // supabase.from("sos").insert(data) — but no `sos` table exists in
+  // production. Every replay through this path silently failed with
+  // "relation public.sos does not exist", incremented the retry counter,
+  // and eventually marked the SOS record as failed. Worse: it RACED with
+  // the canonical replay path in sos-server-trigger.replayPendingSOS()
+  // over the same IndexedDB queue, exhausting retry quota before the
+  // correct path could fire.
+  //
+  // Fix: delegate to the canonical replayPendingSOS() which (a) calls
+  // the actual sos-alert edge function, (b) is auth-gated, (c) honors
+  // TTL + 429 cooldown + per-record exponential backoff, and (d) is the
+  // single source of truth for SOS replay across the app.
+  //
+  // Translates the canonical replay summary into the engine's progress
+  // shape so the Sync UI on dashboard-offline-page still works.
   const items = await getUnsyncedSOS();
-  if (items.length === 0) {
-    updateCategory("sos", { total: 0, status: "done" });
-    return;
-  }
-
   updateCategory("sos", { total: items.length, synced: 0, failed: 0, status: "syncing" });
   emitProgress({ currentCategory: "sos" });
 
-  for (const sos of items) {
-    if (syncAborted) return;
-    if (sos.syncAttempts >= syncConfig.maxRetries) {
-      updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
-      continue;
-    }
-    // O-H2: skip records already flagged for manual merge by a prior conflict
-    if ((sos as any).needs_manual_merge) {
-      updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
-      continue;
-    }
-
-    try {
-      await retryWithBackoff(
-        () => simulateNetworkSend(sos, "sos"),
-        2, // SOS gets fewer retries but faster
-        (attempt) => console.log(`[Sync] SOS ${sos.id} retry #${attempt}`),
-      );
-      await markSOSSynced(sos.id);
-      updateCategory("sos", { synced: currentProgress.categories.sos.synced + 1 });
-    } catch (err) {
-      // O-H2: on optimistic-lock conflict, mark for manual merge and stop retrying this record.
-      if (isOptimisticConflict(err) || (err as any)?.isConflict) {
-        (sos as any).needs_manual_merge = true;
-        await incrementSOSRetry(sos.id, `needs_manual_merge: ${String(err)}`);
-        updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
-        currentProgress.errors.push(`SOS ${sos.id} needs_manual_merge`);
-        emitProgress();
-        continue;
-      }
-      await incrementSOSRetry(sos.id, String(err));
-      updateCategory("sos", { failed: currentProgress.categories.sos.failed + 1 });
-      currentProgress.errors.push(`SOS ${sos.id}: ${err}`);
-      emitProgress();
-    }
+  if (items.length === 0) {
+    updateCategory("sos", { status: "done" });
+    return;
   }
 
-  updateCategory("sos", { status: "done" });
+  try {
+    // Lazy import to avoid cycle with sos-server-trigger.ts (which itself
+    // imports from offline-database, transitively including this file).
+    const { replayPendingSOS } = await import("./sos-server-trigger");
+    const result = await replayPendingSOS();
+    updateCategory("sos", {
+      synced: result.succeeded,
+      failed: result.failed + result.skippedExhausted,
+      status: "done",
+    });
+    if (result.failed > 0) {
+      currentProgress.errors.push(`SOS replay: ${result.failed} failed, ${result.skippedExhausted} exhausted`);
+    }
+    emitProgress();
+  } catch (err) {
+    // Defensive — the canonical path swallows its own errors, so reaching
+    // this catch likely means the import itself failed (build-time issue).
+    console.warn("[Sync] SOS replay delegation failed:", err);
+    for (const sos of items) {
+      await incrementSOSRetry(sos.id, `delegate_error: ${String(err)}`);
+    }
+    updateCategory("sos", { failed: items.length, status: "done" });
+    currentProgress.errors.push(`SOS delegation: ${err}`);
+    emitProgress();
+  }
 }
 
 async function syncCheckins(): Promise<void> {
