@@ -99,7 +99,7 @@ describe("L2-F: sos_sms_replies migration shape", () => {
   it("RPC is service_role-only (revoked from public + anon + authenticated)", () => {
     expect(migrationSrc).toMatch(/REVOKE EXECUTE ON FUNCTION public\.record_sos_sms_reply[\s\S]{0,500}FROM PUBLIC/);
     expect(migrationSrc).toMatch(/REVOKE EXECUTE ON FUNCTION public\.record_sos_sms_reply[\s\S]{0,500}FROM anon, authenticated/);
-    expect(migrationSrc).toMatch(/GRANT  EXECUTE ON FUNCTION public\.record_sos_sms_reply[\s\S]{0,500}TO service_role/);
+    expect(migrationSrc).toMatch(/GRANT\s{2}EXECUTE ON FUNCTION public\.record_sos_sms_reply[\s\S]{0,500}TO service_role/);
   });
 });
 
