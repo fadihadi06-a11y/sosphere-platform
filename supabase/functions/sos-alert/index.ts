@@ -1599,7 +1599,32 @@ serve(async (req: Request) => {
           });
         }
       }
-      // Free tier: no call, just SMS
+      } else {
+        // ── L2-E Phase 1 (2026-05-09): Free tier now gets ONE TTS call
+        // in parallel with SMS, breaking the prior SMS-only silence.
+        // Per SOS_FLOW_DESIGN.md §3.2: a Free user whose contact missed
+        // the SMS had ZERO voice escalation. Phase 1 closes that gap
+        // with a single 30s-ring announce call. Phase 2 (separate
+        // commit) adds the full 3-call cascade + 5s retry SMS +
+        // multi-contact escalation orchestrated via twilio-status
+        // StatusCallback events.
+        //
+        // Tier disposition snapshot:
+        //   free:  1× TTS announce, 30s ring                  ← THIS COMMIT
+        //   basic: 1× TTS announce, 30s ring, 60s duration    (unchanged)
+        //   elite: 1× Bridge conference, 30s ring, 120s       (unchanged)
+        const freeAnnounceUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+        callPromise = twilioCall(cleanPhone, freeAnnounceUrl, {
+          statusCallback: statusCb,
+          machineDetection: true,
+          timeout: 30,
+          // Free tier call duration is capped intentionally — the
+          // announce script is short (~10s) and we don't bridge to a
+          // human dispatcher.
+          timeLimitSec: 30,
+        });
+      }
+      // Tier 'free' now handled above; nothing else here.
 
       // W3-27 (B-20, 2026-04-26): per-contact timeout. Pre-fix one stuck
       // Twilio API call (e.g., partial network partition with no TCP RST)
@@ -1619,8 +1644,9 @@ serve(async (req: Request) => {
       ]);
       const [smsSid, callResult] = await Promise.all([smsTimed, callTimed]);
 
+      // L2-E Phase 1: Free tier now sends TTS call alongside SMS.
       const method =
-        tier === "free" ? "sms_only" :
+        tier === "free" ? "tts_call_plus_sms" :
         tier === "basic" ? "tts_call_plus_sms" :
         "bridge_call_recorded_plus_sms";
 
@@ -1679,8 +1705,11 @@ serve(async (req: Request) => {
           // Call leg — only basic/elite tiers attempt a call. Free tier
           // gets 'skipped' so the ledger explicitly records the design
           // decision (rather than a missing row that's ambiguous).
+          // L2-E Phase 1 update: Free tier now also gets a tts_call leg.
+          // Previously Free was the implicit `null` branch (skipped).
           const callChannel = tier === "elite" ? "bridge_call"
                             : tier === "basic" ? "tts_call"
+                            : tier === "free"  ? "tts_call"
                             : null;
           if (callChannel) {
             let callOutcome: string;
@@ -1699,22 +1728,12 @@ serve(async (req: Request) => {
               p_contact_phone: r?.phone ?? null,
               p_provider_sid:  r?.callSid ?? null,
             });
-          } else if (tier === "free") {
-            // Free tier: explicit 'skipped' row for the call leg, so a
-            // forensic auditor can see "we deliberately didn't call this
-            // contact" vs "we tried and failed".
-            await supabase.rpc("record_sos_dispatch_attempt", {
-              p_emergency_id:  emergencyId,
-              p_contact_index: i,
-              p_channel:       "tts_call",
-              p_outcome:       "skipped",
-              p_trace_id:      traceId ?? null,
-              p_company_id:    companyIdForLog ?? null,
-              p_user_id:       userId ?? null,
-              p_contact_name:  r?.contactName ?? null,
-              p_contact_phone: r?.phone ?? null,
-            });
           }
+          // L2-E Phase 1: Free tier no longer needs a 'skipped' branch
+          // here — its tts_call leg is now in the main callChannel path
+          // alongside basic/elite. The 'skipped' outcome stays in the
+          // ledger CHECK constraint for future use (e.g., tier-tier
+          // upgrade path where one channel is intentionally not tried).
         }
       } catch (e) {
         console.warn("[sos-alert] L2-B dispatch ledger write failed (non-fatal):", e);
@@ -2121,3 +2140,4 @@ serve(async (req: Request) => {
     });
   }
 });
+                                                                                             
