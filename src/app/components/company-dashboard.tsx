@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+// L3-A / F-01 (2026-05-09): the dashboard chunk was 2.2MB because every
+// hub-page component was imported eagerly, including ones that drag jsPDF
+// (382KB) + html2canvas (198KB) + QRCode + recharts. Each conditional
+// `{currentPage === "X" && <XPage/>}` block in the render tree didn't
+// short-circuit the bundler — those pages still landed in the initial
+// chunk. The lazy() conversions below code-split each page into its own
+// chunk that only loads when the user actually navigates to it. Pages
+// stay above the fold (Suspense fallback below the page-switch block)
+// so a route change shows a brief loading state instead of jumping.
 import { useDashboardStore } from "./stores/dashboard-store";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -29,15 +38,15 @@ import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, 
 import { HazardAlertBanner } from "./hazard-banner";
 import { TenantBanner } from "./tenant-banner";
 import { ManualPriorityModal } from "./manual-priority-modal";
-import { SettingsPage } from "./dashboard-settings-page";
-import { PricingPage } from "./dashboard-pricing-page";
-import { BillingPage } from "./dashboard-billing-page";
+const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({ default: m.SettingsPage })));
+const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
+const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
 } from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
-import { AnalyticsPage } from "./dashboard-analytics-page";
+const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => ({ default: m.AnalyticsPage })));
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
@@ -50,23 +59,23 @@ import { GlobalQuickActions } from "./global-quick-actions";
 import { GlobalSearch, useGlobalSearch } from "./global-search";
 
 // Import Unified Employees Page
-import { UnifiedEmployeesPage } from "./employees-unified-page";
-import { DashboardJobsPage } from "./dashboard-jobs-page";
+const UnifiedEmployeesPage = lazy(() => import("./employees-unified-page").then(m => ({ default: m.UnifiedEmployeesPage })));
+const DashboardJobsPage = lazy(() => import("./dashboard-jobs-page").then(m => ({ default: m.DashboardJobsPage })));
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
-import { LocationZonesPage } from "./dashboard-location-page";
-import { WorkforcePage } from "./dashboard-workforce-page";
-import { CommsHubPage } from "./dashboard-comms-hub";
+const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
+const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
+const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
 import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
 import { AdminCallSystem } from "./admin-incoming-call";
 
 // ── NEW: Roles & Permissions Page ──────────────────────────────
-import { RolesPermissionsPage } from "./dashboard-roles-page";
+const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => ({ default: m.RolesPermissionsPage })));
 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
-import { AuditLogPage } from "./dashboard-audit-log-page";
-import { PipelineHealthPage } from "./dashboard-pipeline-health-page";
+const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
+const PipelineHealthPage = lazy(() => import("./dashboard-pipeline-health-page").then(m => ({ default: m.PipelineHealthPage })));
 // Inline import — see comment on `authUserId` prop. Lives at top of the
 // banner stack (above TrialBanner / HazardAlert / Tenant) so all four
 // banners stack vertically without overlapping.
@@ -117,21 +126,21 @@ import { ComplianceReportsPage } from "./compliance-reports";
 import { AdminHintBar } from "./admin-hints";
 import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout";
 import { LiveTrialBanner } from "./trial-banner-live";  // AUTH-5 P4 (#175)
-import { LeaderboardPage } from "./dashboard-leaderboard-page";
+const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => ({ default: m.LeaderboardPage })));
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
 import { BatchEmailScheduler } from "./batch-email-scheduler";
-import { RRPAnalyticsPage } from "./rrp-analytics-page";
+const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => ({ default: m.RRPAnalyticsPage })));
 import { OfflineIndicator } from "./offline-sync";
-import { OfflineMonitoringPage } from "./dashboard-offline-page";
+const OfflineMonitoringPage = lazy(() => import("./dashboard-offline-page").then(m => ({ default: m.OfflineMonitoringPage })));
 import { getTrackerState, startGPSTracking } from "./offline-gps-tracker";
 
 // ── NEW: SAR Protocol Engine ────────────────────────────────────
-import { SARProtocolPage } from "./dashboard-sar-page";
+const SARProtocolPage = lazy(() => import("./dashboard-sar-page").then(m => ({ default: m.SARProtocolPage })));
 
 // ── NEW: ISO 45001 Compliance Pages ─────────────────��───────────
-import { IncidentInvestigationPage } from "./dashboard-incident-investigation";
-import { RiskRegisterPage } from "./dashboard-risk-register";
+const IncidentInvestigationPage = lazy(() => import("./dashboard-incident-investigation").then(m => ({ default: m.IncidentInvestigationPage })));
+const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m => ({ default: m.RiskRegisterPage })));
 
 // ── NEW: Mission Control ────────────────────────────────────────
 import { MissionControlPage } from "./mission-control";
@@ -1653,6 +1662,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.25 }}
               >
+                {/* L3-A: Suspense boundary for the lazy-loaded page chunks.
+                    Each <XPage/> below is now a React.lazy reference; the
+                    fallback shows briefly while the chunk fetch resolves
+                    on first navigation. Subsequent navigations are instant
+                    (browser cache). */}
+                <Suspense fallback={<div style={{ padding: 24, color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Loading…</div>}>
                 {currentPage === "overview" && (
                   <PageErrorBoundary label="Overview">
                   <OverviewPage
@@ -1860,6 +1875,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}
                 {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
                 {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
+                </Suspense>
               </motion.div>
             </AnimatePresence>
           </div>
@@ -3859,6 +3875,50 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                     }}>
                     <PhoneMissed className="size-3.5" style={{ color: call.seen ? "rgba(255,255,255,0.3)" : "#FF9500" }} />
                   </div>
+                  {!call.seen && (
+                    <div className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full"
+                      style={{ background: "#FF9500", boxShadow: "0 0 6px rgba(255,150,0,0.5)" }} />
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white truncate" style={{ fontSize: 13, fontWeight: 600 }}>
+                    {call.employeeName}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {call.zone && (
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>
+                        {call.zone}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>•</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
+                      {call.missedOn === "desktop" ? "Desktop" : call.missedOn === "phone" ? "Phone" : "Both"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Clock className="size-2.5" style={{ color: "rgba(255,255,255,0.2)" }} />
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>
+                      {formatTime(call.timestamp)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-1.5">
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onCallBack(call)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(0,200,83,0.15), rgba(0,200,83,0.05))",
+                      border: "1px solid rgba(0,200,83,0.2)",
+                    }}
+                  >
+                    <Phone className="size-3" style={{ color: "#00C853" }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>Call Back</span>
+                  </motion.button>
                   {!call.seen && (
                     <div className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full"
                       style={{ background: "#FF9500", boxShadow: "0 0 6px rgba(255,150,0,0.5)" }} />
