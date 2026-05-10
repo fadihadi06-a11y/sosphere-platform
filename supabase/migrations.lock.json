@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-10T17:35:15.550Z",
-  "total_migrations": 114,
-  "manifest_sha256": "67a68ea8c0f2be390b9f8aae251f19dea84d92a794db35281f7ff20f8da97703",
+  "generated_at": "2026-05-10T21:24:50.892Z",
+  "total_migrations": 115,
+  "manifest_sha256": "a9dc63078940b6bb684b0cf782996cf08bb9970b15975086c4964612d7bb20c0",
   "migrations": [
     {
       "version": "20260415",
@@ -800,6 +800,13 @@
       "file": "20260509230000_l3c_audit_chain_trigger_index_optimization.sql",
       "sha256": "43462275914630bf3d2a93ab6741d24641d2640a3212285f6ed7c8d26c55e489",
       "bytes": 4510
+    },
+    {
+      "version": "20260510210000",
+      "name": "l2f_sos_sms_replies",
+      "file": "20260510210000_l2f_sos_sms_replies.sql",
+      "sha256": "1cf1aa30bc0ffb594a21ab0625601b984d710f1ccd0e5acf4b452d0a61a82d53",
+      "bytes": 7790
     }
   ]
 }
