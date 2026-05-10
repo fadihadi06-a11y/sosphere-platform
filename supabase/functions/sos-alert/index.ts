@@ -1598,7 +1598,6 @@ serve(async (req: Request) => {
             timeLimitSec: tierLimits.callDurationSec, // 120s for elite
           });
         }
-      }
       } else {
         // ── L2-E Phase 1 (2026-05-09): Free tier now gets ONE TTS call
         // in parallel with SMS, breaking the prior SMS-only silence.
@@ -2140,4 +2139,4 @@ serve(async (req: Request) => {
     });
   }
 });
-                                                                                             
+                                                                                                     
