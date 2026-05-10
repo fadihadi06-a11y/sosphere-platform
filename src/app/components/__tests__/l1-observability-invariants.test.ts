@@ -195,7 +195,16 @@ describe("L1-A complete: server-side wiring", () => {
   });
 
   it("sos-alert builds Twilio statusCallback URL with trace_id query param", () => {
-    expect(edgeFn).toMatch(/statusCb\s*=\s*traceId[\s\S]*?trace_id=\$\{encodeURIComponent\(traceId\)\}/);
+    // L2-E Phase 2 (2026-05-10) refactor: the static `statusCb` string
+    // became a buildStatusCb() helper that uses URLSearchParams so the
+    // per-contact retry path can attach contactIndex/attemptN/tier
+    // alongside trace_id. The INVARIANT — trace_id MUST flow into the
+    // outbound Twilio statusCallback URL when present — is unchanged.
+    // We now assert both halves of that invariant separately:
+    //   (a) the helper exists and its return value is a twilio-status URL
+    //   (b) trace_id is set into the URLSearchParams when traceId is truthy
+    expect(edgeFn).toMatch(/function\s+buildStatusCb\b[\s\S]{0,400}twilio-status/);
+    expect(edgeFn).toMatch(/if \(traceId\)\s*params\.set\(\s*["']trace_id["']\s*,\s*traceId\s*\)/);
   });
 });
 
