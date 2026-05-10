@@ -164,7 +164,9 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
   });
 
   it("tears down the channel on sign-out", async () => {
-    const cap = makeChannelChain();
+    // makeChannelChain() registers the channel-mock chain into the
+    // global stub network; the return value is not needed here.
+    makeChannelChain();
     getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
     let authCb: (event: string, session: any) => void = () => {};
     onAuthStateChangeMock.mockImplementation((cb: any) => {

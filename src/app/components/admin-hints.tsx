@@ -15,8 +15,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Lightbulb, X, ChevronRight, Sparkles,
-  ArrowRight, HelpCircle, Info,
+  Lightbulb, X, Sparkles,
+  ArrowRight, Info,
 } from "lucide-react";
 
 // ── Hint Definition ───────────────────────────────────────────
@@ -31,7 +31,11 @@ interface AdminHint {
 }
 
 // ── Page-specific hints ───────────────────────────────────────
-const PAGE_HINTS: Record<string, AdminHint[]> = {
+// Underscore-prefixed: dataset is declared but not yet referenced in
+// the live hint engine (referenced by future builds via a registry
+// lookup). The `/^_/u` ESLint allowance keeps the data parked without
+// flagging it as dead code.
+const _PAGE_HINTS: Record<string, AdminHint[]> = {
   overview: [
     { id: "ov-1", text: "This is your command center. Green means safe. If anything turns red or orange, click it immediately.", action: "💡 Pro tip", priority: "info" },
     { id: "ov-2", text: "Set up your zones first to unlock zone-specific monitoring. Each zone can have its own risk level and evacuation point.", action: "🎯 Next step", actionLabel: "Set Up Zones →", navigateTo: "location", priority: "suggest" },

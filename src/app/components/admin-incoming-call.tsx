@@ -73,7 +73,10 @@ function IncomingCallOverlay({ signal, onDismiss }: IncomingCallOverlayProps) {
             // Try to ring admin's mobile phone
             window.open(`tel:${adminPhone.replace(/\s/g, "")}`, "_system");
           }
-        } catch {}
+        } catch {
+          // localStorage unavailable or window.open blocked — fall through
+          // to setCallState("missed") below so the admin sees the timeout.
+        }
 
         setCallState("missed");
         voiceCallEngine.forceReset();

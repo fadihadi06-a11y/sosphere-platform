@@ -8,10 +8,10 @@
 // "When human panics — AI stays calm"
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Shield, Phone, MapPin, Users, Siren, X, CheckCircle2,
+  Phone, MapPin, Users, Siren, X, CheckCircle2,
   AlertTriangle, ChevronRight, Activity, Battery, Wifi,
   Ambulance, Megaphone, FileText, Download, Clock,
   Camera, Send, Navigation, ArrowLeft, ArrowRight,

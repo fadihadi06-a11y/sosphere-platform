@@ -32,10 +32,8 @@ vi.mock("../subscription-service", () => ({
 
 import {
   isDuressFeatureAvailable,
-  getDuressPin,
   setDuressPin,
   isDuressPin,
-  getDeactivationPin,
   setDeactivationPin,
   isDeactivationPin,
   isDuressPinSet,
