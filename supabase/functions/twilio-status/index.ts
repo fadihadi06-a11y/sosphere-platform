@@ -101,6 +101,13 @@ serve(async (req) => {
     const data: Record<string, string> = {};
     formData.forEach((value, key) => { data[key] = String(value); });
 
+    // L1-D Phase 3 fix: Supabase's gateway terminates TLS and forwards
+    // plain HTTP to the function container, so req.url's protocol is
+    // "http:" internally. Twilio signs the webhook URL as configured
+    // (always "https:"). Coerce to https here so the canonical URL
+    // matches what Twilio signed. Same fix applied to sos-sms-inbound.
+    const canonicalUrl = req.url.replace(/^http:\/\//, "https://");
+
     // B-09: gather requires gtok; other actions require Twilio signature
     if (action === "gather") {
       const gtok = url.searchParams.get("gtok");
@@ -112,12 +119,12 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const twilioOk = await validateTwilioSignature(req, req.url, data);
+      const twilioOk = await validateTwilioSignature(req, canonicalUrl, data);
       if (!twilioOk) {
         console.warn(`[twilio-status] gather: Twilio signature did not validate (callId=${callId}) — gtok was OK so proceeding`);
       }
     } else {
-      const valid = await validateTwilioSignature(req, req.url, data);
+      const valid = await validateTwilioSignature(req, canonicalUrl, data);
       if (!valid) {
         console.warn("[twilio-status] Signature validation FAILED — rejecting request");
         return new Response(JSON.stringify({ error: "Invalid signature" }), {

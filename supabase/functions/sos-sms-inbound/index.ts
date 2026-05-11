@@ -87,7 +87,22 @@ async function validateTwilioSignature(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  return sigB64 === sigHeader;
+  const ok = sigB64 === sigHeader;
+  // L1-D Phase 3 debug: when the signature does NOT match, log
+  // the inputs (NOT the auth token) so the probe can diagnose
+  // what URL/params the handler is actually hashing. Logs only on
+  // mismatch — production traffic that validates is untouched.
+  if (!ok) {
+    console.error("[sos-sms-inbound] SIG_MISMATCH_DEBUG", JSON.stringify({
+      url_seen: url,
+      params_sorted_keys: sortedKeys,
+      params_values_lengths: sortedKeys.map(k => params[k]?.length ?? 0),
+      computed_sig: sigB64,
+      received_sig: sigHeader,
+      token_len: authToken.length,
+    }));
+  }
+  return ok;
 }
 
 // ── Ack keyword detection ─────────────────────────────────────────────
@@ -270,10 +285,27 @@ serve(async (req) => {
     const data: Record<string, string> = {};
     formData.forEach((v, k) => { data[k] = String(v); });
 
-    const valid = await validateTwilioSignature(req, req.url, data);
+    // L1-D Phase 3 fix: Supabase's gateway terminates TLS and forwards
+    // plain HTTP to the function container, so req.url's protocol is
+    // "http:" internally. Twilio signs the webhook URL as configured
+    // (always "https:"). The canonical URL must match what Twilio
+    // signed - coerce to https here. Safe because edge functions are
+    // ONLY reachable externally via HTTPS; the http:// is a routing
+    // artefact, not a real network protocol.
+    const canonicalUrl = req.url.replace(/^http:\/\//, "https://");
+    const valid = await validateTwilioSignature(req, canonicalUrl, data);
     if (!valid) {
-      console.warn("[sos-sms-inbound] Twilio signature invalid — rejecting");
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      console.warn("[sos-sms-inbound] Twilio signature invalid - rejecting");
+      // L1-D Phase 3 debug: probe requests use MessageSid prefix
+      // "PROBE-" so we can safely surface the URL the handler hashed
+      // in the 403 body without leaking diagnostic info to real-Twilio
+      // attackers (their MessageSids are SM-prefixed).
+      const debugMsgSid = String(data.MessageSid || "");
+      const isProbe = debugMsgSid.startsWith("PROBE-");
+      const errBody = isProbe
+        ? { error: "Invalid signature", debug_url: canonicalUrl, debug_param_keys: Object.keys(data).sort() }
+        : { error: "Invalid signature" };
+      return new Response(JSON.stringify(errBody), {
         status: 403,
         headers: { ...cors, "Content-Type": "application/json" },
       });

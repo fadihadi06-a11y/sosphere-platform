@@ -201,7 +201,11 @@ serve(async (req) => {
     // step below proves whether the row was actually inserted.
     if (inboundStatus !== 200) {
       report.stages.post = "failed";
-      report.detail = `inbound HTTP ${inboundStatus}`;
+      // L1-D Phase 3 debug: capture the response body so diagnostic
+      // fields (debug_url, debug_param_keys) surface in the report.
+      let errBody = "";
+      try { errBody = await res.text(); } catch { /* noop */ }
+      report.detail = `inbound HTTP ${inboundStatus}: ${errBody.slice(0, 500)}`;
       return jsonResponse(report, 200, corsHeaders);
     }
     report.stages.post = "ok";
