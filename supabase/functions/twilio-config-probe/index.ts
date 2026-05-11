@@ -48,6 +48,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   detectDrift,
   type TwilioPhoneNumber,
+  type TwilioMessagingService,
   type ExpectedConfig,
 } from "../_shared/twilio-config-drift.ts";
 
@@ -134,13 +135,39 @@ serve(async (req) => {
     });
   }
 
-  const report = detectDrift(phones, expected);
+  // L1-D Phase 2.5: also fetch Messaging Services. Twilio's Messaging
+  // Services API lives on a DIFFERENT host (messaging.twilio.com vs
+  // api.twilio.com). When a phone is bound to a Service, the Service's
+  // inbound_request_url is the authoritative router — not the number's
+  // sms_url. detectDrift uses both lists to apply routing-aware checks.
+  // Failure to fetch Services is non-fatal — we still report on phones.
+  let services: TwilioMessagingService[] = [];
+  try {
+    const res = await fetch(
+      `https://messaging.twilio.com/v1/Services?PageSize=100`,
+      {
+        headers: { Authorization: `Basic ${twilioAuth}` },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      services = Array.isArray(data.services) ? data.services : [];
+    } else {
+      const body = await res.text();
+      console.warn(`[twilio-config-probe] Services API ${res.status} (non-fatal):`, body.slice(0, 200));
+    }
+  } catch (e) {
+    console.warn("[twilio-config-probe] Services fetch threw (non-fatal):", e);
+  }
 
-  // On drift: mirror to audit_log + structured console.error.
+  const report = detectDrift(phones, expected, services);
+
+  // L1-D Phase 2.5: alerting now covers BOTH phone-level and
+  // Service-level drift. The structured log line and the audit_log
+  // metadata include drift_summary for each axis so a single alert
+  // hit gives admins the full picture without an extra query.
   if (report.driftedCount > 0) {
-    // The structured log line is what Supabase log-based alerts
-    // (and Sentry's log shipper, if configured) pattern-match on.
-    // Keep the prefix stable — it's part of the contract.
     console.error("[twilio-config-probe] DRIFT_DETECTED", JSON.stringify({
       driftedCount: report.driftedCount,
       total:        report.total,
@@ -149,6 +176,13 @@ serve(async (req) => {
         phone:      p.phoneNumber,
         issueCount: p.issues.length,
         fields:     p.issues.map((i) => i.field),
+        routedVia:  p.routedVia,
+      })),
+      services:     report.services.filter((s) => s.issues.length > 0).map((s) => ({
+        sid:        s.sid,
+        name:       s.friendlyName,
+        issueCount: s.issues.length,
+        fields:     s.issues.map((i) => i.field),
       })),
     }));
     try {
@@ -163,13 +197,21 @@ serve(async (req) => {
         p_metadata: {
           severity:      "warning",
           drifted_count: report.driftedCount,
-          total_phones:  report.total,
+          total_entities: report.total,
           expected_sms_url: expected.smsUrl,
-          drift_summary: report.phones
+          phone_drift_summary: report.phones
             .filter((p) => p.issues.length > 0)
             .map((p) => ({
-              phone:  p.phoneNumber,
+              phone:      p.phoneNumber,
+              routed_via: p.routedVia,
               issues: p.issues.map((i) => `${i.field}: expected=${i.expected.slice(0, 80)} actual=${i.actual.slice(0, 80)}`),
+            })),
+          service_drift_summary: report.services
+            .filter((s) => s.issues.length > 0)
+            .map((s) => ({
+              service: s.friendlyName,
+              sid:     s.sid,
+              issues:  s.issues.map((i) => `${i.field}: expected=${i.expected.slice(0, 80)} actual=${i.actual.slice(0, 80)}`),
             })),
         },
       });
@@ -177,9 +219,7 @@ serve(async (req) => {
       console.warn("[twilio-config-probe] audit_log mirror failed (non-fatal):", e);
     }
   } else {
-    // Quiet success — only emit a compact OK line so log-based
-    // alerts can distinguish "ran clean" from "didn't run".
-    console.log(`[twilio-config-probe] OK: ${report.cleanCount}/${report.total} phones clean`);
+    console.log(`[twilio-config-probe] OK: ${report.cleanCount}/${report.total} entities clean (${report.phones.length} phones + ${report.services.length} services)`);
   }
 
   return new Response(JSON.stringify(report, null, 2), {
