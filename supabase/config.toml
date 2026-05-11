@@ -40,14 +40,15 @@ verify_jwt = false
 [functions.twilio-twiml]
 verify_jwt = false
 
-[functions.twilio-twiml-ack]
+# L2-F: Twilio inbound-SMS webhook. Twilio sends its own X-Twilio-Signature
+# (verified inside the function) — never a Supabase JWT, so the gateway
+# JWT check must be disabled or every inbound SMS reply gets 401'd
+# before reaching our code.
+[functions.sos-sms-inbound]
 verify_jwt = false
 
-[functions.send-invitations]
-verify_jwt = false
-
-[functions.invite-employees]
-verify_jwt = false
-
-[functions.api-health]
+# L1-D Phase 2: drift probe authenticated by PROBE_SECRET bearer token
+# (constant-time compared inside the function). Same pattern as Twilio
+# webhooks — gateway must step aside.
+[functions.twilio-config-probe]
 verify_jwt = false
