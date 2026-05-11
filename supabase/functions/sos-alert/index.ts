@@ -33,6 +33,7 @@ import {
   getRateLimitHeaders,
 } from "../_shared/rate-limiter.ts";
 import { clientIp } from "../_shared/api-guard.ts";
+import { withDbRetry } from "../_shared/db-retry.ts";
 
 const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -1367,7 +1368,12 @@ serve(async (req: Request) => {
     // server_triggered_at here — the conditional UPDATE below is what
     // claims triggering. Using ignoreDuplicates:true makes this safe
     // when prewarm already created the row.
-    await supabase.from("sos_sessions").upsert({
+    // L4-A: wrapped with withDbRetry — transient PG/network blips
+    // would otherwise drop the SOS critical-path UPSERT (200-800ms
+    // backoff, 2 retries, only transient errors retry).
+    await withDbRetry(async (attempt) => {
+      if (attempt > 0) console.warn(`[sos-alert] sos_sessions UPSERT retry ${attempt} (transient err)`);
+      const { error } = await supabase.from("sos_sessions").upsert({
       id: emergencyId,
       // L1-A/B observability columns — written on first insert so the
       // forensic timeline is complete from row birth.
@@ -1405,14 +1411,21 @@ serve(async (req: Request) => {
       // in which case sos-bridge-twiml uses its built-in announcement).
       ai_script: aiScript,
     }, { onConflict: "id", ignoreDuplicates: true });
+      if (error) throw error;
+    });
 
     // Step 2: atomic conditional UPDATE — only one caller wins the claim.
     // `select()` on an UPDATE returns the updated rows, filtered by the
     // WHERE clause. If zero rows come back, another invocation already
     // ran the fanout and we must return its cached result.
-    const { data: claimed } = await supabase
-      .from("sos_sessions")
-      .update({
+    // L4-A: wrapped with withDbRetry for the same reason as the UPSERT —
+    // a transient blip on this UPDATE would leave the SOS in an
+    // ambiguous claim state.
+    const claimedResult = await withDbRetry(async (attempt) => {
+      if (attempt > 0) console.warn(`[sos-alert] sos_sessions atomic-claim retry ${attempt} (transient err)`);
+      return await supabase
+        .from("sos_sessions")
+        .update({
         // L1-A/B observability — also set on the UPDATE path so a row
         // pre-created by prewarm gets its trace_id stamped at the
         // moment of real trigger.
@@ -1448,9 +1461,11 @@ serve(async (req: Request) => {
         ai_script: aiScript,
         server_triggered_at: nowIso,
       })
-      .eq("id", emergencyId)
-      .is("server_triggered_at", null)
-      .select("id, tier, server_triggered_at");
+        .eq("id", emergencyId)
+        .is("server_triggered_at", null)
+        .select("id, tier, server_triggered_at");
+    });
+    const { data: claimed } = claimedResult;
 
     // B-C4/B-H1: zero rows claimed → another trigger beat us to it.
     // Fetch the cached result row and return it. This replaces the
