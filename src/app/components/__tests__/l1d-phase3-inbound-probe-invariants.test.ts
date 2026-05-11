@@ -117,8 +117,12 @@ describe("L1-D Phase 3: synthetic payload + signature", () => {
     expect(code).toMatch(/encodeFormBody\(params\)/);
   });
 
-  it("posts to /functions/v1/sos-sms-inbound (the production handler)", () => {
-    expect(probeSrc).toMatch(/`\$\{supaUrl\}\/functions\/v1\/sos-sms-inbound`/);
+  it("posts to the functions.supabase.co/sos-sms-inbound hostname (matches req.url inside the handler)", () => {
+    // L1-D Phase 3 fix: req.url inside the function shows the
+    // functions.supabase.co form, not supabase.co/functions/v1.
+    // The probe must POST to AND sign for that form.
+    expect(probeSrc).toMatch(/functions\.supabase\.co/);
+    expect(probeSrc).toMatch(/`\$\{functionsHost\}\/sos-sms-inbound`/);
   });
 
   it("sends X-Twilio-Signature header on the POST (so handler validates pass)", () => {
@@ -186,6 +190,40 @@ describe("L1-D Phase 3: alerting + report shape", () => {
   });
 });
 
+describe("L1-D Phase 3: HTTP→HTTPS canonicalization (production bug fix)", () => {
+  // Why this matters: Supabase's gateway terminates TLS and forwards
+  // plain HTTP to the function container, so req.url's protocol is
+  // "http:" internally. Twilio signs the webhook URL as configured
+  // (always "https:"). Without coercion, real Twilio inbound traffic
+  // would fail signature validation 100% of the time. This bug was
+  // present from day one — only discovered when the Phase 3 synthetic
+  // probe attempted end-to-end verification and got HTTP 403.
+  let smsInboundSrc = "";
+  let twilioStatusSrc = "";
+  beforeAll(() => {
+    smsInboundSrc = fs.readFileSync(
+      path.resolve(process.cwd(), "supabase/functions/sos-sms-inbound/index.ts"),
+      "utf8",
+    );
+    twilioStatusSrc = fs.readFileSync(
+      path.resolve(process.cwd(), "supabase/functions/twilio-status/index.ts"),
+      "utf8",
+    );
+  });
+
+  it("sos-sms-inbound coerces req.url http:// to https:// before signature validation", () => {
+    expect(smsInboundSrc).toMatch(/canonicalUrl\s*=\s*req\.url\.replace\(\/\^http:\\\/\\\/\/,\s*["']https:\/\/["']\s*\)/);
+    expect(smsInboundSrc).toMatch(/validateTwilioSignature\(\s*req,\s*canonicalUrl,/);
+  });
+
+  it("twilio-status coerces req.url http:// to https:// before signature validation", () => {
+    expect(twilioStatusSrc).toMatch(/canonicalUrl\s*=\s*req\.url\.replace\(\/\^http:\\\/\\\/\/,\s*["']https:\/\/["']\s*\)/);
+    const callMatches = twilioStatusSrc.match(/validateTwilioSignature\(\s*req,\s*canonicalUrl,/g) || [];
+    expect(callMatches.length).toBeGreaterThanOrEqual(2);
+    expect(twilioStatusSrc).not.toMatch(/validateTwilioSignature\(\s*req,\s*req\.url,/);
+  });
+});
+
 describe("L1-D Phase 3: Supabase config", () => {
   let cfgSrc = "";
   beforeAll(() => {
@@ -194,7 +232,7 @@ describe("L1-D Phase 3: Supabase config", () => {
       "utf8",
     );
   });
-  it("sos-inbound-probe has verify_jwt = false (no gateway interference)", () => {
+  it("sos-inbound-probe has verify_jwt = false", () => {
     expect(cfgSrc).toMatch(/\[functions\.sos-inbound-probe\][\s\S]{0,80}verify_jwt\s*=\s*false/);
   });
 });
