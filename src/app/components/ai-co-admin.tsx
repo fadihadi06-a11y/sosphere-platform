@@ -11,14 +11,14 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Phone, MapPin, Users, Siren, X, CheckCircle2,
+  Phone, Users, X, CheckCircle2,
   AlertTriangle, ChevronRight, Activity, Battery, Wifi,
-  Ambulance, Megaphone, FileText, Download, Clock,
-  Camera, Send, Navigation, ArrowLeft, ArrowRight,
-  Mic, PlayCircle, PauseCircle, ChevronDown,
-  Bot, Sparkles, Brain, Target, Zap, Crown,
+  Ambulance, Megaphone, Download, Clock,
+  Camera, Send, Navigation,
+  Mic,
+  Bot, Brain, Target, Crown,
   PhoneCall, Image as ImageIcon, Radio, Video,
-  Droplet, Pill, Award, TrendingUp, Share2,
+  Droplet, Pill, Award, Share2,
   FileCheck, Scale, Building2, DollarSign,
   WifiOff, BatteryLow, Flame, Moon,
   MessageCircle,
