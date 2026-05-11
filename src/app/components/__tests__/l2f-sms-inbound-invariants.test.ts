@@ -262,3 +262,29 @@ describe("L2-F: Realtime broadcast — tenant-scoped, never global", () => {
     expect(code).toMatch(/if \(resolved\)\s*\{[\s\S]{0,200}broadcastSmsReply/);
   });
 });
+
+describe("L2-F: debug-code gating contract (prevents accidental token leak)", () => {
+  it("SIG_MISMATCH_DEBUG fires ONLY in the !ok branch (never on successful validation)", () => {
+    // The log call must be inside `if (!ok)` — otherwise a successful
+    // validation would log the signature material, defeating the
+    // purpose of the gating.
+    expect(inboundSrc).toMatch(/if \(!ok\)\s*\{[\s\S]{0,200}SIG_MISMATCH_DEBUG/);
+  });
+
+  it("SIG_MISMATCH_DEBUG logs token_len, NEVER the token itself", () => {
+    // The diagnostic payload must include the LENGTH of the token
+    // (proves the env var is set) but NOT the token value (would be
+    // a hard-fail secret leak).
+    expect(inboundSrc).toMatch(/token_len:\s*authToken\.length/);
+    expect(inboundSrc).not.toMatch(/token:\s*authToken[^\.]/);
+  });
+
+  it("403 response debug_url is gated to probe-prefixed MessageSids only", () => {
+    // Real Twilio MessageSids are SM-prefixed. Only PROBE-prefixed
+    // sids unlock the debug body. A refactor that drops this gate
+    // would expose canonicalUrl + param keys to any caller hitting
+    // 403 — small leak but still a regression.
+    expect(inboundSrc).toMatch(/debugMsgSid\.startsWith\(\s*["']PROBE-["']\s*\)/);
+    expect(inboundSrc).toMatch(/const errBody = isProbe[\s\S]{0,500}debug_url:\s*canonicalUrl/);
+  });
+});
