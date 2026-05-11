@@ -18,14 +18,29 @@
  *   • Pure client-side; server sync is Phase 6.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Shield, CheckCircle2, AlertTriangle, HelpCircle,
   ChevronRight, Home as HomeIcon, FileText, Clock,
-  Phone, Camera, Mic,
+  Phone, Camera, Mic, MessageCircle, ShieldCheck,
 } from "lucide-react";
 import type { IncidentRecord } from "./sos-emergency";
+
+// ── L2-H-UI (2026-05-10): post-emergency forensic surface ─────────────
+// Type for a single inbound SMS reply row as broadcast by sos-sms-inbound
+// and persisted to sos_sms_replies. Mirrors that table's columns one-to-one
+// so a typo here would surface as an unknown-column query error.
+interface SmsReplyRow {
+  id: string;
+  contact_index: number | null;
+  contact_name: string | null;
+  from_phone: string;
+  body: string;
+  is_ack: boolean;
+  ack_keyword: string | null;
+  received_at: string;
+}
 
 type FeltSafe = "safe" | "unsure" | "need_help";
 
@@ -73,7 +88,64 @@ export function PostEmergencyDebrief({
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  // ── L2-H-UI: forensic data fetched async ────────────────────────────
+  // These start empty and populate as the loader resolves. Empty/null
+  // states render NOTHING (the relevant section is omitted entirely)
+  // so a debrief for an older record (pre-L2-F / L2-G) looks identical
+  // to the previous UX.
+  const [smsReplies, setSmsReplies] = useState<SmsReplyRow[]>([]);
+  const [forensicPhotoUrl, setForensicPhotoUrl] = useState<string | null>(null);
+  const [evidenceLoaded, setEvidenceLoaded] = useState(false);
+
   const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  // ── L2-H-UI: load post-emergency forensic evidence ──────────────────
+  // Pulls sos_sms_replies + a signed URL for the forensic photo from
+  // Supabase. Best-effort: any failure leaves state empty (the UI
+  // sections then collapse to nothing — the user is not blocked).
+  // Dynamic-imports the supabase client to keep the post-emergency
+  // chunk slim (file is React.lazy()'d in mobile-app per L3-B).
+  useEffect(() => {
+    if (!record?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { supabase } = await import("./api/supabase-client");
+
+        // SMS replies — ordered by received_at so the timeline is
+        // chronological. Filter on emergency_id only; the RLS
+        // policy already scopes by company / user.
+        const { data: replies, error: replyErr } = await supabase
+          .from("sos_sms_replies")
+          .select("id, contact_index, contact_name, from_phone, body, is_ack, ack_keyword, received_at")
+          .eq("emergency_id", record.id)
+          .order("received_at", { ascending: true })
+          .limit(50);
+        if (replyErr) {
+          console.warn("[L2-H-UI] sms_replies fetch failed:", replyErr.message);
+        } else if (!cancelled && replies) {
+          setSmsReplies(replies as SmsReplyRow[]);
+        }
+
+        // Forensic photo signed URL. Storage object path mirrors what
+        // sos-forensic-capture.ts writes. Returning a 1-hour signed URL
+        // is the right tradeoff for a debrief screen — the user might
+        // navigate to "View full report" which re-fetches anyway.
+        const photoPath = `sos/${record.id}/forensic.jpg`;
+        const { data: signed } = await supabase.storage
+          .from("evidence")
+          .createSignedUrl(photoPath, 3600);
+        if (!cancelled && signed?.signedUrl) {
+          setForensicPhotoUrl(signed.signedUrl);
+        }
+      } catch (e) {
+        console.warn("[L2-H-UI] evidence load failed (non-fatal):", e);
+      } finally {
+        if (!cancelled) setEvidenceLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [record?.id]);
 
   // ── Derived summary stats (pure, memoized) ──
   const stats = useMemo(() => {
@@ -170,6 +242,101 @@ export function PostEmergencyDebrief({
             </span>
           </div>
         </div>
+
+        {/* ── L2-H-UI: SMS replies received during/after the SOS ────────
+            Only renders when at least one reply arrived (collapsed
+            entirely for emergencies that had no inbound traffic).
+            The first ack is highlighted with a green ribbon — that's
+            the operationally meaningful event for the L1-C SLA. */}
+        {evidenceLoaded && smsReplies.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <MessageCircle size={14} style={{ color: "rgba(255,255,255,0.55)" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.3px", color: "rgba(255,255,255,0.65)", textTransform: "uppercase" }}>
+                {t("Contact responses", "ردود جهات الاتصال")}
+              </span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                ({smsReplies.length})
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {smsReplies.map((r) => {
+                const ts = new Date(r.received_at);
+                const hh = ts.getHours().toString().padStart(2, "0");
+                const mm = ts.getMinutes().toString().padStart(2, "0");
+                return (
+                  <div
+                    key={r.id}
+                    className="px-3 py-2"
+                    style={{
+                      background: r.is_ack ? "rgba(0,200,83,0.06)" : "rgba(255,255,255,0.03)",
+                      border: r.is_ack ? "1px solid rgba(0,200,83,0.25)" : "1px solid rgba(255,255,255,0.06)",
+                      borderRadius: 10,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {r.is_ack && <ShieldCheck size={12} style={{ color: "#00C853", flexShrink: 0 }} />}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.contact_name || r.from_phone}
+                        </span>
+                        {r.is_ack && r.ack_keyword && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853", letterSpacing: "0.4px", background: "rgba(0,200,83,0.1)", padding: "1px 6px", borderRadius: 6 }}>
+                            {r.ack_keyword}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", flexShrink: 0, marginLeft: 8 }}>
+                        {hh}:{mm}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 1.4, wordBreak: "break-word" }}>
+                      {r.body}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── L2-H-UI: forensic photo captured post-call (L2-G) ────────
+            Only renders when the capture succeeded and the signed URL
+            resolved. Thumbnail-sized — clicking opens full-screen in
+            a future iteration (out of scope for Phase 1 surface). */}
+        {evidenceLoaded && forensicPhotoUrl && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Camera size={14} style={{ color: "rgba(255,255,255,0.55)" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.3px", color: "rgba(255,255,255,0.65)", textTransform: "uppercase" }}>
+                {t("Scene captured", "صورة المشهد")}
+              </span>
+            </div>
+            <div
+              className="overflow-hidden"
+              style={{
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 12,
+              }}
+            >
+              <img
+                src={forensicPhotoUrl}
+                alt={t("Post-call forensic capture", "صورة ما بعد المكالمة")}
+                style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "cover" }}
+                loading="lazy"
+              />
+              <div className="px-3 py-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: "0.3px" }}>
+                  {t(
+                    "Captured automatically when the call ended. Hashed for chain-of-custody.",
+                    "تمّ التقاطها تلقائياً عند انتهاء المكالمة. مُؤمَّنة لسلسلة الأدلّة.",
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {!submitted ? (
