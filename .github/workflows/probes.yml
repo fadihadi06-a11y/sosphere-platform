@@ -1,0 +1,101 @@
+name: SOSphere Probes — Continuous Telephony Health
+
+# ═══════════════════════════════════════════════════════════════
+# L1-D Phase 3.5: continuous monitoring for the L2-F inbound SMS
+# pipeline + Twilio config drift.
+#
+# What this workflow does every 15 minutes:
+#   1. POST → sos-inbound-probe  → expects pass:true, all stages ok
+#   2. POST → twilio-config-probe → expects driftedCount:0
+# A non-pass / drift fails the workflow run. GitHub emails repo
+# admins on failure by default (Settings → Notifications). For
+# Slack/Discord/PagerDuty, add a webhook step below.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   SUPA_FN_URL     e.g. https://rtfhkbskgrasamhjraul.functions.supabase.co
+#   PROBE_SECRET    the same hex secret set in Supabase env (PROBE_SECRET)
+#
+# Manual trigger: workflow_dispatch — for ad-hoc runs after a deploy.
+# ═══════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Every 15 min. Same cadence as the drift-detection latency goal:
+    # if the inbound pipeline breaks, we want to know within ~15 min,
+    # not "next time a contact happens to reply during an SOS".
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+# Cancel any in-flight run if a newer one starts. Prevents pile-up
+# during incidents (probe takes ~3s; a 15-min cron should never
+# overlap, but defense-in-depth).
+concurrency:
+  group: probes
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  inbound-probe:
+    name: Synthetic inbound-SMS pipeline probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run probe + assert pass
+        env:
+          SUPA_FN_URL: ${{ secrets.SUPA_FN_URL }}
+          PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPA_FN_URL:-}" ] || [ -z "${PROBE_SECRET:-}" ]; then
+            echo "::error::Missing SUPA_FN_URL or PROBE_SECRET secret"
+            exit 2
+          fi
+          # -f makes curl exit non-zero on HTTP 4xx/5xx. The probe
+          # endpoint itself returns 200 even on probe-FAIL (the report
+          # body distinguishes pass/fail), so this catches infra-level
+          # errors (auth, network, function-not-deployed).
+          response=$(curl -fsSL -X POST \
+            "$SUPA_FN_URL/sos-inbound-probe" \
+            -H "Authorization: Bearer $PROBE_SECRET" \
+            -H "Content-Type: application/json")
+          echo "$response"
+          pass=$(echo "$response" | jq -r '.pass')
+          if [ "$pass" != "true" ]; then
+            echo "::error::Inbound probe FAILED — pipeline broken"
+            echo "$response" | jq .
+            exit 1
+          fi
+          elapsed=$(echo "$response" | jq -r '.elapsedMs')
+          echo "::notice::Inbound probe OK — end-to-end ${elapsed}ms"
+
+  config-drift-probe:
+    name: Twilio webhook config drift probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run probe + assert no drift
+        env:
+          SUPA_FN_URL: ${{ secrets.SUPA_FN_URL }}
+          PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPA_FN_URL:-}" ] || [ -z "${PROBE_SECRET:-}" ]; then
+            echo "::error::Missing SUPA_FN_URL or PROBE_SECRET secret"
+            exit 2
+          fi
+          response=$(curl -fsSL -X POST \
+            "$SUPA_FN_URL/twilio-config-probe" \
+            -H "Authorization: Bearer $PROBE_SECRET" \
+            -H "Content-Type: application/json")
+          echo "$response"
+          drifted=$(echo "$response" | jq -r '.driftedCount')
+          if [ "$drifted" != "0" ]; then
+            echo "::error::Twilio config DRIFT detected — $drifted entities affected"
+            echo "$response" | jq '.phones[] | select(.issues | length > 0)'
+            echo "$response" | jq '.services[] | select(.issues | length > 0)'
+            exit 1
+          fi
+          total=$(echo "$response" | jq -r '.total')
+          echo "::notice::Config-drift probe OK — $total entities clean"
