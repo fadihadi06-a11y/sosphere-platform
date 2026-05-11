@@ -1,8 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// SOSphere — L1-D Phase 2: Twilio config probe architectural invariants
+// SOSphere — L1-D Phase 2 (+2.5): Twilio config probe architectural invariants
 // ─────────────────────────────────────────────────────────────
-// This is the structural lock — companion to
-// l1d-phase2-twilio-drift-unit.test.ts (behavior tests).
+// Companion to l1d-phase2-twilio-drift-unit.test.ts (behavior tests).
 // Behavior tests assert the COMPARISON RULES are correct.
 // This file asserts the SHAPE around them stays correct.
 //
@@ -11,15 +10,13 @@
 //     a public DoS vector against Twilio's API)
 //   • A refactor that drops the constant-time compare (timing attack
 //     on PROBE_SECRET)
-//   • A refactor that drops the audit_log mirror on drift (drift
-//     happens but no one is alerted)
+//   • A refactor that drops the audit_log mirror on drift
 //   • A refactor that drops the structured DRIFT_DETECTED prefix
 //     (log-based alerting loses its pattern hook)
-//   • A refactor that uses the public Twilio URL without auth
-//     (would 401 every time, probe permanently broken)
-//   • A refactor that splits or duplicates the pure detectDrift
-//     logic out of _shared (the unit test would silently test the
-//     wrong copy)
+//   • A refactor that splits or duplicates the pure detectDrift logic
+//     out of _shared (the unit test would silently test the wrong copy)
+//   • L1-D Phase 2.5: a refactor that drops Service-level drift
+//     detection — the user's deployment routes via Messaging Service
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -48,9 +45,6 @@ function stripComments(s: string): string {
 
 describe("L1-D Phase 2: shared pure-logic module is the single source", () => {
   it("detectDrift + normalizeUrl + types live in _shared, NOT inlined in the edge function", () => {
-    // The edge function imports from _shared; it must NOT also
-    // declare its own copy (would silently diverge from the
-    // unit-tested copy).
     expect(probeSrc).toMatch(/from\s+["']\.\.\/_shared\/twilio-config-drift\.ts["']/);
     const codeOnly = stripComments(probeSrc);
     expect(codeOnly).not.toMatch(/^export function detectDrift\(/m);
@@ -66,8 +60,6 @@ describe("L1-D Phase 2: shared pure-logic module is the single source", () => {
   });
 
   it("shared module is import-free of Deno globals (Node-compatible for vitest)", () => {
-    // No https://deno.land imports, no Deno.* globals — the whole
-    // point of the file is to be Node-importable.
     expect(sharedSrc).not.toMatch(/from\s+["']https?:\/\//);
     expect(sharedSrc).not.toMatch(/\bDeno\./);
   });
@@ -83,12 +75,10 @@ describe("L1-D Phase 2: edge function — auth envelope", () => {
   it("uses constant-time compare for the secret (defeats timing attacks)", () => {
     expect(probeSrc).toMatch(/constantTimeEquals\(authHeader,\s*expectedAuth\)/);
     expect(probeSrc).toMatch(/function constantTimeEquals/);
-    // The implementation must XOR and accumulate, not short-circuit.
     expect(probeSrc).toMatch(/diff\s*\|=\s*a\.charCodeAt\(i\)\s*\^\s*b\.charCodeAt\(i\)/);
   });
 
   it("fails CLOSED when PROBE_SECRET is missing or too short", () => {
-    // A missing or empty secret must NOT allow anonymous access.
     expect(probeSrc).toMatch(/probeSecret\.length\s*<\s*16/);
     expect(probeSrc).toMatch(/probe_misconfigured/);
   });
@@ -144,14 +134,21 @@ describe("L1-D Phase 2: drift alerting — audit_log + structured log line", () 
 
   it("audit metadata carries drift summary (admin can investigate from the row alone)", () => {
     const code = stripComments(probeSrc);
-    for (const field of ["severity", "drifted_count", "total_phones", "expected_sms_url", "drift_summary"]) {
+    // L1-D Phase 2.5: total_phones became total_entities (phones + services),
+    // and drift_summary was split into phone_drift_summary + service_drift_summary.
+    for (const field of [
+      "severity",
+      "drifted_count",
+      "total_entities",
+      "expected_sms_url",
+      "phone_drift_summary",
+      "service_drift_summary",
+    ]) {
       expect(code).toMatch(new RegExp(`\\b${field}:`));
     }
   });
 
   it("emits the structured DRIFT_DETECTED prefix on stderr (log-based alert hook)", () => {
-    // Supabase log-based alerting (and Sentry's log shipper, if
-    // configured) pattern-match on this prefix. Keep it stable.
     expect(probeSrc).toMatch(/console\.error\(\s*["']\[twilio-config-probe\] DRIFT_DETECTED["']/);
   });
 
@@ -162,5 +159,72 @@ describe("L1-D Phase 2: drift alerting — audit_log + structured log line", () 
   it("audit_log mirror failure is non-fatal (probe still returns the report)", () => {
     const code = stripComments(probeSrc);
     expect(code).toMatch(/audit_log mirror failed/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// L1-D Phase 2.5: Messaging-Service routing-aware invariants
+// ═══════════════════════════════════════════════════════════════
+
+describe("L1-D Phase 2.5: shared module exports Messaging-Service surface", () => {
+  it("exports detectServiceDrift + TwilioMessagingService + ServiceDriftReport", () => {
+    expect(sharedSrc).toMatch(/export function detectServiceDrift\(/);
+    expect(sharedSrc).toMatch(/export interface TwilioMessagingService/);
+    expect(sharedSrc).toMatch(/export interface ServiceDriftReport/);
+  });
+
+  it("TwilioPhoneNumber carries messaging_service_sid (routing key)", () => {
+    expect(sharedSrc).toMatch(/messaging_service_sid\?:\s*string/);
+  });
+
+  it("PhoneDriftReport carries routedVia + messagingServiceSid (UI/dashboard contract)", () => {
+    expect(sharedSrc).toMatch(/routedVia\?:\s*["']number["']\s*\|\s*["']messaging_service["']/);
+    expect(sharedSrc).toMatch(/messagingServiceSid\?:\s*string/);
+  });
+
+  it("DriftReport.services field is required (no silent drop of Service drift)", () => {
+    expect(sharedSrc).toMatch(/services:\s*ServiceDriftReport\[\]/);
+  });
+
+  it("DriftIssue.severity allows 'info' (deferring Service is INFO not error)", () => {
+    expect(sharedSrc).toMatch(/severity:\s*["']error["']\s*\|\s*["']warning["']\s*\|\s*["']info["']/);
+  });
+});
+
+describe("L1-D Phase 2.5: edge function fetches Services + passes them to detectDrift", () => {
+  it("fetches from messaging.twilio.com/v1/Services (different host than IncomingPhoneNumbers)", () => {
+    expect(probeSrc).toMatch(/messaging\.twilio\.com\/v1\/Services/);
+  });
+
+  it("Services fetch failure is NON-FATAL (probe still reports on phones)", () => {
+    const code = stripComments(probeSrc);
+    // `console.warn(...)` precedes the "Services fetch threw" string
+    // in the source — assert both are present and adjacent.
+    expect(code).toMatch(/console\.warn\([\s\S]{0,200}Services fetch threw/);
+  });
+
+  it("detectDrift is called with phones AND services (not phones alone)", () => {
+    expect(probeSrc).toMatch(/detectDrift\(phones,\s*expected,\s*services\)/);
+  });
+
+  it("DRIFT_DETECTED log emits services array too (alert pattern stays stable)", () => {
+    const code = stripComments(probeSrc);
+    expect(code).toMatch(/services:\s*report\.services\.filter/);
+  });
+});
+
+describe("L1-D Phase 2.5: routing-aware drift semantics", () => {
+  it("detectDrift signature accepts services as a third arg with default []", () => {
+    expect(sharedSrc).toMatch(/services:\s*TwilioMessagingService\[\]\s*=\s*\[\]/);
+  });
+
+  it("phone-level sms_url drift is SUPPRESSED when phone is routed via a non-deferring Service", () => {
+    const code = stripComments(sharedSrc);
+    expect(code).toMatch(/isRoutedViaService\s*=\s*boundServiceSid\s*!==\s*null\s*&&\s*!deferringServices\.has/);
+    expect(code).toMatch(/else if \(!isRoutedViaService\)/);
+  });
+
+  it("Service with use_inbound_webhook_on_number=true is treated as deferring", () => {
+    expect(sharedSrc).toMatch(/use_inbound_webhook_on_number\s*===\s*true/);
   });
 });
