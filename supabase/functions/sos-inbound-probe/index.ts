@@ -136,7 +136,21 @@ serve(async (req) => {
   }
 
   const probeMessageSid = `PROBE-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-  const inboundUrl = `${supaUrl}/functions/v1/sos-sms-inbound`;
+  // L1-D Phase 3 URL note: Supabase exposes edge functions on TWO host
+  // forms — `<project>.supabase.co/functions/v1/<fn>` (the API-gateway
+  // routing form, what the Twilio Console webhook is configured as)
+  // AND `<project>.functions.supabase.co/<fn>` (the direct-functions
+  // hostname). Inside the function, `req.url` reflects the SECOND
+  // form regardless of which the caller hit — Supabase's internal
+  // dispatch rewrites it. Twilio signs based on whatever URL it was
+  // configured with, but the handler validates against `req.url`,
+  // so the probe must SIGN the rewritten form to match what the
+  // handler will see. Derive the functions hostname from SUPABASE_URL.
+  const functionsHost = supaUrl.replace(
+    /^(https?:\/\/[^.]+)\.supabase\.co$/,
+    "$1.functions.supabase.co",
+  );
+  const inboundUrl = `${functionsHost}/sos-sms-inbound`;
 
   const report: ProbeReport = {
     pass: false,
