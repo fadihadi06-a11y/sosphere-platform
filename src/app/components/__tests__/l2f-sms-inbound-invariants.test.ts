@@ -108,7 +108,10 @@ describe("L2-F: sos-sms-inbound edge function — security envelope", () => {
     const code = stripComments(inboundSrc);
     expect(code).toMatch(/async function validateTwilioSignature/);
     // The handler must REJECT (403) if signature is invalid.
-    expect(code).toMatch(/if \(!valid\)\s*\{[\s\S]{0,200}status:\s*403/);
+    // Window widened to 800 because the if-block grew with L1-D
+    // Phase 3 debug payload (probe-marked MessageSids get the
+    // canonicalUrl + debug_param_keys surfaced in the 403 body).
+    expect(code).toMatch(/if \(!valid\)\s*\{[\s\S]{0,800}status:\s*403/);
     // Fail closed: missing TWILIO_AUTH_TOKEN returns false (rejects).
     expect(code).toMatch(/TWILIO_AUTH_TOKEN missing[\s\S]{0,200}return false/);
   });
