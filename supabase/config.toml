@@ -52,3 +52,9 @@ verify_jwt = false
 # webhooks — gateway must step aside.
 [functions.twilio-config-probe]
 verify_jwt = false
+
+# L1-D Phase 3: synthetic inbound-SMS probe — authenticated by
+# PROBE_SECRET bearer token (constant-time compared inside the
+# function). Same pattern as twilio-config-probe.
+[functions.sos-inbound-probe]
+verify_jwt = false
