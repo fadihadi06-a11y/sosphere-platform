@@ -1,11 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Shield, MapPin, Phone, PhoneMissed, CheckCircle,
   MessageSquare, Mic, AlertTriangle, Clock, FileText,
   Download, Lock, ChevronLeft, Radio, RefreshCw,
   PhoneCall, X, Calendar, Zap, Camera, ImageIcon,
+  ShieldCheck,
 } from "lucide-react";
+
+// ── L2-H-Admin (2026-05-11) ─────────────────────────────────────────
+// Inbound SMS reply row — mirrors the sos_sms_replies migration 1:1.
+// A drift in either side (this type or the migration) breaks loud.
+interface SmsReplyRow {
+  id: string;
+  contact_index: number | null;
+  contact_name: string | null;
+  from_phone: string;
+  body: string;
+  is_ack: boolean;
+  ack_keyword: string | null;
+  received_at: string;
+}
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { IncidentRecord, ERREvent } from "./sos-emergency";
 import { getGPSTrail } from "./smart-timeline-tracker";
@@ -54,6 +69,55 @@ function formatDur(s: number) {
 
 export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRecordProps) {
   const [showPremium, setShowPremium] = useState(false);
+
+  // ── L2-H-Admin: forensic evidence loaded from Supabase ──────────────
+  // Empty / null states render NOTHING (the section collapses entirely),
+  // so admins looking at pre-L2-F / pre-L2-G incidents see no visual
+  // regression.
+  const [smsReplies, setSmsReplies] = useState<SmsReplyRow[]>([]);
+  const [forensicPhotoUrl, setForensicPhotoUrl] = useState<string | null>(null);
+  const [evidenceLoaded, setEvidenceLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!record?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { supabase } = await import("./api/supabase-client");
+        // SMS replies — chronological, bounded.
+        const { data: replies } = await supabase
+          .from("sos_sms_replies")
+          .select("id, contact_index, contact_name, from_phone, body, is_ack, ack_keyword, received_at")
+          .eq("emergency_id", record.id)
+          .order("received_at", { ascending: true })
+          .limit(100);
+        if (!cancelled && replies) setSmsReplies(replies as SmsReplyRow[]);
+
+        // Forensic photo — signed URL (private bucket, RLS-scoped).
+        const { data: signed } = await supabase.storage
+          .from("evidence")
+          .createSignedUrl(`sos/${record.id}/forensic.jpg`, 3600);
+        if (!cancelled && signed?.signedUrl) setForensicPhotoUrl(signed.signedUrl);
+      } catch (e) {
+        console.warn("[L2-H-Admin] evidence load failed (non-fatal):", e);
+      } finally {
+        if (!cancelled) setEvidenceLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [record?.id]);
+
+  // First-ack SLA metric: seconds from SOS start to the first positive
+  // ack. Operationally the most meaningful number on this screen.
+  const firstAckSec: number | null = (() => {
+    if (smsReplies.length === 0 || !record.startTime) return null;
+    const startMs = record.startTime instanceof Date
+      ? record.startTime.getTime()
+      : new Date(record.startTime).getTime();
+    const firstAck = smsReplies.find(r => r.is_ack);
+    if (!firstAck) return null;
+    return Math.max(0, Math.round((new Date(firstAck.received_at).getTime() - startMs) / 1000));
+  })();
 
   const duration = record.endTime
     ? Math.round((record.endTime.getTime() - record.startTime.getTime()) / 1000)
@@ -632,6 +696,102 @@ export function EmergencyResponseRecord({ record, onBack }: EmergencyResponseRec
           })}
         </div>
       </div>
+
+      {/* ── L2-H-Admin: SMS replies received (L2-F) ─────────────────
+          Operationally meaningful for the admin: WHO acknowledged
+          and WHEN. firstAckSec is the L1-C SLA metric prominently
+          displayed at the top of the section. */}
+      {evidenceLoaded && smsReplies.length > 0 && (
+        <div className="shrink-0 px-5 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px", fontFamily: "inherit" }}>
+              CONTACT RESPONSES ({smsReplies.length})
+            </p>
+            {firstAckSec !== null && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#00C853",
+                  background: "rgba(0,200,83,0.1)",
+                  padding: "2px 8px",
+                  borderRadius: 8,
+                  letterSpacing: "0.4px",
+                }}
+              >
+                FIRST ACK +{firstAckSec}s
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {smsReplies.map((r) => {
+              const ts = new Date(r.received_at);
+              const tt = ts.toLocaleTimeString("en-SA", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+              return (
+                <div
+                  key={r.id}
+                  className="px-3 py-2"
+                  style={{
+                    background: r.is_ack ? "rgba(0,200,83,0.05)" : "rgba(255,255,255,0.03)",
+                    border: r.is_ack ? "1px solid rgba(0,200,83,0.2)" : "1px solid rgba(255,255,255,0.05)",
+                    borderRadius: 10,
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {r.is_ack && <ShieldCheck style={{ width: 11, height: 11, color: "#00C853", flexShrink: 0 }} />}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#fff", fontFamily: "inherit", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.contact_name || r.from_phone}
+                      </span>
+                      {r.is_ack && r.ack_keyword && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "#00C853", letterSpacing: "0.4px", background: "rgba(0,200,83,0.1)", padding: "1px 5px", borderRadius: 5, fontFamily: "inherit" }}>
+                          {r.ack_keyword}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "inherit" }}>{tt}</span>
+                  </div>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.35, fontFamily: "inherit", wordBreak: "break-word", margin: 0 }}>
+                    {r.body}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── L2-H-Admin: forensic photo (L2-G) ────────────────────────
+          Single rear-camera frame captured at call-end. Caption asserts
+          chain-of-custody so the visual is interpreted as forensic
+          evidence, not a casual snapshot. */}
+      {evidenceLoaded && forensicPhotoUrl && (
+        <div className="shrink-0 px-5 mb-3">
+          <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px", marginBottom: 8, fontFamily: "inherit" }}>
+            POST-CALL FORENSIC SCENE
+          </p>
+          <div
+            className="overflow-hidden"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 12,
+            }}
+          >
+            <img
+              src={forensicPhotoUrl}
+              alt="Post-call forensic capture"
+              style={{ width: "100%", display: "block", maxHeight: 240, objectFit: "cover" }}
+              loading="lazy"
+            />
+            <div className="px-3 py-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", letterSpacing: "0.3px", fontFamily: "inherit" }}>
+                Auto-captured when SOS ended · SHA-256 hashed · chain-of-custody preserved
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Field Evidence (photos + comment + recording) ── */}
       {(record.photos?.length > 0 || record.comment || record.recordingSeconds > 0) && (
