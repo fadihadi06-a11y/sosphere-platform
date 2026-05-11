@@ -58,3 +58,7 @@ verify_jwt = false
 # function). Same pattern as twilio-config-probe.
 [functions.sos-inbound-probe]
 verify_jwt = false
+# L4-B: public health endpoint - no auth, returns minimal
+# pulse JSON. Used by uptime monitors + status pages.
+[functions.sos-health]
+verify_jwt = false
