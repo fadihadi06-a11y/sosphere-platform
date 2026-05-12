@@ -39,6 +39,20 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+/**
+ * Constant-time string compare. Defeats timing oracles against the
+ * computed HMAC. Length check is non-secret (length of base64-encoded
+ * SHA-1 = always 28 chars), so the early return is safe.
+ * L5-SEC-5 (2026-05-12): added; previously used raw === which leaks
+ * a per-byte timing differential.
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 async function validateTwilioSignature(
   req: Request,
   url: string,
@@ -63,7 +77,7 @@ async function validateTwilioSignature(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  return sigB64 === sigHeader;
+  return constantTimeEquals(sigB64, sigHeader);
 }
 
 async function endConference(conferenceSid: string): Promise<void> {
@@ -108,7 +122,11 @@ serve(async (req) => {
     // matches what Twilio signed. Same fix applied to sos-sms-inbound.
     const canonicalUrl = req.url.replace(/^http:\/\//, "https://");
 
-    // B-09: gather requires gtok; other actions require Twilio signature
+    // B-09 + L5-SEC-2 (2026-05-12): gather REQUIRES BOTH gtok AND Twilio
+    // signature. Previously the signature failure was only logged ("gtok
+    // was OK so proceeding"), so a stolen gtok could drive escalation SMS
+    // from a non-Twilio origin. The pre-launch security review classified
+    // this as High. Now: fail-closed on either check, no exceptions.
     if (action === "gather") {
       const gtok = url.searchParams.get("gtok");
       const tokRes = await verifyGatherToken(gtok, callId);
@@ -121,7 +139,11 @@ serve(async (req) => {
       }
       const twilioOk = await validateTwilioSignature(req, canonicalUrl, data);
       if (!twilioOk) {
-        console.warn(`[twilio-status] gather: Twilio signature did not validate (callId=${callId}) — gtok was OK so proceeding`);
+        console.warn(`[twilio-status] gather: Twilio signature failed despite valid gtok (callId=${callId}) — rejecting (L5-SEC-2 strict policy)`);
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     } else {
       const valid = await validateTwilioSignature(req, canonicalUrl, data);
@@ -352,9 +374,14 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
-    console.error("[twilio-status] Error:", err);
+    // L5-SEC-8 (2026-05-12): never leak raw error text in the 500
+    // response — it can expose DB driver messages, stack pieces, env
+    // values. Full err goes to console.error for log-based debugging;
+    // client receives a generic body with a request_id for support.
+    const requestId = crypto.randomUUID();
+    console.error(`[twilio-status] Error request_id=${requestId}:`, err);
     return new Response(
-      JSON.stringify({ error: String(err) }),
+      JSON.stringify({ error: "server_error", request_id: requestId }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
