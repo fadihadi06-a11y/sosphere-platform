@@ -63,6 +63,18 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+
+/**
+ * Constant-time string compare. L5-SEC-5 (2026-05-12): defeats per-byte
+ * timing oracle. Length check is non-secret (base64-SHA1 = 28 chars).
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 async function validateTwilioSignature(
   req: Request,
   url: string,
@@ -87,19 +99,21 @@ async function validateTwilioSignature(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  const ok = sigB64 === sigHeader;
+  const ok = constantTimeEquals(sigB64, sigHeader);
   // L1-D Phase 3 debug: when the signature does NOT match, log
   // the inputs (NOT the auth token) so the probe can diagnose
   // what URL/params the handler is actually hashing. Logs only on
   // mismatch — production traffic that validates is untouched.
   if (!ok) {
+    // L5-SEC-6 (2026-05-12): redacted. Previously logged computed_sig
+    // (deterministic HMAC over inputs) and token_len (oracle). Now we
+    // log only the URL we hashed + sorted param keys + a truncated
+    // prefix of the received signature for log-correlation.
     console.error("[sos-sms-inbound] SIG_MISMATCH_DEBUG", JSON.stringify({
       url_seen: url,
       params_sorted_keys: sortedKeys,
       params_values_lengths: sortedKeys.map(k => params[k]?.length ?? 0),
-      computed_sig: sigB64,
-      received_sig: sigHeader,
-      token_len: authToken.length,
+      received_sig_prefix: sigHeader.slice(0, 6) + "...",
     }));
   }
   return ok;
@@ -296,12 +310,19 @@ serve(async (req) => {
     const valid = await validateTwilioSignature(req, canonicalUrl, data);
     if (!valid) {
       console.warn("[sos-sms-inbound] Twilio signature invalid - rejecting");
-      // L1-D Phase 3 debug: probe requests use MessageSid prefix
-      // "PROBE-" so we can safely surface the URL the handler hashed
-      // in the 403 body without leaking diagnostic info to real-Twilio
-      // attackers (their MessageSids are SM-prefixed).
+      // L1-D Phase 3 debug + L5-SEC-6 (2026-05-12): the PROBE-* echo
+      // path is now gated behind a per-call X-Probe-Secret header that
+      // must match the PROBE_SECRET env var. Pre-fix, anyone could
+      // probe by setting MessageSid=PROBE-x — leaking the URL the
+      // handler hashes + param keys to unauthenticated callers. The
+      // legitimate sos-inbound-probe edge function already sets the
+      // header in its synthetic POST.
       const debugMsgSid = String(data.MessageSid || "");
-      const isProbe = debugMsgSid.startsWith("PROBE-");
+      const probeSecret = Deno.env.get("PROBE_SECRET") || "";
+      const probeHeader = req.headers.get("X-Probe-Secret") || "";
+      const isProbe = debugMsgSid.startsWith("PROBE-")
+        && probeSecret.length >= 16
+        && constantTimeEquals(probeHeader, probeSecret);
       const errBody = isProbe
         ? { error: "Invalid signature", debug_url: canonicalUrl, debug_param_keys: Object.keys(data).sort() }
         : { error: "Invalid signature" };
