@@ -190,6 +190,9 @@ serve(async (req) => {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         "X-Twilio-Signature": signature,
+        // L5-SEC-6 (2026-05-12): sos-sms-inbound now gates the PROBE-*
+        // debug echo behind a matching PROBE_SECRET header.
+        "X-Probe-Secret": probeSecret,
       },
       body: encodeFormBody(params),
       signal: AbortSignal.timeout(8000),
