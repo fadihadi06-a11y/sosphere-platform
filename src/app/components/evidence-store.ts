@@ -1,4 +1,5 @@
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { getStoredUser } from "./api/safe-rpc";
 import type { EvidenceManifest } from "./evidence-hash";
 
 import { Shield } from "lucide-react";
@@ -229,13 +230,37 @@ function notifyChange(evidenceId: string, action: string) {
     new StorageEvent("storage", { key: EVIDENCE_EVENT_KEY, newValue: payload })
   );
 
+  
+/**
+ * L5-SEC-9 (2026-05-12): scope the evidence-changes Realtime channel
+ * by the authenticated user so cross-tenant subscribers can't observe
+ * other users' evidence activity. Returns null if no auth session,
+ * which short-circuits both broadcast + subscribe (the localStorage
+ * path still works for same-browser tabs).
+ */
+function evidenceChannelName(): string | null {
+  try {
+    const u = getStoredUser();
+    if (!u?.id) return null;
+    return `evidence-changes:${u.id}`;
+  } catch {
+    return null;
+  }
+}
+
   // Supabase Realtime broadcast for cross-device sync
+  // L5-SEC-9: per-user channel scoping — closes the pre-fix global
+  // 'evidence-changes' channel that any authenticated subscriber
+  // could listen to and observe other users' activity timing + IDs.
   if (isSupabaseReady()) {
-    supabase.channel("evidence-changes").send({  // lint-guard-allow:no-global-realtime-channel — TODO post-launch tenant scope
-      type: "broadcast",
-      event: "evidence_update",
-      payload: { evidenceId, action },
-    }).catch(() => {});
+    const name = evidenceChannelName();
+    if (name) {
+      supabase.channel(name).send({
+        type: "broadcast",
+        event: "evidence_update",
+        payload: { evidenceId, action },
+      }).catch(() => {});
+    }
   }
 }
 
@@ -494,17 +519,23 @@ export function onEvidenceChange(callback: (evidenceId: string, action: string) 
   window.addEventListener("storage", handler);
 
   // Supabase Realtime listener (cross-device)
+  // L5-SEC-9: subscribe to the per-user channel that broadcasts above
+  // emit to. If no auth session, skip — same-browser sync still works
+  // via the localStorage 'storage' event listener registered above.
   let unsubRealtime: (() => void) | null = null;
   if (isSupabaseReady()) {
     try {
-      const channel = supabase
-        .channel("evidence-changes")  // lint-guard-allow:no-global-realtime-channel — TODO post-launch tenant scope
-        .on("broadcast", { event: "evidence_update" }, (payload: any) => {
-          const { evidenceId, action } = payload.payload || {};
-          if (evidenceId) callback(evidenceId, action);
-        })
-        .subscribe();
-      unsubRealtime = () => supabase.removeChannel(channel);
+      const name = evidenceChannelName();
+      if (name) {
+        const channel = supabase
+          .channel(name)
+          .on("broadcast", { event: "evidence_update" }, (payload: any) => {
+            const { evidenceId, action } = payload.payload || {};
+            if (evidenceId) callback(evidenceId, action);
+          })
+          .subscribe();
+        unsubRealtime = () => supabase.removeChannel(channel);
+      }
     } catch {}
   }
 
