@@ -36,6 +36,102 @@ function getBaseUrl(req: Request): string {
   return new URL(req.url).origin;
 }
 
+
+/**
+ * Constant-time string compare. L5-SEC-5: defeats per-byte timing
+ * oracle. Length check is non-secret (base64-SHA1 = always 28 chars).
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * L5-SEC-3 (2026-05-12): validate X-Twilio-Signature on every inbound
+ * request. Previously this function trusted ANY caller, so an attacker
+ * could probe ?emergencyId=<real eid> and either:
+ *   - get back TwiML revealing the eid is valid + a freshly-signed gtok
+ *     (announce path), or
+ *   - drive the bridge accept handler if they also stole a gtok
+ *     (gtok-only check; now requires signature too), or
+ *   - probe ?action=join-user to confirm an active conference.
+ *
+ * Twilio signs ALL outbound webhook calls (POST body params + URL).
+ * We coerce req.url to https:// (Supabase gateway terminates TLS so
+ * req.url is "http:" internally — same fix as twilio-status L1-D Phase 3).
+ */
+async function computeSig(authToken: string, url: string, params: Record<string, string>): Promise<string> {
+  const sortedKeys = Object.keys(params).sort();
+  let dataToSign = url;
+  for (const k of sortedKeys) dataToSign += k + params[k];
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(dataToSign));
+  return btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+}
+
+/**
+ * Try-both-forms canonical-URL helper. Twilio signs whatever URL it
+ * fetched. SOSphere has two callers:
+ *   * sos-alert builds form A: `<project>.supabase.co/functions/v1/<fn>`
+ *   * Twilio Console (after twilio-config-fix) configures form B:
+ *     `<project>.functions.supabase.co/<fn>`
+ * Both forms route to the same handler internally, but Twilio signs
+ * the form IT fetched. We try both — if either matches we accept.
+ */
+function urlFormVariants(canonicalUrl: string): string[] {
+  const variants = new Set<string>([canonicalUrl]);
+  // form A → form B
+  const aToB = canonicalUrl.replace(
+    /^(https:\/\/[^.]+)\.supabase\.co\/functions\/v1\/([^?]+)/,
+    "$1.functions.supabase.co/$2",
+  );
+  if (aToB !== canonicalUrl) variants.add(aToB);
+  // form B → form A
+  const bToA = canonicalUrl.replace(
+    /^(https:\/\/[^.]+)\.functions\.supabase\.co\/([^?]+)/,
+    "$1.supabase.co/functions/v1/$2",
+  );
+  if (bToA !== canonicalUrl) variants.add(bToA);
+  return [...variants];
+}
+
+async function validateTwilioSignature(
+  req: Request,
+  url: string,
+  params: Record<string, string>,
+): Promise<boolean> {
+  const sigHeader = req.headers.get("X-Twilio-Signature");
+  if (!sigHeader) return false;
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!authToken) {
+    console.error("[sos-bridge] TWILIO_AUTH_TOKEN missing — fail closed");
+    return false;
+  }
+  for (const candidate of urlFormVariants(url)) {
+    const sig = await computeSig(authToken, candidate, params);
+    if (constantTimeEquals(sig, sigHeader)) return true;
+  }
+  return false;
+}
+
+/**
+ * Build a denial TwiML response — used on signature failure. Twilio
+ * gracefully announces and hangs up, no info leak about what failed.
+ */
+function denyTwiml(corsHeaders: Record<string, string>, reason: string): Response {
+  console.warn(`[sos-bridge] denied: ${reason}`);
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">Authorization failed. Goodbye.</Say>\n  <Hangup/>\n</Response>`;
+  return new Response(twiml, { status: 403, headers: { ...corsHeaders, "Content-Type": "application/xml" } });
+}
+
 async function resolveUserPhone(emergencyId: string): Promise<string | null> {
   try {
     const url = Deno.env.get("SUPABASE_URL");
@@ -128,6 +224,30 @@ serve(async (req: Request) => {
   const action      = url.searchParams.get("action") || "announce";
   const gtok        = url.searchParams.get("gtok") || "";
 
+  // L5-SEC-3 (2026-05-12): validate X-Twilio-Signature on every path.
+  // Twilio always uses POST for VoiceUrl webhooks (default since 2018).
+  // Read form body so the signature compare matches what Twilio signed
+  // (URL + sorted body params). For GET (legacy / probe-style), pass
+  // an empty params object — signature is over URL only.
+  const data: Record<string, string> = {};
+  if (req.method === "POST") {
+    try {
+      const formData = await req.formData();
+      formData.forEach((value, key) => { data[key] = String(value); });
+    } catch (e) {
+      // Malformed / empty body — pass through with no body params. The
+      // signature check below will still validate the URL portion.
+      console.warn("[sos-bridge] formData parse failed (non-fatal):", e);
+    }
+  }
+  // L1-D Phase 3 protocol coercion: Supabase gateway terminates TLS
+  // and forwards http:// internally; Twilio signed https://.
+  const canonicalUrl = req.url.replace(/^http:\/\//, "https://");
+  const sigOk = await validateTwilioSignature(req, canonicalUrl, data);
+  if (!sigOk) {
+    return denyTwiml(corsHeaders, `signature invalid (action=${action} eid=${emergencyId})`);
+  }
+
   const ai = await loadAiScript(emergencyId);
 
   if (action === "join-user") {
@@ -142,9 +262,11 @@ serve(async (req: Request) => {
   if (action === "accept") {
     const tokRes = await verifyGatherToken(gtok, emergencyId);
     if (!tokRes.ok) {
-      console.warn(`[sos-bridge] accept rejected — gtok ${tokRes.reason} (eid=${emergencyId})`);
-      const denyTwiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">Authorization failed. Goodbye.</Say>\n  <Hangup/>\n</Response>`;
-      return new Response(denyTwiml, { status: 403, headers: { ...corsHeaders, "Content-Type": "application/xml" } });
+      // Defense-in-depth: signature already validated above. gtok is the
+      // per-emergency replay guard. L5-SEC-3 keeps this check so a stale
+      // /expired token still rejects even if Twilio re-relays an old
+      // gather POST somehow.
+      return denyTwiml(corsHeaders, `accept: gtok ${tokRes.reason} (eid=${emergencyId})`);
     }
 
     const confName = `sos-${emergencyId}`;
