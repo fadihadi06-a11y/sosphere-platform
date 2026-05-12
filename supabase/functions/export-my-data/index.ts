@@ -115,7 +115,11 @@ const TABLE_SPECS: TableSpec[] = [
   { table: "individual_users",          column: "user_id",        category: "identity" },
   { table: "employees",                 column: "user_id",        category: "identity" },
   { table: "biometric_verifications",   column: "user_id",        category: "identity" },
-  { table: "medical_profiles",          column: "employee_id",    category: "identity" },
+  // L5-SEC-7 (2026-05-12): medical_profiles' RLS policy keys on
+  // `id = auth.uid()` (uuid), not `employee_id` (bigint legacy).
+  // Pre-fix, the SAR export queried by `employee_id` and returned
+  // ZERO rows for the user's own PHI — GDPR Art. 15 violation.
+  { table: "medical_profiles",          column: "id",             category: "identity" },
   { table: "civilian_trial_history",    column: "user_id",        category: "identity" },
 
   // ── Contacts ────────────────────────────────────────────────────────
@@ -149,7 +153,11 @@ const TABLE_SPECS: TableSpec[] = [
   { table: "company_employees",         column: "user_id",        category: "memberships" },
   { table: "workspace_members",         column: "user_id",        category: "memberships" },
   { table: "user_permissions",          column: "user_id",        category: "memberships" },
-  { table: "companies",                 column: "owner_id",       category: "memberships" },
+  // L5-SEC-7 (2026-05-12): companies table has both legacy `owner_id`
+  // and canonical `owner_user_id` (both populated with the same UUID
+  // today). Switch to canonical column so post-migration owner-only
+  // rows are not silently dropped from the SAR export.
+  { table: "companies",                 column: "owner_user_id",  category: "memberships" },
   { table: "workspaces",                column: "owner_user_id",  category: "memberships" },
 
   // ── Communications & Notifications ─────────────────────────────────
@@ -407,17 +415,4 @@ Deno.serve(async (req) => {
       metadata: {
         request_id: requestId,
         tables_exported: tablesCount,
-        bytes_returned: bytesReturned,
-        status: finalStatus,
-        errors_count: errors.length,
-        sha256: responseBody.integrity_sha256,
-      },
-      created_at: generatedAt,
-    });
-  } catch (err) {
-    console.warn("[export-my-data] audit_log write failed:", err);
-  }
-
-  // ── 8) Return ────────────────────────────────────────────────────
-  return new Response(responseText, { status: 200, headers: CORS });
-});
+        byte
