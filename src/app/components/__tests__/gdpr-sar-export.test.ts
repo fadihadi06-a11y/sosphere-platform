@@ -211,8 +211,22 @@ describe("BLOCKER #14 / edge function: security & rate-limit", () => {
     expect(edgeFnSrc).toMatch(/reason === "rate_limited" \? 429/);
   });
 
-  it.skip("uses user-scoped client for table walk [BROKEN: assertion drift, see #SKIP-2, FIX BEFORE GA] — (RLS enforced)", () => {
-    expect(edgeFnSrc).toMatch(/const client = spec\.table === "audit_log" \? admin : userClient/);
+  it("uses user-scoped client for table walk (RLS enforced) — admin only for audit_log + useAdmin specs", () => {
+    // The L-pyramid contract: user-scoped reads default. Admin client is
+    // used ONLY when:
+    //   (a) the table is audit_log (service-role-only by RLS design), OR
+    //   (b) the table's spec sets useAdmin: true (Beehive fix #3 — for
+    //       service-role-only tables that need an explicit ownership
+    //       filter to honor GDPR transparency without exposing other users).
+    // The previous regex pinned a narrower shape (pre-Beehive-#3) that
+    // drifted — #SKIP-2 cleared.
+    expect(edgeFnSrc).toMatch(/const client = \(spec\.table === "audit_log"\s*\|\|\s*spec\.useAdmin === true\)/);
+    // The ternary picks admin in the matched branch and userClient otherwise.
+    expect(edgeFnSrc).toMatch(/\?\s*admin\s*:\s*userClient/);
+    // The user-scoped client must use the anon key + the user's JWT —
+    // verifying the right boundary is the one being passed to the
+    // table-walk loop.
+    expect(edgeFnSrc).toMatch(/userClient\s*=\s*createClient\(SUPA_URL,\s*SUPA_ANON/);
   });
 
   it("computes SHA-256 over the data section (tamper-evidence)", () => {
