@@ -96,14 +96,20 @@ serve(async (req) => {
     });
   }
 
-  // Compute expected config from env. This is the canonical wiring
-  // of "what Twilio's number SHOULD point to". If you ever change
-  // the function name (e.g. sos-sms-inbound → sms-replies-v2),
-  // this is the single source of truth that needs updating.
+  // Compute expected config from env. Canonical form is the
+  // functions.supabase.co hostname — same form req.url shows inside
+  // the handler (per L1-D Phase 3 discovery: Supabase rewrites the
+  // API-gateway form `/functions/v1/<fn>` to `<fn>.functions.supabase.co`
+  // internally). twilio-config-fix configures phones to this form, so
+  // the probe's expected MUST match.
+  const functionsHost = supaUrl.replace(
+    /^(https?:\/\/[^.]+)\.supabase\.co$/,
+    "$1.functions.supabase.co",
+  );
   const expected: ExpectedConfig = {
-    smsUrl:    `${supaUrl}/functions/v1/sos-sms-inbound`,
+    smsUrl:    `${functionsHost}/sos-sms-inbound`,
     smsMethod: "POST",
-    voiceUrl:  `${supaUrl}/functions/v1/sos-bridge-twiml`,
+    voiceUrl:  `${functionsHost}/sos-bridge-twiml`,
   };
 
   // Fetch IncomingPhoneNumbers from Twilio.
