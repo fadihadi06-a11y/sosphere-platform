@@ -112,16 +112,27 @@ describe("L1-D Phase 2: edge function — Twilio fetch envelope", () => {
 });
 
 describe("L1-D Phase 2: edge function — expected config derivation", () => {
-  it("derives expected sms_url from SUPABASE_URL env (single source of truth)", () => {
-    expect(probeSrc).toMatch(/smsUrl:\s*`\$\{supaUrl\}\/functions\/v1\/sos-sms-inbound`/);
+  // L1-D Phase 3 discovery: the Supabase API gateway rewrites the
+  // /functions/v1/<fn> form to <fn>.functions.supabase.co internally.
+  // That second form (form B) is what req.url shows AND what Twilio
+  // stores after twilio-config-fix writes to it. Probe MUST expect
+  // form B so a clean Twilio config doesn't trigger phantom drift.
+  it("derives functionsHost from SUPABASE_URL (form B = functions.supabase.co)", () => {
+    expect(probeSrc).toMatch(
+      /functionsHost\s*=\s*supaUrl\.replace\(\s*\/\^\(https\?:\\\/\\\/\[\^\.\]\+\)\\\.supabase\\\.co\$\/\s*,\s*["']\$1\.functions\.supabase\.co["']\s*,?\s*\)/,
+    );
+  });
+
+  it("derives expected sms_url from functionsHost (single source of truth)", () => {
+    expect(probeSrc).toMatch(/smsUrl:\s*`\$\{functionsHost\}\/sos-sms-inbound`/);
   });
 
   it("expected sms_method is hard-coded to POST", () => {
     expect(probeSrc).toMatch(/smsMethod:\s*["']POST["']/);
   });
 
-  it("expected voice_url targets sos-bridge-twiml", () => {
-    expect(probeSrc).toMatch(/voiceUrl:\s*`\$\{supaUrl\}\/functions\/v1\/sos-bridge-twiml`/);
+  it("expected voice_url targets sos-bridge-twiml via functionsHost", () => {
+    expect(probeSrc).toMatch(/voiceUrl:\s*`\$\{functionsHost\}\/sos-bridge-twiml`/);
   });
 });
 

@@ -193,8 +193,25 @@ repo admins by default (GitHub Settings → Notifications). For Slack
 `debug_url` in the response.
 
 **Likely cause (1):** Twilio webhook isn't pointing at sos-sms-inbound.
-- Fix: Twilio Console → Phone Numbers → number → Messaging → set "A
-  message comes in" to `<base>/sos-sms-inbound` POST.
+- Fix (manual): Twilio Console → Phone Numbers → number → Messaging →
+  set "A message comes in" to `<base>/sos-sms-inbound` POST.
+- Fix (one-shot, programmatic): hit the `twilio-config-fix` edge
+  function — it PATCHes every IncomingPhoneNumber on the account back
+  to the canonical SOSphere config (sms_url / sms_method / voice_url /
+  voice_method) in a single call. Idempotent and reusable.
+  ```powershell
+  $base = "https://<project>.functions.supabase.co"
+  Invoke-RestMethod -Method Post -Uri "$base/twilio-config-fix" `
+    -Headers @{ Authorization = "Bearer $env:PROBE_SECRET" }
+  ```
+  Then re-run `twilio-config-probe` → expected `driftedCount: 0`.
+
+**Canonical URL form** (L1-D Phase 3 discovery): the probe and the fix
+both expect `https://<project>.functions.supabase.co/<fn>` — NOT the
+API-gateway form `https://<project>.supabase.co/functions/v1/<fn>`.
+Both URLs reach the same handler, but `req.url` inside an edge function
+always shows the functions-hostname form, so Twilio signature validation
+and probe drift comparison must use that form too.
 
 **Likely cause (2):** TWILIO_AUTH_TOKEN drift between Twilio and Supabase.
 - Fix: copy the Auth Token from Twilio Console, paste into
@@ -278,6 +295,7 @@ empty.
 | `twilio-token` | Twilio access token for client SDK | JWT | true | rare |
 | `sos-sms-inbound` | L2-F inbound SMS reply handler | Twilio signature | false | L2-F / L1-D3 changes |
 | `twilio-config-probe` | L1-D Phase 2/2.5 config drift probe | `PROBE_SECRET` bearer | false | probe changes |
+| `twilio-config-fix` | One-shot reset of every IncomingPhoneNumber to canonical SOSphere config (paired with the probe) | `PROBE_SECRET` bearer | false | rare — only when probe alerts on drift |
 | `sos-inbound-probe` | L1-D Phase 3 synthetic inbound | `PROBE_SECRET` bearer | false | probe changes |
 | `sos-health` | L4-B public health pulse | none | false | rare |
 | `dashboard-actions`, `incident-history`, `incident-report-data`, `invite-employees`, `process-bulk-invite`, `send-invitations`, `send-push-notification`, `stripe-checkout`, `stripe-portal`, `stripe-webhook`, `delete-account`, `export-my-data` | Various non-emergency surfaces | per-function | per-function | per-feature |
