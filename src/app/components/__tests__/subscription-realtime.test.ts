@@ -23,18 +23,20 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const {
   channelMock,
   removeChannelMock,
-  getSessionMock,
+  getStoredUserMock,
   onAuthStateChangeMock,
   authUnsubMock,
 } = vi.hoisted(() => {
   const removeChannelMock = vi.fn();
-  const getSessionMock = vi.fn();
+  // E1.6-PHASE3: production code reads the user from local JWT storage
+  // via getStoredUser() (sync), NOT supabase.auth.getSession() (async).
+  // This test was stale (#SKIP-1 mock drift) — now hooked up to the right
+  // boundary. getStoredUser returns { id, email } | null.
+  const getStoredUserMock = vi.fn();
   const authUnsubMock = vi.fn();
   const onAuthStateChangeMock = vi.fn();
-  // channel() returns a chainable object whose .on().subscribe() captures
-  // the callbacks so tests can simulate Postgres NOTIFY → callback.
   const channelMock = vi.fn();
-  return { channelMock, removeChannelMock, getSessionMock, onAuthStateChangeMock, authUnsubMock };
+  return { channelMock, removeChannelMock, getStoredUserMock, onAuthStateChangeMock, authUnsubMock };
 });
 
 // IMPORTANT: vi.mock() resolves the path RELATIVE TO THIS TEST FILE, not
@@ -49,11 +51,19 @@ vi.mock("../api/supabase-client", () => ({
     channel: channelMock,
     removeChannel: removeChannelMock,
     auth: {
-      getSession: getSessionMock,
       onAuthStateChange: onAuthStateChangeMock,
     },
   },
 }));
+
+// E1.6-PHASE3 boundary: prod code calls getStoredUser() from safe-rpc.
+// Preserve all OTHER exports via importActual so anything that
+// indirectly imports safe-rpc keeps working — only override
+// getStoredUser.
+vi.mock("../api/safe-rpc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/safe-rpc")>();
+  return { ...actual, getStoredUser: getStoredUserMock };
+});
 
 import { subscribeSubscriptionChanges } from "../api/subscription-realtime";
 
@@ -83,11 +93,11 @@ function makeChannelChain(): ChainCapture {
   return cap;
 }
 
-describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock setup drift, see #SKIP-1, FIX BEFORE GA]", () => {
+describe("subscribeSubscriptionChanges — CRIT-#3 contract", () => {
   beforeEach(() => {
     channelMock.mockReset();
     removeChannelMock.mockReset();
-    getSessionMock.mockReset();
+    getStoredUserMock.mockReset();
     onAuthStateChangeMock.mockReset();
     authUnsubMock.mockReset();
     onAuthStateChangeMock.mockReturnValue({ data: { subscription: { unsubscribe: authUnsubMock } } });
@@ -95,7 +105,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("subscribes under sub-tier:<uid> when a session exists", async () => {
     const cap = makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
 
     const cleanup = await subscribeSubscriptionChanges(() => {});
 
@@ -115,7 +125,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("does NOT subscribe when no session exists (anonymous browse)", async () => {
     makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: null } });
+    getStoredUserMock.mockReturnValue(null);
 
     const cleanup = await subscribeSubscriptionChanges(() => {});
 
@@ -125,7 +135,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("invokes the onChange callback when Postgres fires INSERT / UPDATE / DELETE", async () => {
     const cap = makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
     const onChange = vi.fn();
     const cleanup = await subscribeSubscriptionChanges(onChange);
 
@@ -140,7 +150,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("re-subscribes when auth changes to a different user", async () => {
     const cap1 = makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
 
     let authCb: (event: string, session: any) => void = () => {};
     onAuthStateChangeMock.mockImplementation((cb: any) => {
@@ -167,7 +177,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
     // makeChannelChain() registers the channel-mock chain into the
     // global stub network; the return value is not needed here.
     makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
     let authCb: (event: string, session: any) => void = () => {};
     onAuthStateChangeMock.mockImplementation((cb: any) => {
       authCb = cb;
@@ -186,7 +196,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("ignores duplicate auth-state callbacks for the same user (no extra subscribe)", async () => {
     makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
     let authCb: (event: string, session: any) => void = () => {};
     onAuthStateChangeMock.mockImplementation((cb: any) => {
       authCb = cb;
@@ -207,7 +217,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("cleanup is idempotent (calling it twice does not throw)", async () => {
     makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
 
     const cleanup = await subscribeSubscriptionChanges(() => {});
 
@@ -218,9 +228,9 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
     expect(authUnsubMock).toHaveBeenCalledTimes(1);
   });
 
-  it("FAIL-SECURE: getSession() throwing does not crash the caller", async () => {
+  it("FAIL-SECURE: getStoredUser() throwing does not crash the caller", async () => {
     makeChannelChain();
-    getSessionMock.mockRejectedValueOnce(new Error("network down"));
+    getStoredUserMock.mockImplementationOnce(() => { throw new Error("storage corrupt"); });
 
     const cleanup = await subscribeSubscriptionChanges(() => {});
 
@@ -230,7 +240,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("FAIL-SECURE: channel() throwing does not crash the caller", async () => {
     channelMock.mockImplementationOnce(() => { throw new Error("channel constructor crash"); });
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
 
     const cleanup = await subscribeSubscriptionChanges(() => {});
     expect(() => cleanup()).not.toThrow();
@@ -238,7 +248,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("FAIL-SECURE: an onChange handler that throws does not break the listener", async () => {
     const cap = makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
 
     const onChange = vi.fn(() => { throw new Error("handler boom"); });
     const cleanup = await subscribeSubscriptionChanges(onChange);
@@ -254,7 +264,7 @@ describe.skip("subscribeSubscriptionChanges — CRIT-#3 contract [BROKEN: mock s
 
   it("after stopped, auth-state callbacks are ignored (no resurrection)", async () => {
     makeChannelChain();
-    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "USR-aaa" } } } });
+    getStoredUserMock.mockReturnValue({ id: "USR-aaa", email: null });
     let authCb: (event: string, session: any) => void = () => {};
     onAuthStateChangeMock.mockImplementation((cb: any) => {
       authCb = cb;
