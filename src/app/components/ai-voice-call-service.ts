@@ -100,7 +100,7 @@ export function setAiVoiceScript(patch: Partial<AiVoiceScriptSettings>): AiVoice
   // Length cap — TwiML <Say> gets unwieldy past ~600 chars.
   merged.en = merged.en.slice(0, 600);
   merged.ar = merged.ar.slice(0, 600);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* localStorage unavailable — caller still gets the merged value in-memory */ }
   return merged;
 }
 
@@ -159,7 +159,4 @@ export function buildAiScriptPayload(ctx: AiScriptContext): AiScriptPayload | nu
   if (!text) return null;
   return {
     text,
-    language: cfg.lang === "ar" ? "ar-SA" : "en-US",
-    voice: cfg.voice,
-  };
-}
+ 
