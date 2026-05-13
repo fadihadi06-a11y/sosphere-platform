@@ -1,0 +1,21 @@
+{
+  "_doc": [
+    "R-6 (2026-05-14): allowlist for the deployed-vs-git function drift detector.",
+    "Entries here are intentionally deployed from a different source than this repo —",
+    "usually a legacy companion repo (e.g. sos-backend) that hasn't been migrated yet.",
+    "Without this allowlist, the R-6 GHA job would fail on every run because of these.",
+    "",
+    "To add an entry: include the deployed slug + a short reason explaining why the",
+    "function lives outside this repo. When the function gets migrated INTO this repo,",
+    "remove it from this list and add the source under supabase/functions/<slug>/."
+  ],
+  "entries": [
+    { "slug": "sos-dispatch",                    "reason": "Legacy: deployed from sos-backend repo. Pre-dates the sosphere-platform monorepo. Migrate when refactored." },
+    { "slug": "company-generate-qr",             "reason": "Legacy: deployed from sos-backend repo." },
+    { "slug": "verify-company-checkin",          "reason": "Legacy: deployed from sos-backend repo." },
+    { "slug": "create-company-checkin-session",  "reason": "Legacy: deployed from sos-backend repo." },
+    { "slug": "trigger-emergency",               "reason": "Legacy: deployed from sos-backend repo. Overlaps with sos-alert; cleanup pending." },
+    { "slug": "secrets-probe",                   "reason": "Internal ops probe, not part of the application bundle." },
+    { "slug": "vapid-diag",                      "reason": "One-shot VAPID diagnostic, deployed manually for push debugging." }
+  ]
+}
