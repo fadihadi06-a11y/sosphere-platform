@@ -341,7 +341,7 @@ export function onBroadcast(channel: string, callback: BroadcastCallback): () =>
   const key = `sosphere_broadcast_${channel}`;
   const handler = (e: StorageEvent) => {
     if (e.key === key && e.newValue) {
-      try { callback(JSON.parse(e.newValue)); } catch {}
+      try { callback(JSON.parse(e.newValue)); } catch { /* malformed storage payload — ignore, fresh write will heal */ }
     }
   };
   window.addEventListener("storage", handler);

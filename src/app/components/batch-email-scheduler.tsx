@@ -5,13 +5,13 @@
 // Supports bulk recipients, report type selection, and scheduling.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import {
   Mail, Clock, Calendar, Users, FileText, CheckCircle2,
-  X, Plus, Trash2, Bell, Shield, Download, Send,
-  ChevronRight, Zap, Settings, Target, Star,
+  X, Plus, Trash2, Shield, Send,
+  ChevronRight, Settings, Target, Star,
   RotateCcw, Eye, Sparkles, Timer,
 } from "lucide-react";
 import { toast } from "sonner";
