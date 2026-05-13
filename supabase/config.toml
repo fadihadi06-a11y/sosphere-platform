@@ -58,6 +58,21 @@ verify_jwt = false
 # function). Same pattern as twilio-config-probe.
 [functions.sos-inbound-probe]
 verify_jwt = false
+
+# R-5: authenticated-forgery PoC for L5-SEC-1. Signs in as a probe
+# user, calls log_sos_audit with a forged p_actor, asserts the
+# auth.uid() override fired. Bearer-token auth via PROBE_SECRET.
+[functions.forgery-probe]
+verify_jwt = false
+
+# R-4: end-to-end SOS orchestration probe. Triggers a synthetic SOS
+# (using an intentionally-invalid contact phone so no Twilio dispatch
+# fires), asserts every layer of the orchestration: sos_sessions,
+# sos_dispatch_attempts, audit_log, then ends it and asserts the close-out
+# state. Bearer-token auth via PROBE_SECRET.
+[functions.sos-dispatch-probe]
+verify_jwt = false
+
 # L4-B: public health endpoint - no auth, returns minimal
 # pulse JSON. Used by uptime monitors + status pages.
 [functions.sos-health]
