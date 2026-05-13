@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-10T21:24:50.892Z",
-  "total_migrations": 115,
-  "manifest_sha256": "a9dc63078940b6bb684b0cf782996cf08bb9970b15975086c4964612d7bb20c0",
+  "generated_at": "2026-05-13T14:02:41.994Z",
+  "total_migrations": 121,
+  "manifest_sha256": "b06816616a37be762b5bf62b15262093ef510486887198edcd796bbe50b48113",
   "migrations": [
     {
       "version": "20260415",
@@ -807,6 +807,48 @@
       "file": "20260510210000_l2f_sos_sms_replies.sql",
       "sha256": "1cf1aa30bc0ffb594a21ab0625601b984d710f1ccd0e5acf4b452d0a61a82d53",
       "bytes": 7790
+    },
+    {
+      "version": "20260512150000",
+      "name": "l5_sec_1_log_sos_audit_actor_forgery",
+      "file": "20260512150000_l5_sec_1_log_sos_audit_actor_forgery.sql",
+      "sha256": "40a0d7d30c2487e428838c5d81b3c8a2cae2c01d6afad23ccd584425b5110412",
+      "bytes": 7737
+    },
+    {
+      "version": "20260512170000",
+      "name": "l5_sec_4_geofences_sensor_events_rls",
+      "file": "20260512170000_l5_sec_4_geofences_sensor_events_rls.sql",
+      "sha256": "bc2d16bc6b0974b5798310111da434a246559e089b933687ca7b764093a6ffa0",
+      "bytes": 6319
+    },
+    {
+      "version": "20260512180000",
+      "name": "l5_sec_8_audit_log_null_company_admin_only",
+      "file": "20260512180000_l5_sec_8_audit_log_null_company_admin_only.sql",
+      "sha256": "1e0a6a2d00e64391e7c2f751c61fcaa2e6bf8eaee80ebc77b2472327319843bd",
+      "bytes": 2463
+    },
+    {
+      "version": "20260512190000",
+      "name": "l5_sec_9_verify_chain_legacy_null_guard",
+      "file": "20260512190000_l5_sec_9_verify_chain_legacy_null_guard.sql",
+      "sha256": "5d258b8a67a3760931c9927bbbc35ac9ac14c178a737b6401e23fd9272c9e41e",
+      "bytes": 6839
+    },
+    {
+      "version": "20260513120000",
+      "name": "r1_geofences_sensor_events_tenancy",
+      "file": "20260513120000_r1_geofences_sensor_events_tenancy.sql",
+      "sha256": "4ae4bab16ff74040272121db94ca4b25939c7869b17e9d96436e2e99a5f144d2",
+      "bytes": 8968
+    },
+    {
+      "version": "20260513130000",
+      "name": "r2_get_my_company_id_resolver",
+      "file": "20260513130000_r2_get_my_company_id_resolver.sql",
+      "sha256": "ac03b4d65032ef80cf3e62ed3aef03facde44f05d410e24141521f5234d01361",
+      "bytes": 2986
     }
   ]
 }

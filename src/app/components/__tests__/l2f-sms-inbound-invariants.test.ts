@@ -263,28 +263,35 @@ describe("L2-F: Realtime broadcast — tenant-scoped, never global", () => {
   });
 });
 
-describe("L2-F: debug-code gating contract (prevents accidental token leak)", () => {
+describe("L2-F: debug-code gating contract (post L5-SEC-6 hardening)", () => {
   it("SIG_MISMATCH_DEBUG fires ONLY in the !ok branch (never on successful validation)", () => {
-    // The log call must be inside `if (!ok)` — otherwise a successful
-    // validation would log the signature material, defeating the
-    // purpose of the gating.
-    expect(inboundSrc).toMatch(/if \(!ok\)\s*\{[\s\S]{0,200}SIG_MISMATCH_DEBUG/);
+    // The log call must live inside `if (!ok)` — otherwise a successful
+    // validation would log the signature material, defeating the gate.
+    // L5-SEC-6 (2026-05-12) added a redaction comment + restructured the
+    // block; tolerate up to 600 chars between `if (!ok) {` and the log.
+    expect(inboundSrc).toMatch(/if \(!ok\)\s*\{[\s\S]{0,600}SIG_MISMATCH_DEBUG/);
   });
 
-  it("SIG_MISMATCH_DEBUG logs token_len, NEVER the token itself", () => {
-    // The diagnostic payload must include the LENGTH of the token
-    // (proves the env var is set) but NOT the token value (would be
-    // a hard-fail secret leak).
-    expect(inboundSrc).toMatch(/token_len:\s*authToken\.length/);
-    expect(inboundSrc).not.toMatch(/token:\s*authToken[^\.]/);
+  it("SIG_MISMATCH_DEBUG never logs computed_sig OR token_len (L5-SEC-6)", () => {
+    // L5-SEC-6 (2026-05-12) REMOVED computed_sig (HMAC oracle) and
+    // token_len (token-length oracle) from the diagnostic payload.
+    // The L2-F pin was the pre-L5-SEC-6 contract; this is the new one.
+    const debugBlock = inboundSrc.match(/SIG_MISMATCH_DEBUG[\s\S]+?\}\)\);/)![0];
+    expect(debugBlock).not.toMatch(/computed_sig/);
+    expect(debugBlock).not.toMatch(/token_len/);
   });
 
-  it("403 response debug_url is gated to probe-prefixed MessageSids only", () => {
-    // Real Twilio MessageSids are SM-prefixed. Only PROBE-prefixed
-    // sids unlock the debug body. A refactor that drops this gate
-    // would expose canonicalUrl + param keys to any caller hitting
-    // 403 — small leak but still a regression.
+  it("SIG_MISMATCH_DEBUG logs received_sig_prefix (truncated for log correlation only)", () => {
+    expect(inboundSrc).toMatch(/received_sig_prefix:\s*sigHeader\.slice\(\s*0\s*,\s*6\s*\)/);
+  });
+
+  it("403 response debug_url is gated by PROBE- prefix AND X-Probe-Secret (L5-SEC-6)", () => {
+    // Real Twilio MessageSids are SM-prefixed. L5-SEC-6 tightened the
+    // gate: PROBE- prefix is necessary but NOT sufficient — the caller
+    // must also provide a matching X-Probe-Secret header.
     expect(inboundSrc).toMatch(/debugMsgSid\.startsWith\(\s*["']PROBE-["']\s*\)/);
+    expect(inboundSrc).toMatch(/X-Probe-Secret/);
+    expect(inboundSrc).toMatch(/constantTimeEquals\(\s*probeHeader\s*,\s*probeSecret\s*\)/);
     expect(inboundSrc).toMatch(/const errBody = isProbe[\s\S]{0,500}debug_url:\s*canonicalUrl/);
   });
 });
