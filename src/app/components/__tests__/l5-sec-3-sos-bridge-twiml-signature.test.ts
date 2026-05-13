@@ -59,17 +59,24 @@ describe("L5-SEC-3: signature validation up-front", () => {
   });
 });
 
-describe("L5-SEC-3: dual URL-form tolerance (form A + form B)", () => {
-  it("urlFormVariants helper tries both gateway and functions-hostname forms", () => {
-    expect(edgeFn).toMatch(/function\s+urlFormVariants/);
-    // form A → form B conversion regex.
-    expect(edgeFn).toMatch(/supabase\\\.co\\\/functions\\\/v1[\s\S]{0,80}functions\.supabase\.co/);
-    // form B → form A conversion regex.
-    expect(edgeFn).toMatch(/functions\\\.supabase\\\.co[\s\S]{0,80}supabase\.co\/functions\/v1/);
+describe("R-3: single-form (form-B) validation — supersedes L5-SEC-3 dual tolerance", () => {
+  it("validateTwilioSignature no longer iterates URL variants (R-3)", () => {
+    // The L5-SEC-3 band-aid accepted form A AND form B because sos-alert
+    // emitted form A while Twilio Console emitted form B. R-3 unified
+    // sos-alert + twilio-status to emit form B only, so the tolerance
+    // helper is dead.
+    expect(edgeFn).not.toMatch(/function\s+urlFormVariants\s*\(/);
+    expect(edgeFn).not.toMatch(/for\s*\(\s*const\s+candidate\s+of\s+urlFormVariants/);
   });
 
-  it("validateTwilioSignature iterates url variants until one matches", () => {
-    expect(edgeFn).toMatch(/for\s*\(\s*const\s+candidate\s+of\s+urlFormVariants/);
+  it("validateTwilioSignature computes signature against the single canonical URL", () => {
+    const block = edgeFn.match(/async\s+function\s+validateTwilioSignature[\s\S]+?\n\}/)![0];
+    expect(block).toMatch(/const\s+sig\s*=\s*await\s+computeSig\(\s*authToken\s*,\s*url\s*,\s*params\s*\)/);
+    expect(block).toMatch(/return\s+constantTimeEquals\(\s*sig\s*,\s*sigHeader\s*\)/);
+  });
+
+  it("R-3 marker comment cites the form-B unification rationale", () => {
+    expect(edgeFn).toMatch(/R-3[^a-zA-Z][\s\S]{0,200}single-form validation/);
   });
 });
 
@@ -102,15 +109,11 @@ describe("L5-SEC-3: defense-in-depth on action=accept", () => {
 
 describe("L5-SEC-3: regression guards", () => {
   it("no path returns TwiML before signature validation runs", () => {
-    // The serve() body should NOT have any early-return Response before
-    // the sigOk check, except OPTIONS (CORS preflight).
     const serveBody = edgeFn.match(/serve\(\s*async\s*\(req[\s\S]+$/)![0];
     const sigCheckIdx = serveBody.indexOf("const sigOk");
     expect(sigCheckIdx).toBeGreaterThan(0);
-    // Find any `return new Response` before the sigCheck.
     const beforeSig = serveBody.slice(0, sigCheckIdx);
     const earlyReturns = beforeSig.match(/return\s+new\s+Response/g) || [];
-    // OPTIONS preflight is the only allowed early return.
     expect(earlyReturns.length).toBeLessThanOrEqual(1);
   });
 

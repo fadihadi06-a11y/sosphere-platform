@@ -34,6 +34,7 @@ import {
 } from "../_shared/rate-limiter.ts";
 import { clientIp } from "../_shared/api-guard.ts";
 import { withDbRetry } from "../_shared/db-retry.ts";
+import { fnUrl } from "../_shared/functions-host.ts";
 
 const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -1339,7 +1340,8 @@ serve(async (req: Request) => {
         tier: opts.tierStr,
       });
       if (traceId) params.set("trace_id", traceId);
-      return `${SUPA_URL}/functions/v1/twilio-status?${params.toString()}`;
+      // R-3: form-B canonical (sos-bridge-twiml + twilio-status validate against form B only).
+      return `${fnUrl(SUPA_URL, "twilio-status")}?${params.toString()}`;
     }
     // Legacy alias for non-fanout call sites (none today, but kept so the
     // diff is small and intentional). Defaults to contactIndex=-1 to make
@@ -1594,7 +1596,7 @@ serve(async (req: Request) => {
         // handles both bridge (Elite) and announce-only flow via the
         // `mode=announce` query param. This ensures Basic-tier users
         // actually get their outbound call with emergency details.
-        const twimlUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+        const twimlUrl = fnUrl(SUPA_URL, "sos-bridge-twiml", { mode: "announce", emergencyId, caller: userName, contactName: c.name, trackUrl });
         callPromise = twilioCall(cleanPhone, twimlUrl, {
           statusCallback: perContactStatusCb,
           machineDetection: true,
@@ -1604,7 +1606,7 @@ serve(async (req: Request) => {
       } else if (tier === "elite") {
         // Primary contact (idx=0) gets a grace delay to avoid double-ringing with Path A
         // Non-primary contacts: fire immediately
-        const bridgeTwimlUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&userPhone=${encodeURIComponent(userPhone)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+        const bridgeTwimlUrl = fnUrl(SUPA_URL, "sos-bridge-twiml", { emergencyId, caller: userName, contactName: c.name, userPhone, trackUrl });
 
         if (isPrimaryContact && !silent) {
           // Path A is dialing this contact locally — wait 7s, check if local call connected
@@ -1651,7 +1653,7 @@ serve(async (req: Request) => {
         //   basic: ≤2× TTS announce (30s ring, 60s duration)    ← THIS COMMIT
         //   elite: ≤2× Bridge conference (30s ring, 120s)       ← THIS COMMIT
         // Retry behavior is uniform across tiers; only the TwiML differs.
-        const freeAnnounceUrl = `${SUPA_URL}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(c.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+        const freeAnnounceUrl = fnUrl(SUPA_URL, "sos-bridge-twiml", { mode: "announce", emergencyId, caller: userName, contactName: c.name, trackUrl });
         callPromise = twilioCall(cleanPhone, freeAnnounceUrl, {
           statusCallback: perContactStatusCb,
           machineDetection: true,
