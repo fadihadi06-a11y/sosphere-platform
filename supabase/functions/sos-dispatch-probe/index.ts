@@ -164,11 +164,13 @@ serve(async (req) => {
   const userJwt = session.session.access_token;
 
   // ── Stage 3: TRIGGER SOS via sos-alert ──────────────────────────────────
-  // Use probe-prefixed emergencyId so dashboard queries can `id NOT LIKE
-  // 'probe-dispatch-%'` to exclude probe rows from real-incident views.
-  const probeRunId = crypto.randomUUID();
-  const emergencyId = `probe-dispatch-${Date.now()}-${probeRunId.slice(0, 8)}`;
-  const traceId = crypto.randomUUID(); // matches the uuid-shape sos-alert expects
+  // sos_sessions.id is a `uuid` column — must be a strict UUID. We can't
+  // use a "probe-dispatch-*" prefix string. Probe rows are still distinct
+  // from real incidents because they're all owned by the single probe
+  // user (user_id = probeUserId), so dashboards filter by user_id (or
+  // by trigger_source if set; we leave it default here).
+  const emergencyId = crypto.randomUUID();
+  const traceId = crypto.randomUUID();
   const idemKey = `probe:${emergencyId}`;
   const clientClaimedAt = new Date().toISOString();
 
@@ -396,7 +398,7 @@ serve(async (req) => {
 
   // ── Stage 12: cleanup (best-effort; never fails the probe) ──────────────
   // We leave audit_log rows intact (they're hash-chained and probe-tagged
-  // via target=probe-dispatch-*). sos_sessions + dispatch_attempts get
+  // by user_id = probeUserId). sos_sessions + dispatch_attempts get
   // cleaned up to keep the probe footprint small over time.
   const cleanup: Record<string, unknown> = {};
   try {
