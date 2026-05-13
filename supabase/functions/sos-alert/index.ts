@@ -1713,8 +1713,18 @@ serve(async (req: Request) => {
     // "every alert tier must reach the responder via at least one
     // channel" is verifiable from DB state alone (not from edge logs).
     // Best-effort — a logging failure must never block emergency dispatch.
-    void (async () => {
-      try {
+    //
+    // R-4b (2026-05-14): converted from `void (async () => {})()` fire-and-
+    // forget to a synchronous `await`. The R-4 sos-dispatch-probe discovered
+    // that ZERO ledger rows were landing — the Deno isolate terminates as
+    // soon as the response is returned, killing any pending background
+    // promises. This silently dropped the forensic ledger for every real
+    // SOS in production. The whole point of L2-B is that the ledger is
+    // provably written; a fire-and-forget pattern violates that contract.
+    // Sync await adds ~50-200ms to the response (one RPC per contact-channel
+    // pair), which is well within the 30s emergency-dispatch SLA budget.
+    try {
+      {
         for (let i = 0; i < fanoutResults.length; i++) {
           const r = fanoutResults[i] as {
             contactName?: string;
@@ -1730,14 +1740,21 @@ serve(async (req: Request) => {
           if (r?.error === "invalid_number" || r?.method === "invalid_number") smsOutcome = "invalid";
           else if (r?.smsSid) smsOutcome = "sent";
           else smsOutcome = "failed";  // null sid after timeout race counts as failed
+          // R-4b: companyIdForLog / userId were UNDEFINED here — the void
+          // async block was throwing ReferenceError on every invocation.
+          // The ledger writes have never actually landed in production.
+          // p_user_id = authUserId (JWT-verified, always in scope here).
+          // p_company_id = null (consumer queries can JOIN sos_sessions on
+          // emergency_id for tenant filtering; the ledger itself doesn't
+          // need to denormalize it).
           await supabase.rpc("record_sos_dispatch_attempt", {
             p_emergency_id:  emergencyId,
             p_contact_index: i,
             p_channel:       "sms",
             p_outcome:       smsOutcome,
             p_trace_id:      traceId ?? null,
-            p_company_id:    companyIdForLog ?? null,
-            p_user_id:       userId ?? null,
+            p_company_id:    null,
+            p_user_id:       authUserId ?? null,
             p_contact_name:  r?.contactName ?? null,
             p_contact_phone: r?.phone ?? null,
             p_provider_sid:  r?.smsSid ?? null,
@@ -1762,8 +1779,8 @@ serve(async (req: Request) => {
               p_channel:       callChannel,
               p_outcome:       callOutcome,
               p_trace_id:      traceId ?? null,
-              p_company_id:    companyIdForLog ?? null,
-              p_user_id:       userId ?? null,
+              p_company_id:    null,
+              p_user_id:       authUserId ?? null,
               p_contact_name:  r?.contactName ?? null,
               p_contact_phone: r?.phone ?? null,
               p_provider_sid:  r?.callSid ?? null,
@@ -1775,10 +1792,10 @@ serve(async (req: Request) => {
           // ledger CHECK constraint for future use (e.g., tier-tier
           // upgrade path where one channel is intentionally not tried).
         }
-      } catch (e) {
-        console.warn("[sos-alert] L2-B dispatch ledger write failed (non-fatal):", e);
       }
-    })();
+    } catch (e) {
+      console.warn("[sos-alert] L2-B dispatch ledger write failed (non-fatal):", e);
+    }
 
     // L1-C: emit pipeline metrics 'dispatched' event. UPDATE WHERE
     // primary_alert_dispatched_at IS NULL — first dispatch wins, retries
@@ -2144,39 +2161,4 @@ serve(async (req: Request) => {
           location,
           contacts: contacts.map(c => c.name),
           zone,
-          ts: Date.now(),
-        },
-      });
-      console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
-      setTimeout(() => supabase.removeChannel(ch), 2000);
-    } catch (e) {
-      console.warn("[sos-alert] Realtime broadcast failed:", e);
-    }
-
-    const triggerBody = {
-      success: true,
-      emergencyId,
-      tier,
-      results: fanoutResults,
-      trackUrl,
-      dashUrl,
-    };
-    // B-C4/B-H1: persist response for Idempotency-Key retries.
-    if (triggerIdemKey) {
-      await storeIdempotency(supabase, "sos-alert:trigger", triggerIdemKey, 200, triggerBody);
-    }
-    return new Response(JSON.stringify(triggerBody), {
-      status: 200,
-      headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("[sos-alert] Unhandled error:", err);
-    return new Response(JSON.stringify({
-      error: "Internal error",
-      detail: err instanceof Error ? err.message : String(err),
-    }), {
-      status: 500,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  }
-});
+     

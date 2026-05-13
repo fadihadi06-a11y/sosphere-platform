@@ -21,6 +21,8 @@
 //   • A refactor that points the probe at the wrong sos_alert
 //     URL form, or the wrong audit_log column, or the wrong
 //     sos_dispatch_attempts table name.
+//   • A regression that re-introduces the probe-prefixed string
+//     for emergencyId (sos_sessions.id is uuid, would crash).
 //   • A workflow refactor that drops the 6-hour schedule or
 //     accidentally moves the probe to the 15-min lane (would hit
 //     the SOS rate limit by the second hourly run).
@@ -69,8 +71,17 @@ describe("R-4: sos-dispatch-probe — cost-safety invariants", () => {
     expect(probeSrc).toMatch(/phone:\s*["']\+10["']/);
   });
 
-  it("uses probe-prefixed emergencyId so dashboards can filter probe rows", () => {
-    expect(probeSrc).toMatch(/probe-dispatch-\$\{Date\.now\(\)\}/);
+  it("uses crypto.randomUUID() for emergencyId (sos_sessions.id is a uuid column)", () => {
+    // ROOT-LEVEL FIX (R-4 live-run-1 finding): sos_sessions.id is `uuid`,
+    // not `text`. A probe-prefixed string like "probe-dispatch-*" makes
+    // Postgres throw "invalid input syntax for type uuid" before any row
+    // is even inserted, crashing the whole orchestration with HTTP 500.
+    // Probe rows are still distinguishable from real incidents because
+    // they're all owned by the single shared probe user (probeUserId),
+    // so dashboards filter probe rows by user_id.
+    expect(probeSrc).toMatch(/const emergencyId\s*=\s*crypto\.randomUUID\(\)/);
+    // Defensive: no leftover "probe-dispatch-" template literal.
+    expect(probeSrc).not.toMatch(/`probe-dispatch-\$\{/);
   });
 
   it("reuses the forgery-probe identity (no new auth.users rows per probe)", () => {
@@ -84,7 +95,7 @@ describe("R-4: sos-dispatch-probe — cost-safety invariants", () => {
 
 describe("R-4: sos-dispatch-probe — orchestration coverage", () => {
   it("posts to sos-alert?action=trigger (default action, explicit URL)", () => {
-    // Form-A URL is required because edge-function → edge-function is
+    // Form-A URL is required because edge-function -> edge-function is
     // an internal call; form-B isn't needed here. Both are valid
     // Supabase routing forms; form-A is the legacy /functions/v1/ path.
     expect(probeSrc).toMatch(/\$\{supaUrl\}\/functions\/v1\/sos-alert/);
@@ -137,15 +148,12 @@ describe("R-4: sos-dispatch-probe — cleanup invariants", () => {
   });
 
   it("does NOT delete audit_log rows (hash-chained, must stay append-only)", () => {
-    // No .from("audit_log").delete() call must exist.
     expect(probeSrc).not.toMatch(
       /\.from\(\s*["']audit_log["']\s*\)[\s\S]{0,100}\.delete\(\)/,
     );
   });
 
   it("cleanup failures do NOT fail the probe (orchestration verification is the goal)", () => {
-    // The cleanup block is in try/catch and writes to a `cleanup` object;
-    // it's not part of the pass/fail determination.
     expect(probeSrc).toMatch(/Stage 12: cleanup/);
     expect(probeSrc).toMatch(/best-effort/i);
   });
@@ -158,7 +166,6 @@ describe("R-4: sos-dispatch-probe — HTTP semantics", () => {
 
   it("returns a structured asserts{} object covering every layer", () => {
     expect(probeSrc).toMatch(/asserts\s*=\s*\{/);
-    // Key assertion names that must exist for the GHA failure log to be useful
     for (const key of [
       "trigger_success_flag",
       "trigger_result_is_invalid_number",
@@ -189,7 +196,6 @@ describe("R-4: probes.yml workflow — schedule + filter invariants", () => {
   });
 
   it("the three fast probes are gated to the 15-min schedule (don't run on 6h tick)", () => {
-    // The fast-cadence jobs each carry an `if:` that includes '*/15 * * * *'.
     const fastProbes = ["inbound-probe", "config-drift-probe", "forgery-probe"];
     for (const job of fastProbes) {
       const re = new RegExp(
