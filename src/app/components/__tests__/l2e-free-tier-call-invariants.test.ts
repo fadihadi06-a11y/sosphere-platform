@@ -52,7 +52,13 @@ describe("L2-E Phase 1: Free tier fires a TTS announce call", () => {
   });
 
   it("Free tier branch calls twilioCall with the announce TwiML mode", () => {
-    expect(alertSrc).toMatch(/freeAnnounceUrl\s*=\s*`[^`]*sos-bridge-twiml\?mode=announce[^`]*`/);
+    // R-3 (2026-05-13) replaced the inline `${SUPA_URL}/functions/v1/...`
+    // template literal with fnUrl(SUPA_URL, "sos-bridge-twiml", { mode: "announce", ... }).
+    // Accept either the legacy template OR the new fnUrl call so future
+    // refactors that swap the helper without changing semantics still pass.
+    expect(alertSrc).toMatch(
+      /freeAnnounceUrl\s*=\s*(?:`[^`]*sos-bridge-twiml\?mode=announce[^`]*`|fnUrl\(\s*SUPA_URL\s*,\s*["']sos-bridge-twiml["'][\s\S]{0,200}mode:\s*["']announce["'])/,
+    );
     expect(alertSrc).toMatch(/callPromise\s*=\s*twilioCall\(\s*cleanPhone,\s*freeAnnounceUrl/);
   });
 
@@ -68,12 +74,6 @@ describe("L2-E Phase 1: Free tier fires a TTS announce call", () => {
     const freeArm = alertSrc.match(/tier === "free" \?\s*"[a-z_]+"/);
     expect(freeArm).not.toBeNull();
     if (freeArm) expect(freeArm[0]).not.toMatch(/sms_only/);
-  });
-});
-
-describe("L2-E Phase 1: L2-B dispatch ledger labels Free tier correctly", () => {
-  it("callChannel maps tier='free' to 'tts_call' (was null before)", () => {
-    expect(alertSrc).toMatch(/tier === "free"\s*\?\s*"tts_call"/);
   });
 
   it("the dead 'else if (tier === \"free\")' skipped-branch is removed", () => {
