@@ -415,4 +415,17 @@ Deno.serve(async (req) => {
       metadata: {
         request_id: requestId,
         tables_exported: tablesCount,
-        byte
+        bytes_returned: bytesReturned,
+        status: finalStatus,
+        errors_count: errors.length,
+        sha256: responseBody.integrity_sha256,
+      },
+      created_at: generatedAt,
+    });
+  } catch (err) {
+    console.warn("[export-my-data] audit_log write failed:", err);
+  }
+
+  // ── 8) Return ────────────────────────────────────────────────────
+  return new Response(responseText, { status: 200, headers: CORS });
+});
