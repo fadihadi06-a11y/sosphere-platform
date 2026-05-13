@@ -20,6 +20,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // B-09 (2026-04-25): self-signed gather-token to close the
 // signature-bypass hole the prior code left open for action=gather.
 import { verifyGatherToken } from "../_shared/gather-token.ts";
+import { fnUrl } from "../_shared/functions-host.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
@@ -555,14 +556,14 @@ async function fireRetryCall(
   let twimlUrl: string;
   let timeLimitSec: number;
   if (tier === "elite") {
-    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&userPhone=${encodeURIComponent(userPhone)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    twimlUrl = fnUrl(supaUrl, "sos-bridge-twiml", { emergencyId: callId, caller: userName, contactName: contact.name, userPhone, trackUrl });
     timeLimitSec = 120;
   } else if (tier === "basic") {
-    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    twimlUrl = fnUrl(supaUrl, "sos-bridge-twiml", { mode: "announce", emergencyId: callId, caller: userName, contactName: contact.name, trackUrl });
     timeLimitSec = 60;
   } else {
     // free (or unknown — fall through to safest minimal call)
-    twimlUrl = `${supaUrl}/functions/v1/sos-bridge-twiml?mode=announce&emergencyId=${encodeURIComponent(callId)}&caller=${encodeURIComponent(userName)}&contactName=${encodeURIComponent(contact.name)}&trackUrl=${encodeURIComponent(trackUrl)}`;
+    twimlUrl = fnUrl(supaUrl, "sos-bridge-twiml", { mode: "announce", emergencyId: callId, caller: userName, contactName: contact.name, trackUrl });
     timeLimitSec = 30;
   }
 
@@ -577,7 +578,7 @@ async function fireRetryCall(
   });
   const effectiveTrace = traceId || session.trace_id;
   if (effectiveTrace) statusCbParams.set("trace_id", effectiveTrace);
-  const statusCb = `${supaUrl}/functions/v1/twilio-status?${statusCbParams.toString()}`;
+  const statusCb = `${fnUrl(supaUrl, "twilio-status")}?${statusCbParams.toString()}`;
 
   // Fire the Twilio call. Same shape as sos-alert's twilioCall() —
   // we keep this inline (rather than importing) because edge functions

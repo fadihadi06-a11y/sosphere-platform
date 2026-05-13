@@ -10,6 +10,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { signGatherToken, verifyGatherToken } from "../_shared/gather-token.ts";
+import { fnUrl } from "../_shared/functions-host.ts";
 
 const FETCH_TIMEOUT_MS = 8000;  // G-41: Twilio API p99 < 2s; 8s is generous.
 
@@ -78,31 +79,14 @@ async function computeSig(authToken: string, url: string, params: Record<string,
 }
 
 /**
- * Try-both-forms canonical-URL helper. Twilio signs whatever URL it
- * fetched. SOSphere has two callers:
- *   * sos-alert builds form A: `<project>.supabase.co/functions/v1/<fn>`
- *   * Twilio Console (after twilio-config-fix) configures form B:
- *     `<project>.functions.supabase.co/<fn>`
- * Both forms route to the same handler internally, but Twilio signs
- * the form IT fetched. We try both — if either matches we accept.
+ * R-3 (2026-05-13): single-form validation. All Twilio webhook URLs
+ * pointed at sos-bridge-twiml are now built via fnUrl() in sos-alert
+ * + twilio-status, which emits canonical form B
+ * (<project>.functions.supabase.co/<fn>). The previous urlFormVariants
+ * tolerance helper is GONE — if a future caller accidentally emits
+ * form A, signature validation fails fast and the L1-D probes alert
+ * within 15 minutes (better than silent fallback).
  */
-function urlFormVariants(canonicalUrl: string): string[] {
-  const variants = new Set<string>([canonicalUrl]);
-  // form A → form B
-  const aToB = canonicalUrl.replace(
-    /^(https:\/\/[^.]+)\.supabase\.co\/functions\/v1\/([^?]+)/,
-    "$1.functions.supabase.co/$2",
-  );
-  if (aToB !== canonicalUrl) variants.add(aToB);
-  // form B → form A
-  const bToA = canonicalUrl.replace(
-    /^(https:\/\/[^.]+)\.functions\.supabase\.co\/([^?]+)/,
-    "$1.supabase.co/functions/v1/$2",
-  );
-  if (bToA !== canonicalUrl) variants.add(bToA);
-  return [...variants];
-}
-
 async function validateTwilioSignature(
   req: Request,
   url: string,
@@ -115,11 +99,8 @@ async function validateTwilioSignature(
     console.error("[sos-bridge] TWILIO_AUTH_TOKEN missing — fail closed");
     return false;
   }
-  for (const candidate of urlFormVariants(url)) {
-    const sig = await computeSig(authToken, candidate, params);
-    if (constantTimeEquals(sig, sigHeader)) return true;
-  }
-  return false;
+  const sig = await computeSig(authToken, url, params);
+  return constantTimeEquals(sig, sigHeader);
 }
 
 /**
@@ -208,8 +189,8 @@ function sayTag(defaultText: string, ai: StoredAiScript | null): string {
   return `<Say voice="Polly.Joanna">${escapeXml(defaultText)}</Say>`;
 }
 function buildConferenceTwiml(confName: string, emergencyId: string, baseUrl: string): string {
-  const recordingCb = `${baseUrl}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=recording`;
-  const confStatusCb = `${baseUrl}/functions/v1/twilio-status?callId=${escapeXml(emergencyId)}&amp;type=conference`;
+  const recordingCb = `${fnUrl(baseUrl, "twilio-status", { callId: emergencyId, type: "recording" }).replace(/&/g, "&amp;")}`;
+  const confStatusCb = `${fnUrl(baseUrl, "twilio-status", { callId: emergencyId, type: "conference" }).replace(/&/g, "&amp;")}`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna">Connecting now. The call is being recorded for safety.</Say>\n  <Dial timeLimit="3600">\n    <Conference\n      record="record-from-start"\n      recordingStatusCallback="${recordingCb}"\n      recordingStatusCallbackEvent="completed"\n      statusCallback="${confStatusCb}"\n      statusCallbackEvent="start end join leave"\n      statusCallbackMethod="POST"\n      startConferenceOnEnter="true"\n      endConferenceOnExit="false"\n      maxParticipants="2"\n      waitUrl="http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock"\n    >${escapeXml(confName)}</Conference>\n  </Dial>\n</Response>`;
 }
 
@@ -278,8 +259,8 @@ serve(async (req: Request) => {
           const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
           const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
           const twilioFrom  = Deno.env.get("TWILIO_FROM_NUMBER")!;
-          const joinTwiml   = `${baseUrl}/functions/v1/sos-bridge-twiml?action=join-user&emergencyId=${encodeURIComponent(emergencyId)}`;
-          const statusCb    = `${baseUrl}/functions/v1/twilio-status?callId=${encodeURIComponent(emergencyId)}&type=user-join`;
+          const joinTwiml   = fnUrl(baseUrl, "sos-bridge-twiml", { action: "join-user", emergencyId });
+          const statusCb    = fnUrl(baseUrl, "twilio-status", { callId: emergencyId, type: "user-join" });
           // G-41: AbortSignal.timeout so a Twilio partial-partition can't hang the worker.
           const callRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`, {
             method: "POST",
@@ -321,7 +302,7 @@ serve(async (req: Request) => {
   let gtokSigned = "";
   try { gtokSigned = await signGatherToken(emergencyId); }
   catch (err) { console.error("[sos-bridge] signGatherToken failed in announce:", err); }
-  const gatherUrl = `${baseUrl}/functions/v1/sos-bridge-twiml?action=accept&emergencyId=${encodeURIComponent(emergencyId)}&caller=${encodeURIComponent(caller)}&gtok=${encodeURIComponent(gtokSigned)}`;
+  const gatherUrl = fnUrl(baseUrl, "sos-bridge-twiml", { action: "accept", emergencyId, caller, gtok: gtokSigned });
   const defaultAnnouncement =
     `Emergency Alert from SOSphere. ${caller} has triggered an SOS emergency and needs immediate help. Emergency I D: ${emergencyId}.`;
   const announceTag = sayTag(defaultAnnouncement, ai);
