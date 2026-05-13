@@ -17,14 +17,13 @@ import {
   Camera, Send, Navigation,
   Mic,
   Bot, Brain, Target, Crown,
-  PhoneCall, Image as ImageIcon, Radio, Video,
+  PhoneCall, Radio,
   Droplet, Pill, Award, Share2,
-  FileCheck, Scale, Building2, DollarSign,
+  Scale, DollarSign,
   WifiOff, BatteryLow, Flame, Moon,
   MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import QRCode from "qrcode";
 // FIX C: Medical Alert Banner
 import { MedicalAlertBanner } from "./medical-alert-banner";
 // ── B-02 (2026-04-25): real dispatcher actions, single channel ──
@@ -249,7 +248,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   
   // IMPROVEMENT 3: Live transcript
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [currentTranscriptIndex, setCurrentTranscriptIndex] = useState(0);
+  const [_currentTranscriptIndex, setCurrentTranscriptIndex] = useState(0);
   
   // Phase 2: Evidence
   const [evidence, setEvidence] = useState<Evidence>({
@@ -312,7 +311,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   // Shared
   const [actionLog, setActionLog] = useState<ActionLog[]>([]);
   const [showBackWarning, setShowBackWarning] = useState(false);
-  const [autoSaveTimer, setAutoSaveTimer] = useState(0);
+  const [_autoSaveTimer, setAutoSaveTimer] = useState(0);
   
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -322,7 +321,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
   // ═══════════════════════════════════════════════════════════════
 
   const getSmartWarning = (): { text: string; color: string; icon: any } | null => {
-    const elapsed = Math.floor((Date.now() - context.timestamp) / 60000);
+    const _elapsed = Math.floor((Date.now() - context.timestamp) / 60000);
     
     if (context.batteryLevel && context.batteryLevel < 20) {
       const estimatedMinutes = context.batteryLevel * 2; // rough estimate
@@ -1237,7 +1236,7 @@ export function AICoAdmin({ context, onClose, onEmergencyResolved }: AICoAdminPr
                           </div>
                         )}
 
-                        {transcript.map((line, i) => (
+                        {transcript.map((line, _i) => (
                           <motion.div
                             key={line.id}
                             initial={{ opacity: 0, x: -10 }}
