@@ -99,3 +99,38 @@ jobs:
           fi
           total=$(echo "$response" | jq -r '.total')
           echo "::notice::Config-drift probe OK — $total entities clean"
+
+  forgery-probe:
+    name: Audit forgery defense probe (R-5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run forgery probe + assert L5-SEC-1 defense fired
+        env:
+          SUPA_FN_URL: ${{ secrets.SUPA_FN_URL }}
+          PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPA_FN_URL:-}" ] || [ -z "${PROBE_SECRET:-}" ]; then
+            echo "::error::Missing SUPA_FN_URL or PROBE_SECRET secret"
+            exit 2
+          fi
+          # R-5: probe attempts a real authenticated forgery against
+          # log_sos_audit. If L5-SEC-1 ever regresses, the forged actor
+          # would land in the audit chain and this assertion would
+          # catch it within 15 minutes.
+          # Note: forgery-probe returns HTTP 500 on pass:false so curl -f
+          # already exits non-zero in that case. We still parse the body
+          # to surface the failure detail in the action log.
+          response=$(curl -fsSL -X POST \
+            "$SUPA_FN_URL/forgery-probe" \
+            -H "Authorization: Bearer $PROBE_SECRET" \
+            -H "Content-Type: application/json")
+          echo "$response"
+          pass=$(echo "$response" | jq -r '.pass')
+          if [ "$pass" != "true" ]; then
+            echo "::error::Forgery probe FAILED — L5-SEC-1 audit-forgery defense NOT firing"
+            echo "$response" | jq '.asserts'
+            exit 1
+          fi
+          echo "::notice::Forgery probe OK — L5-SEC-1 defense fired (forged actor overridden with auth.uid())"
