@@ -57,22 +57,27 @@ async function saveGeofenceToDB(zone: GeoZone): Promise<void> {
   localStorage.setItem(GEOFENCE_LOCAL_KEY, JSON.stringify(local));
 
   if (!SUPABASE_CONFIG.isConfigured) return;
+  // R-1 (2026-05-13): all geofence writes go through the SECDEF
+  // upsert_geofence RPC, which pins company_id from the caller's
+  // profile/membership and rejects non-admin callers. Direct
+  // table-level writes were revoked from authenticated to prevent
+  // cross-tenant forgery.
   try {
-    await supabase.from("geofences").upsert({
-      id: zone.id,
-      name: zone.name,
-      type: zone.type,
-      center: zone.center,
-      radius: zone.radius || null,
-      points: zone.points || null,
-      risk: zone.risk,
-      status: zone.status,
-      color: zone.color,
-      locked: zone.locked,
-      visible: zone.visible,
-      alerts: zone.alerts,
-      employee_count: zone.employeeCount,
-    }, { onConflict: "id" });
+    const { error } = await supabase.rpc("upsert_geofence", {
+      p_id:      zone.id,
+      p_name:    zone.name,
+      p_type:    zone.type,
+      p_center:  zone.center,
+      p_radius:  zone.radius ?? null,
+      p_points:  zone.points ?? null,
+      p_risk:    zone.risk,
+      p_status:  zone.status,
+      p_color:   zone.color,
+      p_locked:  zone.locked,
+      p_visible: zone.visible,
+      p_alerts:  zone.alerts,
+    });
+    if (error) console.warn("[Geofence] upsert_geofence RPC failed:", error.message);
   } catch (e) {
     console.warn("[Geofence] Supabase save failed:", e);
   }
@@ -83,8 +88,11 @@ async function deleteGeofenceFromDB(id: string): Promise<void> {
   localStorage.setItem(GEOFENCE_LOCAL_KEY, JSON.stringify(local));
 
   if (!SUPABASE_CONFIG.isConfigured) return;
+  // R-1: delete goes through SECDEF delete_geofence RPC which verifies
+  // is_company_admin(row.company_id) before deleting.
   try {
-    await supabase.from("geofences").delete().eq("id", id);
+    const { error } = await supabase.rpc("delete_geofence", { p_id: id });
+    if (error) console.warn("[Geofence] delete_geofence RPC failed:", error.message);
   } catch (e) {
     console.warn("[Geofence] Supabase delete failed:", e);
   }
