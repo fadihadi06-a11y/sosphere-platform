@@ -31,16 +31,19 @@ export async function saveSensorEvent(type: "fall" | "shake", acceleration: numb
   events.unshift(event);
   localStorage.setItem("sosphere_sensor_events", JSON.stringify(events.slice(0, 200)));
 
-  // Save to Supabase
+  // Save to Supabase via the SECDEF record_sensor_event RPC. R-1
+  // (2026-05-13) closes the pre-fix cross-tenant leak by pinning
+  // user_id = auth.uid() server-side and routing all writes through
+  // the RPC (direct table grants were revoked from authenticated).
   if (SUPABASE_CONFIG.isConfigured) {
     try {
-      await supabase.from("sensor_events").insert({
-        id: event.id,
-        event_type: type,
-        acceleration,
-        detected_at: event.timestamp,
-        resolved: false,
+      const { error } = await supabase.rpc("record_sensor_event", {
+        p_id:           event.id,
+        p_event_type:   type,
+        p_acceleration: acceleration,
+        p_detected_at:  event.timestamp,
       });
+      if (error) console.warn("[Sensor] record_sensor_event RPC failed:", error.message);
     } catch (e) {
       console.warn("[Sensor] Supabase save failed:", e);
     }
