@@ -232,35 +232,70 @@ function notifyChange(evidenceId: string, action: string) {
 
   
 /**
- * L5-SEC-9 (2026-05-12): scope the evidence-changes Realtime channel
- * by the authenticated user so cross-tenant subscribers can't observe
- * other users' evidence activity. Returns null if no auth session,
- * which short-circuits both broadcast + subscribe (the localStorage
- * path still works for same-browser tabs).
+ * R-2 (2026-05-13): scope the evidence-changes Realtime channel by
+ * COMPANY (not by individual user). All authenticated members of the
+ * same company observe each other's evidence updates — that matches
+ * the dashboard's real-world use case (an admin watching their team's
+ * evidence pipeline). Cross-company subscribers cannot snoop.
+ *
+ * The company id resolves via the DB function get_my_company_id()
+ * which applies the canonical 3-tier fallback (active_company_id →
+ * single admin/owner membership → single any-role membership). Result
+ * is cached in module state to keep broadcast hot-path sync.
+ *
+ * Supersedes the L5-SEC-9 per-user band-aid (which was tighter than
+ * the actual privacy model required and broke admin observation).
  */
-function evidenceChannelName(): string | null {
+let _cachedCompanyChannel: string | null = null;
+let _cachedForUserId: string | null = null;
+
+async function resolveEvidenceChannelName(): Promise<string | null> {
   try {
     const u = getStoredUser();
-    if (!u?.id) return null;
-    return `evidence-changes:${u.id}`;
+    if (!u?.id) {
+      _cachedCompanyChannel = null;
+      _cachedForUserId = null;
+      return null;
+    }
+    // Reuse cache if same user.
+    if (_cachedForUserId === u.id && _cachedCompanyChannel) {
+      return _cachedCompanyChannel;
+    }
+    if (!isSupabaseReady()) return null;
+    const { data, error } = await supabase.rpc("get_my_company_id");
+    if (error || !data) {
+      _cachedCompanyChannel = null;
+      _cachedForUserId = u.id;
+      return null;
+    }
+    _cachedCompanyChannel = `evidence-changes:${data}`;
+    _cachedForUserId = u.id;
+    return _cachedCompanyChannel;
   } catch {
     return null;
   }
 }
 
+/** Sync getter — returns cached channel name only. Callers that need
+ * a guaranteed-fresh value should await resolveEvidenceChannelName() first. */
+function evidenceChannelName(): string | null {
+  return _cachedCompanyChannel;
+}
+
   // Supabase Realtime broadcast for cross-device sync
-  // L5-SEC-9: per-user channel scoping — closes the pre-fix global
-  // 'evidence-changes' channel that any authenticated subscriber
-  // could listen to and observe other users' activity timing + IDs.
+  // R-2 (2026-05-13): company-scoped channel — admins + members in the
+  // same company observe each other's evidence updates; cross-company
+  // subscribers are excluded. Resolves company via RPC on first call
+  // then uses the cached channel name for subsequent broadcasts.
   if (isSupabaseReady()) {
-    const name = evidenceChannelName();
-    if (name) {
+    void resolveEvidenceChannelName().then((name) => {
+      if (!name) return;
       supabase.channel(name).send({
         type: "broadcast",
         event: "evidence_update",
         payload: { evidenceId, action },
       }).catch(() => {});
-    }
+    }).catch(() => {});
   }
 }
 
@@ -519,24 +554,30 @@ export function onEvidenceChange(callback: (evidenceId: string, action: string) 
   window.addEventListener("storage", handler);
 
   // Supabase Realtime listener (cross-device)
-  // L5-SEC-9: subscribe to the per-user channel that broadcasts above
-  // emit to. If no auth session, skip — same-browser sync still works
-  // via the localStorage 'storage' event listener registered above.
+  // R-2 (2026-05-13): subscribe to the company-scoped channel. If no
+  // company can be resolved (anon, ambiguous membership), skip — the
+  // localStorage 'storage' listener still handles same-browser sync.
   let unsubRealtime: (() => void) | null = null;
+  let companyChannel: ReturnType<typeof supabase.channel> | null = null;
   if (isSupabaseReady()) {
-    try {
-      const name = evidenceChannelName();
-      if (name) {
-        const channel = supabase
+    void resolveEvidenceChannelName().then((name) => {
+      if (!name) return;
+      try {
+        companyChannel = supabase
           .channel(name)
           .on("broadcast", { event: "evidence_update" }, (payload: any) => {
             const { evidenceId, action } = payload.payload || {};
             if (evidenceId) callback(evidenceId, action);
           })
           .subscribe();
-        unsubRealtime = () => supabase.removeChannel(channel);
+      } catch {}
+    }).catch(() => {});
+    unsubRealtime = () => {
+      if (companyChannel) {
+        try { supabase.removeChannel(companyChannel); } catch {}
+        companyChannel = null;
       }
-    } catch {}
+    };
   }
 
   return () => {
