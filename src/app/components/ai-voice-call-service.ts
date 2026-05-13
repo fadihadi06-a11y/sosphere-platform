@@ -159,4 +159,7 @@ export function buildAiScriptPayload(ctx: AiScriptContext): AiScriptPayload | nu
   if (!text) return null;
   return {
     text,
- 
+    language: cfg.lang === "ar" ? "ar-SA" : "en-US",
+    voice: cfg.voice,
+  };
+}

@@ -187,7 +187,7 @@ export function logAuditEvent(
       action,
       _ts: entry.timestampMs,
     }));
-  } catch {}
+  } catch { /* localStorage unavailable / quota — telemetry pre-write fallback acceptable */ }
 
   // Fire-and-forget durable persistence. Any failure is caught, logged,
   // and the entry is stashed for a retry on the next successful write.
@@ -216,7 +216,7 @@ function saveRetryQueue(entries: AuditEntry[]): void {
       RETRY_QUEUE_KEY,
       JSON.stringify(entries.slice(0, MAX_RETRY_QUEUE)),
     );
-  } catch {}
+  } catch { /* retry queue write failed; the entry will be retried on next attempt */ }
 }
 
 /** Map an AuditEntry to the audit_log DB row shape. */
@@ -487,7 +487,7 @@ export function onAuditEvent(callback: (entry: AuditEntry) => void): () => void 
       try {
         const log = loadAuditLog();
         if (log.length > 0) callback(log[0]);
-      } catch {}
+      } catch { /* storage event payload unreadable — caller already handles missing data */ }
     }
   };
   window.addEventListener("storage", handler);
