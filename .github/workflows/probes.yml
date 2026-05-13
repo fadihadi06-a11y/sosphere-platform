@@ -1,29 +1,43 @@
 name: SOSphere Probes — Continuous Telephony Health
 
 # ═══════════════════════════════════════════════════════════════
-# L1-D Phase 3.5: continuous monitoring for the L2-F inbound SMS
-# pipeline + Twilio config drift.
+# SOSphere continuous-monitoring probes. Four jobs across two cadences:
 #
-# What this workflow does every 15 minutes:
-#   1. POST → sos-inbound-probe  → expects pass:true, all stages ok
-#   2. POST → twilio-config-probe → expects driftedCount:0
-# A non-pass / drift fails the workflow run. GitHub emails repo
-# admins on failure by default (Settings → Notifications). For
-# Slack/Discord/PagerDuty, add a webhook step below.
+# Every 15 minutes (fast-cadence drift detection):
+#   1. POST → sos-inbound-probe  → expects pass:true (L2-F inbound SMS)
+#   2. POST → twilio-config-probe → expects driftedCount:0 (webhook URLs)
+#   3. POST → forgery-probe       → expects pass:true (R-5, L5-SEC-1 defense)
+#
+# Every 6 hours (heavy-cadence end-to-end):
+#   4. POST → sos-dispatch-probe  → expects pass:true (R-4, full SOS path)
+#      Uses an intentionally-invalid contact phone so no real Twilio cost.
+#      Subject to per-tier SOS rate limits (free=3/day) — 6h cadence safe.
+#
+# A non-pass / drift fails the workflow run. GitHub emails repo admins
+# on failure by default (Settings → Notifications). For Slack/Discord/
+# PagerDuty, add a webhook step below.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   SUPA_FN_URL     e.g. https://rtfhkbskgrasamhjraul.functions.supabase.co
 #   PROBE_SECRET    the same hex secret set in Supabase env (PROBE_SECRET)
 #
-# Manual trigger: workflow_dispatch — for ad-hoc runs after a deploy.
+# Manual trigger: workflow_dispatch — runs ALL four jobs ad-hoc, useful
+# after a deploy or schema migration.
 # ═══════════════════════════════════════════════════════════════
 
 on:
   schedule:
-    # Every 15 min. Same cadence as the drift-detection latency goal:
-    # if the inbound pipeline breaks, we want to know within ~15 min,
-    # not "next time a contact happens to reply during an SOS".
+    # Every 15 min — the fast-cadence triplet (inbound, config-drift,
+    # forgery). Drift-detection latency goal: if any of these pipelines
+    # break, we want to know within ~15 min, not "next time a contact
+    # happens to reply during an SOS".
     - cron: "*/15 * * * *"
+    # Every 6 hours — the heavyweight end-to-end SOS dispatch probe.
+    # It triggers a real sos-alert call (with an invalid contact phone
+    # so no Twilio cost) and is subject to the per-tier SOS rate limit
+    # (free=3/day, basic=15/day, elite=30/day). 6h cadence = 4 runs/day,
+    # safely under even the free-tier cap.
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 # Cancel any in-flight run if a newer one starts. Prevents pile-up
@@ -41,6 +55,9 @@ jobs:
     name: Synthetic inbound-SMS pipeline probe
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    # Fast-cadence job: runs on the 15-min schedule + manual dispatch.
+    # Skipped on the 6-hour dispatch-probe schedule.
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
     steps:
       - name: Run probe + assert pass
         env:
@@ -74,6 +91,7 @@ jobs:
     name: Twilio webhook config drift probe
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
     steps:
       - name: Run probe + assert no drift
         env:
@@ -104,6 +122,7 @@ jobs:
     name: Audit forgery defense probe (R-5)
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
     steps:
       - name: Run forgery probe + assert L5-SEC-1 defense fired
         env:
@@ -134,3 +153,48 @@ jobs:
             exit 1
           fi
           echo "::notice::Forgery probe OK — L5-SEC-1 defense fired (forged actor overridden with auth.uid())"
+
+  dispatch-probe:
+    name: End-to-end SOS orchestration probe (R-4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # Heavy-cadence job: only runs on the 6-hour schedule + manual dispatch.
+    # Triggers a real sos-alert call (with an invalid contact phone so no
+    # Twilio cost) and is subject to the per-tier SOS rate limit (free=3/day,
+    # basic=15/day, elite=30/day). 6h = 4 runs/day stays under the free cap.
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 */6 * * *'
+    steps:
+      - name: Run end-to-end SOS dispatch probe + assert orchestration intact
+        env:
+          SUPA_FN_URL: ${{ secrets.SUPA_FN_URL }}
+          PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPA_FN_URL:-}" ] || [ -z "${PROBE_SECRET:-}" ]; then
+            echo "::error::Missing SUPA_FN_URL or PROBE_SECRET secret"
+            exit 2
+          fi
+          # R-4: probe triggers a synthetic SOS using an intentionally
+          # invalid E.164 phone so no real Twilio API call fires. It then
+          # asserts every layer of the orchestration is wired: sos_sessions,
+          # sos_dispatch_attempts, audit_log (trigger + end). HTTP 500 on
+          # pass:false so curl -f already exits non-zero. Rate-limited
+          # responses come back as pass:true with rate_limited:true so we
+          # don't false-alarm on cadence collisions.
+          response=$(curl -fsSL -X POST \
+            "$SUPA_FN_URL/sos-dispatch-probe" \
+            -H "Authorization: Bearer $PROBE_SECRET" \
+            -H "Content-Type: application/json")
+          echo "$response"
+          pass=$(echo "$response" | jq -r '.pass')
+          rate_limited=$(echo "$response" | jq -r '.rate_limited // false')
+          if [ "$pass" != "true" ]; then
+            echo "::error::Dispatch probe FAILED — end-to-end SOS orchestration broken"
+            echo "$response" | jq '.asserts'
+            exit 1
+          fi
+          if [ "$rate_limited" = "true" ]; then
+            echo "::notice::Dispatch probe rate-limited (cadence collision, not a regression)"
+          else
+            echo "::notice::Dispatch probe OK — full SOS orchestration verified end-to-end"
+          fi
