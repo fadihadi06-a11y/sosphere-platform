@@ -35,6 +35,7 @@ import {
 import { clientIp } from "../_shared/api-guard.ts";
 import { withDbRetry } from "../_shared/db-retry.ts";
 import { fnUrl } from "../_shared/functions-host.ts";
+import { backgroundOrAwait } from "../_shared/background-work.ts";
 
 const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -1846,8 +1847,13 @@ serve(async (req: Request) => {
     // Push to contacts (those who happen to be users on the platform)
     // is a separate enhancement — needs a phone→user_id resolver that
     // doesn't exist yet. SMS is the universal fallback.
+    // R-8 (2026-05-14): switched from `void (async () => {})()` to
+    // EdgeRuntime.waitUntil via backgroundOrAwait. The void pattern was
+    // the same one R-4b found silently dropping L2-B ledger rows — the
+    // self-confirm push was being dropped too, which is why some
+    // SOSing users never saw their confirmation toast.
     // ──────────────────────────────────────────────────────────────────
-    void (async () => {
+    await backgroundOrAwait((async () => {
       try {
         const successCount = fanoutResults.filter(
           (r: { smsSid?: string | null; callSid?: string | null }) => r.smsSid || r.callSid,
@@ -1903,7 +1909,7 @@ serve(async (req: Request) => {
         // Network glitch or function not deployed yet — never blocks SOS.
         console.warn("[sos-alert] self-confirm push threw:", err);
       }
-    })();
+    })());
 
     // ──────────────────────────────────────────────────────────────────
     // BLOCKER B fix (2026-04-30): owner fan-out push.
@@ -1915,11 +1921,16 @@ serve(async (req: Request) => {
     // critical push with the SOS details, deep-linked to the incident.
     //
     // Fire-and-forget. Failures only warn — must NEVER block SOS.
+    // R-8 (2026-05-14): switched from `void (async () => {})()` to
+    // EdgeRuntime.waitUntil via backgroundOrAwait. Same bug class as R-4b:
+    // the Deno isolate may terminate before the owner pushes complete.
+    // Without this fix, company admins sitting at their dashboard during
+    // an emergency may have silently NOT received the alert push.
     // Resolves owners via company_memberships (modern path, role='owner',
     // active=true), the same source the existing self-confirm logic
     // already uses elsewhere in this file.
     // ──────────────────────────────────────────────────────────────────
-    void (async () => {
+    await backgroundOrAwait((async () => {
       try {
         // Look up the SOSing user's active company.
         let companyIdForFanout: string | null = null;
@@ -2024,7 +2035,7 @@ serve(async (req: Request) => {
       } catch (err) {
         console.warn("[sos-alert] owner fan-out outer error (non-fatal):", err);
       }
-    })();
+    })());
 
     // FIX 2026-04-24 Fix #6: record Twilio spend to the ledger.
     // Rough estimates: SMS ≈ $0.0075, call ≈ $0.015/min.
