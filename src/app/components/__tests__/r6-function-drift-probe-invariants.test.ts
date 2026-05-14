@@ -5,24 +5,10 @@
 // correctly and the GHA workflow runs it on every push + 6-hour cron.
 //
 // Three layers of test for R-6:
-//   LAYER 1 (this file): static source-level invariants. Cheap,
-//     fast, run on every CI build.
+//   LAYER 1 (this file): static source-level invariants.
 //   LAYER 2 (script itself): live exec against the Supabase
 //     Management API, exercises every code path that detects drift.
-//   LAYER 3 (GHA): runs the script on every push + 6h cron, gates
-//     PRs from merging if drift is detected.
-//
-// What this file guards against:
-//   • A refactor that drops PAT auth (SUPABASE_ACCESS_TOKEN) — would
-//     make the script run without authentication and silently report
-//     no drift even when there is some.
-//   • A refactor that compares unnormalized source — would false-alarm
-//     on every cosmetic change (whitespace, comment edits).
-//   • A refactor that hits the wrong API endpoint or wrong project ref.
-//   • A workflow refactor that drops the push:branches:[main] trigger,
-//     removing the per-commit safety net.
-//   • An accidental removal of the allowlist file — would fail CI on
-//     every run because of the legacy sos-backend functions.
+//   LAYER 3 (GHA): runs the script on every push + 6h cron.
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -59,18 +45,52 @@ describe("R-6: check-function-drift.mjs — auth + env invariants", () => {
 
   it("sends the PAT as Bearer authorization (NOT apikey header)", () => {
     expect(scriptSrc).toMatch(/Authorization:\s*`Bearer \$\{ACCESS_TOKEN\}`/);
-    // Defensive: PAT should NOT be sent as an apikey header (that's the
-    // service_role pattern, which has different scope).
     expect(scriptSrc).not.toMatch(/apikey:\s*ACCESS_TOKEN/);
+  });
+});
+
+describe("R-6: check-function-drift.mjs — ESZIP decoding (first-run live finding)", () => {
+  // First live GHA run discovered the /body endpoint returns ESZIP (binary),
+  // not JSON. Fix added @deno/eszip + a fetchDeployedIndexSource helper.
+  it("imports the @deno/eszip Parser", () => {
+    expect(scriptSrc).toMatch(/from\s+["']@deno\/eszip["']/);
+    expect(scriptSrc).toMatch(/EszipParser|Parser as EszipParser/);
+  });
+
+  it("creates a Parser instance and calls parseBytes + load + getModuleSource", () => {
+    expect(scriptSrc).toMatch(/EszipParser\.createInstance\(\)/);
+    expect(scriptSrc).toMatch(/parser\.parseBytes\(/);
+    expect(scriptSrc).toMatch(/parser\.load\(\)/);
+    expect(scriptSrc).toMatch(/parser\.getModuleSource\(/);
+  });
+
+  it("validates the ESZIP magic bytes before parsing (fast-fail on non-ESZIP)", () => {
+    expect(scriptSrc).toMatch(/magic\s*!==\s*["']ESZIP["']/);
+    expect(scriptSrc).toMatch(/not_eszip/);
+  });
+
+  it("selects the slug-matching index.ts specifier before falling back to any index.ts", () => {
+    expect(scriptSrc).toMatch(/indexCandidates/);
+    expect(scriptSrc).toMatch(/\.includes\(`\/\$\{slug\}\/`\)/);
+  });
+
+  it("declares @deno/eszip as a devDependency in package.json", () => {
+    const pkg = JSON.parse(READ("package.json"));
+    expect(pkg.devDependencies?.["@deno/eszip"]).toBeDefined();
+  });
+
+  it("GHA job installs @deno/eszip before running the drift script", () => {
+    expect(workflowYml).toMatch(/Install @deno\/eszip/);
+    expect(workflowYml).toMatch(/npm install[^\n]*@deno\/eszip/);
   });
 });
 
 describe("R-6: check-function-drift.mjs — comparison invariants", () => {
   it("normalizes source before hashing (line endings, trailing whitespace, blank lines)", () => {
     expect(scriptSrc).toMatch(/function normalize/);
-    expect(scriptSrc).toMatch(/\\r\\n/);                    // CRLF unification
-    expect(scriptSrc).toMatch(/replace\(\/\\s\+\$\//);      // trailing whitespace
-    expect(scriptSrc).toMatch(/n\{3,\}/);                   // collapse blank-line runs
+    expect(scriptSrc).toMatch(/\\r\\n/);
+    expect(scriptSrc).toMatch(/replace\(\/\\s\+\$\//);
+    expect(scriptSrc).toMatch(/n\{3,\}/);
   });
 
   it("strips single-line // comments from both sides (symmetric normalization)", () => {
@@ -115,7 +135,6 @@ describe("R-6: check-function-drift.mjs — exit code policy", () => {
   });
 
   it("non-allowlisted foreign entrypoints + orphan deployed functions count as FAIL", () => {
-    // The exit code is `fail = drifted > 0 || unallowedForeign > 0 || unallowedOrphans > 0`
     expect(scriptSrc).toMatch(/unallowedForeign\.length\s*>\s*0/);
     expect(scriptSrc).toMatch(/unallowedOrphans\.length\s*>\s*0/);
   });
@@ -137,7 +156,7 @@ describe("R-6: allowlist file is well-formed JSON", () => {
       expect(typeof e.slug).toBe("string");
       expect(e.slug.length).toBeGreaterThan(0);
       expect(typeof e.reason).toBe("string");
-      expect(e.reason.length).toBeGreaterThan(10); // forces a meaningful reason
+      expect(e.reason.length).toBeGreaterThan(10);
     }
   });
 
@@ -167,7 +186,6 @@ describe("R-6: probes.yml workflow — trigger + filter invariants", () => {
 
   it("declares function-drift-probe job gated to push + 6h cron + workflow_dispatch", () => {
     expect(workflowYml).toMatch(/function-drift-probe:/);
-    // The if: condition must cover all three trigger paths.
     expect(workflowYml).toMatch(
       /function-drift-probe[\s\S]{0,800}github\.event_name\s*==\s*['"]push['"][\s\S]{0,200}github\.event\.schedule\s*==\s*['"]0 \*\/6 \* \* \*['"]/,
     );
@@ -184,7 +202,7 @@ describe("R-6: probes.yml workflow — trigger + filter invariants", () => {
   });
 
   it("function-drift-probe uses Node 20", () => {
-    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,800}actions\/setup-node@v4[\s\S]{0,100}node-version:\s*["']?20/);
+    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1200}actions\/setup-node@v4[\s\S]{0,200}node-version:\s*["']?20/);
   });
 
   it("function-drift-probe has a 5-minute timeout (drift script does N+1 API calls)", () => {

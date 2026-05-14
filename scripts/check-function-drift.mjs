@@ -52,6 +52,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { Parser as EszipParser } from "@deno/eszip";
 
 const ROOT = path.resolve(process.cwd());
 const FUNCTIONS_DIR = path.join(ROOT, "supabase", "functions");
@@ -107,6 +108,78 @@ async function mgmt(pathSuffix) {
     throw new Error(`Supabase Management API ${pathSuffix} returned ${res.status}: ${body.slice(0, 200)}`);
   }
   return res.json();
+}
+
+/** Fetch deployed source for a function slug by decoding the ESZIP bundle.
+ *  Supabase's /v1/projects/{ref}/functions/{slug}/body endpoint returns the
+ *  function's source as a binary ESZIP archive (Deno's bundled-module format),
+ *  NOT plain JSON. The MCP get_edge_function tool decodes ESZIP server-side
+ *  before returning JSON; the raw Management API leaves it as bytes, so we
+ *  decode locally via @deno/eszip.
+ *
+ *  Returns: the text content of the index.ts entrypoint, or null + a reason
+ *  for skipping if the bundle is malformed / has no detectable entrypoint. */
+async function fetchDeployedIndexSource(slug) {
+  const url = `${MGMT_BASE}/projects/${PROJECT_REF}/functions/${slug}/body`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    return { source: null, error: `body_http_${res.status}`, detail: body.slice(0, 200) };
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length < 8) {
+    return { source: null, error: "body_too_short", detail: `len=${bytes.length}` };
+  }
+  // Sanity: ESZIP files start with "ESZIP" magic. Other shapes mean Supabase
+  // changed the API or returned an error envelope without a 4xx/5xx code.
+  const magic = new TextDecoder().decode(bytes.slice(0, 5));
+  if (magic !== "ESZIP") {
+    return { source: null, error: "not_eszip", detail: `magic=${JSON.stringify(magic)}` };
+  }
+
+  let parser;
+  try {
+    parser = await EszipParser.createInstance();
+  } catch (e) {
+    return { source: null, error: "eszip_init_failed", detail: String(e).slice(0, 200) };
+  }
+  try {
+    await parser.parseBytes(bytes);
+    const specifiers = await parser.load();
+    if (!Array.isArray(specifiers) || specifiers.length === 0) {
+      return { source: null, error: "no_specifiers_in_eszip", detail: "" };
+    }
+    // Find the index.ts entrypoint. Supabase deployments have a variety of
+    // prefix paths depending on the upload method:
+    //   /tmp/user_fn_<id>_<ver>/source/index.ts
+    //   /tmp/user_fn_<id>_<ver>/source/supabase/functions/<slug>/index.ts
+    //   /tmp/user_fn_<id>_<ver>/source/functions/<slug>/index.ts
+    //   file:///Users/.../sos-backend/supabase/functions/<slug>/index.ts
+    // Strategy: prefer a specifier whose basename is exactly "index.ts" AND
+    // contains the slug in its path. Fall back to any "index.ts" if the slug
+    // isn't in any path (some legacy deployments don't include the slug).
+    const indexCandidates = specifiers.filter(
+      (s) => typeof s === "string" && /\/index\.ts$/.test(s),
+    );
+    const slugMatch = indexCandidates.find((s) => s.includes(`/${slug}/`));
+    const chosen = slugMatch || indexCandidates[0] || null;
+    if (!chosen) {
+      return {
+        source: null,
+        error: "no_index_ts_in_eszip",
+        detail: `specifiers=${specifiers.slice(0, 5).join(", ")}`,
+      };
+    }
+    const src = await parser.getModuleSource(chosen);
+    if (typeof src !== "string" || src.length === 0) {
+      return { source: null, error: "empty_source", detail: `specifier=${chosen}` };
+    }
+    return { source: src, specifier: chosen, error: null };
+  } catch (e) {
+    return { source: null, error: "eszip_parse_failed", detail: String(e).slice(0, 200) };
+  }
 }
 
 /** Read the allowlist file if present. Returns a Map<slug, reason>. */
@@ -189,33 +262,22 @@ async function main() {
       continue;
     }
 
-    // Fetch deployed body for hash comparison.
-    let body;
-    try {
-      body = await mgmt(`/projects/${PROJECT_REF}/functions/${slug}/body`);
-    } catch (e) {
-      console.warn(`[drift] could not fetch body for ${slug}: ${e.message}`);
-      report.drifted.push({ slug, version: fn.version, reason: "body_fetch_failed", detail: e.message });
-      continue;
-    }
-
-    // Find the index.ts file in the deployed bundle. Supabase wraps the
-    // deployed source under different prefix paths depending on how the
-    // function was uploaded (CLI vs MCP). We look for any file whose
-    // basename is "index.ts" — there should be exactly one entrypoint.
-    const indexFile = Array.isArray(body?.files)
-      ? body.files.find((f) => path.basename(f.name) === "index.ts")
-      : null;
-    if (!indexFile || typeof indexFile.content !== "string") {
+    // Fetch + decode deployed ESZIP. The /body endpoint returns a binary
+    // ESZIP archive (not JSON); fetchDeployedIndexSource handles the decode
+    // and surfaces the entrypoint source.
+    const fetched = await fetchDeployedIndexSource(slug);
+    if (fetched.error) {
+      console.warn(`[drift] could not extract index.ts for ${slug}: ${fetched.error} (${fetched.detail})`);
       report.drifted.push({
-        slug, version: fn.version, reason: "no_index_ts_in_deployment",
-        detail: `files=${(body?.files || []).map((f) => f.name).join(",")}`,
+        slug, version: fn.version,
+        reason: fetched.error,
+        detail: fetched.detail,
       });
       continue;
     }
 
     const localSrc = fs.readFileSync(path.join(FUNCTIONS_DIR, slug, "index.ts"), "utf8");
-    const deployedNorm = normalize(indexFile.content);
+    const deployedNorm = normalize(fetched.source);
     const localNorm    = normalize(localSrc);
     const deployedHash = sha256(deployedNorm);
     const localHash    = sha256(localNorm);
