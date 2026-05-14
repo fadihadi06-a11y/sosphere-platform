@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "audit:check": "npm audit --audit-level=high",
     "postinstall": "node scripts/fix-capacitor-gradle.cjs",
-    "verify": "node scripts/verify-before-push.mjs"
+    "verify": "node scripts/verify-before-push.mjs",
+    "drift:update": "node scripts/check-function-drift.mjs --update-manifest"
   },
   "overrides": {
     "dompurify": "^3.4.2"
@@ -100,7 +101,6 @@
     "@capacitor/android": "^6.2.1",
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
-    "@deno/eszip": "^0.106.0",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
