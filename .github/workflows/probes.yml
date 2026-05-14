@@ -238,13 +238,6 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install @deno/eszip (only — full install is unnecessary)
-        # The drift script needs @deno/eszip to decode the binary ESZIP bundle
-        # returned by Supabase's /v1/projects/{ref}/functions/{slug}/body
-        # endpoint. We don't need the rest of the dev dependencies here — a
-        # targeted install keeps the job lean (~30s vs ~3m for full npm ci).
-        run: npm install --no-save --no-audit --no-fund @deno/eszip@^0.106.0
-
       - name: Run function-drift detector
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

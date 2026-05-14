@@ -1,13 +1,18 @@
 // ═══════════════════════════════════════════════════════════════
 // R-6 (2026-05-14) — deployed-vs-git function drift probe invariants
 // ─────────────────────────────────────────────────────────────
-// Locks the contract that scripts/check-function-drift.mjs is wired
-// correctly and the GHA workflow runs it on every push + 6-hour cron.
+// AFTER live-run-3 pivot, R-6 no longer attempts byte-for-byte source
+// comparison. Supabase CLI transpiles TS→JS + bundles imports before
+// deploy, so deployed source never matches local source byte-equal.
 //
-// Three layers of test for R-6:
+// Current design: pin Supabase's published `ezbr_sha256` (canonical
+// fingerprint of the deployed bundle) into a manifest file. R-6 --check
+// compares live ezbr vs pinned ezbr. Mismatch = someone deployed without
+// updating the manifest (or via Studio UI, or from another machine).
+//
+// LAYERS
 //   LAYER 1 (this file): static source-level invariants.
-//   LAYER 2 (script itself): live exec against the Supabase
-//     Management API, exercises every code path that detects drift.
+//   LAYER 2 (script): live exec against Supabase Management API.
 //   LAYER 3 (GHA): runs the script on every push + 6h cron.
 // ═══════════════════════════════════════════════════════════════
 
@@ -49,66 +54,45 @@ describe("R-6: check-function-drift.mjs — auth + env invariants", () => {
   });
 });
 
-describe("R-6: check-function-drift.mjs — ESZIP decoding (first-run live finding)", () => {
-  // First live GHA run discovered the /body endpoint returns ESZIP (binary),
-  // not JSON. Fix added @deno/eszip + a fetchDeployedIndexSource helper.
-  it("imports the @deno/eszip Parser", () => {
-    expect(scriptSrc).toMatch(/from\s+["']@deno\/eszip["']/);
-    expect(scriptSrc).toMatch(/EszipParser|Parser as EszipParser/);
+describe("R-6: ezbr_sha256 manifest-based comparison (post-pivot)", () => {
+  it("uses `ezbr_sha256` field from /projects/{ref}/functions metadata", () => {
+    expect(scriptSrc).toMatch(/ezbr_sha256/);
+    expect(scriptSrc).toMatch(/\/projects\/\$\{[^}]+\}\/functions/);
   });
 
-  it("creates a Parser instance and calls parseBytes + load + getModuleSource", () => {
-    expect(scriptSrc).toMatch(/EszipParser\.createInstance\(\)/);
-    expect(scriptSrc).toMatch(/parser\.parseBytes\(/);
-    expect(scriptSrc).toMatch(/parser\.load\(\)/);
-    expect(scriptSrc).toMatch(/parser\.getModuleSource\(/);
+  it("does NOT decode ESZIP bundles (deliberately pivoted away from byte-compare)", () => {
+    expect(scriptSrc).not.toMatch(/@deno\/eszip/);
+    expect(scriptSrc).not.toMatch(/EszipParser/);
+    expect(scriptSrc).not.toMatch(/parseBytes/);
   });
 
-  it("validates the ESZIP magic bytes before parsing (fast-fail on non-ESZIP)", () => {
-    expect(scriptSrc).toMatch(/magic\s*!==\s*["']ESZIP["']/);
-    expect(scriptSrc).toMatch(/not_eszip/);
+  it("reads the manifest file from supabase/functions/.deploy-manifest.json", () => {
+    expect(scriptSrc).toMatch(/\.deploy-manifest\.json/);
+    expect(scriptSrc).toMatch(/MANIFEST_FILE/);
   });
 
-  it("selects the slug-matching index.ts specifier before falling back to any index.ts", () => {
-    expect(scriptSrc).toMatch(/indexCandidates/);
-    expect(scriptSrc).toMatch(/\.includes\(`\/\$\{slug\}\/`\)/);
+  it("supports --update-manifest mode to regenerate the manifest from live state", () => {
+    expect(scriptSrc).toMatch(/--update-manifest/);
+    expect(scriptSrc).toMatch(/MODE\s*=.*update/);
   });
 
-  it("declares @deno/eszip as a devDependency in package.json", () => {
-    const pkg = JSON.parse(READ("package.json"));
-    expect(pkg.devDependencies?.["@deno/eszip"]).toBeDefined();
+  it("--update-manifest writes ezbr + version + pinned_at per entry", () => {
+    expect(scriptSrc).toMatch(/ezbr:\s+fn\.ezbr_sha256/);
+    expect(scriptSrc).toMatch(/version:\s+fn\.version/);
+    expect(scriptSrc).toMatch(/pinned_at:/);
   });
 
-  it("GHA job installs @deno/eszip before running the drift script", () => {
-    expect(workflowYml).toMatch(/Install @deno\/eszip/);
-    expect(workflowYml).toMatch(/npm install[^\n]*@deno\/eszip/);
-  });
-});
-
-describe("R-6: check-function-drift.mjs — comparison invariants", () => {
-  it("normalizes source before hashing (line endings, trailing whitespace, blank lines)", () => {
-    expect(scriptSrc).toMatch(/function normalize/);
-    expect(scriptSrc).toMatch(/\\r\\n/);
-    expect(scriptSrc).toMatch(/replace\(\/\\s\+\$\//);
-    expect(scriptSrc).toMatch(/n\{3,\}/);
-  });
-
-  it("strips single-line // comments from both sides (symmetric normalization)", () => {
-    expect(scriptSrc).toMatch(/\/\^\\s\*\\\/\\\/\[\^\\n\]\*\$\//);
-  });
-
-  it("uses SHA-256 for the hash comparison", () => {
-    expect(scriptSrc).toMatch(/crypto\.createHash\(\s*["']sha256["']\s*\)/);
-  });
-
-  it("compares deployed body via /projects/{ref}/functions/{slug}/body endpoint", () => {
-    expect(scriptSrc).toMatch(/\/projects\/\$\{[^}]+\}\/functions\/\$\{[^}]+\}\/body/);
+  it("--check compares pinned.ezbr to fn.ezbr_sha256 (exact-string match)", () => {
+    expect(scriptSrc).toMatch(/pinned\.ezbr\s*===\s*fn\.ezbr_sha256/);
   });
 });
 
 describe("R-6: check-function-drift.mjs — report categories", () => {
-  it("categorizes results into in_sync / drifted / orphan_deployed / orphan_local / foreign_entrypoint", () => {
-    for (const cat of ["in_sync", "drifted", "orphan_deployed", "orphan_local", "foreign_entrypoint"]) {
+  it("categorizes into in_sync / drifted / orphan_deployed / orphan_local / foreign_entrypoint / missing_from_manifest", () => {
+    for (const cat of [
+      "in_sync", "drifted", "orphan_deployed", "orphan_local",
+      "foreign_entrypoint", "missing_from_manifest",
+    ]) {
       expect(scriptSrc).toMatch(new RegExp(`report\\.${cat}`));
     }
   });
@@ -125,7 +109,7 @@ describe("R-6: check-function-drift.mjs — report categories", () => {
   });
 });
 
-describe("R-6: check-function-drift.mjs — exit code policy", () => {
+describe("R-6: exit code policy", () => {
   it("exits 1 on drift (so curl/GHA detects failure)", () => {
     expect(scriptSrc).toMatch(/process\.exit\(\s*fail\s*\?\s*1\s*:\s*0\s*\)/);
   });
@@ -134,13 +118,10 @@ describe("R-6: check-function-drift.mjs — exit code policy", () => {
     expect(scriptSrc).toMatch(/process\.exit\(\s*2\s*\)/);
   });
 
-  it("non-allowlisted foreign entrypoints + orphan deployed functions count as FAIL", () => {
+  it("drifted + missing_from_manifest + non-allowlisted foreign all count as FAIL", () => {
+    expect(scriptSrc).toMatch(/report\.drifted\.length\s*>\s*0/);
+    expect(scriptSrc).toMatch(/report\.missing_from_manifest\.length\s*>\s*0/);
     expect(scriptSrc).toMatch(/unallowedForeign\.length\s*>\s*0/);
-    expect(scriptSrc).toMatch(/unallowedOrphans\.length\s*>\s*0/);
-  });
-
-  it("orphan_local is a warning (still exit 0) — a new function not yet deployed is normal", () => {
-    expect(scriptSrc).toMatch(/orphan_local.*WARN.*still exit 0/i);
   });
 });
 
@@ -150,7 +131,7 @@ describe("R-6: allowlist file is well-formed JSON", () => {
     expect(parsed.entries).toBeInstanceOf(Array);
   });
 
-  it("every entry has a slug + reason", () => {
+  it("every entry has a slug + reason of meaningful length", () => {
     const parsed = JSON.parse(allowlistJson);
     for (const e of parsed.entries) {
       expect(typeof e.slug).toBe("string");
@@ -160,7 +141,7 @@ describe("R-6: allowlist file is well-formed JSON", () => {
     }
   });
 
-  it("includes the 7 known legacy sos-backend / ops-probe slugs (so CI doesn't false-alarm)", () => {
+  it("includes the 7 known legacy sos-backend / ops-probe slugs", () => {
     const parsed = JSON.parse(allowlistJson);
     const slugs = new Set(parsed.entries.map((e: { slug: string }) => e.slug));
     for (const s of [
@@ -178,7 +159,7 @@ describe("R-6: allowlist file is well-formed JSON", () => {
 });
 
 describe("R-6: probes.yml workflow — trigger + filter invariants", () => {
-  it("declares the push trigger on main (paths-filtered to function + script changes)", () => {
+  it("declares the push trigger on main (paths-filtered)", () => {
     expect(workflowYml).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
     expect(workflowYml).toMatch(/paths:\s*\n[\s\S]{0,300}supabase\/functions\/\*\*/);
     expect(workflowYml).toMatch(/scripts\/check-function-drift\.mjs/);
@@ -205,11 +186,24 @@ describe("R-6: probes.yml workflow — trigger + filter invariants", () => {
     expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1200}actions\/setup-node@v4[\s\S]{0,200}node-version:\s*["']?20/);
   });
 
-  it("function-drift-probe has a 5-minute timeout (drift script does N+1 API calls)", () => {
+  it("function-drift-probe has a 5-minute timeout", () => {
     expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,300}timeout-minutes:\s*5/);
   });
 
   it("workflow comment mentions FIVE jobs across THREE cadences", () => {
     expect(workflowYml).toMatch(/Five jobs across three cadences/);
+  });
+});
+
+describe("R-6: package.json + supporting files", () => {
+  it("provides a `drift:update` npm script for refreshing the manifest after deploy", () => {
+    const pkg = JSON.parse(READ("package.json"));
+    expect(pkg.scripts["drift:update"]).toMatch(/--update-manifest/);
+  });
+
+  it("does NOT keep @deno/eszip as a dependency (no longer needed after pivot)", () => {
+    const pkg = JSON.parse(READ("package.json"));
+    const all = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+    expect(all["@deno/eszip"]).toBeUndefined();
   });
 });
