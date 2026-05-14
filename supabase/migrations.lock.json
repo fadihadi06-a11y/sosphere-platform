@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-14T06:02:45.343Z",
-  "total_migrations": 122,
-  "manifest_sha256": "25d21083970adfba02ae7e33701c3401fd6b05b675ef18d90859b3be1fadb182",
+  "generated_at": "2026-05-14T23:54:46.386Z",
+  "total_migrations": 123,
+  "manifest_sha256": "98aec3cffd1d4eaa49dc7fa92ab52839d2f37e6af364e5591ccfdd6ec472118c",
   "migrations": [
     {
       "version": "20260415",
@@ -856,6 +856,13 @@
       "file": "20260513200000_r4a_sos_sessions_missing_columns.sql",
       "sha256": "5de1667c75e3f70a166b58d6fe2a234c48ab739ae42f40289aa746ab2e06f7c7",
       "bytes": 5230
+    },
+    {
+      "version": "20260514230000",
+      "name": "r12_secdef_grant_lockdown",
+      "file": "20260514230000_r12_secdef_grant_lockdown.sql",
+      "sha256": "01084cf12593a14a6edb79146f61e61f521e365805745e936c6b813538e80498",
+      "bytes": 4177
     }
   ]
 }
