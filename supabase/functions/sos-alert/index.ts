@@ -1950,7 +1950,13 @@ serve(async (req: Request) => {
               .maybeSingle();
             companyIdForFanout = prof?.active_company_id ?? null;
           }
-        } catch (_) { /* best-effort */ }
+        } catch (e) {
+          // R-9 (2026-05-14): was silent `catch (_) {}` — promoted to a
+          // logged warn so a real DB failure here surfaces in edge logs
+          // instead of vanishing. Behavior unchanged (still non-throwing
+          // best-effort — we want owner fan-out to be opportunistic).
+          console.warn("[sos-alert] owner fan-out: company lookup failed (non-fatal):", e);
+        }
 
         if (!companyIdForFanout) {
           // Civilian SOS or unresolved company — no fan-out needed.
@@ -1988,7 +1994,12 @@ serve(async (req: Request) => {
             .maybeSingle();
           const trimmed = (empName?.name || "").trim();
           if (trimmed) employeeLabel = trimmed;
-        } catch (_) { /* best-effort */ }
+        } catch (e) {
+          // R-9: was silent — now logged. Falls back to "An employee"
+          // (employeeLabel default). Push body still useful even when
+          // the name lookup fails.
+          console.warn("[sos-alert] owner fan-out: employee name lookup failed (non-fatal):", e);
+        }
 
         const ownerTitle = `🚨 SOS — ${employeeLabel}`;
         const ownerBody = `An emergency was triggered. Tap to open the live incident.`;
