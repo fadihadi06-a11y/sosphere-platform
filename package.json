@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "audit:check": "npm audit --audit-level=high",
-    "postinstall": "node scripts/fix-capacitor-gradle.cjs"
+    "postinstall": "node scripts/fix-capacitor-gradle.cjs",
+    "verify": "node scripts/verify-before-push.mjs"
   },
   "overrides": {
     "dompurify": "^3.4.2"
