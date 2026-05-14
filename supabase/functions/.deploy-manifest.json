@@ -129,9 +129,9 @@
       "pinned_at": "2026-05-14T23:16:39.484231Z"
     },
     "sos-dispatch-probe": {
-      "ezbr": "378ce8b9e645f7544ded041ba9563b7f8a786bdbbf19f402b284a54226e1ce1f",
-      "version": 3,
-      "pinned_at": "2026-05-14T23:16:39.484231Z"
+      "ezbr": "c6825803b200c9a97761b822d50d27747c8cb3723f022816bab5410a6bb41ef7",
+      "version": 4,
+      "pinned_at": "2026-05-14T23:27:48.569509Z"
     }
   }
 }

@@ -84,8 +84,13 @@ describe("R-4: sos-dispatch-probe — cost-safety invariants", () => {
     expect(probeSrc).not.toMatch(/`probe-dispatch-\$\{/);
   });
 
-  it("reuses the forgery-probe identity (no new auth.users rows per probe)", () => {
-    expect(probeSrc).toMatch(/forgery-probe@sosphere\.internal/);
+  it("uses its own dedicated probe-user identity (R-10: no race with forgery-probe)", () => {
+    // Pre-R-10 both probes shared forgery-probe@sosphere.internal — when run
+    // in parallel via workflow_dispatch, each probe's admin.updateUserById
+    // password write stomped the other's, leaving one with a stale password
+    // and a 500 on sign-in. Dedicated identities eliminate the race.
+    expect(probeSrc).toMatch(/sos-dispatch-probe@sosphere\.internal/);
+    expect(probeSrc).not.toMatch(/PROBE_USER_EMAIL\s*=\s*["']forgery-probe@/);
   });
 
   it("includes silent:true so any client-side UI hooks stay quiet", () => {
