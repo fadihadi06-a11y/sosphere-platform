@@ -72,10 +72,14 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Reuse the same probe-user identity as forgery-probe so we don't
-// accumulate auth.users rows. Both probes are read/write isolated by
-// emergencyId / action prefix.
-const PROBE_USER_EMAIL = "forgery-probe@sosphere.internal";
+// R-10 (2026-05-14): use a DEDICATED probe-user identity. Previously this
+// probe shared "forgery-probe@sosphere.internal" with forgery-probe to avoid
+// accumulating auth.users rows. But when workflow_dispatch fires both probes
+// in parallel, they each call admin.updateUserById with a fresh random
+// password before signing in — one probe's password write overwrites the
+// other's, and the loser's sign-in fails with HTTP 500. Each probe now uses
+// its own user so the password rotations don't collide.
+const PROBE_USER_EMAIL = "sos-dispatch-probe@sosphere.internal";
 
 /** Constant-time string compare for the bearer-token check. Mirrors the
  *  forgery-probe / twilio-config-probe helper so a future audit of
@@ -443,7 +447,7 @@ serve(async (req) => {
     cleanup,
     generatedAt: new Date().toISOString(),
     note: pass
-      ? "End-to-end SOS orchestration verified: trigger → sos_sessions → dispatch_attempts → audit_log → end → audit_log all wired correctly."
+      ? "End-to-end SOS orchestration verified."
       : "FAIL — at least one end-to-end SOS orchestration assertion failed. See asserts{} for the specific gap.",
   }, pass ? 200 : 500, corsHeaders);
 });
