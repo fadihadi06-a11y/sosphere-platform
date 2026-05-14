@@ -146,8 +146,13 @@ async function fetchDeployedIndexSource(slug) {
     return { source: null, error: "eszip_init_failed", detail: String(e).slice(0, 200) };
   }
   try {
-    await parser.parseBytes(bytes);
-    const specifiers = await parser.load();
+    // parseBytes returns the specifier list. load() must then be called
+    // before getModuleSource() works. R-6 first live run (2026-05-14)
+    // discovered we had the calls swapped — load() returned void, so the
+    // "specifiers" array was empty, falsely reporting drift on all 25
+    // functions. Fixed by reading the specifier list from parseBytes.
+    const specifiers = await parser.parseBytes(bytes);
+    await parser.load();
     if (!Array.isArray(specifiers) || specifiers.length === 0) {
       return { source: null, error: "no_specifiers_in_eszip", detail: "" };
     }
