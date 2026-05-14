@@ -9,8 +9,8 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Fingerprint, X, Shield, CheckCircle2, AlertTriangle,
-  Eye, EyeOff, Lock,
+  Fingerprint, X, CheckCircle2, AlertTriangle,
+  EyeOff, Lock,
 } from "lucide-react";
 import {
   checkBiometricAvailability,
