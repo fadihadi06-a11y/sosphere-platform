@@ -62,6 +62,18 @@ function IncomingCallOverlay({ signal, onDismiss }: IncomingCallOverlayProps) {
   const callStateRef = useRef<IncomingCallState>("ringing");
   const ringStartRef = useRef(Date.now());
 
+  // R-11 (2026-05-14): defense-in-depth unmount-only cleanup. The component
+  // explicitly calls voiceUnsubRef.current() in handleDecline / handleEndCall /
+  // auto-miss handlers, but if the admin navigates away (e.g. tapping another
+  // dashboard tab) DURING an active call without using one of those buttons,
+  // the voiceCallEngine subscription would leak and the dead callback would
+  // try to setVoiceInfo on an unmounted component (React warns). This
+  // dedicated unmount useEffect ensures the unsub fires exactly once
+  // regardless of how the component exits the tree.
+  useEffect(() => () => {
+    if (voiceUnsubRef.current) { voiceUnsubRef.current(); voiceUnsubRef.current = null; }
+  }, []);
+
   // Auto-miss after 30s
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -509,6 +521,16 @@ function OutgoingCallbackOverlay({ signal, onDismiss }: { signal: CallSignal; on
   const voiceUnsubRef = useRef<(() => void) | null>(null);
   const endedRef = useRef(false);
   const initials = signal.employeeName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+
+  // R-11 (2026-05-14): unmount-only cleanup mirrors the same pattern as
+  // IncomingCallOverlay (above). The Twilio-dial useEffect at line ~523
+  // calls voiceCallEngine.subscribe inside an async IIFE, then returns
+  // only `cancelled = true;` — no voiceUnsubRef.current() call. If the
+  // admin navigates away mid-dial, the subscription leaks. This dedicated
+  // unmount effect closes that gap.
+  useEffect(() => () => {
+    if (voiceUnsubRef.current) { voiceUnsubRef.current(); voiceUnsubRef.current = null; }
+  }, []);
 
   // ──────────────────────────────────────────────────────────────────
   // G-5 (B-20, 2026-04-26): replace setTimeout simulation with a REAL
