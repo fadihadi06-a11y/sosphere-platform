@@ -11,11 +11,11 @@ import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import {
   Mail, Clock, Calendar, Users, FileText, CheckCircle2,
   X, Plus, Trash2, Shield, Send,
-  ChevronRight, Settings, Target, Star,
-  RotateCcw, Eye, Sparkles, Timer,
+  ChevronRight, Target, Star,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import { hapticSuccess, playUISound } from "./haptic-feedback";
+import { playUISound } from "./haptic-feedback";
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -408,7 +408,7 @@ function CreateScheduleModal({ onClose, onSave }: { onClose: () => void; onSave:
 // Main Batch Email Scheduler
 // ═══════════════════════════════════════════════════════════════
 
-export function BatchEmailScheduler({ t, webMode, onGenerateReport }: { t: (k: string) => string; webMode?: boolean; onGenerateReport?: (reportTypes: string[]) => void }) {
+export function BatchEmailScheduler({ t: _t, webMode: _webMode, onGenerateReport }: { t: (k: string) => string; webMode?: boolean; onGenerateReport?: (reportTypes: string[]) => void }) {
   const [schedules, setSchedules] = useState<ScheduledReport[]>(loadSchedules());
   const [showCreate, setShowCreate] = useState(false);
 

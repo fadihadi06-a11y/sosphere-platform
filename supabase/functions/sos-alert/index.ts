@@ -2161,4 +2161,39 @@ serve(async (req: Request) => {
           location,
           contacts: contacts.map(c => c.name),
           zone,
-     
+          ts: Date.now(),
+        },
+      });
+      console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
+      setTimeout(() => supabase.removeChannel(ch), 2000);
+    } catch (e) {
+      console.warn("[sos-alert] Realtime broadcast failed:", e);
+    }
+
+    const triggerBody = {
+      success: true,
+      emergencyId,
+      tier,
+      results: fanoutResults,
+      trackUrl,
+      dashUrl,
+    };
+    // B-C4/B-H1: persist response for Idempotency-Key retries.
+    if (triggerIdemKey) {
+      await storeIdempotency(supabase, "sos-alert:trigger", triggerIdemKey, 200, triggerBody);
+    }
+    return new Response(JSON.stringify(triggerBody), {
+      status: 200,
+      headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[sos-alert] Unhandled error:", err);
+    return new Response(JSON.stringify({
+      error: "Internal error",
+      detail: err instanceof Error ? err.message : String(err),
+    }), {
+      status: 500,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+});

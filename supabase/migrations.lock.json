@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-13T14:02:41.994Z",
-  "total_migrations": 121,
-  "manifest_sha256": "b06816616a37be762b5bf62b15262093ef510486887198edcd796bbe50b48113",
+  "generated_at": "2026-05-14T06:02:45.343Z",
+  "total_migrations": 122,
+  "manifest_sha256": "25d21083970adfba02ae7e33701c3401fd6b05b675ef18d90859b3be1fadb182",
   "migrations": [
     {
       "version": "20260415",
@@ -849,6 +849,13 @@
       "file": "20260513130000_r2_get_my_company_id_resolver.sql",
       "sha256": "ac03b4d65032ef80cf3e62ed3aef03facde44f05d410e24141521f5234d01361",
       "bytes": 2986
+    },
+    {
+      "version": "20260513200000",
+      "name": "r4a_sos_sessions_missing_columns",
+      "file": "20260513200000_r4a_sos_sessions_missing_columns.sql",
+      "sha256": "5de1667c75e3f70a166b58d6fe2a234c48ab739ae42f40289aa746ab2e06f7c7",
+      "bytes": 5230
     }
   ]
 }

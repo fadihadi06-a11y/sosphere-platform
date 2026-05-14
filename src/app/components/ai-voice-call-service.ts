@@ -105,7 +105,7 @@ export function setAiVoiceScript(patch: Partial<AiVoiceScriptSettings>): AiVoice
 }
 
 export function resetAiVoiceScript(): AiVoiceScriptSettings {
-  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* localStorage unavailable — already-in-memory state is fine */ }
   return { ...DEFAULTS };
 }
 
