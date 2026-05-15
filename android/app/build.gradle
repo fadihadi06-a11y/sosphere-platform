@@ -69,6 +69,13 @@ if (releaseSigning != null) {
     logger.warn("[SOSphere] Release signing NOT configured. Release builds will be unsigned. Run scripts/release-signing.sh to generate a keystore.")
 }
 
+// R-16 (2026-05-15): APK versioning from CI env vars (resolved once,
+// referenced inside android.defaultConfig). Java-style construction avoids
+// the Groovy-DSL parsing ambiguity of `versionCode (expr).toInteger()`.
+def __apkVersionCode = Integer.parseInt(System.getenv("APK_VERSION_CODE") ?: "1")
+def __apkVersionName = System.getenv("APK_VERSION_NAME") ?: "1.0"
+logger.lifecycle("[SOSphere] APK versionCode=${__apkVersionCode} versionName=${__apkVersionName}")
+
 android {
     namespace = "com.sosphere.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -76,14 +83,11 @@ android {
         applicationId "com.sosphere.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // R-16 (2026-05-15): versionCode + versionName read from CI env vars.
-        // Before R-16, both were hardcoded → every APK CI built had versionCode 1,
-        // so Android refused to install a "new" build over an "old" one without
-        // an explicit uninstall. APK_VERSION_CODE is GITHUB_RUN_NUMBER in CI,
-        // and APK_VERSION_NAME is "1.0.<run>" — both gracefully fall back to
-        // the v1.0 baseline for local builds where the env vars aren't set.
-        versionCode (System.getenv("APK_VERSION_CODE") ?: "1").toInteger()
-        versionName System.getenv("APK_VERSION_NAME") ?: "1.0"
+        // R-16 (2026-05-15): versionCode + versionName read from CI env vars
+        // (see __apkVersionCode / __apkVersionName resolution at top of file).
+        // Before R-16, both were hardcoded → every APK CI built had versionCode 1.
+        versionCode __apkVersionCode
+        versionName __apkVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -136,13 +136,23 @@ describe("R-16 F-B: build-apk.yml injects all required VITE_* env vars", () => {
 });
 
 describe("R-16 F-C: versionCode + versionName flow from CI run number", () => {
-  it("build.gradle reads APK_VERSION_CODE from env with fallback", () => {
-    expect(buildGradle).toMatch(/System\.getenv\(\s*["']APK_VERSION_CODE["']\s*\)/);
-    expect(buildGradle).toMatch(/versionCode\s*\(\s*System\.getenv[\s\S]{0,80}\?:\s*["']1["']\s*\)\.toInteger\(\)/);
+  it("build.gradle resolves APK_VERSION_CODE into __apkVersionCode at top of file", () => {
+    // Resolution must happen OUTSIDE android.defaultConfig — putting
+    // `versionCode (expr).toInteger()` inline triggers a Groovy DSL parsing
+    // ambiguity that fails with "Value is null" on CI (root cause of the
+    // first R-16 build failure). Java-style Integer.parseInt is unambiguous.
+    expect(buildGradle).toMatch(/def\s+__apkVersionCode\s*=\s*Integer\.parseInt\(\s*System\.getenv\(\s*["']APK_VERSION_CODE["']\s*\)\s*\?:\s*["']1["']\s*\)/);
+    expect(buildGradle).toMatch(/def\s+__apkVersionName\s*=\s*System\.getenv\(\s*["']APK_VERSION_NAME["']\s*\)\s*\?:\s*["']1\.0["']/);
   });
 
-  it("build.gradle reads APK_VERSION_NAME from env with fallback", () => {
-    expect(buildGradle).toMatch(/versionName\s*System\.getenv\(\s*["']APK_VERSION_NAME["']\s*\)\s*\?:\s*["']1\.0["']/);
+  it("build.gradle's defaultConfig references the resolved variables (no inline parser-ambiguous expression)", () => {
+    // Inside defaultConfig — simple `versionCode __apkVersionCode` reference.
+    // No parens-after-method-name pattern that Groovy mis-parses.
+    expect(buildGradle).toMatch(/versionCode\s+__apkVersionCode/);
+    expect(buildGradle).toMatch(/versionName\s+__apkVersionName/);
+    // Regression guard: no inline `(System.getenv(...) ?: "1").toInteger()`
+    // pattern inside defaultConfig. The previous form was the bug.
+    expect(buildGradle).not.toMatch(/versionCode\s*\(\s*System\.getenv[\s\S]{0,80}\?:\s*["']1["']\s*\)\.toInteger\(\)/);
   });
 
   it("build-apk.yml passes APK_VERSION_CODE = github.run_number to the gradle step", () => {
