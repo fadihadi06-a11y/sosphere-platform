@@ -20,11 +20,25 @@ const SUPA_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function verifyStripeSignature(body: string, sigHeader: string, secret: string): Promise<boolean> {
   try {
-    const parts = Object.fromEntries(
-      sigHeader.split(",").map((s) => { const [k, ...v] = s.split("="); return [k, v.join("=")]; }),
-    );
-    const t = parts.t; const v1 = parts.v1;
-    if (!t || !v1) return false;
+    // R-19 #13 (2026-05-15): collect ALL v1 values from the header instead
+    // of Object.fromEntries (which silently drops duplicates). Stripe's
+    // documented key-rotation pattern signs the payload with BOTH the old
+    // and new secret during the rotation window: `t=...,v1=<old>,v1=<new>`.
+    // The previous Object.fromEntries-based parser kept only the LAST v1
+    // — if the rotated key was first and the legacy second, we rejected
+    // legitimate events. Now: accept if ANY v1 verifies.
+    let t: string | undefined;
+    const v1s: string[] = [];
+    for (const part of sigHeader.split(",")) {
+      const eqIdx = part.indexOf("=");
+      if (eqIdx < 0) continue;
+      const k = part.slice(0, eqIdx);
+      const v = part.slice(eqIdx + 1);
+      if (k === "t") t = v;
+      else if (k === "v1") v1s.push(v);
+    }
+    if (!t || v1s.length === 0) return false;
+
     // W3-7 (B-20, 2026-04-26): one-sided check + small future-skew tolerance.
     // Stripe's recommended check is `now - t > tolerance` only. The prior
     // `Math.abs` accepted a `t` up to 5 minutes in the FUTURE, doubling
@@ -35,15 +49,22 @@ async function verifyStripeSignature(body: string, sigHeader: string, secret: st
     if (!Number.isFinite(tNum)) return false;
     if (now - tNum > 300) return false;   // too old → reject
     if (tNum - now > 60)  return false;   // future-dated by > 60s → reject
+
     const signedPayload = `${t}.${body}`;
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const mac = await crypto.subtle.sign("HMAC", key, enc.encode(signedPayload));
     const hex = Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, "0")).join("");
-    if (hex.length !== v1.length) return false;
-    let diff = 0;
-    for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ v1.charCodeAt(i);
-    return diff === 0;
+
+    // Constant-time compare against each candidate v1; accept on first match.
+    // The hex-length early-return is harmless (only triggers on malformed v1).
+    for (const v1 of v1s) {
+      if (hex.length !== v1.length) continue;
+      let diff = 0;
+      for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ v1.charCodeAt(i);
+      if (diff === 0) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -395,8 +416,13 @@ serve(async (req: Request) => {
         if (deletedRow?.user_id || deletedRow?.company_id) {
           await supabase.rpc("log_sos_audit", {
             p_action: "stripe_subscription_cancelled",
-            p_actor_user_id: deletedRow.user_id,
-            p_actor_level: "user",
+            // R-19 #9 (2026-05-15): actor_level was hardcoded "user" — wrong for
+            // B2B cancellations where deletedRow.user_id is NULL (company-scoped
+            // row) and the cancellation was owner-initiated. Auditor queries for
+            // "owner-initiated cancellations" used to miss real ones. Match the
+            // pattern used in the created/updated handler at L227.
+            p_actor_user_id: deletedRow.user_id ?? null,
+            p_actor_level: deletedRow.company_id ? "owner" : "user",
             p_category: "billing",
             p_operation: "DELETE",
             p_metadata: {
@@ -430,8 +456,10 @@ serve(async (req: Request) => {
           if (failRow?.user_id || failRow?.company_id) {
             await supabase.rpc("log_sos_audit", {
               p_action: "stripe_payment_failed",
-              p_actor_user_id: failRow.user_id,
-              p_actor_level: "user",
+              // R-19 #9 (2026-05-15): correct actor_level for B2B (same fix as
+              // customer.subscription.deleted).
+              p_actor_user_id: failRow.user_id ?? null,
+              p_actor_level: failRow.company_id ? "owner" : "user",
               p_category: "billing",
               p_operation: "UPDATE",
               p_metadata: {
