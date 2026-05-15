@@ -186,9 +186,27 @@ async function upsertSubscription(
   if (trialEnd && Number.isFinite(trialEnd)) {
     row.trial_ends_at = new Date(trialEnd * 1000).toISOString();
   }
+  // R-19 #20 (2026-05-15): replace .upsert() with manual SELECT-then-INSERT-or-UPDATE.
+  // Reason: subscriptions_company_unique_idx is a PARTIAL unique index
+  // (WHERE company_id IS NOT NULL). Supabase JS .upsert({onConflict:"company_id"})
+  // generates `ON CONFLICT (company_id)` without the partial WHERE — Postgres
+  // rejects with `there is no unique or exclusion constraint matching the
+  // ON CONFLICT specification`. The error was silently swallowed because we
+  // didn't check result.error → handler returns 200, no row, production-broken.
+  // Now: explicit SELECT, then INSERT or UPDATE, with error-check on every step.
   if (target.kind === "user") {
     row.user_id = target.userId;
-    await supabase.from("subscriptions").upsert(row, { onConflict: "user_id" });
+    const { data: existingUser, error: selUserErr } = await supabase
+      .from("subscriptions").select("id").eq("user_id", target.userId).maybeSingle();
+    if (selUserErr) throw new DbHandlerError("upsert_select_user_failed", selUserErr);
+    if (existingUser) {
+      const { error: updErr } = await supabase
+        .from("subscriptions").update(row).eq("id", existingUser.id);
+      if (updErr) throw new DbHandlerError("upsert_user_update_failed", updErr);
+    } else {
+      const { error: insErr } = await supabase.from("subscriptions").insert(row);
+      if (insErr) throw new DbHandlerError("upsert_user_insert_failed", insErr);
+    }
   } else {
     // R-19 #16 (2026-05-15): defensive DPA enforcement. The in-app flow
     // gates DPA acceptance at start_company_trial (migration L334-345),
@@ -231,7 +249,17 @@ async function upsertSubscription(
       return { applied: false, reason: "dpa_not_accepted" };
     }
     row.company_id = target.companyId;
-    await supabase.from("subscriptions").upsert(row, { onConflict: "company_id" });
+    const { data: existingCompany, error: selCompanyErr } = await supabase
+      .from("subscriptions").select("id").eq("company_id", target.companyId).maybeSingle();
+    if (selCompanyErr) throw new DbHandlerError("upsert_select_company_failed", selCompanyErr);
+    if (existingCompany) {
+      const { error: updErr } = await supabase
+        .from("subscriptions").update(row).eq("id", existingCompany.id);
+      if (updErr) throw new DbHandlerError("upsert_company_update_failed", updErr);
+    } else {
+      const { error: insErr } = await supabase.from("subscriptions").insert(row);
+      if (insErr) throw new DbHandlerError("upsert_company_insert_failed", insErr);
+    }
   }
   return { applied: true };
 }
