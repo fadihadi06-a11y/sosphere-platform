@@ -151,37 +151,66 @@ is what causes signature failures + cryptic 403s.
 
 ## 4. Synthetic Probes — Daily Operation
 
+Five continuous-monitoring probes across three cadences. Failures email
+repo admins (GitHub → Settings → Notifications).
+
 ### 4.1 Manual run (post-deploy verification)
 
 ```powershell
-$secret = "<your PROBE_SECRET>"
 $base   = "https://<project>.functions.supabase.co"
+$secret = $env:PROBE_SECRET
 
-# L1-D Phase 2.5: Twilio webhook config drift
+# Fast cadence (every 15 min in CI) — drift / signature / forgery
 Invoke-RestMethod -Method Post -Uri "$base/twilio-config-probe" `
   -Headers @{ Authorization = "Bearer $secret" } | ConvertTo-Json -Depth 5
 
-# L1-D Phase 3: synthetic end-to-end inbound SMS
 Invoke-RestMethod -Method Post -Uri "$base/sos-inbound-probe" `
   -Headers @{ Authorization = "Bearer $secret" } | ConvertTo-Json -Depth 5
 
-# L4-B: public health endpoint (no auth)
+Invoke-RestMethod -Method Post -Uri "$base/forgery-probe" `
+  -Headers @{ Authorization = "Bearer $secret" } | ConvertTo-Json -Depth 5
+
+# Slow cadence (every 6 hours in CI) — full SOS orchestration
+Invoke-RestMethod -Method Post -Uri "$base/sos-dispatch-probe" `
+  -Headers @{ Authorization = "Bearer $secret" } | ConvertTo-Json -Depth 10
+
+# Public, no auth — uptime
 Invoke-RestMethod -Uri "$base/sos-health" | ConvertTo-Json -Depth 5
+
+# Script-side, not an edge function (every push + every 6h in CI):
+$env:SUPABASE_ACCESS_TOKEN = "<sbp_...>"
+$env:SUPABASE_PROJECT_REF  = "<project-ref>"
+node scripts/check-function-drift.mjs
 ```
 
 ### 4.2 Interpreting probe output
 
-| Probe | Healthy output | Common failure modes |
-|---|---|---|
-| `twilio-config-probe` | `driftedCount: 0` (or `voice_url` warning only) | sms_url drift = Twilio webhook unconfigured; service_drift = Messaging Service Integration tab not pointing at sos-sms-inbound |
-| `sos-inbound-probe` | `pass: true`, all stages ok, `elapsedMs < 2000` | `post: failed` = signature mismatch (token drift OR http/https URL mismatch); `verify: missing` = handler ran but DB write failed |
-| `sos-health` | HTTP 200, `supabase: "up"` | HTTP 503 = Supabase unreachable; HTTP timeout = function deployment broken |
+| Probe | Cadence | Healthy output | Common failure modes |
+|---|---|---|---|
+| `twilio-config-probe` | 15m | `driftedCount: 0` | sms_url drift = Twilio webhook unconfigured |
+| `sos-inbound-probe` | 15m | `pass: true`, `elapsedMs < 2000` | signature mismatch / DB write missing |
+| `forgery-probe` (R-5) | 15m | `pass: true`, all 4 asserts | L5-SEC-1 auth.uid() pin failed |
+| `sos-dispatch-probe` (R-4) | 6h | `pass: true`, all 20 asserts, `dispatchAttemptsCount: 2` | one of the 20 asserts false — see `asserts{}` |
+| `function-drift-probe` (R-6) | push + 6h | `drifted_count: 0` | a function deployed but manifest not updated → run `npm run drift:update` |
+| `sos-health` | uptime monitor | HTTP 200, `supabase: "up"` | HTTP 503 / timeout |
 
-### 4.3 The cron (automatic, every 15 min)
+### 4.3 The cron (`.github/workflows/probes.yml`)
 
-`.github/workflows/probes.yml` calls both probes. A failed run emails
-repo admins by default (GitHub Settings → Notifications). For Slack
-/ PagerDuty alerts, add a webhook step to the workflow.
+Two crons: `*/15 * * * *` runs the three fast probes; `0 */6 * * *` runs
+the dispatch + drift probes. Push events trigger function-drift only.
+A failed run emails repo admins by default. For Slack/PagerDuty, add a
+webhook step inside each job.
+
+### 4.4 Probe-user identities (R-10)
+
+Two reserved auth.users rows live at `@sosphere.internal`:
+- `forgery-probe@sosphere.internal`         — created by R-5
+- `sos-dispatch-probe@sosphere.internal`    — created by R-10
+
+R-13 added probe-classification in sos-alert: any caller whose email
+ends with `@sosphere.internal` lands in `sos_pipeline_metrics` with
+`is_synthetic=true` automatically. **DO NOT register any real user at
+this domain** — their emergencies would be silently classified as probes.
 
 ---
 
@@ -335,3 +364,63 @@ empty.
 | "What invariants are locked?" | `src/app/components/__tests__/l*-*.test.ts` |
 | "How is data laid out?" | `supabase/migrations/` (chronological order) |
 | "Why does this old comment say X?" | `git log -p -- <file>` — comments cross-reference commit hashes |
+
+---
+
+## 9. R-fix series retrospective (R-1 → R-13)
+
+Compact index of every root-fix landed since L5-SEC. Each links to its
+contract test (`src/app/components/__tests__/r*-*.test.ts`) for the
+locked-in invariants.
+
+| ID | Subject | Live verification |
+|---|---|---|
+| R-1 | geofences + sensor_events tenancy (root for L5-SEC-4) | DB schema |
+| R-2 | evidence-changes company-scoped Realtime channel | DB schema + RPC |
+| R-3 | Twilio URL form-B unified across all webhook + status callbacks | source-only |
+| R-4 | end-to-end SOS verify harness (`sos-dispatch-probe`) | 20/20 asserts pass live |
+| R-4a | sos_sessions missing-column migration (server_results, ended_at, etc.) | live SQL |
+| R-4b | L2-B dispatch ledger sync await (was silently dropping every row) | dispatch-probe |
+| R-5 | authenticated-forgery PoC for L5-SEC-1 audit defense | live probe |
+| R-6 | git-vs-deployed function drift detector (ezbr_sha256 manifest) | live CI gate |
+| R-7 | pre-push verification gate (`npm run verify`) | local gate |
+| R-8 | eliminated `void (async () => {})()` in edge functions (push notifications) | source-only |
+| R-9 | client-side anti-pattern audit; 2 empty-catch promotions | source-only |
+| R-10 | separate probe-user identities (eliminate parallel race) | live forgery + dispatch probes pass together |
+| R-11 | client-side audit; admin-incoming-call.tsx unmount cleanup | source-only |
+| R-12 | SECDEF GRANT lockdown on 3 maintenance RPCs | live verified |
+| R-13 | pipeline_metrics probe classification (is_synthetic flag) | live backfill + sos-alert |
+
+---
+
+## 10. Deploy workflow (post-R-13)
+
+The full post-R workflow for shipping an edge-function change:
+
+```powershell
+# 1. Make your change locally, save.
+# 2. ALWAYS run the verify gate (mirrors CI in ~60s):
+npm run verify
+# 3. If green, commit:
+git add -A
+git commit -m "<change summary>"
+git push origin main
+# 4. If you touched any edge function, redeploy + refresh the manifest:
+npx supabase functions deploy <slug> --project-ref <ref>
+npm run drift:update
+git add supabase/functions/.deploy-manifest.json
+git commit -m "deploy: <slug> @ <version>"
+git push origin main
+# 5. (Optional but recommended) Fire the probe that exercises your fn:
+Invoke-RestMethod -Method Post -Uri "$($env:SUPA_FN_URL)/<probe-name>" `
+  -Headers @{ Authorization = "Bearer $env:PROBE_SECRET" }
+```
+
+If `npm run verify` fails, the error message tells you exactly which of
+the 8 gates failed (JSON parse / YAML parse / NUL bytes / lockfile sync
+/ script syntax / ESLint / migration drift / Vitest). Fix locally first
+— never push and pray.
+
+Skipping `drift:update` after a deploy means R-6 will detect drift on
+the next 6h tick (or next push) and the CI job goes red. That's the gate
+working as designed — re-run `drift:update` and commit the manifest.
