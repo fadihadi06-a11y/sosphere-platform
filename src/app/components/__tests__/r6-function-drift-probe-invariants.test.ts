@@ -111,7 +111,14 @@ describe("R-6: check-function-drift.mjs — report categories", () => {
 
 describe("R-6: exit code policy", () => {
   it("exits 1 on drift (so curl/GHA detects failure)", () => {
-    expect(scriptSrc).toMatch(/process\.exit\(\s*fail\s*\?\s*1\s*:\s*0\s*\)/);
+    // R-17 followup: drift script now uses `process.exitCode = fail ? 1 : 0`
+    // instead of `process.exit(fail ? 1 : 0)`. Setting exitCode lets the
+    // event loop drain (avoids the libuv UV_HANDLE_CLOSING assertion on
+    // Windows when undici keep-alive sockets are still mid-close). Same
+    // exit semantics for CI — either pattern is acceptable.
+    expect(scriptSrc).toMatch(
+      /process\.(exit|exitCode)\s*[(=]\s*fail\s*\?\s*1\s*:\s*0/,
+    );
   });
 
   it("exits 2 on config error (missing env vars)", () => {
