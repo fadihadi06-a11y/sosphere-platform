@@ -129,8 +129,17 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
   try {
     const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
+    // R-16 (2026-05-15): OAuth client ID now reads from env var with fallback.
+    // .env.example documents VITE_GOOGLE_CLIENT_ID; before R-16 this code read
+    // the hardcoded literal regardless of env var (documentation lie). The
+    // fallback is the prod OAuth client and stays put so a missing env var
+    // doesn't break the build.
+    const GOOGLE_CLIENT_ID =
+      (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ||
+      "380367770593-0a65j29596vq3kgc8b53l2b667khgf97.apps.googleusercontent.com";
+
     await GoogleAuth.initialize({
-      clientId: "380367770593-0a65j29596vq3kgc8b53l2b667khgf97.apps.googleusercontent.com",
+      clientId: GOOGLE_CLIENT_ID,
       scopes: ["profile", "email"],
       // grantOfflineAccess: true → maps to requestServerAuthCode(clientId, true)
       // in the native Java plugin. The 'true' parameter forces Google to show

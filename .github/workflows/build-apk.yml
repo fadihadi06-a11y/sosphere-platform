@@ -50,11 +50,60 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      # R-16 (2026-05-15): write ALL configured secrets to .env in a single
+      # masked step. Optional secrets are emitted only if present (empty
+      # values would still result in `import.meta.env.X === ""`, breaking
+      # env-shield-v2 detection). Same pattern as ci.yml's masked step.
       - name: Create .env file from secrets
-        # Same pattern as ci.yml — secrets written to masked step
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
-          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
+          {
+            echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}"
+            echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}"
+            # Optional — emitted only when set, so env-shield-v2 sees absence
+            # vs empty correctly. Use bash `[[ -n ]]` (de-referencing the
+            # secret to a variable first is necessary because secret access
+            # in `if:` expressions is restricted).
+            VITE_GOOGLE_CLIENT_ID='${{ secrets.VITE_GOOGLE_CLIENT_ID }}'
+            VITE_FIREBASE_API_KEY='${{ secrets.VITE_FIREBASE_API_KEY }}'
+            VITE_FIREBASE_AUTH_DOMAIN='${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}'
+            VITE_FIREBASE_PROJECT_ID='${{ secrets.VITE_FIREBASE_PROJECT_ID }}'
+            VITE_FIREBASE_MESSAGING_SENDER_ID='${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}'
+            VITE_FIREBASE_APP_ID='${{ secrets.VITE_FIREBASE_APP_ID }}'
+            VITE_FIREBASE_VAPID_KEY='${{ secrets.VITE_FIREBASE_VAPID_KEY }}'
+            VITE_SENTRY_DSN='${{ secrets.VITE_SENTRY_DSN }}'
+            [[ -n "$VITE_GOOGLE_CLIENT_ID" ]]          && echo "VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID"
+            [[ -n "$VITE_FIREBASE_API_KEY" ]]          && echo "VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY"
+            [[ -n "$VITE_FIREBASE_AUTH_DOMAIN" ]]      && echo "VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN"
+            [[ -n "$VITE_FIREBASE_PROJECT_ID" ]]       && echo "VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID"
+            [[ -n "$VITE_FIREBASE_MESSAGING_SENDER_ID" ]] && echo "VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID"
+            [[ -n "$VITE_FIREBASE_APP_ID" ]]           && echo "VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID"
+            [[ -n "$VITE_FIREBASE_VAPID_KEY" ]]        && echo "VITE_FIREBASE_VAPID_KEY=$VITE_FIREBASE_VAPID_KEY"
+            [[ -n "$VITE_SENTRY_DSN" ]]                && echo "VITE_SENTRY_DSN=$VITE_SENTRY_DSN"
+            # Always-set context vars
+            echo "VITE_ENVIRONMENT=production"
+            echo "VITE_APP_VERSION=${{ github.sha }}"
+          } >> .env
+        shell: bash
+
+      # R-16: capacitor.config.json substitution. The serverClientId for
+      # GoogleAuth was previously hardcoded; this allows per-environment
+      # OAuth clients (dev/staging/prod) via GitHub secret.
+      - name: Substitute GoogleAuth serverClientId in capacitor.config.json
+        if: ${{ env.GOOGLE_SERVER_CLIENT_ID != '' }}
+        env:
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const cfg = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
+            if (cfg.plugins && cfg.plugins.GoogleAuth) {
+              cfg.plugins.GoogleAuth.serverClientId = process.env.GOOGLE_SERVER_CLIENT_ID;
+              fs.writeFileSync('capacitor.config.json', JSON.stringify(cfg, null, 2));
+              console.log('[R-16] capacitor.config.json serverClientId substituted from env.');
+            } else {
+              console.log('[R-16] capacitor.config.json has no GoogleAuth plugin — skipping.');
+            }
+          "
         shell: bash
 
       - name: Build web bundle (vite)
@@ -66,8 +115,14 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
+      # R-16: pass GITHUB_RUN_NUMBER → APK_VERSION_CODE so every CI build
+      # has a monotonic versionCode. Android refuses to install a new APK
+      # with a versionCode <= the installed APK without explicit uninstall.
       - name: Build debug APK
         working-directory: android
+        env:
+          APK_VERSION_CODE: ${{ github.run_number }}
+          APK_VERSION_NAME: "1.0.${{ github.run_number }}"
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK with commit SHA
@@ -101,6 +156,8 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Branch:** ${{ github.ref_name }}
             **Built:** ${{ github.event.head_commit.timestamp }}
+            **versionCode:** ${{ github.run_number }}
+            **versionName:** 1.0.${{ github.run_number }}
 
             Download `sosphere-debug-latest.apk` below and install on your phone.
             On Android: enable "Install unknown apps" for your file manager, then tap the APK.
