@@ -89,13 +89,27 @@ describe("R-17: count param is parsed + bounded", () => {
   });
 
   it("R-18-G: seed mode (slow probe-user setup, idempotent)", () => {
-    // ?seed=true&count=N runs ONCE EVER. Creates N probe users at a rate
-    // safely under Supabase Auth's 30/5min limit (default 11s between
-    // each, ~5.4 per minute). Stores access_token + refresh_token in the
-    // cache table for instant reuse on subsequent runs.
     expect(probeSrc).toMatch(/const\s+SEED_DELAY_MS\s*=\s*\d+/);
     expect(probeSrc).toMatch(/searchParams\.get\(\s*["']seed["']\s*\)\s*===\s*["']true["']/);
     expect(probeSrc).toMatch(/mode:\s*["']seed["']/);
+  });
+
+  it("R-18-G: seed mode is CHUNKED (Supabase 150s edge function timeout)", () => {
+    // Supabase Edge Functions hard-cap at 150s. Seeding 50 users at 11s
+    // each = 550s > 150s → IDLE_TIMEOUT. We chunk: each call processes
+    // SEED_CHUNK_SIZE users, returns nextOffset for the operator to drive
+    // the rest. Idempotent across re-runs.
+    expect(probeSrc).toMatch(/const\s+SEED_CHUNK_SIZE\s*=\s*\d+/);
+    expect(probeSrc).toMatch(/searchParams\.get\(\s*["']offset["']\s*\)/);
+    expect(probeSrc).toMatch(/chunkEnd\s*=\s*Math\.min\(\s*offset\s*\+\s*SEED_CHUNK_SIZE/);
+  });
+
+  it("R-18-G: seed response surfaces nextOffset + done flag for driver loop", () => {
+    expect(probeSrc).toMatch(/nextOffset/);
+    expect(probeSrc).toMatch(/done\s*=\s*chunkEnd\s*>=\s*count/);
+    expect(probeSrc).toMatch(/target_count/);
+    // Helpful copy-paste hint for the operator
+    expect(probeSrc).toMatch(/nextCommand/);
   });
 
   it("R-18-G: load mode pulls JWTs from sos_probe_session_cache", () => {

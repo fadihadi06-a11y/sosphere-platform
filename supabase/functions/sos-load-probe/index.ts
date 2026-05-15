@@ -38,6 +38,11 @@ const PROBE_USER_DOMAIN = "@sosphere.internal";
 // Auth rate limit is 30 sign-ins / 5 min = 6 / minute. 11s between seeds
 // gives us ~5.4 / minute — comfortably under the limit.
 const SEED_DELAY_MS = 11000;
+// Supabase Edge Functions have a 150s idle timeout. Seeding 50 users at
+// 11s/each = 550s > 150s → IDLE_TIMEOUT. Chunked seeding: each call
+// processes at most SEED_CHUNK_SIZE users (~110s of work + overhead).
+// Operator drives multiple calls until the chunk that returns done=true.
+const SEED_CHUNK_SIZE = 8;
 // Refresh JWT if it'll expire in less than this window.
 const REFRESH_LEEWAY_MS = 60_000;
 
@@ -111,6 +116,8 @@ serve(async (req) => {
   // ═══════════════════════════════════════════════════════════════════════
   if (isSeed) {
     const seedStart = performance.now();
+    const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
+    const chunkEnd = Math.min(offset + SEED_CHUNK_SIZE, count);
     const userClient = createClient(supaUrl, anonKey, { auth: { persistSession: false } });
     const seedResults: Array<{ i: number; ok: boolean; error?: string }> = [];
 
@@ -124,7 +131,7 @@ serve(async (req) => {
       }
     }
 
-    for (let i = 0; i < count; i++) {
+    for (let i = offset; i < chunkEnd; i++) {
       const email = `${PROBE_USER_PREFIX}${i}${PROBE_USER_DOMAIN}`;
       const password = crypto.randomUUID() + crypto.randomUUID();
       try {
@@ -168,20 +175,31 @@ serve(async (req) => {
         seedResults.push({ i, ok: false, error: String(e).slice(0, 200) });
       }
 
-      // Pace ourselves under the Auth rate-limit bucket. Skip after the last.
-      if (i < count - 1) await new Promise((r) => setTimeout(r, SEED_DELAY_MS));
+      // Pace ourselves under the Auth rate-limit bucket. Skip after the
+      // LAST iteration of this chunk to save ~11s per call.
+      if (i < chunkEnd - 1) await new Promise((r) => setTimeout(r, SEED_DELAY_MS));
     }
 
     const okCount = seedResults.filter((r) => r.ok).length;
+    const done = chunkEnd >= count;
+    const nextOffset = done ? null : chunkEnd;
     return jsonResponse(
       {
         mode: "seed",
-        pass: okCount === count,
-        count,
-        seeded: okCount,
-        failed: count - okCount,
+        pass: okCount === seedResults.length,
+        target_count: count,
+        offset,
+        chunkSize: chunkEnd - offset,
+        seededThisCall: okCount,
+        failedThisCall: seedResults.length - okCount,
+        nextOffset,
+        done,
         elapsedMs: Math.round(performance.now() - seedStart),
         failures: seedResults.filter((r) => !r.ok).slice(0, 20),
+        // Helpful follow-up command (operator can copy-paste)
+        nextCommand: done
+          ? null
+          : `POST ?seed=true&count=${count}&offset=${nextOffset}`,
       },
       200,
       corsHeaders,
