@@ -19,6 +19,15 @@ api_url = "http://localhost"
 enabled = true
 site_url = "http://localhost:3000"
 
+[functions.stripe-webhook]
+# R-19 #17 fix (2026-05-15): Stripe webhooks MUST be publicly accessible
+# (signed by stripe-signature header, not JWT). Without verify_jwt=false
+# the Supabase gateway rejects every Stripe event with 401 before our
+# function's signature verification runs. Discovered by the R-19 Phase 5
+# self-test probe — would have been a production-blocker on first
+# Stripe payment event.
+verify_jwt = false
+
 [functions.sos-alert]
 verify_jwt = false
 
