@@ -84,7 +84,8 @@ async function upsertSubscription(
   target: UpsertTarget,
   sub: StripeSubscription,
   planIdOverride?: string,
-): Promise<void> {
+  eventCreatedAt?: string, // R-19 #10: event.created (ISO) for ordering guard
+): Promise<{ applied: boolean; reason?: string }> {
   const priceId = sub.items?.data?.[0]?.price?.id;
   const planId = planIdOverride || sub.metadata?.planId || lookupPlanByPriceEnv(priceId);
   if (!planId) {
@@ -92,6 +93,38 @@ async function upsertSubscription(
     console.warn(`[stripe-webhook] unmapped price id=${priceId ?? "(none)"} (${tag})`);
     throw new UnmappedPriceError(priceId);
   }
+
+  // R-19 #10: ordering guard. Read existing row's last_stripe_event_at;
+  // skip if this event is OLDER than what we've already applied. Stripe
+  // webhook ordering is at-least-once and UNORDERED — without this,
+  // out-of-order delivery (A=upgrade, B=downgrade with B reaching us first)
+  // ends up with A's stale state winning even though B is the truth.
+  if (eventCreatedAt) {
+    const targetCol = target.kind === "user" ? "user_id" : "company_id";
+    const targetId = target.kind === "user" ? target.userId : target.companyId;
+    const { data: existing } = await supabase
+      .from("subscriptions")
+      .select("last_stripe_event_at")
+      .eq(targetCol, targetId)
+      .maybeSingle();
+    const existingAt = (existing as { last_stripe_event_at?: string } | null)?.last_stripe_event_at;
+    if (existingAt && new Date(eventCreatedAt) < new Date(existingAt)) {
+      console.warn(
+        `[stripe-webhook] ordering-guard SKIP: incoming event ${eventCreatedAt} < existing ${existingAt} (${targetCol}=${targetId})`,
+      );
+      return { applied: false, reason: "stale_event" };
+    }
+  }
+
+  // R-19 #7: seat_quantity from Stripe's subscription item. Clamp to 1000
+  // (matches the checkout-side cap) so a portal abuser can't escalate past
+  // policy.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawQuantity = (sub as any).items?.data?.[0]?.quantity;
+  const seatQuantity = Number.isFinite(rawQuantity) && rawQuantity > 0
+    ? Math.min(1000, Math.floor(rawQuantity))
+    : null;
+
   // Trial deadline: when Stripe reports status='trialing' the subscription
   // object exposes trial_end (unix). Mirror it to subscriptions.trial_ends_at
   // so the in-app countdown stays accurate after Stripe takes over the
@@ -107,6 +140,8 @@ async function upsertSubscription(
     status: sub.status,
     current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
     cancel_at_period_end: sub.cancel_at_period_end,
+    seat_quantity: seatQuantity,
+    last_stripe_event_at: eventCreatedAt ?? null,
     updated_at: new Date().toISOString(),
   };
   if (trialEnd && Number.isFinite(trialEnd)) {
@@ -119,6 +154,7 @@ async function upsertSubscription(
     row.company_id = target.companyId;
     await supabase.from("subscriptions").upsert(row, { onConflict: "company_id" });
   }
+  return { applied: true };
 }
 
 function lookupPlanByPriceEnv(priceId: string | undefined): string | null {
@@ -243,7 +279,10 @@ serve(async (req: Request) => {
         const target: UpsertTarget = companyId
           ? { kind: "company", companyId }
           : { kind: "user", userId: userId as string };
-        await upsertSubscription(supabase, target, sub, session.metadata?.planId);
+        await upsertSubscription(
+          supabase, target, sub, session.metadata?.planId,
+          event.created ? new Date(event.created * 1000).toISOString() : undefined,
+        );
         // Audit #5 / B1 (2026-04-29): record the paid-plan transition.
         // Required for compliance + GDPR export. Fire-and-forget — Stripe
         // already retries the webhook on failure, no need to fail twice.
@@ -290,10 +329,35 @@ serve(async (req: Request) => {
         : metadataCompanyId ? { kind: "company", companyId: metadataCompanyId }
         : null;
         if (!target) {
-          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no user/company mapped to customer ${sub.customer}`);
+          // R-19 #8: fallback — fetch the Checkout Session by subscription id
+          // before giving up. Stripe webhook ordering is unordered/at-least-once,
+          // so subscription.created can land before checkout.session.completed.
+          // In that case there's no row in our DB yet AND no metadata on the
+          // subscription (it gets copied at session completion, not creation).
+          const sessions = await stripeGet(`/checkout/sessions?subscription=${sub.id}&limit=1`);
+          const session = Array.isArray(sessions?.data) ? sessions.data[0] : null;
+          const fallbackUserId = session?.client_reference_id as string | undefined;
+          const fallbackCompanyId = session?.metadata?.companyId as string | undefined;
+          const fallbackTarget: UpsertTarget | null = fallbackCompanyId
+            ? { kind: "company", companyId: fallbackCompanyId }
+            : fallbackUserId
+            ? { kind: "user", userId: fallbackUserId }
+            : null;
+          if (!fallbackTarget) {
+            console.warn(`[stripe-webhook] ${evtType} id=${evtId} no user/company mapped to customer ${sub.customer} (DB+metadata+checkout fallback all empty)`);
+            break;
+          }
+          console.log(`[stripe-webhook] ${evtType} id=${evtId} resolved via checkout fallback`);
+          await upsertSubscription(
+            supabase, fallbackTarget, sub, undefined,
+            event.created ? new Date(event.created * 1000).toISOString() : undefined,
+          );
           break;
         }
-        await upsertSubscription(supabase, target, sub);
+        await upsertSubscription(
+          supabase, target, sub, undefined,
+          event.created ? new Date(event.created * 1000).toISOString() : undefined,
+        );
         // Audit #5 / B1: record the subscription change.
         await supabase.rpc("log_sos_audit", {
           p_action: "stripe_subscription_changed",
