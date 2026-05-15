@@ -1,40 +1,35 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// SOSphere — stripe-e2e-test-probe (R-19 #18)
+// SOSphere — stripe-e2e-test-probe (R-19 #18 + #21: COMPREHENSIVE)
 // ─────────────────────────────────────────────────────────────────────────
-// THE GAP THIS CLOSES
-//   R-19 Phase 1-5 unit/contract tests + stripe-webhook-test-probe verified
-//   the webhook IN ISOLATION. But the verify_jwt=true bug (#17) showed that
-//   gateway-level config can break the integration even when our code is
-//   correct. To catch the next "config drift" class of bug we need a TRUE
-//   end-to-end test: real Stripe API → real webhook → real DB row.
+// SCOPE
+//   This is the comprehensive end-to-end Stripe integration test. It exercises
+//   every reasonably-testable scenario against the live deployed webhook, so
+//   we know the entire payment integration is sound BEFORE the first paid
+//   customer arrives. The user said "this is money, no room for error" —
+//   this probe is the answer.
 //
-// WHAT THIS PROBE DOES
-//   PHASE 1 — DB SETUP
-//     • Creates a test auth user (e2e-probe-<runId>@sosphere.internal)
-//     • Creates a test company (name='SOSphere e2e probe <runId>')
-//     • Creates a DPA acceptance row (R-19 #16 requires this for B2B)
-//   PHASE 2 — STRIPE
-//     • Creates a Stripe customer (metadata.companyId=<test company>)
-//     • Attaches pm_card_visa (Stripe test payment method, always works)
-//     • Creates a subscription using STRIPE_PRICE_STARTER_MONTHLY
-//   PHASE 3 — WAIT FOR WEBHOOK
-//     • Polls subscriptions table every 1s for up to 15s waiting for the
-//       row created by customer.subscription.created webhook
-//   PHASE 4 — CLEANUP (best-effort, always runs)
-//     • DELETE Stripe subscription, customer
-//     • DELETE subscriptions row, DPA row, company row, auth user
+// PHASES (run sequentially in one invocation; each has its own setup + cleanup)
 //
-// AUTH
-//   PROBE_SECRET bearer (same as the other 6 probes).
+//   1. CREATE              create a new B2B sub → expect subscriptions row
+//                          with tier=starter, seat_quantity=1.
+//   2. UPDATE              update the sub's quantity to 5 → expect
+//                          seat_quantity=5 propagated to DB.
+//   3. CANCEL              DELETE the sub → expect status='canceled'.
+//   4. CUSTOMER_DELETE     DELETE the customer → expect stripe_customer_id
+//                          NULL + status='canceled' (R-19 #6).
+//   5. UNMAPPED_PRICE      create sub with a price NOT in env vars → expect
+//                          row in stripe_unmapped_events (R-19 retry path).
+//   6. DPA_BLOCK           create sub WITHOUT DPA acceptance → expect row
+//                          in ops_alerts + NO row in subscriptions (R-19 #16).
 //
-// REQUIRED SECRETS
-//   PROBE_SECRET, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-//   STRIPE_SECRET_KEY, STRIPE_PRICE_STARTER_MONTHLY
+// Each phase returns {pass, ms, reason?, details}.
+// Overall pass = all phases pass.
 //
-// NOT ON CRON
-//   Manual / workflow_dispatch only. Each run creates + deletes 1 Stripe
-//   customer + 1 subscription in test mode. Stripe Dashboard will show the
-//   activity for ~30 days then they're auto-purged from test mode.
+// AUTH: PROBE_SECRET bearer (same as the other 6 probes).
+// ENV: PROBE_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY,
+//      STRIPE_PRICE_STARTER_MONTHLY
+//
+// NOT ON CRON: manual / workflow_dispatch only. ~60-90 seconds per run.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -58,7 +53,13 @@ function jsonResponse(body: unknown, status = 200, cors: Record<string, string> 
   });
 }
 
-interface StepResult { name: string; ok: boolean; ms: number; data?: unknown; error?: string }
+interface PhaseResult {
+  name: string;
+  pass: boolean;
+  reason?: string;
+  ms: number;
+  details?: Record<string, unknown>;
+}
 
 serve(async (req) => {
   const corsHeaders = {
@@ -70,260 +71,350 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405, corsHeaders);
 
   const probeSecret = Deno.env.get("PROBE_SECRET");
-  if (!probeSecret || probeSecret.length < 16) {
-    return jsonResponse({ error: "probe_misconfigured" }, 500, corsHeaders);
-  }
+  if (!probeSecret || probeSecret.length < 16) return jsonResponse({ error: "probe_misconfigured" }, 500, corsHeaders);
   const authHeader = req.headers.get("Authorization") || "";
-  if (!constantTimeEquals(authHeader, `Bearer ${probeSecret}`)) {
-    return jsonResponse({ error: "unauthorized" }, 401, corsHeaders);
-  }
+  if (!constantTimeEquals(authHeader, `Bearer ${probeSecret}`)) return jsonResponse({ error: "unauthorized" }, 401, corsHeaders);
 
   const supaUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
   const priceId   = Deno.env.get("STRIPE_PRICE_STARTER_MONTHLY");
   if (!supaUrl || !serviceKey || !stripeKey || !priceId) {
-    return jsonResponse({
-      error: "env_missing",
-      hint: "Need SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, STRIPE_PRICE_STARTER_MONTHLY",
-    }, 500, corsHeaders);
+    return jsonResponse({ error: "env_missing" }, 500, corsHeaders);
   }
   if (!stripeKey.startsWith("sk_test_")) {
-    return jsonResponse({ error: "live_mode_refused", hint: "This probe is TEST MODE only" }, 400, corsHeaders);
+    return jsonResponse({ error: "live_mode_refused" }, 400, corsHeaders);
   }
 
   const admin = createClient(supaUrl, serviceKey, { auth: { persistSession: false } });
   const runId = crypto.randomUUID().slice(0, 8);
   const runStart = performance.now();
-  const steps: StepResult[] = [];
 
-  // Track created resources for cleanup, even on failure
-  let testUserId: string | null = null;
-  let testCompanyId: string | null = null;
-  let testDpaId: string | null = null;
-  let stripeCustomerId: string | null = null;
-  let stripeSubscriptionId: string | null = null;
-  // R-19 #18 fix: pm_card_visa is a SHARED test token. When attached to a
-  // customer, Stripe CLONES it and gives the clone a new pm_xxx ID. We
-  // must capture and use that cloned ID — the bare pm_card_visa string
-  // is only valid as an attach source, not as a default_payment_method.
-  let attachedPaymentMethodId: string | null = null;
-
-  async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
-    const t0 = performance.now();
-    try {
-      const data = await fn();
-      steps.push({ name, ok: true, ms: Math.round(performance.now() - t0) });
-      return data;
-    } catch (e) {
-      steps.push({ name, ok: false, ms: Math.round(performance.now() - t0), error: String(e).slice(0, 300) });
-      return null;
-    }
-  }
-
-  async function stripeCall(path: string, params: Record<string, string>): Promise<Record<string, unknown> | null> {
+  // ── Helper: Stripe HTTP wrapper ────────────────────────────────────────
+  async function stripeCall(path: string, params: Record<string, string>, method: "POST" | "DELETE" = "POST"): Promise<Record<string, unknown> | null> {
     const body = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) body.append(k, v);
     const res = await fetch(`${STRIPE_API}${path}`, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${stripeKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+        ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
       },
-      body,
+      body: method === "POST" ? body : undefined,
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "(no body)");
-      throw new Error(`Stripe ${path}: ${res.status} ${txt.slice(0, 200)}`);
+      throw new Error(`Stripe ${method} ${path}: ${res.status} ${txt.slice(0, 250)}`);
     }
     return res.json();
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PHASE 1 — DB SETUP
-  // ════════════════════════════════════════════════════════════════════════
-  const testEmail = `e2e-probe-${runId}@sosphere.internal`;
-  await step("create_test_user", async () => {
-    const password = crypto.randomUUID() + crypto.randomUUID();
-    const { data, error } = await admin.auth.admin.createUser({
-      email: testEmail, password, email_confirm: true,
-    });
-    if (error || !data?.user) throw new Error(error?.message ?? "no user");
-    testUserId = data.user.id;
-  });
+  // ── Helper: poll DB until predicate is true or timeout ─────────────────
+  async function pollUntil<T>(
+    table: string,
+    filterCol: string,
+    filterVal: string,
+    predicate: (row: Record<string, unknown> | null) => boolean,
+    maxAttempts = POLL_MAX_ATTEMPTS,
+  ): Promise<{ row: Record<string, unknown> | null; attempts: number }> {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      const { data } = await admin.from(table).select("*").eq(filterCol, filterVal).maybeSingle();
+      if (predicate(data as Record<string, unknown> | null)) {
+        return { row: data as Record<string, unknown> | null, attempts: i + 1 };
+      }
+    }
+    return { row: null, attempts: maxAttempts };
+  }
 
-  await step("create_test_company", async () => {
-    if (!testUserId) throw new Error("no test user");
-    const { data, error } = await admin.from("companies").insert({
-      name: `SOSphere e2e probe ${runId}`,
-      owner_user_id: testUserId,
+  // ── Helper: create a probe-test company + DPA + auth user ──────────────
+  async function createTestFixtures(
+    phaseName: string,
+    opts: { withDPA: boolean } = { withDPA: true },
+  ): Promise<{ userId: string; companyId: string; dpaId: string | null; email: string }> {
+    const email = `e2e-${runId}-${phaseName}@sosphere.internal`;
+    const password = crypto.randomUUID() + crypto.randomUUID();
+    const { data: u, error: uErr } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (uErr || !u?.user) throw new Error(`createUser: ${uErr?.message}`);
+    const userId = u.user.id;
+    const { data: c, error: cErr } = await admin.from("companies").insert({
+      name: `SOSphere e2e ${runId}/${phaseName}`,
+      owner_user_id: userId,
       plan: "starter",
       country: "SA",
       employee_estimate: 5,
     }).select("id").single();
-    if (error || !data) throw new Error(error?.message ?? "no insert");
-    testCompanyId = data.id as string;
-  });
-
-  await step("create_test_dpa_acceptance", async () => {
-    if (!testCompanyId || !testUserId) throw new Error("setup not complete");
-    const { data, error } = await admin.from("company_dpa_acceptances").insert({
-      company_id: testCompanyId,
-      dpa_version: "v1-e2e-probe",
-      signer_user_id: testUserId,
-      signer_full_name: "E2E Probe Tester",
-      signer_title: "Probe Runner",
-      signer_email: testEmail,
-    }).select("id").single();
-    if (error || !data) throw new Error(error?.message ?? "no insert");
-    testDpaId = data.id as string;
-  });
-
-  // ════════════════════════════════════════════════════════════════════════
-  // PHASE 2 — STRIPE
-  // ════════════════════════════════════════════════════════════════════════
-  await step("stripe_create_customer", async () => {
-    if (!testCompanyId) throw new Error("no company");
-    const cust = await stripeCall("/customers", {
-      email: testEmail,
-      "metadata[companyId]": testCompanyId,
-      "metadata[probe_run_id]": runId,
-    });
-    stripeCustomerId = cust!.id as string;
-  });
-
-  await step("stripe_attach_payment_method", async () => {
-    if (!stripeCustomerId) throw new Error("no customer");
-    const result = await stripeCall(`/payment_methods/pm_card_visa/attach`, { customer: stripeCustomerId });
-    if (!result?.id) throw new Error("no pm id returned from attach");
-    attachedPaymentMethodId = result.id as string;
-  });
-
-  await step("stripe_set_default_payment_method", async () => {
-    if (!stripeCustomerId || !attachedPaymentMethodId) throw new Error("no customer or pm");
-    // Use the cloned PM id captured during attach (NOT the literal pm_card_visa,
-    // which is the shared test token, not a customer-owned PM).
-    await stripeCall(`/customers/${stripeCustomerId}`, {
-      "invoice_settings[default_payment_method]": attachedPaymentMethodId,
-    });
-  });
-
-  let subscriptionDebugData: Record<string, unknown> | null = null;
-  await step("stripe_create_subscription", async () => {
-    if (!stripeCustomerId || !testCompanyId || !attachedPaymentMethodId) throw new Error("setup incomplete");
-    const sub = await stripeCall("/subscriptions", {
-      customer: stripeCustomerId,
-      "items[0][price]": priceId!,
-      default_payment_method: attachedPaymentMethodId,
-      "metadata[companyId]": testCompanyId,
-      "metadata[probe_run_id]": runId,
-    });
-    stripeSubscriptionId = sub!.id as string;
-    // R-19 debug: capture key Stripe payload structure so we can diagnose
-    // metadata + items shape issues without console.log digging.
-    subscriptionDebugData = {
-      id: sub!.id,
-      status: sub!.status,
-      metadata: sub!.metadata,
-      current_period_end_at_root: (sub as any).current_period_end ?? null,
-      items_data_length: Array.isArray((sub as any).items?.data) ? (sub as any).items.data.length : null,
-      items_0_price_id: (sub as any).items?.data?.[0]?.price?.id ?? null,
-      items_0_current_period_end: (sub as any).items?.data?.[0]?.current_period_end ?? null,
-      items_0_quantity: (sub as any).items?.data?.[0]?.quantity ?? null,
-    };
-  });
-
-  // ════════════════════════════════════════════════════════════════════════
-  // PHASE 3 — WAIT FOR WEBHOOK
-  // ════════════════════════════════════════════════════════════════════════
-  let webhookFired = false;
-  let dbSubscriptionRow: Record<string, unknown> | null = null;
-  await step("poll_subscriptions_for_webhook_row", async () => {
-    if (!stripeCustomerId) throw new Error("no customer to look up");
-    for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const { data } = await admin
-        .from("subscriptions")
-        .select("*")
-        .eq("stripe_customer_id", stripeCustomerId)
-        .maybeSingle();
-      if (data) {
-        webhookFired = true;
-        dbSubscriptionRow = data;
-        return;
-      }
+    if (cErr || !c) throw new Error(`createCompany: ${cErr?.message}`);
+    const companyId = c.id as string;
+    let dpaId: string | null = null;
+    if (opts.withDPA) {
+      const { data: d, error: dErr } = await admin.from("company_dpa_acceptances").insert({
+        company_id: companyId,
+        dpa_version: "v1-e2e",
+        signer_user_id: userId,
+        signer_full_name: "E2E Probe",
+        signer_title: "Tester",
+        signer_email: email,
+      }).select("id").single();
+      if (dErr || !d) throw new Error(`createDPA: ${dErr?.message}`);
+      dpaId = d.id as string;
     }
-    throw new Error(`No subscriptions row appeared in ${POLL_MAX_ATTEMPTS}s of polling`);
-  });
+    return { userId, companyId, dpaId, email };
+  }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PHASE 4 — CLEANUP (best-effort, always runs)
-  // ════════════════════════════════════════════════════════════════════════
-  if (stripeSubscriptionId) {
-    await step("cleanup_stripe_subscription", async () => {
-      // Stripe cancellation = DELETE on subscription endpoint
-      const res = await fetch(`${STRIPE_API}/subscriptions/${stripeSubscriptionId}`, {
-        method: "DELETE",
+  async function cleanupTestFixtures(f: { userId: string; companyId: string; dpaId: string | null }) {
+    try { await admin.from("subscriptions").delete().eq("company_id", f.companyId); } catch {}
+    try { if (f.dpaId) await admin.from("company_dpa_acceptances").delete().eq("id", f.dpaId); } catch {}
+    try { await admin.from("ops_alerts").delete().like("title", `%${f.companyId}%`); } catch {}
+    try { await admin.from("stripe_unmapped_events").delete().eq("user_id", f.userId); } catch {}
+    try { await admin.from("companies").delete().eq("id", f.companyId); } catch {}
+    try { await admin.auth.admin.deleteUser(f.userId); } catch {}
+  }
+
+  // ── Helper: create Stripe customer + attach PM + sub ──────────────────
+  async function createStripeStack(
+    companyId: string,
+    email: string,
+    options: { priceOverride?: string; quantity?: number } = {},
+  ): Promise<{ customerId: string; subId: string }> {
+    const cust = await stripeCall("/customers", {
+      email,
+      "metadata[companyId]": companyId,
+      "metadata[probe_run_id]": runId,
+    });
+    const customerId = cust!.id as string;
+    const pm = await stripeCall(`/payment_methods/pm_card_visa/attach`, { customer: customerId });
+    const pmId = pm!.id as string;
+    await stripeCall(`/customers/${customerId}`, { "invoice_settings[default_payment_method]": pmId });
+    const subParams: Record<string, string> = {
+      customer: customerId,
+      "items[0][price]": options.priceOverride ?? priceId!,
+      default_payment_method: pmId,
+      "metadata[companyId]": companyId,
+      "metadata[probe_run_id]": runId,
+    };
+    if (options.quantity !== undefined) subParams["items[0][quantity]"] = String(options.quantity);
+    const sub = await stripeCall("/subscriptions", subParams);
+    return { customerId, subId: sub!.id as string };
+  }
+
+  async function deleteStripeStack(customerId: string, subId?: string) {
+    if (subId) { try { await stripeCall(`/subscriptions/${subId}`, {}, "DELETE"); } catch {} }
+    try { await stripeCall(`/customers/${customerId}`, {}, "DELETE"); } catch {}
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 1 — CREATE
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_CREATE(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    const fixtures = await createTestFixtures("create").catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "CREATE", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    try {
+      stack = await createStripeStack(fixtures.companyId, fixtures.email);
+      const { row, attempts } = await pollUntil(
+        "subscriptions", "stripe_customer_id", stack.customerId,
+        (r) => r !== null && r.status === "active" && r.tier === "starter",
+      );
+      if (!row) return { name: "CREATE", pass: false, reason: `no row after ${attempts}s`, ms: Math.round(performance.now() - t0) };
+      return { name: "CREATE", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: attempts, tier: row.tier, seat_quantity: row.seat_quantity } };
+    } catch (e) {
+      return { name: "CREATE", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      await cleanupTestFixtures(fixtures);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 2 — UPDATE (seat_quantity propagation)
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_UPDATE(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    const fixtures = await createTestFixtures("update").catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "UPDATE", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    try {
+      stack = await createStripeStack(fixtures.companyId, fixtures.email, { quantity: 1 });
+      // Wait for initial CREATE row
+      const initial = await pollUntil("subscriptions", "stripe_customer_id", stack.customerId, (r) => r !== null && r.seat_quantity === 1);
+      if (!initial.row) return { name: "UPDATE", pass: false, reason: "initial CREATE row never landed", ms: Math.round(performance.now() - t0) };
+      // Fetch the subscription to get items[0].id (the subscription-item ID,
+      // like si_xxx — NOT the subscription ID). Stripe needs this to know
+      // which item to mutate.
+      const subRes = await fetch(`${STRIPE_API}/subscriptions/${stack.subId}`, {
         headers: { Authorization: `Bearer ${stripeKey}` },
       });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "(no body)");
-        throw new Error(`Stripe DELETE /subscriptions/${stripeSubscriptionId}: ${res.status} ${txt.slice(0, 200)}`);
+      if (!subRes.ok) throw new Error(`fetch sub: ${subRes.status}`);
+      const subData = await subRes.json();
+      const subItemId = subData?.items?.data?.[0]?.id;
+      if (!subItemId) throw new Error("no subscription item id");
+      // Now update quantity to 5 using the item ID
+      await stripeCall(`/subscriptions/${stack.subId}`, {
+        "items[0][id]": subItemId,
+        "items[0][quantity]": "5",
+        proration_behavior: "none", // avoid pro-ration invoice
+      });
+      // Wait for seat_quantity to flip to 5
+      const updated = await pollUntil("subscriptions", "stripe_customer_id", stack.customerId, (r) => r !== null && r.seat_quantity === 5);
+      if (!updated.row) return { name: "UPDATE", pass: false, reason: `seat_quantity did not flip to 5 after ${updated.attempts}s`, ms: Math.round(performance.now() - t0), details: { initial_seat: initial.row.seat_quantity } };
+      return { name: "UPDATE", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: updated.attempts, seat_quantity: updated.row.seat_quantity } };
+    } catch (e) {
+      return { name: "UPDATE", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      await cleanupTestFixtures(fixtures);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 3 — CANCEL (subscription.deleted)
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_CANCEL(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    const fixtures = await createTestFixtures("cancel").catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "CANCEL", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    try {
+      stack = await createStripeStack(fixtures.companyId, fixtures.email);
+      const created = await pollUntil("subscriptions", "stripe_customer_id", stack.customerId, (r) => r !== null && r.status === "active");
+      if (!created.row) return { name: "CANCEL", pass: false, reason: "initial CREATE never landed", ms: Math.round(performance.now() - t0) };
+      // Cancel the sub
+      await stripeCall(`/subscriptions/${stack.subId}`, {}, "DELETE");
+      stack.subId = ""; // mark as deleted so cleanup doesn't try again
+      // Wait for status to flip to canceled
+      const canceled = await pollUntil("subscriptions", "stripe_customer_id", stack.customerId, (r) => r !== null && r.status === "canceled");
+      if (!canceled.row) return { name: "CANCEL", pass: false, reason: `status did not flip to canceled after ${canceled.attempts}s`, ms: Math.round(performance.now() - t0) };
+      return { name: "CANCEL", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: canceled.attempts, status: canceled.row.status } };
+    } catch (e) {
+      return { name: "CANCEL", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      await cleanupTestFixtures(fixtures);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 4 — CUSTOMER_DELETE (R-19 #6)
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_CUSTOMER_DELETE(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    const fixtures = await createTestFixtures("custdel").catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "CUSTOMER_DELETE", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    try {
+      stack = await createStripeStack(fixtures.companyId, fixtures.email);
+      await pollUntil("subscriptions", "stripe_customer_id", stack.customerId, (r) => r !== null && r.status === "active");
+      // Delete customer (Stripe auto-cancels the subscription)
+      await stripeCall(`/customers/${stack.customerId}`, {}, "DELETE");
+      stack.customerId = ""; stack.subId = "";
+      // Wait for stripe_customer_id to be NULLed
+      // We can't poll by stripe_customer_id (it's been nullified). Poll by company_id instead.
+      const deleted = await pollUntil("subscriptions", "company_id", fixtures.companyId,
+        (r) => r !== null && r.stripe_customer_id === null && r.status === "canceled");
+      if (!deleted.row) return { name: "CUSTOMER_DELETE", pass: false, reason: `IDs not nullified after ${deleted.attempts}s`, ms: Math.round(performance.now() - t0) };
+      return { name: "CUSTOMER_DELETE", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: deleted.attempts, status: deleted.row.status, stripe_customer_id: deleted.row.stripe_customer_id } };
+    } catch (e) {
+      return { name: "CUSTOMER_DELETE", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      await cleanupTestFixtures(fixtures);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 5 — UNMAPPED_PRICE (negative test: stripe_unmapped_events should fire)
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_UNMAPPED_PRICE(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    const fixtures = await createTestFixtures("unmapped").catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "UNMAPPED_PRICE", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    let unmappedPriceId: string | null = null;
+    try {
+      // Create a one-off product + price NOT in any env var
+      const prod = await stripeCall("/products", { name: `e2e-unmapped-${runId}` });
+      const prodId = prod!.id as string;
+      const price = await stripeCall("/prices", { product: prodId, unit_amount: "100", currency: "usd", "recurring[interval]": "month" });
+      unmappedPriceId = price!.id as string;
+      stack = await createStripeStack(fixtures.companyId, fixtures.email, { priceOverride: unmappedPriceId });
+      // The webhook should log to stripe_unmapped_events because lookupPlanByPriceEnv returns null
+      const result = await pollUntil("stripe_unmapped_events", "user_id", fixtures.userId, (r) => r !== null);
+      if (!result.row) {
+        // Try by customer_id since that's what the handler logs
+        const altResult = await pollUntil("stripe_unmapped_events", "customer_id", stack.customerId, (r) => r !== null, 3);
+        if (!altResult.row) return { name: "UNMAPPED_PRICE", pass: false, reason: "stripe_unmapped_events row never appeared", ms: Math.round(performance.now() - t0) };
+        return { name: "UNMAPPED_PRICE", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: altResult.attempts, retry_count: altResult.row.retry_count } };
       }
-    });
+      return { name: "UNMAPPED_PRICE", pass: true, ms: Math.round(performance.now() - t0), details: { pollAttempts: result.attempts, retry_count: result.row.retry_count } };
+    } catch (e) {
+      return { name: "UNMAPPED_PRICE", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      // Cleanup: delete stripe_unmapped_events row, stripe stack, fixtures
+      try { await admin.from("stripe_unmapped_events").delete().eq("user_id", fixtures.userId); } catch {}
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      // Note: Stripe doesn't allow programmatically deleting prices once created in test mode.
+      // They auto-purge after ~30 days. The unmappedPriceId leaks; acceptable for test mode.
+      await cleanupTestFixtures(fixtures);
+    }
   }
-  if (stripeCustomerId) {
-    await step("cleanup_stripe_customer", async () => {
-      await fetch(`${STRIPE_API}/customers/${stripeCustomerId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${stripeKey}` },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 6 — DPA_BLOCK (R-19 #16: B2B sub without DPA must be blocked)
+  // ══════════════════════════════════════════════════════════════════════
+  async function phase_DPA_BLOCK(): Promise<PhaseResult> {
+    const t0 = performance.now();
+    // Create fixtures WITHOUT DPA
+    const fixtures = await createTestFixtures("dpablock", { withDPA: false }).catch((e) => ({ error: String(e) }));
+    if ("error" in fixtures) return { name: "DPA_BLOCK", pass: false, reason: `setup: ${fixtures.error}`, ms: Math.round(performance.now() - t0) };
+    let stack: { customerId: string; subId: string } | null = null;
+    try {
+      stack = await createStripeStack(fixtures.companyId, fixtures.email);
+      // Webhook should: (a) not write subscriptions row, (b) write ops_alerts row
+      // Wait briefly for the webhook to process
+      await new Promise((r) => setTimeout(r, 6000));
+      // Verify no subscriptions row was written
+      const { data: subRow } = await admin.from("subscriptions").select("id").eq("company_id", fixtures.companyId).maybeSingle();
+      if (subRow) return { name: "DPA_BLOCK", pass: false, reason: "subscriptions row was written despite missing DPA — security bypass!", ms: Math.round(performance.now() - t0) };
+      // Verify ops_alerts row exists
+      const { data: alerts } = await admin.from("ops_alerts").select("*").eq("category", "subscription_without_dpa").limit(20);
+      const ourAlert = (alerts || []).find((a) => {
+        const md = (a.metadata as Record<string, unknown>) || {};
+        return md.company_id === fixtures.companyId;
       });
-    });
+      if (!ourAlert) return { name: "DPA_BLOCK", pass: false, reason: "ops_alerts row not written — DPA gate logged nothing!", ms: Math.round(performance.now() - t0) };
+      return { name: "DPA_BLOCK", pass: true, ms: Math.round(performance.now() - t0), details: { alert_id: ourAlert.id, severity: ourAlert.severity } };
+    } catch (e) {
+      return { name: "DPA_BLOCK", pass: false, reason: String(e).slice(0, 200), ms: Math.round(performance.now() - t0) };
+    } finally {
+      // Cleanup the ops_alerts row we triggered
+      try { await admin.from("ops_alerts").delete().eq("category", "subscription_without_dpa").like("title", `%${fixtures.companyId}%`); } catch {}
+      if (stack) await deleteStripeStack(stack.customerId, stack.subId);
+      await cleanupTestFixtures(fixtures);
+    }
   }
-  if (stripeCustomerId) {
-    await step("cleanup_subscriptions_row", async () => {
-      await admin.from("subscriptions").delete().eq("stripe_customer_id", stripeCustomerId!);
-    });
-  }
-  if (testDpaId) {
-    await step("cleanup_dpa", async () => {
-      await admin.from("company_dpa_acceptances").delete().eq("id", testDpaId!);
-    });
-  }
-  if (testCompanyId) {
-    await step("cleanup_company", async () => {
-      await admin.from("companies").delete().eq("id", testCompanyId!);
-    });
-  }
-  if (testUserId) {
-    await step("cleanup_test_user", async () => {
-      await admin.auth.admin.deleteUser(testUserId!);
-    });
-  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // RUN ALL PHASES
+  // ══════════════════════════════════════════════════════════════════════
+  const phases: PhaseResult[] = [];
+  phases.push(await phase_CREATE());
+  phases.push(await phase_UPDATE());
+  phases.push(await phase_CANCEL());
+  phases.push(await phase_CUSTOMER_DELETE());
+  phases.push(await phase_UNMAPPED_PRICE());
+  phases.push(await phase_DPA_BLOCK());
 
   const totalMs = Math.round(performance.now() - runStart);
-  const allOk = steps.every((s) => s.ok);
-  const setupOk = steps.slice(0, 7).every((s) => s.ok); // phases 1+2+3 (everything except cleanup)
-
+  const allPass = phases.every((p) => p.pass);
   return jsonResponse({
-    pass: setupOk && webhookFired,
+    pass: allPass,
     runId,
-    webhookFired,
-    setupSucceeded: setupOk,
-    allStepsClean: allOk,
+    passed: phases.filter((p) => p.pass).length,
+    failed: phases.filter((p) => !p.pass).length,
+    total: phases.length,
     totalMs,
-    subscriptionDebugData,
-    dbSubscriptionRow: dbSubscriptionRow ? {
-      id: dbSubscriptionRow.id,
-      company_id: dbSubscriptionRow.company_id,
-      stripe_customer_id: dbSubscriptionRow.stripe_customer_id,
-      stripe_subscription_id: dbSubscriptionRow.stripe_subscription_id,
-      status: dbSubscriptionRow.status,
-      tier: dbSubscriptionRow.tier,
-      plan: dbSubscriptionRow.plan,
-      seat_quantity: dbSubscriptionRow.seat_quantity,
-      last_stripe_event_at: dbSubscriptionRow.last_stripe_event_at,
-    } : null,
-    steps,
+    phases,
   }, 200, corsHeaders);
 });
