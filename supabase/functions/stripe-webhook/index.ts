@@ -172,6 +172,46 @@ async function upsertSubscription(
     row.user_id = target.userId;
     await supabase.from("subscriptions").upsert(row, { onConflict: "user_id" });
   } else {
+    // R-19 #16 (2026-05-15): defensive DPA enforcement. The in-app flow
+    // gates DPA acceptance at start_company_trial (migration L334-345),
+    // but an owner with Stripe Dashboard access can create a subscription
+    // DIRECTLY via the Stripe API, bypassing our in-app gate. Without this
+    // check, the webhook happily writes the row → company starts paying
+    // for Elite while having NEVER accepted DPA legally.
+    //
+    // Best-effort: if the company has zero DPA acceptances on record,
+    // skip the upsert AND surface to ops_alerts so the operator can chase
+    // it down. Stripe still gets a 200 (the event is "deferred"; webhook
+    // can be replayed once the operator gets the company to accept DPA).
+    const { data: dpaRows, error: dpaErr } = await supabase
+      .from("company_dpa_acceptances")
+      .select("id")
+      .eq("company_id", target.companyId)
+      .limit(1);
+    if (dpaErr) {
+      console.warn(`[stripe-webhook] DPA acceptance lookup failed (failing OPEN, defaulting to write):`, dpaErr);
+    } else if (!dpaRows || dpaRows.length === 0) {
+      // No DPA acceptance on record — block + alert operator
+      console.warn(`[stripe-webhook] R-19 #16: blocking subscription upsert for company=${target.companyId} (no DPA acceptance on record)`);
+      try {
+        await supabase.from("ops_alerts").insert({
+          severity: "high",
+          source: "stripe-webhook",
+          category: "subscription_without_dpa",
+          title: `Stripe subscription for company ${target.companyId} blocked — no DPA acceptance on record`,
+          metadata: {
+            event_id: eventCreatedAt ?? null,
+            company_id: target.companyId,
+            stripe_subscription_id: sub.id,
+            stripe_customer_id: sub.customer,
+            plan: planId,
+          },
+        });
+      } catch (alertErr) {
+        console.warn(`[stripe-webhook] ops_alerts insert failed (non-fatal):`, alertErr);
+      }
+      return { applied: false, reason: "dpa_not_accepted" };
+    }
     row.company_id = target.companyId;
     await supabase.from("subscriptions").upsert(row, { onConflict: "company_id" });
   }
@@ -626,6 +666,30 @@ serve(async (req: Request) => {
           // sit in the recovery table and tell Stripe "OK" so it stops.
           shouldRollback = false;
           console.warn(`[stripe-webhook] event ${evtId} exceeded retry budget (${prevRetryCount}); breaking loop, leaving dedup row in place`);
+
+          // R-19 #12 (2026-05-15): operator visibility. Without this, a
+          // paying customer can sit in free-tier limbo over an unattended
+          // weekend (subscription row never written, the only signal a
+          // deep forensic row no one watches). Insert into ops_alerts so
+          // the operator dashboard / scheduled query / pager wiring picks
+          // it up. Best-effort — never fails the webhook.
+          try {
+            await supabase.from("ops_alerts").insert({
+              severity: "high",
+              source: "stripe-webhook",
+              category: "stripe_unmapped_price_exhausted",
+              title: `Stripe event ${evtId} (${evtType}) retry budget exhausted — paying customer in free-tier limbo`,
+              metadata: {
+                event_id: evtId,
+                event_type: evtType,
+                retry_count: prevRetryCount,
+                price_id: err.priceId ?? null,
+                customer: (event?.data?.object?.customer as string | undefined) ?? null,
+              },
+            });
+          } catch (alertErr) {
+            console.warn(`[stripe-webhook] ops_alerts insert failed (non-fatal):`, alertErr);
+          }
         }
       } catch { /* probe is best-effort */ }
       if (shouldRollback) {
