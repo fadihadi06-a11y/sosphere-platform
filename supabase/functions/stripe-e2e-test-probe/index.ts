@@ -103,6 +103,11 @@ serve(async (req) => {
   let testDpaId: string | null = null;
   let stripeCustomerId: string | null = null;
   let stripeSubscriptionId: string | null = null;
+  // R-19 #18 fix: pm_card_visa is a SHARED test token. When attached to a
+  // customer, Stripe CLONES it and gives the clone a new pm_xxx ID. We
+  // must capture and use that cloned ID — the bare pm_card_visa string
+  // is only valid as an attach source, not as a default_payment_method.
+  let attachedPaymentMethodId: string | null = null;
 
   async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
     const t0 = performance.now();
@@ -189,21 +194,29 @@ serve(async (req) => {
 
   await step("stripe_attach_payment_method", async () => {
     if (!stripeCustomerId) throw new Error("no customer");
-    await stripeCall(`/payment_methods/pm_card_visa/attach`, { customer: stripeCustomerId });
+    const result = await stripeCall(`/payment_methods/pm_card_visa/attach`, { customer: stripeCustomerId });
+    if (!result?.id) throw new Error("no pm id returned from attach");
+    attachedPaymentMethodId = result.id as string;
   });
 
   await step("stripe_set_default_payment_method", async () => {
-    if (!stripeCustomerId) throw new Error("no customer");
+    if (!stripeCustomerId || !attachedPaymentMethodId) throw new Error("no customer or pm");
+    // Use the cloned PM id captured during attach (NOT the literal pm_card_visa,
+    // which is the shared test token, not a customer-owned PM).
     await stripeCall(`/customers/${stripeCustomerId}`, {
-      "invoice_settings[default_payment_method]": "pm_card_visa",
+      "invoice_settings[default_payment_method]": attachedPaymentMethodId,
     });
   });
 
   await step("stripe_create_subscription", async () => {
-    if (!stripeCustomerId || !testCompanyId) throw new Error("setup incomplete");
+    if (!stripeCustomerId || !testCompanyId || !attachedPaymentMethodId) throw new Error("setup incomplete");
+    // Also pass default_payment_method on the subscription directly so Stripe
+    // can charge the very first invoice without depending on the customer
+    // default settling first.
     const sub = await stripeCall("/subscriptions", {
       customer: stripeCustomerId,
       "items[0][price]": priceId!,
+      default_payment_method: attachedPaymentMethodId,
       "metadata[companyId]": testCompanyId,
       "metadata[probe_run_id]": runId,
     });
@@ -238,12 +251,15 @@ serve(async (req) => {
   // ════════════════════════════════════════════════════════════════════════
   if (stripeSubscriptionId) {
     await step("cleanup_stripe_subscription", async () => {
-      await stripeCall(`/subscriptions/${stripeSubscriptionId}`, { /* DELETE via this endpoint */ });
-      // Stripe uses DELETE for cancellation
-      await fetch(`${STRIPE_API}/subscriptions/${stripeSubscriptionId}`, {
+      // Stripe cancellation = DELETE on subscription endpoint
+      const res = await fetch(`${STRIPE_API}/subscriptions/${stripeSubscriptionId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${stripeKey}` },
       });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "(no body)");
+        throw new Error(`Stripe DELETE /subscriptions/${stripeSubscriptionId}: ${res.status} ${txt.slice(0, 200)}`);
+      }
     });
   }
   if (stripeCustomerId) {
