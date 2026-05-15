@@ -291,19 +291,30 @@ serve(async (req) => {
     auditRowCount = error ? -1 : (data?.length ?? 0);
   }
 
-  // 4c. sos_pipeline_metrics has 'sos_received' for each emergencyId.
-  //     This exercises the R-13 classification path (probe users with
-  //     @sosphere.internal emails should be classified is_synthetic=true).
+  // 4c. sos_pipeline_metrics has 1 row per emergency (PRIMARY KEY trace_id,
+  //     emergency_id is 1:1 with trace_id). The table tracks TIMING MARKERS
+  //     (server_received_at, primary_alert_dispatched_at, ended_at) rather
+  //     than discrete "stages" — there's no `stage` column. This query
+  //     just verifies the row exists + checks the R-13 classification path
+  //     (probe users with @sosphere.internal emails → is_synthetic=true).
   let pipelineMetricsRowCount = 0;
   let syntheticClassifiedCount = 0;
+  let pipelineMetricsError: string | null = null;
   if (successEmergencyIds.length > 0) {
     const { data, error } = await admin
       .from("sos_pipeline_metrics")
-      .select("emergency_id, is_synthetic", { count: "exact", head: false })
-      .in("emergency_id", successEmergencyIds)
-      .eq("stage", "sos_received");
-    pipelineMetricsRowCount = error ? -1 : (data?.length ?? 0);
-    syntheticClassifiedCount = error ? -1 : ((data ?? []).filter((r: { is_synthetic: boolean }) => r.is_synthetic === true).length);
+      .select("emergency_id, is_synthetic")
+      .in("emergency_id", successEmergencyIds);
+    if (error) {
+      pipelineMetricsRowCount = -1;
+      syntheticClassifiedCount = -1;
+      pipelineMetricsError = error.message;
+    } else {
+      pipelineMetricsRowCount = data?.length ?? 0;
+      syntheticClassifiedCount = (data ?? []).filter(
+        (r: { is_synthetic: boolean }) => r.is_synthetic === true,
+      ).length;
+    }
   }
 
   // 4d. NB: audit_log chain integrity is enforced by the BEFORE INSERT
@@ -364,6 +375,7 @@ serve(async (req) => {
         auditLogRows: auditRowCount,
         pipelineMetricsRows: pipelineMetricsRowCount,
         syntheticClassified: syntheticClassifiedCount,
+        pipelineMetricsError,
       },
       stages: {
         setupUsersMs: stage1Ms,
