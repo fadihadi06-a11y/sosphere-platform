@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-15T00:04:02.814Z",
-  "total_migrations": 124,
-  "manifest_sha256": "37b7e9b3e674e5895bd40b41749465f32c43c85ae87e2823e9188796dc0a7f30",
+  "generated_at": "2026-05-15T17:05:19.389Z",
+  "total_migrations": 128,
+  "manifest_sha256": "26977f959270eb85134a02599c968bbadbb095f6aecbf6b5c640b7b50b311c99",
   "migrations": [
     {
       "version": "20260415",
@@ -870,6 +870,34 @@
       "file": "20260515000000_r13_pipeline_metrics_probe_classification.sql",
       "sha256": "d865665c43aae87c58fa4ce02dd0dfd36581f523804ed90e808ef4c463313055",
       "bytes": 2165
+    },
+    {
+      "version": "20260515120000",
+      "name": "r18g_probe_session_cache",
+      "file": "20260515120000_r18g_probe_session_cache.sql",
+      "sha256": "0411114a550e17f7e3428666d7d99b1e77ea4b4cb2c89ac37346d00f73bcc5ba",
+      "bytes": 4215
+    },
+    {
+      "version": "20260515140000",
+      "name": "r19_subscription_event_columns",
+      "file": "20260515140000_r19_subscription_event_columns.sql",
+      "sha256": "8823a32d24627da016420dea5179277672fff546ff9e54b80e77ac68d24c18e0",
+      "bytes": 2669
+    },
+    {
+      "version": "20260515150000",
+      "name": "r19p3_ordering_guard_and_seats",
+      "file": "20260515150000_r19p3_ordering_guard_and_seats.sql",
+      "sha256": "dec0c7877327443837d808d8d0b7339c26587d1b8854c409b51fb73b11aeb70a",
+      "bytes": 2581
+    },
+    {
+      "version": "20260515160000",
+      "name": "r19p5_ops_alerts",
+      "file": "20260515160000_r19p5_ops_alerts.sql",
+      "sha256": "ebde0deee04bafe9e44463a52f730c103e3d9cff7cb0ecb84de9b1c5a5e73e34",
+      "bytes": 2922
     }
   ]
 }
