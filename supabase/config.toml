@@ -103,3 +103,9 @@ verify_jwt = false
 # via PROBE_SECRET. workflow_dispatch / manual only.
 [functions.stripe-e2e-test-probe]
 verify_jwt = false
+
+
+# R-19 #22: advanced stress probe. PLAN_UPGRADE, SEAT_OVERFLOW, CONCURRENT,
+# OUT_OF_ORDER, PAYMENT_FAIL. Bearer via PROBE_SECRET, manual only.
+[functions.stripe-e2e-stress-probe]
+verify_jwt = false
