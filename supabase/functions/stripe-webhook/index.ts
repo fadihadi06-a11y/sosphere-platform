@@ -134,23 +134,34 @@ function lookupPlanByPriceEnv(priceId: string | undefined): string | null {
 }
 
 async function stripeGet(path: string): Promise<any> {
+  // R-19 Phase 1 (#11): throw on non-2xx so transient Stripe API errors
+  // (5xx, 401, 429) don't masquerade as UnmappedPriceError. Without this,
+  // a brief Stripe outage causes us to pollute stripe_unmapped_events and
+  // burn through the 24-retry budget on what's really just a transient issue.
   const res = await fetch(`https://api.stripe.com/v1${path}`, {
     headers: { Authorization: `Bearer ${STRIPE_SECRET}` },
   });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "(no body)");
+    throw new Error(`stripe_api_error: ${res.status} ${path}: ${errBody.slice(0, 200)}`);
+  }
   return res.json();
 }
 
-// G-29 (B-20): atomic event-id dedup. Returns true if this is the FIRST
-// time we have seen this event_id; false if it's a duplicate (already
-// processed). Safe-default on DB error: return true so we DO process
-// the event — missing the dedup row is far less harmful than failing
-// to record a real subscription change.
+// G-29 / R-19 Phase 1 (#1, #2): atomic event-id dedup with fail-CLOSED
+// semantics. Returns:
+//   { ok: true,  isFirstSeen: true  } — first time we have seen this event
+//   { ok: true,  isFirstSeen: false } — duplicate (23505 unique violation)
+//   { ok: false, isFirstSeen: false } — DB unavailable; caller must 503
+// Fail-CLOSED on unknown DB errors so Stripe retries (instead of us
+// double-processing). Pre-R-19 this was fail-OPEN — replay-attack window
+// during DB degradation. Now: if dedup can't run, we don't process.
 async function claimStripeEventOnce(
   supabase: ReturnType<typeof createClient>,
   evtId: string,
   evtType: string,
-): Promise<boolean> {
-  if (!evtId || evtId === "(unknown)") return true;
+): Promise<{ ok: boolean; isFirstSeen: boolean }> {
+  if (!evtId || evtId === "(unknown)") return { ok: true, isFirstSeen: true };
   try {
     const { data, error } = await supabase
       .from("processed_stripe_events")
@@ -158,16 +169,24 @@ async function claimStripeEventOnce(
       .select("event_id")
       .maybeSingle();
     if (error) {
-      // Postgres unique-violation code = 23505. supabase-js surfaces it
-      // as { code: "23505" }. ANY other error is treated as fail-OPEN.
-      if ((error as any)?.code === "23505") return false;
-      console.warn(`[stripe-webhook] claimStripeEventOnce DB error (fail-open):`, error.message);
-      return true;
+      if ((error as any)?.code === "23505") return { ok: true, isFirstSeen: false };
+      console.error(`[stripe-webhook] claimStripeEventOnce DB error (fail-CLOSED):`, error.message);
+      return { ok: false, isFirstSeen: false };
     }
-    return !!data;
+    return { ok: true, isFirstSeen: !!data };
   } catch (err) {
-    console.warn(`[stripe-webhook] claimStripeEventOnce threw (fail-open):`, err);
-    return true;
+    console.error(`[stripe-webhook] claimStripeEventOnce threw (fail-CLOSED):`, err);
+    return { ok: false, isFirstSeen: false };
+  }
+}
+
+// R-19 Phase 1 (#2): typed error so the catch block at the end of the
+// switch rolls back the dedup row. Previously, inline `return 500` paths
+// bypassed the catch entirely, leaving the dedup row in place forever —
+// Stripe retried and got 200 deduped, but our DB never reflected the event.
+class DbHandlerError extends Error {
+  constructor(public readonly stage: string, public readonly cause?: unknown) {
+    super(`db_handler_error: ${stage}: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
 }
 
@@ -193,9 +212,16 @@ serve(async (req: Request) => {
   const evtId = event?.id || "(unknown)";
   const evtType = event?.type || "(unknown)";
 
-  // G-29: dedup BEFORE business logic. Idempotent on event_id.
-  const isFirstSeen = await claimStripeEventOnce(supabase, evtId, evtType);
-  if (!isFirstSeen) {
+  // G-29 / R-19 Phase 1: dedup BEFORE business logic. Idempotent on event_id.
+  const claim = await claimStripeEventOnce(supabase, evtId, evtType);
+  if (!claim.ok) {
+    // DB unavailable; fail-CLOSED. Return 503 so Stripe retries against
+    // a healthy worker rather than us double-processing.
+    return new Response(JSON.stringify({ error: "dedup_unavailable" }), {
+      status: 503, headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!claim.isFirstSeen) {
     console.log(`[stripe-webhook] duplicate event ignored: id=${evtId} type=${evtType}`);
     return new Response(JSON.stringify({ received: true, deduped: true, id: evtId, type: evtType }), {
       status: 200, headers: { "Content-Type": "application/json" },
@@ -252,8 +278,10 @@ serve(async (req: Request) => {
           .from("subscriptions").select("user_id, company_id")
           .eq("stripe_customer_id", sub.customer).maybeSingle();
         if (selErr) {
-          console.error(`[stripe-webhook] ${evtType} id=${evtId} DB select failed:`, selErr);
-          return new Response(JSON.stringify({ error: "db_read_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+          // R-19 Phase 1 (#2): throw so the catch block rolls back the
+          // dedup row. Otherwise Stripe's retry hits the dedup branch and
+          // returns 200, but our DB never reflects this event → permanent drift.
+          throw new DbHandlerError("subscription_select_failed", selErr);
         }
         const metadataCompanyId = (sub as { metadata?: Record<string, string> }).metadata?.companyId as string | undefined;
         const target: UpsertTarget | null =
@@ -293,8 +321,7 @@ serve(async (req: Request) => {
           status: "canceled", cancel_at_period_end: true, updated_at: new Date().toISOString(),
         }).eq("stripe_subscription_id", sub.id);
         if (updErr) {
-          console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
-          return new Response(JSON.stringify({ error: "db_update_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+          throw new DbHandlerError("subscription_delete_update_failed", updErr);
         }
         // Audit #5 / B1: record the cancellation.
         // We re-fetch the user_id so the audit row is correlated.
@@ -328,8 +355,7 @@ serve(async (req: Request) => {
             .update({ status: "past_due", updated_at: new Date().toISOString() })
             .eq("stripe_subscription_id", inv.subscription);
           if (updErr) {
-            console.error(`[stripe-webhook] ${evtType} id=${evtId} DB update failed:`, updErr);
-            return new Response(JSON.stringify({ error: "db_update_failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+            throw new DbHandlerError("invoice_payment_failed_update_failed", updErr);
           }
         }
         // Audit #5 / B1: record payment failure for forensics.
