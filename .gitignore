@@ -33,3 +33,4 @@ backups/
 backup-*.sql
 *.dump
 *.sql.gz
+*stripe-test-setup-*.txt
