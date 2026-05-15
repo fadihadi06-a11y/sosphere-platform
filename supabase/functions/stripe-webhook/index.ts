@@ -152,6 +152,24 @@ async function upsertSubscription(
   // lifecycle.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const trialEnd = (sub as any).trial_end;
+  // R-19 #19 (2026-05-15): API version 2026-04-22.dahlia moved
+  // current_period_end + cancel_at_period_end from subscription root to
+  // items[0]. Read from BOTH locations with fallback so the handler works
+  // across API version pin choices. Without this defensive read, a project
+  // pinned to dahlia sees `sub.current_period_end === undefined` →
+  // `new Date(undefined*1000) === Invalid Date` → `.toISOString()` throws
+  // → DbHandlerError → permanent webhook 500 on every subscription event.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subAny = sub as any;
+  const cpeUnix: number | null =
+    typeof subAny.current_period_end === "number" ? subAny.current_period_end :
+    typeof subAny.items?.data?.[0]?.current_period_end === "number" ? subAny.items.data[0].current_period_end :
+    null;
+  const cancelAtPeriodEnd: boolean =
+    typeof subAny.cancel_at_period_end === "boolean" ? subAny.cancel_at_period_end :
+    typeof subAny.items?.data?.[0]?.cancel_at_period_end === "boolean" ? subAny.items.data[0].cancel_at_period_end :
+    false;
+
   const row: Record<string, unknown> = {
     stripe_customer_id: sub.customer,
     stripe_subscription_id: sub.id,
@@ -159,8 +177,8 @@ async function upsertSubscription(
     tier: planId,
     plan: planId,
     status: sub.status,
-    current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-    cancel_at_period_end: sub.cancel_at_period_end,
+    current_period_end: cpeUnix !== null ? new Date(cpeUnix * 1000).toISOString() : null,
+    cancel_at_period_end: cancelAtPeriodEnd,
     seat_quantity: seatQuantity,
     last_stripe_event_at: eventCreatedAt ?? null,
     updated_at: new Date().toISOString(),
