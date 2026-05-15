@@ -97,3 +97,9 @@ verify_jwt = false
 # critical paths (valid signature, replay dedup, invalid signature).
 [functions.stripe-webhook-test-probe]
 verify_jwt = false
+
+# R-19 #18: end-to-end Stripe integration test (creates real Stripe customer
+# + subscription via API, verifies webhook → DB write, cleans up). Bearer
+# via PROBE_SECRET. workflow_dispatch / manual only.
+[functions.stripe-e2e-test-probe]
+verify_jwt = false
