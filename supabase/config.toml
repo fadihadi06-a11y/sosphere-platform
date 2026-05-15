@@ -77,3 +77,8 @@ verify_jwt = false
 # pulse JSON. Used by uptime monitors + status pages.
 [functions.sos-health]
 verify_jwt = false
+
+# R-17: parallel SOS load test probe (workflow_dispatch only, not on cron).
+# Bearer-token auth via PROBE_SECRET — same pattern as sos-dispatch-probe.
+[functions.sos-load-probe]
+verify_jwt = false
