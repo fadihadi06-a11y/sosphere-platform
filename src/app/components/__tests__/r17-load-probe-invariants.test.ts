@@ -83,48 +83,59 @@ describe("R-17: count param is parsed + bounded", () => {
     expect(probeSrc).toMatch(/url\.searchParams\.get\(\s*["']count["']\s*\)/);
   });
 
-  it("clamps to [1, MAX_COUNT] with MAX_COUNT bumped to 100 (R-18-F)", () => {
-    // R-18-F: MAX_COUNT bumped from 50 to 100 once SIGNIN batching avoided
-    // Supabase Auth rate-limit ceiling. The 50-cap was a probe artefact, not
-    // a sos-alert limit. With batched sign-in we can stress-test up to 100
-    // concurrent triggers without the Auth API masking real capacity.
+  it("clamps to [1, MAX_COUNT] with MAX_COUNT bumped to 100 (R-18-G)", () => {
     expect(probeSrc).toMatch(/const\s+MAX_COUNT\s*=\s*100/);
     expect(probeSrc).toMatch(/Math\.max\(\s*1\s*,\s*Math\.min\(\s*MAX_COUNT/);
   });
 
-  it("R-18-F: batched sign-in fallback path exists for when JWT_SECRET is absent", () => {
-    // Even with the preferred mint_jwt path, the probe must still fall back
-    // gracefully when SUPABASE_JWT_SECRET isn't configured.
-    expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_SIZE\s*=\s*\d+/);
-    expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_DELAY_MS\s*=\s*\d+/);
-    expect(probeSrc).toMatch(/offset\s*\+=\s*SIGNIN_BATCH_SIZE/);
-    expect(probeSrc).toMatch(/setTimeout\([^)]+SIGNIN_BATCH_DELAY_MS/);
+  it("R-18-G: seed mode (slow probe-user setup, idempotent)", () => {
+    // ?seed=true&count=N runs ONCE EVER. Creates N probe users at a rate
+    // safely under Supabase Auth's 30/5min limit (default 11s between
+    // each, ~5.4 per minute). Stores access_token + refresh_token in the
+    // cache table for instant reuse on subsequent runs.
+    expect(probeSrc).toMatch(/const\s+SEED_DELAY_MS\s*=\s*\d+/);
+    expect(probeSrc).toMatch(/searchParams\.get\(\s*["']seed["']\s*\)\s*===\s*["']true["']/);
+    expect(probeSrc).toMatch(/mode:\s*["']seed["']/);
   });
 
-  it("R-18-F v2: prefers LOCAL JWT minting (bypasses Auth API rate limit)", () => {
-    // Supabase Auth rate-limits /token at ~30 sign-ins / 5 min / IP. Edge
-    // function = 1 IP. Even aggressive batching can't push past ~30 in a
-    // single run, masking sos-alert's real capacity. The root fix: mint
-    // JWTs locally using SUPABASE_JWT_SECRET (HS256 HMAC). Zero Auth calls.
-    expect(probeSrc).toMatch(/Deno\.env\.get\(\s*["']SUPABASE_JWT_SECRET["']/);
-    expect(probeSrc).toMatch(/import\s*\{[^}]*createJwt[^}]*\}\s*from\s*["']https:\/\/deno\.land\/x\/djwt/);
-    expect(probeSrc).toMatch(/authMethod[\s\S]{0,80}["']mint_jwt["']/);
-    expect(probeSrc).toMatch(/role:\s*["']authenticated["']/);
-    expect(probeSrc).toMatch(/aud:\s*["']authenticated["']/);
-    expect(probeSrc).toMatch(/HMAC[\s\S]{0,60}SHA-256/);
+  it("R-18-G: load mode pulls JWTs from sos_probe_session_cache", () => {
+    // Default mode reads cached access_tokens from the DB table — no
+    // Supabase Auth calls at all if the cache is fresh.
+    expect(probeSrc).toMatch(/from\(\s*["']sos_probe_session_cache["']\s*\)/);
+    expect(probeSrc).toMatch(/access_token/);
+    expect(probeSrc).toMatch(/refresh_token/);
+    expect(probeSrc).toMatch(/expires_at/);
   });
 
-  it("R-18-F v2: skips updateUserById when minting JWTs (no password needed)", () => {
-    // Password is only needed for signInWithPassword path. When minting
-    // JWTs locally we never sign in, so rotating passwords is wasted
-    // admin-API calls (and slightly weakens forward security).
-    expect(probeSrc).toMatch(/if\s*\(\s*authMethod\s*===\s*["']sign_in["']\s*\)\s*\{[\s\S]{0,200}updateUserById/);
+  it("R-18-G: cache_incomplete error path with helpful diagnostic", () => {
+    // If the cache is missing rows for the requested count, return a 400
+    // with the specific missing indexes so the operator knows to re-seed.
+    expect(probeSrc).toMatch(/cache_incomplete/);
+    expect(probeSrc).toMatch(/missingIndexes/);
+    expect(probeSrc).toMatch(/Run seed mode first/);
   });
 
-  it("R-18-F v2: surfaces authMethod in report body for visibility", () => {
-    // The response JSON should reveal which path executed so the operator
-    // knows whether the run actually exercised the unconstrained capacity.
-    expect(probeSrc).toMatch(/authMethod,\n/);
+  it("R-18-G: refreshes JWTs within REFRESH_LEEWAY_MS of expiry", () => {
+    // Only call /token?grant_type=refresh_token when an access_token has
+    // less than REFRESH_LEEWAY_MS remaining. Refresh has a much higher
+    // rate limit than sign-in.
+    expect(probeSrc).toMatch(/const\s+REFRESH_LEEWAY_MS\s*=\s*\d+/);
+    expect(probeSrc).toMatch(/refreshSession\(\s*\{[\s\S]{0,80}refresh_token/);
+    expect(probeSrc).toMatch(/refreshedJwts:/);
+  });
+
+  it("R-18-G: cache UPDATE writes back the new tokens after a refresh", () => {
+    // Otherwise the next run would refresh again unnecessarily — and on a
+    // single-use refresh_token (default Supabase behaviour) the cache
+    // would point at an invalidated token.
+    expect(probeSrc).toMatch(/sos_probe_session_cache[\s\S]{0,200}\.update\([\s\S]{0,500}access_token/);
+  });
+
+  it("R-18-G: mode label in response body (seed | load)", () => {
+    // Surface which mode ran so the operator can distinguish seed runs
+    // from load runs in the response JSON.
+    expect(probeSrc).toMatch(/mode:\s*["']load["']/);
+    expect(probeSrc).toMatch(/mode:\s*["']seed["']/);
   });
 
   it("default count is 5 when query param omitted", () => {
@@ -158,8 +169,9 @@ describe("R-17: stages are timed for observability", () => {
       expect(probeSrc, `stage${i}Start missing`).toMatch(new RegExp(`stage${i}Start\\s*=\\s*performance\\.now\\(\\)`));
       expect(probeSrc, `stage${i}Ms missing`).toMatch(new RegExp(`const\\s+stage${i}Ms\\s*=`));
     }
-    expect(probeSrc).toMatch(/setupUsersMs:\s*stage1Ms/);
-    expect(probeSrc).toMatch(/signInMs:\s*stage2Ms/);
+    // R-18-G renamed stages: setupUsers→loadCache, signIn→refresh.
+    expect(probeSrc).toMatch(/loadCacheMs:\s*stage1Ms/);
+    expect(probeSrc).toMatch(/refreshMs:\s*stage2Ms/);
     expect(probeSrc).toMatch(/triggerMs:\s*stage3Ms/);
     expect(probeSrc).toMatch(/verifyMs:\s*stage4Ms/);
     expect(probeSrc).toMatch(/totalMs/);
@@ -174,10 +186,12 @@ describe("R-17: stages are timed for observability", () => {
 });
 
 describe("R-17: parallel execution (the actual load test)", () => {
-  it("uses Promise.all for parallel setup + sign-in + trigger", () => {
-    // At least 3 Promise.all sites (stage 1, 2, 3)
+  it("uses Promise.all for parallel refresh + trigger (R-18-G architecture)", () => {
+    // R-18-G removed the parallel sign-in stage (replaced by sequential
+    // seed mode + cache load). Still 2 Promise.all sites in load mode:
+    // refresh (stage 2) + trigger (stage 3 — the actual load test).
     const matches = probeSrc.match(/await Promise\.all\(/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(3);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   it("each trigger uses its own emergencyId + traceId + idempotency key", () => {
