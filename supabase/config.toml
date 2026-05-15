@@ -82,3 +82,9 @@ verify_jwt = false
 # Bearer-token auth via PROBE_SECRET — same pattern as sos-dispatch-probe.
 [functions.sos-load-probe]
 verify_jwt = false
+
+# R-19 Phase 5: self-test for stripe-webhook. Bearer-token via PROBE_SECRET.
+# Sends signed test events to the deployed stripe-webhook and asserts the 3
+# critical paths (valid signature, replay dedup, invalid signature).
+[functions.stripe-webhook-test-probe]
+verify_jwt = false
