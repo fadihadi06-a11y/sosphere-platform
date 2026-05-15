@@ -141,7 +141,12 @@ async function main() {
     fs.writeFileSync(MANIFEST_FILE, JSON.stringify(out, null, 2) + "\n");
     console.log(`[drift] wrote ${Object.keys(entries).length} entries to ${path.relative(ROOT, MANIFEST_FILE)}`);
     console.log(`[drift] commit this file to pin the current deployed state.`);
-    process.exit(0);
+    // R-17 fix: avoid `process.exit()` here. Calling exit() while undici
+    // keep-alive sockets are mid-close hits a libuv assertion on Windows
+    // (uv__async.c:76 — UV_HANDLE_CLOSING). Setting exitCode + returning
+    // lets the event loop drain those handles, then Node exits naturally.
+    process.exitCode = 0;
+    return;
   }
 
   // --check mode
@@ -247,7 +252,8 @@ async function main() {
     report.drifted.length > 0 ||
     report.missing_from_manifest.length > 0 ||
     unallowedForeign.length > 0;
-  process.exit(fail ? 1 : 0);
+  // R-17 fix: see above — set exitCode and let the event loop drain.
+  process.exitCode = fail ? 1 : 0;
 }
 
 main().catch((e) => { console.error("[drift] fatal:", e); process.exit(2); });
