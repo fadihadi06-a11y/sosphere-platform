@@ -76,8 +76,14 @@ android {
         applicationId "com.sosphere.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // R-16 (2026-05-15): versionCode + versionName read from CI env vars.
+        // Before R-16, both were hardcoded → every APK CI built had versionCode 1,
+        // so Android refused to install a "new" build over an "old" one without
+        // an explicit uninstall. APK_VERSION_CODE is GITHUB_RUN_NUMBER in CI,
+        // and APK_VERSION_NAME is "1.0.<run>" — both gracefully fall back to
+        // the v1.0 baseline for local builds where the env vars aren't set.
+        versionCode (System.getenv("APK_VERSION_CODE") ?: "1").toInteger()
+        versionName System.getenv("APK_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
