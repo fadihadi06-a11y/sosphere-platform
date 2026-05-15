@@ -65,6 +65,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { create as createJwt, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 const MAX_COUNT = 100;
 // R-18-F: sign-in batching. Supabase Auth API rate-limits /token (sign-in)
@@ -127,6 +128,25 @@ serve(async (req) => {
     return jsonResponse({ error: "env_missing" }, 500, corsHeaders);
   }
 
+  // R-18-F v2: JWT_SECRET enables LOCAL JWT minting → bypasses Supabase
+  // Auth API rate limit (30 sign-ins / 5 min / IP) entirely. Without
+  // JWT_SECRET we fall back to batched signInWithPassword which caps at
+  // ~30 successful sign-ins regardless of batch tuning. JWT_SECRET is
+  // exposed via `supabase secrets set SUPABASE_JWT_SECRET=...`. Copy
+  // from Dashboard → Settings → API → JWT Settings → JWT Secret.
+  const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
+  const authMethod: "mint_jwt" | "sign_in" = jwtSecret ? "mint_jwt" : "sign_in";
+  let jwtKey: CryptoKey | null = null;
+  if (jwtSecret) {
+    jwtKey = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(jwtSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"],
+    );
+  }
+
   // ── Parse count param ───────────────────────────────────────────────────
   const url = new URL(req.url);
   const rawCount = url.searchParams.get("count");
@@ -157,8 +177,13 @@ serve(async (req) => {
         try {
           let userId = existing.get(email);
           if (userId) {
-            const { error } = await admin.auth.admin.updateUserById(userId, { password });
-            if (error) throw new Error(`update ${i}: ${error.message}`);
+            // Skip password rotation when minting JWTs locally — we never
+            // sign in, so the password is irrelevant + we save N admin
+            // calls per run.
+            if (authMethod === "sign_in") {
+              const { error } = await admin.auth.admin.updateUserById(userId, { password });
+              if (error) throw new Error(`update ${i}: ${error.message}`);
+            }
           } else {
             const { data: created, error } = await admin.auth.admin.createUser({
               email,
@@ -188,39 +213,77 @@ serve(async (req) => {
   }
   const stage1Ms = Math.round(performance.now() - stage1Start);
 
-  // ── Stage 2: BATCHED sign-in → N JWTs (R-18-F) ─────────────────────────
-  // Sign-in is rate-limited at ~30/hr per IP by Supabase Auth API. We batch
-  // sign-ins (SIGNIN_BATCH_SIZE per SIGNIN_BATCH_DELAY_MS) so the Auth
-  // bucket never trips. This DOES NOT WEAKEN the load test — the actual
-  // LOAD on sos-alert is in Stage 3, which remains fully parallel.
+  // ── Stage 2: GET JWTs ──────────────────────────────────────────────────
+  // Path A (R-18-F v2, preferred): mint JWTs locally with JWT_SECRET.
+  //   No Auth API calls at all. Sub-millisecond per user. No rate limit.
+  // Path B (legacy fallback): batched signInWithPassword.
+  //   Subject to Supabase Auth rate limit (~30 sign-ins / 5 min / IP).
+  //   Caps real-world capacity test at ~30 users.
   const stage2Start = performance.now();
-  const userClient = createClient(supaUrl, anonKey, { auth: { persistSession: false } });
   const signInResults: Array<{ i: number; ok: boolean; jwt?: string; userId?: string; error?: string }> = [];
-  for (let offset = 0; offset < stage1Users.length; offset += SIGNIN_BATCH_SIZE) {
-    const batch = stage1Users.slice(offset, offset + SIGNIN_BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(async (u) => {
+
+  if (authMethod === "mint_jwt" && jwtKey) {
+    // PATH A — local HS256 JWT minting. Supabase gateway accepts any JWT
+    // signed with the project's JWT_SECRET (HS256). Required claims:
+    // sub (user_id), role, aud, exp. We add iat + session_id for parity
+    // with real Supabase-issued tokens so audit_log fields look natural.
+    const mintResults = await Promise.all(
+      stage1Users.map(async (u) => {
         try {
-          const { data, error } = await userClient.auth.signInWithPassword({
-            email: u.email,
-            password: u.password,
-          });
-          if (error || !data?.session) return { i: u.i, ok: false, error: error?.message ?? "no_session" };
-          return { i: u.i, ok: true, jwt: data.session.access_token, userId: u.userId };
+          const jwt = await createJwt(
+            { alg: "HS256", typ: "JWT" },
+            {
+              sub: u.userId,
+              email: u.email,
+              role: "authenticated",
+              aud: "authenticated",
+              aal: "aal1",
+              iat: getNumericDate(0),
+              exp: getNumericDate(60 * 10), // 10-minute window — plenty for the load run
+              session_id: crypto.randomUUID(),
+            },
+            jwtKey,
+          );
+          return { i: u.i, ok: true, jwt, userId: u.userId };
         } catch (e) {
-          return { i: u.i, ok: false, error: String(e).slice(0, 200) };
+          return { i: u.i, ok: false, error: `mint: ${String(e).slice(0, 200)}` };
         }
       }),
     );
-    signInResults.push(...batchResults);
-    // Sleep between batches (skip after the last batch)
-    if (offset + SIGNIN_BATCH_SIZE < stage1Users.length) {
-      await new Promise((r) => setTimeout(r, SIGNIN_BATCH_DELAY_MS));
+    signInResults.push(...mintResults);
+  } else {
+    // PATH B — batched signInWithPassword fallback (when JWT_SECRET absent).
+    const userClient = createClient(supaUrl, anonKey, { auth: { persistSession: false } });
+    for (let offset = 0; offset < stage1Users.length; offset += SIGNIN_BATCH_SIZE) {
+      const batch = stage1Users.slice(offset, offset + SIGNIN_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (u) => {
+          try {
+            const { data, error } = await userClient.auth.signInWithPassword({
+              email: u.email,
+              password: u.password,
+            });
+            if (error || !data?.session) return { i: u.i, ok: false, error: error?.message ?? "no_session" };
+            return { i: u.i, ok: true, jwt: data.session.access_token, userId: u.userId };
+          } catch (e) {
+            return { i: u.i, ok: false, error: String(e).slice(0, 200) };
+          }
+        }),
+      );
+      signInResults.push(...batchResults);
+      if (offset + SIGNIN_BATCH_SIZE < stage1Users.length) {
+        await new Promise((r) => setTimeout(r, SIGNIN_BATCH_DELAY_MS));
+      }
     }
   }
+
   const signInFailed = signInResults.filter((r) => !r.ok);
   if (signInFailed.length > 0) {
-    return jsonResponse({ pass: false, stage: "sign_in", failed: signInFailed }, 500, corsHeaders);
+    return jsonResponse(
+      { pass: false, stage: "sign_in", authMethod, failed: signInFailed },
+      500,
+      corsHeaders,
+    );
   }
   const sessions = signInResults as Array<{ i: number; ok: true; jwt: string; userId: string }>;
   const stage2Ms = Math.round(performance.now() - stage2Start);
@@ -381,6 +444,7 @@ serve(async (req) => {
       pass,
       runId,
       count,
+      authMethod,
       succeeded: succeeded.length,
       failed: failed.length,
       latency: {

@@ -92,16 +92,39 @@ describe("R-17: count param is parsed + bounded", () => {
     expect(probeSrc).toMatch(/Math\.max\(\s*1\s*,\s*Math\.min\(\s*MAX_COUNT/);
   });
 
-  it("R-18-F: sign-in is BATCHED (avoids Supabase Auth rate limit)", () => {
-    // Auth API rate-limits /token at ~30/hr per IP. Edge function = 1 IP.
-    // We batch SIGNIN_BATCH_SIZE sign-ins per SIGNIN_BATCH_DELAY_MS so the
-    // bucket never trips. This does NOT weaken the load test — Stage 3
-    // (the actual SOS trigger) remains fully parallel.
+  it("R-18-F: batched sign-in fallback path exists for when JWT_SECRET is absent", () => {
+    // Even with the preferred mint_jwt path, the probe must still fall back
+    // gracefully when SUPABASE_JWT_SECRET isn't configured.
     expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_SIZE\s*=\s*\d+/);
     expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_DELAY_MS\s*=\s*\d+/);
     expect(probeSrc).toMatch(/offset\s*\+=\s*SIGNIN_BATCH_SIZE/);
-    // Sleep between batches
     expect(probeSrc).toMatch(/setTimeout\([^)]+SIGNIN_BATCH_DELAY_MS/);
+  });
+
+  it("R-18-F v2: prefers LOCAL JWT minting (bypasses Auth API rate limit)", () => {
+    // Supabase Auth rate-limits /token at ~30 sign-ins / 5 min / IP. Edge
+    // function = 1 IP. Even aggressive batching can't push past ~30 in a
+    // single run, masking sos-alert's real capacity. The root fix: mint
+    // JWTs locally using SUPABASE_JWT_SECRET (HS256 HMAC). Zero Auth calls.
+    expect(probeSrc).toMatch(/Deno\.env\.get\(\s*["']SUPABASE_JWT_SECRET["']/);
+    expect(probeSrc).toMatch(/import\s*\{[^}]*createJwt[^}]*\}\s*from\s*["']https:\/\/deno\.land\/x\/djwt/);
+    expect(probeSrc).toMatch(/authMethod[\s\S]{0,80}["']mint_jwt["']/);
+    expect(probeSrc).toMatch(/role:\s*["']authenticated["']/);
+    expect(probeSrc).toMatch(/aud:\s*["']authenticated["']/);
+    expect(probeSrc).toMatch(/HMAC[\s\S]{0,60}SHA-256/);
+  });
+
+  it("R-18-F v2: skips updateUserById when minting JWTs (no password needed)", () => {
+    // Password is only needed for signInWithPassword path. When minting
+    // JWTs locally we never sign in, so rotating passwords is wasted
+    // admin-API calls (and slightly weakens forward security).
+    expect(probeSrc).toMatch(/if\s*\(\s*authMethod\s*===\s*["']sign_in["']\s*\)\s*\{[\s\S]{0,200}updateUserById/);
+  });
+
+  it("R-18-F v2: surfaces authMethod in report body for visibility", () => {
+    // The response JSON should reveal which path executed so the operator
+    // knows whether the run actually exercised the unconstrained capacity.
+    expect(probeSrc).toMatch(/authMethod,\n/);
   });
 
   it("default count is 5 when query param omitted", () => {
