@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-14T23:54:46.386Z",
-  "total_migrations": 123,
-  "manifest_sha256": "98aec3cffd1d4eaa49dc7fa92ab52839d2f37e6af364e5591ccfdd6ec472118c",
+  "generated_at": "2026-05-15T00:04:02.814Z",
+  "total_migrations": 124,
+  "manifest_sha256": "37b7e9b3e674e5895bd40b41749465f32c43c85ae87e2823e9188796dc0a7f30",
   "migrations": [
     {
       "version": "20260415",
@@ -863,6 +863,13 @@
       "file": "20260514230000_r12_secdef_grant_lockdown.sql",
       "sha256": "01084cf12593a14a6edb79146f61e61f521e365805745e936c6b813538e80498",
       "bytes": 4177
+    },
+    {
+      "version": "20260515000000",
+      "name": "r13_pipeline_metrics_probe_classification",
+      "file": "20260515000000_r13_pipeline_metrics_probe_classification.sql",
+      "sha256": "d865665c43aae87c58fa4ce02dd0dfd36581f523804ed90e808ef4c463313055",
+      "bytes": 2165
     }
   ]
 }
