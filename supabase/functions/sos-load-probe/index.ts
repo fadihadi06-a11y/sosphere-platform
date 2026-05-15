@@ -66,7 +66,14 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const MAX_COUNT = 50;
+const MAX_COUNT = 100;
+// R-18-F: sign-in batching. Supabase Auth API rate-limits /token (sign-in)
+// at ~30/hour per IP. When we sign in N users from the same edge-function
+// instance (which has ONE IP), we exhaust the bucket fast. Batching to
+// 10 sign-ins per 1500ms keeps us safely under the bucket without changing
+// the actual LOAD test (the trigger phase remains fully parallel).
+const SIGNIN_BATCH_SIZE = 10;
+const SIGNIN_BATCH_DELAY_MS = 1500;
 const PROBE_USER_PREFIX = "sos-load-";
 const PROBE_USER_DOMAIN = "@sosphere.internal";
 
@@ -181,23 +188,36 @@ serve(async (req) => {
   }
   const stage1Ms = Math.round(performance.now() - stage1Start);
 
-  // ── Stage 2: parallel sign-in → N JWTs ─────────────────────────────────
+  // ── Stage 2: BATCHED sign-in → N JWTs (R-18-F) ─────────────────────────
+  // Sign-in is rate-limited at ~30/hr per IP by Supabase Auth API. We batch
+  // sign-ins (SIGNIN_BATCH_SIZE per SIGNIN_BATCH_DELAY_MS) so the Auth
+  // bucket never trips. This DOES NOT WEAKEN the load test — the actual
+  // LOAD on sos-alert is in Stage 3, which remains fully parallel.
   const stage2Start = performance.now();
   const userClient = createClient(supaUrl, anonKey, { auth: { persistSession: false } });
-  const signInResults = await Promise.all(
-    stage1Users.map(async (u) => {
-      try {
-        const { data, error } = await userClient.auth.signInWithPassword({
-          email: u.email,
-          password: u.password,
-        });
-        if (error || !data?.session) return { i: u.i, ok: false, error: error?.message ?? "no_session" };
-        return { i: u.i, ok: true, jwt: data.session.access_token, userId: u.userId };
-      } catch (e) {
-        return { i: u.i, ok: false, error: String(e).slice(0, 200) };
-      }
-    }),
-  );
+  const signInResults: Array<{ i: number; ok: boolean; jwt?: string; userId?: string; error?: string }> = [];
+  for (let offset = 0; offset < stage1Users.length; offset += SIGNIN_BATCH_SIZE) {
+    const batch = stage1Users.slice(offset, offset + SIGNIN_BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (u) => {
+        try {
+          const { data, error } = await userClient.auth.signInWithPassword({
+            email: u.email,
+            password: u.password,
+          });
+          if (error || !data?.session) return { i: u.i, ok: false, error: error?.message ?? "no_session" };
+          return { i: u.i, ok: true, jwt: data.session.access_token, userId: u.userId };
+        } catch (e) {
+          return { i: u.i, ok: false, error: String(e).slice(0, 200) };
+        }
+      }),
+    );
+    signInResults.push(...batchResults);
+    // Sleep between batches (skip after the last batch)
+    if (offset + SIGNIN_BATCH_SIZE < stage1Users.length) {
+      await new Promise((r) => setTimeout(r, SIGNIN_BATCH_DELAY_MS));
+    }
+  }
   const signInFailed = signInResults.filter((r) => !r.ok);
   if (signInFailed.length > 0) {
     return jsonResponse({ pass: false, stage: "sign_in", failed: signInFailed }, 500, corsHeaders);

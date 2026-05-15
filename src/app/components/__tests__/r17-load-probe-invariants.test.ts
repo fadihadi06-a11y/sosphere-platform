@@ -83,9 +83,25 @@ describe("R-17: count param is parsed + bounded", () => {
     expect(probeSrc).toMatch(/url\.searchParams\.get\(\s*["']count["']\s*\)/);
   });
 
-  it("clamps to [1, MAX_COUNT] with MAX_COUNT capped at 50", () => {
-    expect(probeSrc).toMatch(/const\s+MAX_COUNT\s*=\s*50/);
+  it("clamps to [1, MAX_COUNT] with MAX_COUNT bumped to 100 (R-18-F)", () => {
+    // R-18-F: MAX_COUNT bumped from 50 to 100 once SIGNIN batching avoided
+    // Supabase Auth rate-limit ceiling. The 50-cap was a probe artefact, not
+    // a sos-alert limit. With batched sign-in we can stress-test up to 100
+    // concurrent triggers without the Auth API masking real capacity.
+    expect(probeSrc).toMatch(/const\s+MAX_COUNT\s*=\s*100/);
     expect(probeSrc).toMatch(/Math\.max\(\s*1\s*,\s*Math\.min\(\s*MAX_COUNT/);
+  });
+
+  it("R-18-F: sign-in is BATCHED (avoids Supabase Auth rate limit)", () => {
+    // Auth API rate-limits /token at ~30/hr per IP. Edge function = 1 IP.
+    // We batch SIGNIN_BATCH_SIZE sign-ins per SIGNIN_BATCH_DELAY_MS so the
+    // bucket never trips. This does NOT weaken the load test — Stage 3
+    // (the actual SOS trigger) remains fully parallel.
+    expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_SIZE\s*=\s*\d+/);
+    expect(probeSrc).toMatch(/const\s+SIGNIN_BATCH_DELAY_MS\s*=\s*\d+/);
+    expect(probeSrc).toMatch(/offset\s*\+=\s*SIGNIN_BATCH_SIZE/);
+    // Sleep between batches
+    expect(probeSrc).toMatch(/setTimeout\([^)]+SIGNIN_BATCH_DELAY_MS/);
   });
 
   it("default count is 5 when query param omitted", () => {
