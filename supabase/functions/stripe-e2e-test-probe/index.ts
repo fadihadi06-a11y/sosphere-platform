@@ -208,11 +208,9 @@ serve(async (req) => {
     });
   });
 
+  let subscriptionDebugData: Record<string, unknown> | null = null;
   await step("stripe_create_subscription", async () => {
     if (!stripeCustomerId || !testCompanyId || !attachedPaymentMethodId) throw new Error("setup incomplete");
-    // Also pass default_payment_method on the subscription directly so Stripe
-    // can charge the very first invoice without depending on the customer
-    // default settling first.
     const sub = await stripeCall("/subscriptions", {
       customer: stripeCustomerId,
       "items[0][price]": priceId!,
@@ -221,6 +219,18 @@ serve(async (req) => {
       "metadata[probe_run_id]": runId,
     });
     stripeSubscriptionId = sub!.id as string;
+    // R-19 debug: capture key Stripe payload structure so we can diagnose
+    // metadata + items shape issues without console.log digging.
+    subscriptionDebugData = {
+      id: sub!.id,
+      status: sub!.status,
+      metadata: sub!.metadata,
+      current_period_end_at_root: (sub as any).current_period_end ?? null,
+      items_data_length: Array.isArray((sub as any).items?.data) ? (sub as any).items.data.length : null,
+      items_0_price_id: (sub as any).items?.data?.[0]?.price?.id ?? null,
+      items_0_current_period_end: (sub as any).items?.data?.[0]?.current_period_end ?? null,
+      items_0_quantity: (sub as any).items?.data?.[0]?.quantity ?? null,
+    };
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -302,6 +312,7 @@ serve(async (req) => {
     setupSucceeded: setupOk,
     allStepsClean: allOk,
     totalMs,
+    subscriptionDebugData,
     dbSubscriptionRow: dbSubscriptionRow ? {
       id: dbSubscriptionRow.id,
       company_id: dbSubscriptionRow.company_id,
