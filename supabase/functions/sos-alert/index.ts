@@ -349,18 +349,18 @@ async function twilioSMS(to: string, body: string): Promise<string | null> {
 }
 
 // ── Auth Helper: extract userId from JWT ─────────────────────
-async function authenticate(req: Request, supabase: any): Promise<{ userId: string | null; error?: string }> {
+async function authenticate(req: Request, supabase: any): Promise<{ userId: string | null; email: string | null; error?: string }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return { userId: null, error: "Missing Bearer token" };
+    return { userId: null, email: null, error: "Missing Bearer token" };
   }
   const jwt = authHeader.replace("Bearer ", "");
   try {
     const { data: { user }, error } = await supabase.auth.getUser(jwt);
-    if (error || !user) return { userId: null, error: error?.message || "Invalid token" };
-    return { userId: user.id };
+    if (error || !user) return { userId: null, email: null, error: error?.message || "Invalid token" };
+    return { userId: user.id, email: (user.email as string | null) ?? null };
   } catch (err) {
-    return { userId: null, error: "Auth check failed" };
+    return { userId: null, email: null, error: "Auth check failed" };
   }
 }
 
@@ -1089,6 +1089,14 @@ serve(async (req: Request) => {
       });
     }
     const authUserId = auth.userId;
+    // R-13 (2026-05-14): mark pipeline_metrics rows from internal probes
+    // as synthetic. The two probe users (forgery-probe + sos-dispatch-probe)
+    // both live at @sosphere.internal, a reserved domain — no real user can
+    // register there. Without this flag the metrics dashboard would falsely
+    // show "all real emergencies fail" because the probes use invalid
+    // contact phones (channel_used='none').
+    const isSyntheticCaller = typeof auth.email === "string"
+      && auth.email.endsWith("@sosphere.internal");
 
     // ── SOS priority lane: record + mark, NEVER block. ──
     // The rate limiter treats isSosRequest=true as unconditional
@@ -1137,10 +1145,11 @@ serve(async (req: Request) => {
         await supabase.rpc("record_sos_pipeline_started", {
           p_trace_id: traceId,
           p_emergency_id: emergencyId,
-          // user_id resolved post-auth below; deferred to dispatched event
+          p_user_id: authUserId,            // R-13: now populated immediately
           // tier resolved server-side below; deferred to dispatched event
           p_client_claimed_at: clientClaimedAt,
           p_server_received_at: serverReceivedAt,
+          p_is_synthetic: isSyntheticCaller, // R-13: flag probe traces
         });
       } catch (e) {
         console.warn("[sos-alert] pipeline_metrics started failed (non-fatal):", e);
