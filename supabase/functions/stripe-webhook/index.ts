@@ -386,6 +386,129 @@ serve(async (req: Request) => {
         console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription}`);
         break;
       }
+      // ── R-19 #3 (HIGH): handle disputes / chargebacks ──────────────────
+      // Customer disputed the charge with their bank. Funds are withdrawn
+      // from our balance — service must stop immediately. Pre-R-19, the
+      // subscription stayed `active` and the user kept Elite features
+      // until the next renewal failed ~30 days later.
+      case "charge.dispute.created":
+      case "charge.dispute.funds_withdrawn": {
+        const dispute = event.data.object;
+        // Stripe disputes reference a charge, not a subscription directly.
+        // Look up the charge → invoice → subscription chain.
+        const charge = await stripeGet(`/charges/${dispute.charge}`);
+        const subId = charge?.invoice
+          ? (await stripeGet(`/invoices/${charge.invoice}`))?.subscription
+          : null;
+        if (!subId) {
+          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no subscription for charge ${dispute.charge}`);
+          break;
+        }
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          status: "canceled",
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", subId);
+        if (updErr) throw new DbHandlerError("dispute_cancel_failed", updErr);
+        const { data: disputedRow } = await supabase
+          .from("subscriptions").select("user_id, company_id")
+          .eq("stripe_subscription_id", subId).maybeSingle();
+        if (disputedRow?.user_id || disputedRow?.company_id) {
+          await supabase.rpc("log_sos_audit", {
+            p_action: "stripe_subscription_disputed",
+            p_actor_user_id: disputedRow?.user_id ?? null,
+            p_actor_level: disputedRow?.company_id ? "owner" : "user",
+            p_category: "billing",
+            p_operation: "UPDATE",
+            p_metadata: {
+              stripe_event_id: evtId,
+              stripe_event_type: evtType,
+              subscription_id: subId,
+              dispute_id: dispute.id,
+              reason: dispute.reason ?? null,
+              amount: dispute.amount ?? null,
+              company_id: disputedRow?.company_id ?? null,
+            },
+          }).then((r: { error?: unknown }) => {
+            if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+          });
+        }
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${subId} reason=${dispute.reason}`);
+        break;
+      }
+
+      // ── R-19 #4 (HIGH): EU 3DS / SCA challenge ─────────────────────────
+      // Stripe needs customer interaction (3D Secure for PSD2 SCA compliance).
+      // We store the hosted_invoice_url so the UI can surface a banner →
+      // user completes authentication → renewal succeeds → next webhook
+      // (invoice.payment_succeeded) clears the URL. Pre-R-19, EU customers
+      // silently dropped to past_due after ~7 days of no action.
+      case "invoice.payment_action_required": {
+        const inv = event.data.object;
+        if (!inv.subscription) {
+          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no subscription on invoice`);
+          break;
+        }
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          requires_action_url: inv.hosted_invoice_url ?? null,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", inv.subscription);
+        if (updErr) throw new DbHandlerError("payment_action_required_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription} action_url set`);
+        break;
+      }
+
+      // ── Clear requires_action_url on successful renewal ────────────────
+      // Paired with #4 — when the user completes 3DS and Stripe charges
+      // them, the URL is no longer relevant. Clear it so the UI hides
+      // the banner.
+      case "invoice.payment_succeeded": {
+        const inv = event.data.object;
+        if (!inv.subscription) break;
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          requires_action_url: null,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", inv.subscription)
+          .not("requires_action_url", "is", null); // only touch rows that had a flag
+        if (updErr) throw new DbHandlerError("payment_succeeded_clear_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription} cleared action_url`);
+        break;
+      }
+
+      // ── R-19 #5 (MEDIUM): 3 days before trial ends ─────────────────────
+      // Mark the row so the mobile app can surface a "Your trial ends in
+      // 3 days" banner. Idempotent — repeated webhook fires don't matter,
+      // we just update the timestamp.
+      case "customer.subscription.trial_will_end": {
+        const sub = event.data.object;
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          trial_ending_notified_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", sub.id);
+        if (updErr) throw new DbHandlerError("trial_will_end_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${sub.id} trial_ending warning marked`);
+        break;
+      }
+
+      // ── R-19 #6 (MEDIUM): Stripe customer was deleted ──────────────────
+      // Operator deleted the customer in Stripe Dashboard (cleanup, GDPR
+      // erasure, etc.). The subscription is orphaned. We null out the
+      // stripe_customer_id so the next portal call doesn't 502 against a
+      // dead customer, and set status=canceled.
+      case "customer.deleted": {
+        const cust = event.data.object;
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          status: "canceled",
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_customer_id", cust.id);
+        if (updErr) throw new DbHandlerError("customer_deleted_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} customer=${cust.id} nullified`);
+        break;
+      }
+
       default:
         console.log(`[stripe-webhook] ${evtType} id=${evtId} ignored (not handled)`);
         break;
