@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-15T17:05:19.389Z",
-  "total_migrations": 128,
-  "manifest_sha256": "26977f959270eb85134a02599c968bbadbb095f6aecbf6b5c640b7b50b311c99",
+  "generated_at": "2026-05-16T22:12:02.931Z",
+  "total_migrations": 129,
+  "manifest_sha256": "7f1c31395cb0497cd6c2d4fac7ff5e63b0248b1f111dd332fc1c9df0cf165e35",
   "migrations": [
     {
       "version": "20260415",
@@ -898,6 +898,13 @@
       "file": "20260515160000_r19p5_ops_alerts.sql",
       "sha256": "ebde0deee04bafe9e44463a52f730c103e3d9cff7cb0ecb84de9b1c5a5e73e34",
       "bytes": 2922
+    },
+    {
+      "version": "20260516220000",
+      "name": "r24_orphans_cleanup",
+      "file": "20260516220000_r24_orphans_cleanup.sql",
+      "sha256": "1bd31ac611c1f3373689a562d3b6fada2183f7f011b0fc8edaac0fa7d443a31d",
+      "bytes": 4159
     }
   ]
 }

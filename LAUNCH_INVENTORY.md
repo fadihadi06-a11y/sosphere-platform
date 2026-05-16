@@ -270,7 +270,7 @@
 ## 6. SQL RPCs (SECDEF Functions) — 90
 
 ### Auth / Identity (10)
-`accept_invitation`, `create_company_and_become_owner`, `create_company_v`, `current_company_id`, `get_my_company_id`, `get_my_identity`, `promote_first_admin`, `promote_user_to_admin`, `register_company_full`, `is_invite_valid`
+`accept_invitation`, `create_company_and_become_owner`, `create_company_v2`, `current_company_id`, `get_my_company_id`, `get_my_identity`, `promote_first_admin`, `promote_user_to_admin`, `register_company_full`, `is_invite_valid`
 
 ### Subscription / Billing (9)
 `accept_company_dpa`, `cancel_civilian_trial`, `cancel_company_trial`, `current_dpa_version`, `get_company_subscription_state`, `get_dpa_acceptance`, `get_my_subscription_tier`, `start_civilian_trial`, `start_company_trial`
