@@ -118,9 +118,20 @@ describe("R-19 #16: defensive DPA enforcement on B2B upsert", () => {
   });
 
   it("only enforces on company-scoped upserts (target.kind === 'company')", () => {
-    // The DPA check must be inside the company branch, not the user branch.
-    // Civilian users have no company → no DPA needed.
-    expect(webhookSrc).toMatch(/target\.kind === ["']user["'][\s\S]{0,200}else \{[\s\S]{0,1000}company_dpa_acceptances/);
+    // ROBUST CHECK: split the source at the user-branch marker, then verify
+    // the DPA lookup is in the SECOND half (company branch / else block),
+    // not the first half (user branch). Immune to code expansion between
+    // the two markers — which broke the previous bounded-regex check when
+    // R-19 #20 expanded the user branch with explicit SELECT+INSERT logic.
+    const userBranchIdx = webhookSrc.indexOf(`target.kind === "user"`);
+    expect(userBranchIdx, "user-branch marker not found").toBeGreaterThan(0);
+    const dpaIdx = webhookSrc.indexOf("company_dpa_acceptances");
+    expect(dpaIdx, "DPA lookup not found").toBeGreaterThan(0);
+    // DPA must come AFTER the user-branch marker (i.e., it's in the else branch)
+    expect(dpaIdx).toBeGreaterThan(userBranchIdx);
+    // And there must be an `else` keyword between them (we are in the company branch)
+    const between = webhookSrc.slice(userBranchIdx, dpaIdx);
+    expect(between, "no else block separates user branch from DPA check").toMatch(/}\s*else\s*\{/);
   });
 });
 
