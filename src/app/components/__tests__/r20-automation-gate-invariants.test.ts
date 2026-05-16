@@ -39,12 +39,14 @@ import { execSync } from "node:child_process";
 let preHookSrc = "";
 let installHookSrc = "";
 let deployWrapperSrc = "";
+let verifyScriptSrc = "";
 let pkg: { scripts: Record<string, string> } = { scripts: {} };
 
 beforeAll(() => {
   preHookSrc = fs.readFileSync(path.resolve(process.cwd(), ".githooks/pre-push"), "utf8");
   installHookSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/install-git-hooks.mjs"), "utf8");
   deployWrapperSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/deploy-edge-function.mjs"), "utf8");
+  verifyScriptSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/verify-before-push.mjs"), "utf8");
   pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"));
 });
 
@@ -63,7 +65,7 @@ describe("R-20 Layer A: pre-push hook", () => {
 
   it("hook is marked executable in git index (cross-platform)", () => {
     // Windows filesystems don't expose the Unix executable bit via stat().
-    // The portable check is git's index: \`git ls-files --stage\` reports
+    // The portable check is git's index: `git ls-files --stage` reports
     // mode 100755 for executable files, 100644 for non-executable. This
     // mode is preserved across clones — on Linux/macOS the file gets +x
     // on checkout, on Windows the bit is recorded in the index and replayed
@@ -133,5 +135,57 @@ describe("R-20 Layer B: verify-in-deploy wrapper", () => {
     expect(deployWrapperSrc).toMatch(/const skipVerify\s*=\s*args\.includes/);
     // Used in the negation: if (!skipVerify) → run verify
     expect(deployWrapperSrc).toMatch(/if\s*\(\s*!skipVerify\s*\)/);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// R-23 (2026-05-16) — local ↔ CI parity invariants
+// CONTEXT
+//   Despite R-20 being in place, R-22's push succeeded `npm run verify`
+//   locally but failed 3 CI jobs (Vitest, ESLint, Security Audit) — all
+//   at the `npm ci` step, because R-20 commit 2407793 added "yaml" to
+//   package.json devDependencies without regenerating package-lock.json.
+//   The old Gate 4 only checked the lockfile's top-level deps map, not the
+//   per-package install entry (`packages["node_modules/yaml"]`). CI's
+//   `npm ci` enforces both; verify enforced only one.
+//
+//   Additionally, two CI jobs had ZERO local mirror: Security Audit
+//   (`npm audit ...`) and Vite Build (`npx vite build`). They could fail
+//   in CI and verify would always say all-clean.
+//
+// CONTRACT
+//   verify-before-push.mjs MUST contain:
+//     - a Gate 4 that checks both top-level deps AND per-package entries
+//     - a Gate 4b that runs `npm ci --dry-run` (exact parity with CI)
+//     - a Gate 9 that runs `npm audit --audit-level=critical --omit=dev`
+//     - a Gate 10 that runs `npx vite build`
+//   These commands are byte-for-byte identical to the CI workflow steps.
+// ───────────────────────────────────────────────────────────────────────
+describe("R-23: verify-before-push mirrors CI commands exactly", () => {
+  it("Gate 4 checks per-package install entries (not just top-level deps)", () => {
+    expect(verifyScriptSrc).toMatch(/node_modules\/.{0,5}\+ name/);
+    expect(verifyScriptSrc).toMatch(/missingInstallEntry/);
+  });
+
+  it("Gate 4b runs `npm ci --dry-run --ignore-scripts` (CI parity)", () => {
+    expect(verifyScriptSrc).toMatch(
+      /spawnSync\(\s*["']npm["']\s*,\s*\[\s*["']ci["']\s*,\s*["']--dry-run["']\s*,\s*["']--ignore-scripts["']/,
+    );
+  });
+
+  it("Gate 9 runs `npm audit --audit-level=critical --omit=dev` (matches ci.yml audit job)", () => {
+    expect(verifyScriptSrc).toMatch(
+      /spawnSync\(\s*["']npm["']\s*,\s*\[\s*["']audit["']\s*,\s*["']--audit-level=critical["']\s*,\s*["']--omit=dev["']/,
+    );
+  });
+
+  it("Gate 10 runs `npx vite build` (matches ci.yml build job + APK workflow)", () => {
+    expect(verifyScriptSrc).toMatch(
+      /spawnSync\(\s*["']npx["']\s*,\s*\[\s*["']vite["']\s*,\s*["']build["']/,
+    );
+  });
+
+  it("summary uses dynamic step count (no hardcoded total)", () => {
+    expect(verifyScriptSrc).toMatch(/passed: " \+ \(stepsRun - failures\.length\)/);
   });
 });
