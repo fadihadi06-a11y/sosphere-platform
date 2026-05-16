@@ -12,6 +12,8 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// R-22: shared plan catalog — single source of truth across edge functions.
+import { lookupPlanByPriceEnv as sharedLookupPlan } from "../_shared/plan-catalog.ts";
 
 const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
@@ -264,16 +266,12 @@ async function upsertSubscription(
   return { applied: true };
 }
 
+// R-22 (2026-05-16): delegate to the shared plan catalog so this function
+// stays in sync with stripe-checkout. Previously a duplicated array — missed
+// "personal", causing every Personal subscription event to fall into
+// stripe_unmapped_events. The shared module is the single source of truth.
 function lookupPlanByPriceEnv(priceId: string | undefined): string | null {
-  if (!priceId) return null;
-  const plans = ["starter", "growth", "business", "enterprise", "basic", "elite"];
-  const cycles = ["monthly", "annual"];
-  for (const p of plans) {
-    for (const c of cycles) {
-      if (Deno.env.get(`STRIPE_PRICE_${p.toUpperCase()}_${c.toUpperCase()}`) === priceId) return p;
-    }
-  }
-  return null;
+  return sharedLookupPlan(priceId, (k) => Deno.env.get(k));
 }
 
 async function stripeGet(path: string): Promise<any> {

@@ -10,6 +10,12 @@ supabase/.temp/
 
 # Local debug output (not for repo)
 .sosphere-debug/
+sosphere-debug-apk-*/
+*.apk
+
+# R-19 Stripe test-mode setup helper output (price IDs only — no secrets,
+# but per-run timestamped and not useful in repo)
+stripe-test-setup-*.txt
 
 # Temp files used by automation / subagents (never tracked)
 .tmp_*
@@ -33,4 +39,3 @@ backups/
 backup-*.sql
 *.dump
 *.sql.gz
-*stripe-test-setup-*.txt

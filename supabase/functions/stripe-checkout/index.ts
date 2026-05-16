@@ -62,16 +62,20 @@ const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const STRIPE_API = "https://api.stripe.com/v1";
 const BASE_URL = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
 
-// B-17 (2026-04-25): added civilian plans (basic, elite). The webhook's
-// price→plan lookup is in sync; new STRIPE_PRICE_BASIC_* / STRIPE_PRICE_ELITE_*
-// env vars must be set in Supabase secrets before going live.
-type PlanId = "starter" | "growth" | "business" | "enterprise"
-            | "basic" | "elite";
-type Cycle = "monthly" | "annual";
+// R-22 (2026-05-16): plan catalog lives in _shared/plan-catalog.ts as the
+// single source of truth. Both stripe-checkout and stripe-webhook import
+// from it. Previously the array was duplicated and drifted — missing
+// "personal" was the root of R-22 revenue bug.
+import {
+  VALID_PLAN_IDS,
+  VALID_CYCLES,
+  priceEnvKey,
+  type Cycle,
+} from "../_shared/plan-catalog.ts";
 
-function priceEnvKey(plan: PlanId, cycle: Cycle): string {
-  return `STRIPE_PRICE_${plan.toUpperCase()}_${cycle.toUpperCase()}`;
-}
+// Backwards-compat alias for the inline type — kept narrow for callers that
+// still type-import. Real validation happens via VALID_PLAN_IDS at runtime.
+type PlanId = string;
 
 /**
  * x-www-form-urlencoded POST to Stripe. We roll our own because Deno's
@@ -141,9 +145,7 @@ serve(async (req: Request) => {
 
   // ── Payload validation ──
   const { planId, cycle, seats, companyId, successUrl, cancelUrl } = await req.json().catch(() => ({}));
-  const validPlans: PlanId[] = ["starter", "growth", "business", "enterprise", "basic", "elite"];
-  const validCycles: Cycle[] = ["monthly", "annual"];
-  if (!validPlans.includes(planId) || !validCycles.includes(cycle)) {
+  if (!VALID_PLAN_IDS.includes(planId) || !VALID_CYCLES.includes(cycle as Cycle)) {
     return new Response(JSON.stringify({ error: "Invalid plan or cycle" }), {
       status: 400,
       headers: cors,
