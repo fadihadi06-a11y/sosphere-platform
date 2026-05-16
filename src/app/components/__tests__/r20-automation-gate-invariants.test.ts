@@ -34,6 +34,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 
 let preHookSrc = "";
 let installHookSrc = "";
@@ -67,7 +68,6 @@ describe("R-20 Layer A: pre-push hook", () => {
     // mode is preserved across clones — on Linux/macOS the file gets +x
     // on checkout, on Windows the bit is recorded in the index and replayed
     // when the same repo is checked out on a POSIX system (incl. CI).
-    const { execSync } = require("node:child_process");
     const out = execSync("git ls-files --stage .githooks/pre-push", { encoding: "utf8" }).trim();
     // Expected format: "100755 <hash> 0\t.githooks/pre-push"
     expect(out, `git ls-files output: ${out}`).toMatch(/^100755\s/);
