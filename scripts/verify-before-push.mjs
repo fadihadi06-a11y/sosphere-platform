@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SOSphere — pre-push verification gate (R-7)
+// SOSphere — pre-push verification gate (R-7, hardened in R-23)
 // Runs every CI check locally so failures don't slip into GitHub.
 // Usage: node scripts/verify-before-push.mjs  (or: npm run verify)
 // Exit:  0 = all green; 1 = at least one gate failed.
@@ -12,8 +12,10 @@ const require = createRequire(import.meta.url);
 
 const failures = [];
 const warnings = [];
+let stepsRun = 0;
 
 function step(name, fn) {
+  stepsRun += 1;
   const t0 = Date.now();
   process.stdout.write(`[verify] ${name.padEnd(56)} `);
   try {
@@ -113,21 +115,67 @@ step("Gate 3: no NUL bytes in source files", () => {
   return bad.length === 0 || bad.slice(0, 5).join("; ");
 });
 
-// Gate 4: package.json and package-lock.json in sync
-step("Gate 4: package.json and lockfile are in sync", () => {
+// Gate 4: package.json <-> package-lock.json STRICT sync (matches `npm ci`)
+//
+// R-23 root fix: the original Gate 4 only checked "is the package NAME in
+// lockfile's top-level deps map". That missed the case where a package was
+// declared in package.json devDependencies but the install-tree entry
+// `node_modules/<pkg>` was never generated (i.e. someone edited
+// package.json by hand without running `npm install`). `npm ci` enforces
+// BOTH conditions and was failing in CI while verify said OK.
+//
+// We now verify: for every package.json {dep, devDep}, the lockfile has
+//   1. the name in packages[""].dependencies or packages[""].devDependencies
+//   2. an entry at packages["node_modules/<name>"] with a `version` field
+// This is the structural invariant `npm ci` checks first; mismatch ⇒ fatal.
+step("Gate 4: package.json and lockfile are in sync (strict, matches npm ci)", () => {
   const pkg = readJsonOrThrow("package.json");
   const lock = readJsonOrThrow("package-lock.json");
   const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
-  const lockRoot = lock.packages && lock.packages[""];
-  const lockDeps = Object.assign({}, (lockRoot && lockRoot.dependencies) || {}, (lockRoot && lockRoot.devDependencies) || {});
-  const missing = [];
+  const lockRoot = (lock.packages && lock.packages[""]) || {};
+  const lockTopDeps = Object.assign({}, lockRoot.dependencies || {}, lockRoot.devDependencies || {});
+  const lockPackages = lock.packages || {};
+
+  const missingFromTop = [];
+  const missingInstallEntry = [];
   for (const name of Object.keys(deps)) {
-    if (!(name in lockDeps)) missing.push(name);
+    if (!(name in lockTopDeps)) missingFromTop.push(name);
+    if (!(("node_modules/" + name) in lockPackages)) missingInstallEntry.push(name);
   }
-  if (missing.length > 0) {
-    return "lockfile missing: " + missing.join(", ") + " (run: npm install --package-lock-only)";
+
+  if (missingFromTop.length > 0 || missingInstallEntry.length > 0) {
+    const parts = [];
+    if (missingFromTop.length > 0) {
+      parts.push("not in lockfile top-level deps: " + missingFromTop.join(", "));
+    }
+    if (missingInstallEntry.length > 0) {
+      parts.push("missing node_modules/<pkg> entry: " + missingInstallEntry.join(", "));
+    }
+    return parts.join(" | ") + " — run: npm install  (then commit package-lock.json)";
   }
   return true;
+});
+
+// Gate 4b: `npm ci --dry-run --ignore-scripts` — the EXACT command CI runs.
+// This is the parity-by-construction gate: if it would fail in CI's
+// `npm ci` step, it fails here too. We use --dry-run so node_modules
+// is not touched, and --ignore-scripts so install hooks don't run.
+step("Gate 4b: npm ci --dry-run (parity with CI install)", () => {
+  const r = spawnSync("npm", ["ci", "--dry-run", "--ignore-scripts", "--no-audit", "--no-fund"], {
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: 90 * 1000,
+    shell: process.platform === "win32",
+  });
+  if (r.status === 0) return true;
+  const out = (r.stdout || "") + "\n" + (r.stderr || "");
+  // Surface the most informative lines (EUSAGE / not in sync / missing).
+  const errLines = out.split("\n")
+    .filter((l) => /npm error|EUSAGE|not in sync|missing|invalid|enoent/i.test(l))
+    .slice(0, 6);
+  return errLines.length > 0
+    ? errLines.join(" | ").slice(0, 700)
+    : ("npm ci dry-run exit " + r.status).slice(0, 200);
 });
 
 // Gate 5: node --check on every script
@@ -182,8 +230,46 @@ step("Gate 8: Vitest full suite", () => {
   return (sum + " " + fails).slice(0, 500);
 });
 
+// Gate 9: npm audit — exact command from ci.yml Security Audit job.
+// R-23: previously missing. Critical advisories in production deps were
+// surfacing in CI but never locally → verify said clean while CI failed.
+step("Gate 9: npm audit (critical, prod deps only — matches CI)", () => {
+  const r = spawnSync("npm", ["audit", "--audit-level=critical", "--omit=dev"], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 60 * 1000,
+    shell: process.platform === "win32",
+  });
+  if (r.status === 0) return true;
+  const out = (r.stdout || "") + "\n" + (r.stderr || "");
+  // npm audit prints a JSON-ish summary; surface the count line(s)
+  const sevLine = out.split("\n").filter((l) => /critical|vulnerabilities/i.test(l)).slice(0, 4);
+  return sevLine.length > 0
+    ? sevLine.join(" | ").slice(0, 500)
+    : ("npm audit exit " + r.status + " (no critical-related lines found)").slice(0, 200);
+});
+
+// Gate 10: vite build — exact command from ci.yml Vite Build job + APK
+// build-apk.yml. R-23: previously missing. A broken import / TS error /
+// missing env-shield assertion would fail CI's vite build, but verify
+// would still report all-clean.
+step("Gate 10: npx vite build (matches CI + APK build)", () => {
+  const r = spawnSync("npx", ["vite", "build", "--logLevel", "warn"], {
+    encoding: "utf8",
+    maxBuffer: 30 * 1024 * 1024,
+    timeout: 4 * 60 * 1000,
+    shell: process.platform === "win32",
+  });
+  if (r.status === 0) return true;
+  const out = (r.stdout || "") + "\n" + (r.stderr || "");
+  const errLines = out.split("\n").filter((l) => /error|failed|Cannot|Could not/i.test(l)).slice(0, 5);
+  return errLines.length > 0
+    ? errLines.join(" | ").slice(0, 600)
+    : ("vite build exit " + r.status).slice(0, 200);
+});
+
 console.log("\n[verify] === summary ===");
-console.log("         passed: " + (8 - failures.length) + "/8");
+console.log("         passed: " + (stepsRun - failures.length) + "/" + stepsRun);
 console.log("         warnings: " + warnings.length);
 console.log("         failures: " + failures.length);
 if (warnings.length > 0) {
