@@ -58,6 +58,27 @@ if (!projectRef) {
 
 const totalSteps = autoCommit ? 5 : 3;
 
+// R-20 Layer B: verify-before-deploy. Run `npm run verify` to catch JSON
+// parse errors, ESLint warnings above threshold, migration drift, and
+// vitest failures BEFORE we ship any code to Supabase. Bypass with
+// --skip-verify if you know what you're doing (e.g., emergency rollback).
+const skipVerify = args.includes("--skip-verify");
+if (!skipVerify) {
+  console.log(`[deploy] step 0 — npm run verify (pre-deploy gate)`);
+  const ver = spawnSync("npm", ["run", "--silent", "verify"], {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+  if (ver.status !== 0) {
+    console.error(`[deploy] verify FAILED (exit ${ver.status}) — deploy aborted.`);
+    console.error(`[deploy] Fix the failing gate, OR bypass with --skip-verify if certain.`);
+    process.exit(ver.status || 1);
+  }
+  console.log(`[deploy] ✓ verify green. Proceeding to deploy.`);
+} else {
+  console.warn(`[deploy] WARNING: --skip-verify in use. Hope you know what you're doing.`);
+}
+
 console.log(`[deploy] step 1/${totalSteps} — supabase functions deploy ${slug}`);
 const dep = spawnSync(
   "npx",
