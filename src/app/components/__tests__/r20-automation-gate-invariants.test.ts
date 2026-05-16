@@ -60,10 +60,17 @@ describe("R-20 Layer A: pre-push hook", () => {
     expect(preHookSrc).toMatch(/set -e/);
   });
 
-  it("hook is executable (rwx for owner)", () => {
-    const stat = fs.statSync(path.resolve(process.cwd(), ".githooks/pre-push"));
-    // owner-executable bit (0o100 in posix mode)
-    expect(stat.mode & 0o100).toBe(0o100);
+  it("hook is marked executable in git index (cross-platform)", () => {
+    // Windows filesystems don't expose the Unix executable bit via stat().
+    // The portable check is git's index: \`git ls-files --stage\` reports
+    // mode 100755 for executable files, 100644 for non-executable. This
+    // mode is preserved across clones — on Linux/macOS the file gets +x
+    // on checkout, on Windows the bit is recorded in the index and replayed
+    // when the same repo is checked out on a POSIX system (incl. CI).
+    const { execSync } = require("node:child_process");
+    const out = execSync("git ls-files --stage .githooks/pre-push", { encoding: "utf8" }).trim();
+    // Expected format: "100755 <hash> 0\t.githooks/pre-push"
+    expect(out, `git ls-files output: ${out}`).toMatch(/^100755\s/);
   });
 });
 
