@@ -7,6 +7,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const failures = [];
 const warnings = [];
@@ -67,20 +69,26 @@ step("Gate 1: JSON files parse", () => {
   return bad.length === 0 || bad.join("; ");
 });
 
-// Gate 2: GHA workflow YAML files parse
+// Gate 2: GHA workflow YAML files parse (R-20 cross-platform fix)
+// Uses Node-native `yaml` package instead of Python (which isn't on Windows).
+// `yaml` is a devDependency declared in package.json.
 step("Gate 2: GHA workflow YAML files parse", () => {
   const dir = ".github/workflows";
   if (!fs.existsSync(dir)) return true;
+  let yamlLib;
+  try {
+    yamlLib = require("yaml");
+  } catch (e) {
+    return "yaml package not installed (run: npm install)";
+  }
   const ymls = fs.readdirSync(dir).filter((n) => n.endsWith(".yml") || n.endsWith(".yaml"));
   const bad = [];
   for (const y of ymls) {
     const p = path.join(dir, y);
-    const r = spawnSync("python3",
-      ["-c", "import yaml,sys; yaml.safe_load(open(sys.argv[1]))", p],
-      { encoding: "utf8" });
-    if (r.status !== 0) {
-      const last = (r.stderr || "").split("\n").filter(Boolean).pop() || "";
-      bad.push(y + ": " + last.slice(0, 200));
+    try {
+      yamlLib.parse(fs.readFileSync(p, "utf8"));
+    } catch (e) {
+      bad.push(y + ": " + String(e.message || e).slice(0, 200));
     }
   }
   return bad.length === 0 || bad.join("; ");
@@ -138,8 +146,9 @@ step("Gate 5: node-syntax-check scripts", () => {
 
 // Gate 6: ESLint
 step("Gate 6: ESLint on src/app/ (--max-warnings 1100)", () => {
+  // R-20 cross-platform: shell: true on Windows so npx.cmd is resolved
   const r = spawnSync("npx", ["eslint", "src/app/", "--max-warnings", "1100"],
-    { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+    { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, shell: process.platform === "win32" });
   if (r.status === 0) return true;
   const out = (r.stdout || "") + "\n" + (r.stderr || "");
   const errLines = out.split("\n").filter((l) => /error|problem/.test(l)).slice(0, 6);
@@ -157,10 +166,12 @@ step("Gate 7: migration drift guard", () => {
 
 // Gate 8: Vitest full suite
 step("Gate 8: Vitest full suite", () => {
+  // R-20 cross-platform: shell: true on Windows so npx.cmd is resolved
   const r = spawnSync("npx", ["vitest", "run", "--reporter=dot"], {
     encoding: "utf8",
     maxBuffer: 30 * 1024 * 1024,
     timeout: 5 * 60 * 1000,
+    shell: process.platform === "win32",
   });
   if (r.status === 0) return true;
   const out = (r.stdout || "") + "\n" + (r.stderr || "");
