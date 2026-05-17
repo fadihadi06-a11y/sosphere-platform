@@ -327,6 +327,7 @@ Deno.serve(async (req) => {
               .select("full_name").eq("id", ownerId).maybeSingle();
             ownerName = (prof?.full_name as string | null) ?? null;
           }
+        }
         await admin.from("sos_queue").update({
           status: "forwarded",
           forwarded_by: actorId, forwarded_at: nowIso,
