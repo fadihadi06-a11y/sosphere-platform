@@ -219,4 +219,21 @@ export function calculateMonthlyBill(
   const baseCost = billingCycle === "annual" ? plan.annualMonthly : plan.monthlyPrice;
   const planCost = baseCost > 0 ? baseCost : 0;
   const extraEmployees = plan.maxEmployees > 0 ? Math.max(0, currentEmployees - plan.maxEmployees) : 0;
-  const e
+  const extraEmployeeCost = extraEmployees * plan.extraEmployeePrice;
+  const addonsCost = activeAddonIds.reduce((sum, id) => {
+    const addon = ADDONS.find(a => a.id === id);
+    return sum + (addon?.price ?? 0);
+  }, 0);
+  return {
+    planCost,
+    extraEmployeeCost,
+    addonsCost,
+    total: planCost + extraEmployeeCost + addonsCost,
+  };
+}
+
+// ── Annual savings in dollars ────────────────────────────────
+export function annualSavings(plan: PlanDefinition): number {
+  if (plan.monthlyPrice <= 0 || plan.annualPrice <= 0) return 0;
+  return Math.round(plan.monthlyPrice * 12 - plan.annualPrice);
+}

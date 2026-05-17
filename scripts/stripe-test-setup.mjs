@@ -1,33 +1,12 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════
-// SOSphere — Stripe test-mode setup (R-19 follow-up)
-// ─────────────────────────────────────────────────────────────────────────
-// WHAT
-//   Creates all 13 SOSphere products + prices in Stripe via API in one shot:
-//     - 6 B2B: Starter/Growth/Business × Monthly/Annual
-//     - 2 B2C: Personal Monthly + Annual
-//     - 5 Add-ons: Extra Reports / SMS / Zones / GPS / Branding
-//
-//   Prints a `npx supabase secrets set ...` command at the end with all
-//   the price IDs. Run that to wire the prices into our lookupPlanByPriceEnv
-//   function in stripe-webhook.
-//
-// USAGE (Stripe test mode)
-//   $env:STRIPE_SECRET_KEY = "sk_test_..."         # paste your test key
-//   node scripts/stripe-test-setup.mjs
-//
-// IDEMPOTENCY
-//   This script will REUSE products it finds by metadata.plan_id.
-//   Re-running is safe — it doesn't create duplicates. Prices are created
-//   fresh each run (Stripe doesn't allow editing prices) so a re-run
-//   produces NEW price IDs; the old prices remain "Archive me" candidates
-//   in Stripe Dashboard.
+// SOSphere — Stripe test-mode setup (R-19 + R-29)
+// Creates the products and prices in Stripe via API.
+// Usage:  node scripts/stripe-test-setup.mjs sk_test_xxxxx
+// or:     $env:STRIPE_SECRET_KEY = "sk_test_..."; node scripts/stripe-test-setup.mjs
 // ═══════════════════════════════════════════════════════════════════════════
 
 // R-25: accept the key as a positional CLI arg in addition to the env var.
-// Single paste-action UX: `node scripts/stripe-test-setup.mjs sk_test_xxx`
-// avoids the clipboard-overwrite trap when the user has been copying
-// commands out of chat (each copy obliterates whatever key they had).
 const cliArg = process.argv[2];
 const STRIPE_KEY = (cliArg && cliArg.startsWith("sk_test_"))
   ? cliArg
@@ -51,8 +30,6 @@ if (!STRIPE_KEY.startsWith("sk_test_")) {
 
 const STRIPE_API = "https://api.stripe.com/v1";
 
-// ── Product catalog (from src/app/constants/pricing.ts) ────────────────────
-// All amounts in cents (Stripe convention).
 const B2B_PRODUCTS = [
   { plan: "starter",  name: "SOSphere Starter",  description: "For small teams 5–25 employees",   monthly: 14900,  annual: 142800 },
   { plan: "growth",   name: "SOSphere Growth",   description: "For growing teams 26–100 employees", monthly: 34900,  annual: 334800 },
@@ -85,7 +62,7 @@ async function stripePost(path, params) {
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Stripe ${path} → ${res.status}: ${err.slice(0, 300)}`);
+    throw new Error(`Stripe ${path} -> ${res.status}: ${err.slice(0, 300)}`);
   }
   return res.json();
 }
@@ -94,18 +71,15 @@ async function stripeGet(path) {
   const res = await fetch(`${STRIPE_API}${path}`, {
     headers: { Authorization: `Bearer ${STRIPE_KEY}` },
   });
-  if (!res.ok) throw new Error(`Stripe GET ${path} → ${res.status}`);
+  if (!res.ok) throw new Error(`Stripe GET ${path} -> ${res.status}`);
   return res.json();
 }
 
-// Idempotency: look up existing product by metadata.plan_id
 async function findOrCreateProduct(planId, name, description) {
-  // List products and filter by metadata. Stripe doesn't expose metadata
-  // filter on the list API directly, so we list+filter client-side.
   const list = await stripeGet(`/products?limit=100&active=true`);
   const existing = (list.data || []).find((p) => p.metadata?.plan_id === planId);
   if (existing) {
-    console.log(`  ✓ reusing existing product: ${planId} (${existing.id})`);
+    console.log(`  - reusing existing product: ${planId} (${existing.id})`);
     return existing;
   }
   const product = await stripePost("/products", {
@@ -129,20 +103,20 @@ async function createPrice(productId, planId, cycle, unitAmount) {
     "metadata[plan_id]": planId,
     "metadata[cycle]": cycle,
   });
-  console.log(`    + price ${cycle}: $${(unitAmount/100).toFixed(2)} → ${price.id}`);
+  console.log(`    + price ${cycle}: $${(unitAmount/100).toFixed(2)} -> ${price.id}`);
   return price.id;
 }
 
 async function setupAll() {
-  console.log("══════════════════════════════════════════════════════════════════════");
-  console.log("SOSphere — Stripe Test Mode Setup");
-  console.log("══════════════════════════════════════════════════════════════════════");
+  console.log("======================================================================");
+  console.log("SOSphere - Stripe Test Mode Setup");
+  console.log("======================================================================");
   console.log(`Stripe key: ${STRIPE_KEY.slice(0, 12)}...`);
   console.log("");
 
   const priceEnvVars = {};
 
-  console.log("── B2B Plans ─────────────────────────────────────────────────────────");
+  console.log("-- B2B Plans -----------------------------------------------------");
   for (const p of B2B_PRODUCTS) {
     console.log(`\n${p.name}:`);
     const product = await findOrCreateProduct(p.plan, p.name, p.description);
@@ -152,7 +126,7 @@ async function setupAll() {
     priceEnvVars[`STRIPE_PRICE_${p.plan.toUpperCase()}_ANNUAL`] = aId;
   }
 
-  console.log("\n── B2C Plans ─────────────────────────────────────────────────────────");
+  console.log("\n-- B2C Plans -----------------------------------------------------");
   for (const p of B2C_PRODUCTS) {
     console.log(`\n${p.name}:`);
     const product = await findOrCreateProduct(p.plan, p.name, p.description);
@@ -162,7 +136,7 @@ async function setupAll() {
     priceEnvVars[`STRIPE_PRICE_${p.plan.toUpperCase()}_ANNUAL`] = aId;
   }
 
-  console.log("\n── Add-ons (monthly only) ────────────────────────────────────────────");
+  console.log("\n-- Add-ons (monthly only) ----------------------------------------");
   for (const a of ADDON_PRODUCTS) {
     console.log(`\n${a.name}:`);
     const product = await findOrCreateProduct(a.plan, a.name, a.description);
@@ -170,9 +144,9 @@ async function setupAll() {
     priceEnvVars[`STRIPE_PRICE_${a.plan.toUpperCase()}_MONTHLY`] = mId;
   }
 
-  console.log("\n══════════════════════════════════════════════════════════════════════");
-  console.log("DONE — paste this command to wire prices into Supabase:");
-  console.log("══════════════════════════════════════════════════════════════════════");
+  console.log("\n======================================================================");
+  console.log("DONE - paste this command to wire prices into Supabase:");
+  console.log("======================================================================");
   console.log("");
   const pairs = Object.entries(priceEnvVars).map(([k, v]) => `${k}=${v}`).join(" ");
   console.log(`npx supabase secrets set ${pairs} --project-ref rtfhkbskgrasamhjraul`);
@@ -182,4 +156,12 @@ async function setupAll() {
   // Also write to a local file for the operator's records (test mode only)
   const fs = await import("node:fs");
   const stamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
-  const outPath = `stri
+  const outPath = `stripe-test-setup-${stamp}.txt`;
+  fs.writeFileSync(outPath, Object.entries(priceEnvVars).map(([k,v]) => `${k}=${v}`).join("\n") + "\n");
+  console.log(`(also saved to ${outPath} - gitignored by default)`);
+}
+
+setupAll().catch((e) => {
+  console.error("FAILED:", e.message);
+  process.exitCode = 1;
+});
