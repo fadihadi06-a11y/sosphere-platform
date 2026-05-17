@@ -177,22 +177,10 @@ export function BillingPage({ companyState, webMode = false }: {
     () => PRICING_ADDONS.reduce((sum, a) => sum + (activeAddons[a.id] ? a.price : 0), 0),
     [activeAddons],
   );
-
-  const toggleAddon = useCallback((addonId: string) => {
-    setActiveAddons(prev => {
-      const next = { ...prev, [addonId]: !prev[addonId] };
-      storeJSONSync("sosphere_active_addons", next);
-      const newAddonsTotal = PRICING_ADDONS.reduce((s, a) => s + (next[a.id] ? a.price : 0), 0);
-      const planDef = getPlanById(currentPlanId);
-      const baseCost = planDef ? (billingCycle === "annual" ? planDef.annualMonthly : planDef.monthlyPrice) : 0;
-      // Item 4: Employee count = employees.length from store
-      const extraEmp = planDef && planDef.maxEmployees > 0 ? Math.max(0, storeEmployees.length - planDef.maxEmployees) : 0;
-      const extraCost = extraEmp * (planDef?.extraEmployeePrice ?? 0);
-      const newTotal = (baseCost > 0 ? baseCost : 0) + extraCost + newAddonsTotal;
-      console.log("[SUPABASE_READY] addon_toggled: " + JSON.stringify({ addonId, active: next[addonId], newTotal }));
-      return next;
-    });
-  }, [billingCycle, storeEmployees.length]);
+  // R-31 (2026-05-17): toggleAddon useCallback removed. Add-on subscription
+  // management belongs to Stripe Billing Portal (LiveBillingPanel's "Manage
+  // payment" button) — not localStorage. Re-introduce when v1.1 ships
+  // real add-on Stripe checkout.
 
   // ── Invoices state (mutable — new invoices added on plan switch) ──
   const [extraInvoices, setExtraInvoices] = useState<Array<{
@@ -448,7 +436,6 @@ export function BillingPage({ companyState, webMode = false }: {
                   <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
                     Base ${displayPrice > 0 ? displayPrice : 0} + extras ${baseExtraCost} + addons ${addonsTotal}
                   </p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>Next renewal: Apr 1, 2026</p>
                 </div>
               </div>
               <div className="mb-4">
@@ -501,25 +488,7 @@ export function BillingPage({ companyState, webMode = false }: {
                 </div>
               )}
             </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-              className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Payment Method</p>
-                <button onClick={() => { hapticLight(); toast("Update Payment", { description: "Payment method editor would open here" }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>Update</button>
-              </div>
-              <div className="p-4 rounded-xl relative overflow-hidden" style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.06), rgba(123,94,255,0.06))", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div className="flex items-center justify-between mb-3">
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: "1px" }}>VISA</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="size-2 rounded-full" style={{ background: "#00C853" }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>Verified</span>
-                  </div>
-                </div>
-                <p className="text-white" style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", letterSpacing: "3px" }}>•••• •••• •••• 4242</p>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6 }}>Expires 08/2027 · John Doe</p>
-              </div>
-            </motion.div>
+            {/* R-31: legacy hardcoded Payment Method block removed — managed via LiveBillingPanel "Manage payment" button at top of page. */}
           </div>
         </div>
 
@@ -620,9 +589,7 @@ export function BillingPage({ companyState, webMode = false }: {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p style={{ fontSize: 16, fontWeight: 800, color }}>${addon.price}<span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 400 }}>/mo</span></p>
-                    <button onClick={() => toggleAddon(addon.id)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: isActive ? "#00C853" : color, background: isActive ? "rgba(0,200,83,0.08)" : `${color}10`, border: `1px solid ${isActive ? "rgba(0,200,83,0.2)" : color + "25"}`, cursor: "pointer" }}>
-                      {isActive ? <ToggleRight className="size-3.5" /> : <ToggleLeft className="size-3.5" />}
-                      {isActive ? "Enabled" : "Add"}
+                    <button onClick={() => { hapticLight(); toast("Coming soon", { description: "Add-ons launch with v1.1 — managed via Stripe Billing Portal." }); }} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", cursor: "not-allowed" }} disabled aria-disabled="true"><ToggleLeft className="size-3.5" />Soon
                     </button>
                   </div>
                 </motion.div>
@@ -726,7 +693,6 @@ export function BillingPage({ companyState, webMode = false }: {
             </div>
             <div className="text-right">
               <p style={{ fontSize: 22, fontWeight: 900, color: currentPlanColor }}>${mobileTotal}<span style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/mo</span></p>
-              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>Next: Apr 1, 2026</p>
             </div>
           </div>
           <div className="mb-2">
@@ -793,11 +759,12 @@ export function BillingPage({ companyState, webMode = false }: {
                   <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{addon.description}</p>
                 </div>
                 <span style={{ fontSize: 12, fontWeight: 700, color }}>${addon.price}</span>
-                <button onClick={() => toggleAddon(addon.id)}
+                <button onClick={() => { hapticLight(); toast("Coming soon"); }}
                   className="px-2.5 py-1 rounded-lg flex items-center gap-1"
-                  style={{ fontSize: 9, fontWeight: 700, color: isActive ? "#00C853" : "rgba(255,255,255,0.4)", background: isActive ? "rgba(0,200,83,0.08)" : "rgba(255,255,255,0.04)", border: `1px solid ${isActive ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.06)"}`, cursor: "pointer" }}>
-                  {isActive ? <ToggleRight className="size-3" /> : <ToggleLeft className="size-3" />}
-                  {isActive ? "ON" : "OFF"}
+                  style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", cursor: "not-allowed" }}
+                  disabled aria-disabled="true">
+                  <ToggleLeft className="size-3" />
+                  Soon
                 </button>
               </div>
             );
@@ -888,22 +855,7 @@ export function BillingPage({ companyState, webMode = false }: {
           ))}
         </DSCard>
       </div>
-
-      {/* Payment Method */}
-      <DSCard padding={14}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", marginBottom: 10 }}>Payment Method</div>
-        <div className="flex items-center gap-3">
-          <div className="px-3 py-2 rounded-lg" style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.08), rgba(123,94,255,0.08))", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", marginBottom: 2 }}>VISA</p>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", fontFamily: "monospace", letterSpacing: "2px" }}>•••• •••• •••• 4242</p>
-          </div>
-          <div className="flex-1">
-            <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Expires 08/2027</p>
-            <p style={{ fontSize: 9, color: "rgba(0,200,83,0.7)", fontWeight: 600 }}>✓ Verified</p>
-          </div>
-          <button onClick={() => { hapticLight(); toast("Update Payment", { description: "Payment method editor would open" }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>Update</button>
-        </div>
-      </DSCard>
+      {/* R-31: legacy hardcoded Payment Method block removed — managed via LiveBillingPanel "Manage payment" button at top of page. */}
 
       {/* Your Rights as a Customer */}
       <CustomerRightsSection compact />
