@@ -103,6 +103,46 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Caller is not a member of any company" }), { status: 403, headers: CORS });
   }
 
+  // R-30 (2026-05-17): admin/owner gate. Before this fix, any active
+  // member could resolve / acknowledge / assign / broadcast emergencies.
+  // SOS lifecycle control is admin-only by design — the audit cited
+  // this combined with the accept_invitation role-injection bug as a
+  // chained privilege-escalation path. The gate is enforced server-side
+  // here even though the dashboard UI hides these buttons for non-admins;
+  // a direct edge-function POST would have bypassed the UI check.
+  const { data: callerMembership } = await admin
+    .from("company_memberships")
+    .select("role")
+    .eq("company_id", callerCompanyId)
+    .eq("user_id", actorId)
+    .eq("active", true)
+    .maybeSingle();
+  const callerRole = String(callerMembership?.role || "").toLowerCase();
+  if (!["admin", "owner"].includes(callerRole)) {
+    // Best-effort forensic audit so denied attempts are visible to admins.
+    try {
+      await admin.rpc("log_sos_audit", {
+        p_action: "dashboard_action_denied_role",
+        p_actor: actorId,
+        p_actor_id: actorId,
+        p_actor_role: "user",
+        p_actor_level: callerRole || "member",
+        p_operation: "POST",
+        p_target: payload.emergencyId,
+        p_company_id: callerCompanyId,
+        p_severity: "warning",
+        p_metadata: {
+          reason: "non_admin_owner_attempted_dashboard_action",
+          action_requested: payload.action,
+        },
+      });
+    } catch { /* never block the deny on audit failure */ }
+    return new Response(
+      JSON.stringify({ error: "Forbidden: admin or owner role required for dashboard SOS actions" }),
+      { status: 403, headers: CORS },
+    );
+  }
+
   // Look up incident scoped by company_id (B-01 critical fix).
   const { data: queueRow } = await admin
     .from("sos_queue")
@@ -287,7 +327,6 @@ Deno.serve(async (req) => {
               .select("full_name").eq("id", ownerId).maybeSingle();
             ownerName = (prof?.full_name as string | null) ?? null;
           }
-        }
         await admin.from("sos_queue").update({
           status: "forwarded",
           forwarded_by: actorId, forwarded_at: nowIso,

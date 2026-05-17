@@ -179,6 +179,34 @@ serve(async (req: Request) => {
         status: 403, headers: cors,
       });
     }
+
+    // R-30 (2026-05-17): DPA pre-check. Before this fix, a company owner
+    // could subscribe via stripe-checkout WITHOUT having accepted the DPA.
+    // The customer's card would be charged + funds held until the webhook
+    // (R-19 #16) noticed the missing DPA and dumped the row to ops_alerts.
+    // The customer's experience: charged for something they never legally
+    // agreed to. HTTP 412 Precondition Failed surfaces the gap pre-charge
+    // and points the owner at the DPA acceptance UI.
+    const supaAdminDpa = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data: dpaRow } = await supaAdminDpa
+      .from("company_dpa_acceptances")
+      .select("id, dpa_version, accepted_at")
+      .eq("company_id", companyId)
+      .order("accepted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!dpaRow) {
+      return new Response(JSON.stringify({
+        error: "DPA acceptance required before subscribing",
+        code: "dpa_required",
+        hint: "Have the company owner accept the Data Processing Addendum in /legal/dpa first.",
+      }), { status: 412, headers: cors });
+    }
+
     safeCompanyId = companyId;
   }
 
