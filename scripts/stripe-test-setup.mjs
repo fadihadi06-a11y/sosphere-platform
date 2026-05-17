@@ -58,8 +58,11 @@ const B2B_PRODUCTS = [
   { plan: "growth",   name: "SOSphere Growth",   description: "For growing teams 26–100 employees", monthly: 34900,  annual: 334800 },
   { plan: "business", name: "SOSphere Business", description: "For large teams 101–500 employees",  monthly: 79900,  annual: 766800 },
 ];
+// R-29 (2026-05-17): go-to-market is Free + Basic ($7) + Elite ($14).
+// Annual is ~30% off list (SaaS B2C convention). Cents per Stripe convention.
 const B2C_PRODUCTS = [
-  { plan: "personal", name: "SOSphere Personal", description: "Unlimited SOS + Family Circle",    monthly: 499,    annual: 3999 },
+  { plan: "basic",    name: "SOSphere Basic", description: "Unlimited SOS + Advanced GPS + Fall Detection", monthly: 700,  annual: 5900  },
+  { plan: "elite",    name: "SOSphere Elite", description: "Basic + Safe Walk + Voice-bridge + Forensic PDF", monthly: 1400, annual: 11900 },
 ];
 const ADDON_PRODUCTS = [
   { plan: "addon_extra_reports",  name: "SOSphere Add-on: Extra PDF Reports", description: "+50 reports/month",       monthly: 1500 },
@@ -179,12 +182,4 @@ async function setupAll() {
   // Also write to a local file for the operator's records (test mode only)
   const fs = await import("node:fs");
   const stamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
-  const outPath = `stripe-test-setup-${stamp}.txt`;
-  fs.writeFileSync(outPath, Object.entries(priceEnvVars).map(([k,v]) => `${k}=${v}`).join("\n") + "\n");
-  console.log(`(also saved to ${outPath} — gitignored by default)`);
-}
-
-setupAll().catch((e) => {
-  console.error("FAILED:", e.message);
-  process.exitCode = 1;
-});
+  const outPath = `stri

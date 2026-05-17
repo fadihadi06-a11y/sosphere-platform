@@ -119,8 +119,12 @@ export const UNIFIED_PLANS: PlanDefinition[] = [
 ];
 
 // ── Individual Plans (B2C / Personal Safety) ─────────────────
+// R-26 (2026-05-17): pricing model is Free + Basic ($7) + Elite ($14).
+// Competitive positioning: Basic undercuts Life360 Gold ($9.99) as the
+// value option; Elite sits between Gold and Platinum ($19.99). Annual
+// pricing is ~30% off list (SaaS B2C convention).
 export interface IndividualPlan {
-  id: "free" | "personal";
+  id: "free" | "basic" | "elite";
   name: string;
   monthlyPrice: number;
   annualPrice: number;
@@ -144,18 +148,32 @@ export const INDIVIDUAL_PLANS: IndividualPlan[] = [
     limits: { sosPerMonth: 3, contacts: 3 },
   },
   {
-    id: "personal",
-    name: "Personal",
-    monthlyPrice: 4.99,
-    annualPrice: 39.99,
+    id: "basic",
+    name: "Basic",
+    monthlyPrice: 7,
+    annualPrice: 59,            // ~30% off vs 7*12 = $84
     features: [
       "Unlimited SOS",
-      "Advanced GPS + Safe Walk",
+      "Advanced GPS",
       "Full Medical ID",
-      "Family Circle (5 people)",
-      "Buddy System personal",
+      "Family Circle (3 people)",
       "Fall Detection",
-      "Monthly Reports",
+      "Email + SMS Support",
+    ],
+    limits: { sosPerMonth: -1, contacts: 5 },
+  },
+  {
+    id: "elite",
+    name: "Elite",
+    monthlyPrice: 14,
+    annualPrice: 119,           // ~30% off vs 14*12 = $168
+    features: [
+      "Everything in Basic",
+      "Family Circle (5 people)",
+      "Safe Walk + Buddy System",
+      "Voice-bridge to emergency contacts",
+      "Monthly forensic reports (PDF)",
+      "Priority 24/7 Support",
     ],
     limits: { sosPerMonth: -1, contacts: -1 },
   },
@@ -201,21 +219,4 @@ export function calculateMonthlyBill(
   const baseCost = billingCycle === "annual" ? plan.annualMonthly : plan.monthlyPrice;
   const planCost = baseCost > 0 ? baseCost : 0;
   const extraEmployees = plan.maxEmployees > 0 ? Math.max(0, currentEmployees - plan.maxEmployees) : 0;
-  const extraEmployeeCost = extraEmployees * plan.extraEmployeePrice;
-  const addonsCost = activeAddonIds.reduce((sum, id) => {
-    const addon = ADDONS.find(a => a.id === id);
-    return sum + (addon?.price ?? 0);
-  }, 0);
-  return {
-    planCost,
-    extraEmployeeCost,
-    addonsCost,
-    total: planCost + extraEmployeeCost + addonsCost,
-  };
-}
-
-// ── Annual savings in dollars ────────────────────────────────
-export function annualSavings(plan: PlanDefinition): number {
-  if (plan.monthlyPrice <= 0 || plan.annualPrice <= 0) return 0;
-  return Math.round(plan.monthlyPrice * 12 - plan.annualPrice);
-}
+  const e

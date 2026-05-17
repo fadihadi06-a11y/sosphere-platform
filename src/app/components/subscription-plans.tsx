@@ -52,9 +52,15 @@ export function SubscriptionPlans({ onBack, currentPlan, onUpgrade }: Subscripti
   const [billing, setBilling] = useState<BillingCycle>("yearly");
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const personalPlan = INDIVIDUAL_PLANS.find(p => p.id === "personal")!;
-  const monthlyPrice = personalPlan.monthlyPrice;
-  const yearlyPrice = personalPlan.annualPrice;
+  // R-29 (2026-05-17): Free + Basic ($7) + Elite ($14) replace single "Personal".
+  // This screen renders the Elite upgrade pitch by default (the more feature-
+  // rich tier). Basic is offered separately in dashboard-billing-page where
+  // the full 3-tier comparison lives. If Elite is somehow not in the catalog
+  // (build-time desync), fall back to Basic so the screen never throws.
+  const elitePlan = INDIVIDUAL_PLANS.find(p => p.id === "elite")
+    || INDIVIDUAL_PLANS.find(p => p.id === "basic")!;
+  const monthlyPrice = elitePlan.monthlyPrice;
+  const yearlyPrice = elitePlan.annualPrice;
   const yearlyMonthly = (yearlyPrice / 12).toFixed(2);
   const yearlySavings = Math.round(monthlyPrice * 12 - yearlyPrice);
 
