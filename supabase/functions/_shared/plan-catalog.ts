@@ -52,17 +52,23 @@ export const PLAN_CATALOG: PlanDef[] = [
   { id: "business",   scope: "b2b", name: "Business",   cycles: ["monthly", "annual"] },
   { id: "enterprise", scope: "b2b", name: "Enterprise", cycles: ["monthly", "annual"] },
 
-  // ── B2C plan (user-scoped) ──
-  // R-22: previously missing, causing every Personal subscription attempt to
-  // fail. ALWAYS keep in sync with src/app/constants/pricing.ts INDIVIDUAL_PLANS.
-  { id: "personal",   scope: "b2c", name: "Personal",   cycles: ["monthly", "annual"] },
+  // ── B2C plans (user-scoped) ──
+  // R-29 (2026-05-17): go-to-market is Free + Basic ($7/mo) + Elite ($14/mo).
+  // R-22 wrongly added "Personal" $4.99 based on a stale entry in
+  // src/app/constants/pricing.ts INDIVIDUAL_PLANS. That has been corrected.
+  // ALWAYS keep in sync with INDIVIDUAL_PLANS — Free is not a Stripe plan
+  // so it's intentionally absent from this catalog.
+  { id: "basic",      scope: "b2c", name: "Basic",      cycles: ["monthly", "annual"] },
+  { id: "elite",      scope: "b2c", name: "Elite",      cycles: ["monthly", "annual"] },
 
-  // ── Legacy aliases (B-17 / W3 era) — kept for back-compat ──
-  // If a customer was subscribed pre-R-22 with these IDs, webhook events
-  // referencing the old prices must still map. Safe to remove ONLY after
-  // a full migration of legacy subscription rows to the new IDs.
-  { id: "basic",      scope: "b2c", name: "Basic (legacy)",   cycles: ["monthly", "annual"] },
-  { id: "elite",      scope: "b2c", name: "Elite (legacy)",   cycles: ["monthly", "annual"] },
+  // ── Deprecated: kept as inert alias for back-compat ──
+  // R-22 briefly introduced "personal" but no real subscription was ever
+  // created at that tier (only test-mode Stripe artifacts). Kept as a
+  // permissive alias so any orphan webhook events from a stray test
+  // checkout still map to a known plan rather than dumping to
+  // stripe_unmapped_events. Safe to remove after archiving the
+  // STRIPE_PRICE_PERSONAL_* env vars in Supabase secrets.
+  { id: "personal",   scope: "b2c", name: "Personal (deprecated)", cycles: ["monthly", "annual"] },
 ];
 
 /** All valid plan IDs (for input validation). */
@@ -93,18 +99,4 @@ export function lookupPlanByPriceEnv(
   if (!priceId) return null;
   for (const plan of PLAN_CATALOG) {
     for (const cycle of plan.cycles) {
-      if (envGetter(priceEnvKey(plan.id, cycle)) === priceId) return plan.id;
-    }
-  }
-  return null;
-}
-
-/** Check whether a plan id exists in the catalog. */
-export function isValidPlanId(id: string): boolean {
-  return VALID_PLAN_IDS.includes(id);
-}
-
-/** Look up a plan definition by id. */
-export function getPlanDef(id: string): PlanDef | undefined {
-  return PLAN_CATALOG.find((p) => p.id === id);
-}
+      if (envGetter(priceEnvKey(plan

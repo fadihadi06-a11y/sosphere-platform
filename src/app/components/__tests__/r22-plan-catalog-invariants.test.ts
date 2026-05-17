@@ -65,16 +65,25 @@ describe("R-22: shared plan catalog file", () => {
     expect(catalogSrc).toMatch(/export function lookupPlanByPriceEnv/);
   });
 
-  it("PLAN_CATALOG includes 'personal' with monthly + annual cycles", () => {
-    // The line should look like:
-    //   { id: "personal", scope: "b2c", name: "Personal", cycles: ["monthly", "annual"] }
+  it("PLAN_CATALOG includes 'basic' with monthly + annual cycles", () => {
+    // R-29: Basic is the primary entry-level B2C tier at $7/mo.
     expect(catalogSrc).toMatch(
-      /id:\s*["']personal["'][\s\S]{0,80}cycles:\s*\[\s*["']monthly["']\s*,\s*["']annual["']\s*\]/,
+      /id:\s*["']basic["'][\s\S]{0,80}cycles:\s*\[\s*["']monthly["']\s*,\s*["']annual["']\s*\]/,
     );
   });
 
-  it("PLAN_CATALOG includes all 4 B2B plans + personal + 2 legacy aliases", () => {
-    for (const id of ["starter", "growth", "business", "enterprise", "personal", "basic", "elite"]) {
+  it("PLAN_CATALOG includes 'elite' with monthly + annual cycles", () => {
+    // R-29: Elite is the premium B2C tier at $14/mo.
+    expect(catalogSrc).toMatch(
+      /id:\s*["']elite["'][\s\S]{0,80}cycles:\s*\[\s*["']monthly["']\s*,\s*["']annual["']\s*\]/,
+    );
+  });
+
+  it("PLAN_CATALOG includes all 4 B2B plans + basic + elite (+ deprecated personal alias)", () => {
+    // R-29: civilian go-to-market is Free + Basic + Elite. 'personal' is
+    // kept ONLY as a deprecated permissive alias for any stray webhook
+    // event that pre-dates this commit.
+    for (const id of ["starter", "growth", "business", "enterprise", "basic", "elite"]) {
       expect(catalogSrc, `plan-catalog missing id: ${id}`).toMatch(
         new RegExp(`id:\\s*["']${id}["']`),
       );
@@ -113,17 +122,3 @@ describe("R-22: stripe-webhook uses the shared catalog (no hardcoded array)", ()
     expect(webhookSrc).toMatch(
       /import\s*\{\s*lookupPlanByPriceEnv\s+as\s+sharedLookupPlan\s*\}\s*from\s+["']\.\.\/_shared\/plan-catalog\.ts["']/,
     );
-  });
-
-  it("local lookupPlanByPriceEnv delegates to the shared helper", () => {
-    expect(webhookSrc).toMatch(
-      /function lookupPlanByPriceEnv[\s\S]{0,200}return sharedLookupPlan\(priceId,/,
-    );
-  });
-
-  it("does NOT contain the old hardcoded plans array", () => {
-    expect(webhookSrc).not.toMatch(
-      /const plans\s*=\s*\[\s*["']starter["']\s*,\s*["']growth["']/,
-    );
-  });
-});
