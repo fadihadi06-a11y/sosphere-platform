@@ -24,17 +24,27 @@
 //   in Stripe Dashboard.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+// R-25: accept the key as a positional CLI arg in addition to the env var.
+// Single paste-action UX: `node scripts/stripe-test-setup.mjs sk_test_xxx`
+// avoids the clipboard-overwrite trap when the user has been copying
+// commands out of chat (each copy obliterates whatever key they had).
+const cliArg = process.argv[2];
+const STRIPE_KEY = (cliArg && cliArg.startsWith("sk_test_"))
+  ? cliArg
+  : process.env.STRIPE_SECRET_KEY;
 if (!STRIPE_KEY) {
-  console.error("ERROR: STRIPE_SECRET_KEY env var not set.");
+  console.error("ERROR: no Stripe test key provided.");
   console.error("");
-  console.error("PowerShell:");
-  console.error("  $env:STRIPE_SECRET_KEY = Read-Host \"Paste sk_test_... key\"");
+  console.error("Easiest (single paste action):");
+  console.error("  node scripts/stripe-test-setup.mjs sk_test_PASTE_KEY_HERE");
+  console.error("");
+  console.error("Or via env var:");
+  console.error("  $env:STRIPE_SECRET_KEY = \"sk_test_...\"");
   console.error("  node scripts/stripe-test-setup.mjs");
   process.exit(2);
 }
 if (!STRIPE_KEY.startsWith("sk_test_")) {
-  console.error(`ERROR: STRIPE_SECRET_KEY must start with sk_test_ (got: ${STRIPE_KEY.slice(0,8)}...)`);
+  console.error(`ERROR: key must start with sk_test_ (got: ${STRIPE_KEY.slice(0,8)}...)`);
   console.error("This script is TEST-MODE ONLY. Use a sk_test_ key, not sk_live_.");
   process.exit(2);
 }
