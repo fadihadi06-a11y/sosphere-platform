@@ -1,35 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// SOSphere — Stripe Plan Catalog (R-22 single source of truth)
-// ─────────────────────────────────────────────────────────────────────────
-// WHY THIS EXISTS
-//   Before R-22, stripe-checkout and stripe-webhook each maintained their
-//   own copy of the plan list as a hardcoded array:
-//     const validPlans = ["starter", "growth", "business", "enterprise",
-//                         "basic", "elite"];
-//   These arrays drifted: src/app/constants/pricing.ts added "personal"
-//   (B2C plan, $4.99/mo + $39.99/yr) but NEITHER edge function picked it
-//   up. Result: any civilian who tried to subscribe to Personal was rejected
-//   at stripe-checkout with HTTP 400 (validPlans.includes fails). If they
-//   bypassed checkout, the webhook would dump the price to
-//   stripe_unmapped_events and never write a subscription row.
-//
-//   Discovered by R-21 Layer 2 ORPHANS.md connectivity scan.
-//
-// ROOT FIX
-//   This single module is the authoritative list. Both stripe-checkout
-//   and stripe-webhook import VALID_PLAN_IDS and lookupPlanByPriceEnv
-//   from here. To add a new plan in the future, edit this file once.
-//
-// ADD-ON ROADMAP
-//   The 5 add-ons (extra_reports, twilio_sms, extra_zones, advanced_gps,
-//   custom_branding) defined in src/app/constants/pricing.ts ADDONS are
-//   tracked as a separate concern. Stripe represents them as
-//   `subscription_items` on a single subscription. The current schema
-//   has only one (plan, tier) per subscriptions row — supporting add-ons
-//   requires either a `subscription_addons` table OR a JSONB column on
-//   subscriptions. Out of scope for v1 launch. When ready, extend this
-//   catalog with `kind: "addon"` entries + update the webhook to handle
-//   multi-item subscriptions.
+// SOSphere — Stripe Plan Catalog (R-22 single source of truth, R-29 corrected)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type Cycle = "monthly" | "annual";
@@ -66,8 +36,7 @@ export const PLAN_CATALOG: PlanDef[] = [
   // created at that tier (only test-mode Stripe artifacts). Kept as a
   // permissive alias so any orphan webhook events from a stray test
   // checkout still map to a known plan rather than dumping to
-  // stripe_unmapped_events. Safe to remove after archiving the
-  // STRIPE_PRICE_PERSONAL_* env vars in Supabase secrets.
+  // stripe_unmapped_events.
   { id: "personal",   scope: "b2c", name: "Personal (deprecated)", cycles: ["monthly", "annual"] },
 ];
 
@@ -79,7 +48,7 @@ export const VALID_CYCLES: Cycle[] = ["monthly", "annual"];
 
 /**
  * Build the Supabase secret key holding a given (plan, cycle)'s Stripe price ID.
- * Example: priceEnvKey("personal", "annual") → "STRIPE_PRICE_PERSONAL_ANNUAL"
+ * Example: priceEnvKey("basic", "annual") → "STRIPE_PRICE_BASIC_ANNUAL"
  */
 export function priceEnvKey(planId: string, cycle: Cycle): string {
   return `STRIPE_PRICE_${planId.toUpperCase()}_${cycle.toUpperCase()}`;
@@ -99,4 +68,18 @@ export function lookupPlanByPriceEnv(
   if (!priceId) return null;
   for (const plan of PLAN_CATALOG) {
     for (const cycle of plan.cycles) {
-      if (envGetter(priceEnvKey(plan
+      if (envGetter(priceEnvKey(plan.id, cycle)) === priceId) return plan.id;
+    }
+  }
+  return null;
+}
+
+/** Check whether a plan id exists in the catalog. */
+export function isValidPlanId(id: string): boolean {
+  return VALID_PLAN_IDS.includes(id);
+}
+
+/** Look up a plan definition by id. */
+export function getPlanDef(id: string): PlanDef | undefined {
+  return PLAN_CATALOG.find((p) => p.id === id);
+}

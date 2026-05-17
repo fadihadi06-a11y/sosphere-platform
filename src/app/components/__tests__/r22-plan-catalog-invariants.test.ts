@@ -1,34 +1,5 @@
-// ═══════════════════════════════════════════════════════════════
-// R-22 (2026-05-16) — Shared plan catalog invariants
-// ─────────────────────────────────────────────────────────────
-// CONTEXT
-//   Before R-22, stripe-checkout (line 144) and stripe-webhook (line 269)
-//   each maintained their OWN copy of the valid plan list:
-//     ["starter", "growth", "business", "enterprise", "basic", "elite"]
-//   Both missed "personal" (B2C $4.99/mo + $39.99/yr, added in pricing.ts
-//   when civilian plans launched). The result:
-//     - stripe-checkout: VALID_PLAN_IDS.includes('personal') === false →
-//       civilian POST gets 400 Invalid plan
-//     - stripe-webhook: lookupPlanByPriceEnv returns null for Personal
-//       price → UnmappedPriceError → stripe_unmapped_events (not the
-//       subscriptions table)
-//   This was a HIGH revenue bug — every B2C subscription attempt
-//   silently failed.
-//
-//   Discovered by R-21 Layer 2 ORPHANS.md connectivity scan.
-//
-// ROOT FIX
-//   _shared/plan-catalog.ts is the SINGLE source of truth. Both functions
-//   import from it. To add a new plan, edit the catalog once.
-//
-// CONTRACT (locked by this test)
-//   - The shared catalog file exists and exports the canonical helpers
-//   - It includes "personal" with both monthly + annual cycles
-//   - stripe-checkout imports VALID_PLAN_IDS, VALID_CYCLES, priceEnvKey
-//     from the shared module
-//   - stripe-webhook imports lookupPlanByPriceEnv from the shared module
-//   - Neither function still has the hardcoded array pattern
-// ═══════════════════════════════════════════════════════════════
+// R-22 + R-29: shared plan catalog invariants.
+// Locks the contract — if a future commit silently drops a plan, this fails.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import * as fs from "node:fs";
@@ -112,7 +83,6 @@ describe("R-22: stripe-checkout uses the shared catalog (no hardcoded array)", (
 
   it("validation uses VALID_PLAN_IDS, not a hardcoded array", () => {
     expect(checkoutSrc).toMatch(/VALID_PLAN_IDS\.includes\(planId\)/);
-    // Hardcoded array must be GONE
     expect(checkoutSrc).not.toMatch(/validPlans:\s*PlanId\[\]\s*=\s*\[/);
   });
 });
@@ -122,3 +92,17 @@ describe("R-22: stripe-webhook uses the shared catalog (no hardcoded array)", ()
     expect(webhookSrc).toMatch(
       /import\s*\{\s*lookupPlanByPriceEnv\s+as\s+sharedLookupPlan\s*\}\s*from\s+["']\.\.\/_shared\/plan-catalog\.ts["']/,
     );
+  });
+
+  it("local lookupPlanByPriceEnv delegates to the shared helper", () => {
+    expect(webhookSrc).toMatch(
+      /function lookupPlanByPriceEnv[\s\S]{0,200}return sharedLookupPlan\(priceId,/,
+    );
+  });
+
+  it("does NOT contain the old hardcoded plans array", () => {
+    expect(webhookSrc).not.toMatch(
+      /const plans\s*=\s*\[\s*["']starter["']\s*,\s*["']growth["']/,
+    );
+  });
+});

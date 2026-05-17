@@ -115,6 +115,38 @@ step("Gate 3: no NUL bytes in source files", () => {
   return bad.length === 0 || bad.slice(0, 5).join("; ");
 });
 
+// Gate 3b: TypeScript files parse cleanly (R-32 — catches mount-sync truncation).
+// Walks every .ts / .tsx and parses with the TS compiler. Catches files that
+// were silently truncated mid-statement before they reach CI.
+step("Gate 3b: TypeScript source files parse cleanly", () => {
+  let ts;
+  try {
+    ts = require("typescript");
+  } catch {
+    return "typescript not installed (run npm install)";
+  }
+  const targets = [
+    ...walk("src", (p) => p.endsWith(".ts") || p.endsWith(".tsx")),
+    ...walk("supabase/functions", (p) => p.endsWith(".ts")),
+  ];
+  const bad = [];
+  for (const f of targets) {
+    const source = fs.readFileSync(f, "utf8");
+    const kind = f.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    const sf = ts.createSourceFile(f, source, ts.ScriptTarget.Latest, true, kind);
+    const diags = sf.parseDiagnostics || [];
+    if (diags.length > 0) {
+      const first = diags[0];
+      const msg = typeof first.messageText === "string"
+        ? first.messageText
+        : (first.messageText && first.messageText.messageText) || "syntax error";
+      bad.push(f + " @ pos " + first.start + ": " + msg.slice(0, 80));
+      if (bad.length >= 5) break;
+    }
+  }
+  return bad.length === 0 || bad.join(" | ");
+});
+
 // Gate 4: package.json <-> package-lock.json STRICT sync (matches `npm ci`)
 //
 // R-23 root fix: the original Gate 4 only checked "is the package NAME in
