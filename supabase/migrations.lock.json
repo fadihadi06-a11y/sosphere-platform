@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-16T22:12:02.931Z",
-  "total_migrations": 129,
-  "manifest_sha256": "7f1c31395cb0497cd6c2d4fac7ff5e63b0248b1f111dd332fc1c9df0cf165e35",
+  "generated_at": "2026-05-17T15:25:56.936Z",
+  "total_migrations": 130,
+  "manifest_sha256": "e8ad1812e6c471f59466d9762495b0432e5c65e64c856df703f45d2a2554b72e",
   "migrations": [
     {
       "version": "20260415",
@@ -905,6 +905,13 @@
       "file": "20260516220000_r24_orphans_cleanup.sql",
       "sha256": "1bd31ac611c1f3373689a562d3b6fada2183f7f011b0fc8edaac0fa7d443a31d",
       "bytes": 4159
+    },
+    {
+      "version": "20260517090000",
+      "name": "r30_accept_invitation_role_whitelist",
+      "file": "20260517090000_r30_accept_invitation_role_whitelist.sql",
+      "sha256": "ce76f61303930471aafca15e3b86eb4623b8876cbadb042e3381a7e762ccec75",
+      "bytes": 6927
     }
   ]
 }
