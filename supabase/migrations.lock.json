@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-18T20:55:16.628Z",
+  "generated_at": "2026-05-18T20:58:40.310Z",
   "total_migrations": 132,
-  "manifest_sha256": "9f06409eeebd17ab6c6e1f046f81048aca6595bb49c3c77639bb887bc9beded1",
+  "manifest_sha256": "cd8dfcb85342a4a8198de47039c978c62e7491a98ed3e9b9a77ef775b28cd339",
   "migrations": [
     {
       "version": "20260415",
@@ -924,8 +924,8 @@
       "version": "20260518100000",
       "name": "r42_trial_inactive_nightly_cron",
       "file": "20260518100000_r42_trial_inactive_nightly_cron.sql",
-      "sha256": "d3ff826583059a3b82bd806c1c041c9ea18c6ef7586b24a289655e242d20355f",
-      "bytes": 4154
+      "sha256": "765e9efc169244d62322e4568d608aeb7e4fd1b31571f46ce2d562e8a0017959",
+      "bytes": 1733
     }
   ]
 }
