@@ -16,6 +16,10 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { emitSyncEvent } from "./shared-store";
+// R-46 (LAUNCH_AUDIT, 2026-05-18): internal tier gate. Walk-me is
+// Basic+ only — Free users hitting this component (deep-link, etc.)
+// must NOT see the active flow. The prop `isPro` was advisory only.
+import { getSubscription } from "./subscription-service";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -72,7 +76,11 @@ interface SafeWalkModeProps {
   userZone?: string;
 }
 
-export function SafeWalkMode({ onBack, onSOSTrigger, isPro = false, onUpgrade, emergencyContacts, userId = "unknown", userName = "Unknown", userZone = "Unknown" }: SafeWalkModeProps) {
+export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, onUpgrade, emergencyContacts, userId = "unknown", userName = "Unknown", userZone = "Unknown" }: SafeWalkModeProps) {
+  // R-46: derive isPro from the SERVER subscription, ignoring the
+  // parent's advisory `isPro` prop. Caller bypassing parent gating
+  // can't grant themselves Walk-me.
+  const isPro = getSubscription().tier !== "free";
   const [phase, setPhase] = useState<WalkPhase>("setup");
 
   // Derive guardians from emergencyContacts prop (no more MOCK_GUARDIANS)

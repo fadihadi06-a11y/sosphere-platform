@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { Lang } from "./dashboard-i18n";
+import { getSubscription } from "./subscription-service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface FamilyMember {
@@ -57,6 +58,13 @@ const statusConfig = {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
+  // R-46 (LAUNCH_AUDIT, 2026-05-18): internal tier gate. Family Circle
+  // is a paid feature (Basic+). A Free user reaching this component
+  // (via deep-link, navigation drift, etc.) must NOT see it.
+  if (getSubscription().tier === "free") {
+    return null;
+  }
+
   const isAr = lang === "ar";
   const tr = (en: string, ar: string) => (isAr ? ar : en);
   const [members] = useState<FamilyMember[]>(loadRealMembers);

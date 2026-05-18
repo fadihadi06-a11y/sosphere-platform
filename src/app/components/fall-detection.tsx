@@ -16,6 +16,10 @@ import {
   Volume2, MapPin, ChevronRight,
 } from "lucide-react";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+// R-46 (LAUNCH_AUDIT, 2026-05-18): internal feature gate — caller used to
+// just pass `enabled` from parent UI, so a deep-link / direct component
+// mount could grant fall detection to Free users.
+import { getSubscription } from "./subscription-service";
 
 // ── Persist sensor events to Supabase ────────────────────────
 export async function saveSensorEvent(type: "fall" | "shake", acceleration: number) {
@@ -68,11 +72,17 @@ interface FallDetectionProps {
 
 // ── Fall Detection Hook ────────────────────────────────────────
 export function useFallDetection({
-  enabled,
+  enabled: requestedEnabled,
   onSOSTrigger,
   onFallDetected,
   countdownSeconds = 15,
 }: FallDetectionProps) {
+  // R-46 (LAUNCH_AUDIT, 2026-05-18): server-side tier check. If the
+  // caller's tier doesn't include fall-detection (Free), force-disable
+  // internally regardless of the `enabled` prop the parent passed.
+  // A deep-link or direct component mount cannot bypass this gate.
+  const tierAllowsFallDetection = getSubscription().tier !== "free";
+  const enabled = requestedEnabled && tierAllowsFallDetection;
   const [state, setState] = useState<FallState>("monitoring");
   const [countdown, setCountdown] = useState(countdownSeconds);
   const [accelerationHistory, setAccelerationHistory] = useState<number[]>([]);
