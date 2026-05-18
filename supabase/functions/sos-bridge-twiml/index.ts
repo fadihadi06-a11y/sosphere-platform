@@ -160,6 +160,50 @@ async function claimBridgeDial(emergencyId: string): Promise<boolean> {
   }
 }
 
+// R-38 (2026-05-17, LAUNCH_AUDIT #2): write an L2-D audit-chain row for
+// the highest-value forensic moment in the entire SOS lifecycle — a
+// contact pressed 1, won the bridge claim, and the conference is now
+// being assembled. Previously: only sos_sessions.bridge_dialed_at was
+// set, but that column is not part of the L2-D hash chain. A service-
+// role row edit could forge or erase this fact undetected. The audit
+// log row anchors the event into the immutable chain.
+//
+// Best-effort: a chain-write failure does NOT block the bridge dial.
+// The bridge_dialed_at column still has the timestamp; the audit row
+// is the defense-in-depth chain witness.
+async function auditBridgeAccept(emergencyId: string, contactPhone: string | null): Promise<void> {
+  try {
+    const url = Deno.env.get("SUPABASE_URL");
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !key || !emergencyId) return;
+    const supabase = createClient(url, key);
+    // Look up the SOS owner so the audit row's p_actor / company_id /
+    // user_id can be derived without trusting client input.
+    const { data: session } = await supabase
+      .from("sos_sessions")
+      .select("user_id, company_id")
+      .eq("id", emergencyId)
+      .maybeSingle();
+    await supabase.rpc("log_sos_audit", {
+      p_action: "bridge_accepted",
+      p_actor: "twilio_inbound_gather",
+      p_actor_level: "system",
+      p_operation: "sos_bridge_accept",
+      p_target: emergencyId,
+      p_target_name: null,
+      p_company_id: session?.company_id ?? null,
+      p_user_id: session?.user_id ?? null,
+      p_severity: "info",
+      p_metadata: {
+        contact_phone_last4: contactPhone ? String(contactPhone).slice(-4) : null,
+        source: "sos-bridge-twiml/accept",
+      },
+    });
+  } catch (err) {
+    console.warn("[sos-bridge] auditBridgeAccept best-effort write failed:", err);
+  }
+}
+
 interface StoredAiScript { text: string; language: "en-US" | "ar-SA"; voice: string; }
 const AI_VOICE_ALLOWLIST = new Set(["Polly.Joanna", "Polly.Matthew", "Polly.Amy", "Polly.Zeina"]);
 const AI_LANG_ALLOWLIST = new Set(["en-US", "ar-SA"]);
@@ -253,6 +297,12 @@ serve(async (req: Request) => {
     const confName = `sos-${emergencyId}`;
     const wonClaim = await claimBridgeDial(emergencyId);
     if (wonClaim) {
+      // R-38: anchor the bridge-accept moment into the L2-D audit chain.
+      // Fire-and-forget — never block the bridge dial on an audit miss,
+      // but a normal-case write completes well within Twilio's 8s TwiML
+      // budget so the row almost always lands before the conference.
+      const fromPhone = data.From || data.Caller || null;
+      try { await auditBridgeAccept(emergencyId, fromPhone); } catch {}
       const dbPhone = await resolveUserPhone(emergencyId);
       if (dbPhone) {
         try {
