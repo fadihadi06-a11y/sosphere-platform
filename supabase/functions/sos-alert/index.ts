@@ -1824,17 +1824,24 @@ serve(async (req: Request) => {
           // p_company_id = null (consumer queries can JOIN sos_sessions on
           // emergency_id for tenant filtering; the ledger itself doesn't
           // need to denormalize it).
-          await supabase.rpc("record_sos_dispatch_attempt", {
-            p_emergency_id:  emergencyId,
-            p_contact_index: i,
-            p_channel:       "sms",
-            p_outcome:       smsOutcome,
-            p_trace_id:      traceId ?? null,
-            p_company_id:    null,
-            p_user_id:       authUserId ?? null,
-            p_contact_name:  r?.contactName ?? null,
-            p_contact_phone: r?.phone ?? null,
-            p_provider_sid:  r?.smsSid ?? null,
+          // R-37 (LAUNCH_AUDIT #3): wrap ledger write in withDbRetry.
+          // A 200ms PG blip used to drop this row entirely, leaving a
+          // forensic gap in the dispatch ledger for real SOS events.
+          await withDbRetry(async (attempt) => {
+            if (attempt > 0) console.warn(`[sos-alert] record_sos_dispatch_attempt(sms) retry ${attempt}`);
+            const { error } = await supabase.rpc("record_sos_dispatch_attempt", {
+              p_emergency_id:  emergencyId,
+              p_contact_index: i,
+              p_channel:       "sms",
+              p_outcome:       smsOutcome,
+              p_trace_id:      traceId ?? null,
+              p_company_id:    null,
+              p_user_id:       authUserId ?? null,
+              p_contact_name:  r?.contactName ?? null,
+              p_contact_phone: r?.phone ?? null,
+              p_provider_sid:  r?.smsSid ?? null,
+            });
+            if (error) throw error;
           });
           // Call leg — only basic/elite tiers attempt a call. Free tier
           // gets 'skipped' so the ledger explicitly records the design
@@ -1850,17 +1857,22 @@ serve(async (req: Request) => {
             if (r?.error === "invalid_number" || r?.method === "invalid_number") callOutcome = "invalid";
             else if (r?.callSid) callOutcome = "sent";
             else callOutcome = "failed";
-            await supabase.rpc("record_sos_dispatch_attempt", {
-              p_emergency_id:  emergencyId,
-              p_contact_index: i,
-              p_channel:       callChannel,
-              p_outcome:       callOutcome,
-              p_trace_id:      traceId ?? null,
-              p_company_id:    null,
-              p_user_id:       authUserId ?? null,
-              p_contact_name:  r?.contactName ?? null,
-              p_contact_phone: r?.phone ?? null,
-              p_provider_sid:  r?.callSid ?? null,
+            // R-37 (LAUNCH_AUDIT #3): same retry wrap as the SMS leg above.
+            await withDbRetry(async (attempt) => {
+              if (attempt > 0) console.warn(`[sos-alert] record_sos_dispatch_attempt(call) retry ${attempt}`);
+              const { error } = await supabase.rpc("record_sos_dispatch_attempt", {
+                p_emergency_id:  emergencyId,
+                p_contact_index: i,
+                p_channel:       callChannel,
+                p_outcome:       callOutcome,
+                p_trace_id:      traceId ?? null,
+                p_company_id:    null,
+                p_user_id:       authUserId ?? null,
+                p_contact_name:  r?.contactName ?? null,
+                p_contact_phone: r?.phone ?? null,
+                p_provider_sid:  r?.callSid ?? null,
+              });
+              if (error) throw error;
             });
           }
           // L2-E Phase 1: Free tier no longer needs a 'skipped' branch

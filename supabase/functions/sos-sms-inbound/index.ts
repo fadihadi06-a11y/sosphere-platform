@@ -205,17 +205,19 @@ async function resolveSessionByFromPhone(
   if (!cleanFrom) return null;
 
   // Query: most recent active SOS where any contact_snapshot[].phone
-  // matches. We limit the time window to last 1 hour because an SOS
-  // older than that with no resolution is almost certainly stale (the
-  // session row still says "active" only because the auto-close
-  // worker hasn't run yet). The SOS dashboard only shows the last
-  // ~30min of active emergencies for the same reason.
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  // matches. R-37 (LAUNCH_AUDIT #4): extended from 1h to 6h because a
+  // contact arriving ON SCENE 70+ minutes later texting "I'm here" or
+  // "ambulance taking him" is a real and common pattern — the original
+  // 1h window dropped those inbound updates as UNMATCHED with no
+  // broadcast to the user's screen or admin dashboard.
+  // 6h covers virtually all in-emergency post-arrival replies while
+  // still rejecting stale 12h+ accidental replies.
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
   const { data: sessions } = await supabase
     .from("sos_sessions")
     .select("id, trace_id, company_id, user_id, contact_snapshot, started_at")
     .eq("status", "active")
-    .gte("started_at", oneHourAgo)
+    .gte("started_at", sixHoursAgo)
     .order("started_at", { ascending: false })
     .limit(50);
   if (!sessions || sessions.length === 0) return null;
