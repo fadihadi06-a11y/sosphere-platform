@@ -2398,6 +2398,33 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           // Tick resumes when admin sheet is dismissed via adminCallPendingRef.
           if (adminCallPendingRef.current) break;
           if (r.phaseTimer >= 2) {
+            // R-34 (2026-05-17): SAFETY FIX — 0-contacts fallback (LAUNCH_AUDIT #7).
+            // A Free-tier user with zero saved contacts would crash at
+            // contactsRef.current[0] in a real emergency. Server-side SOS
+            // (Path B) already fired in parallel — GPS / audit / company-
+            // fanout are recorded regardless. For Path A (local dial),
+            // we dial the local emergency line directly so the user is
+            // not blocked behind a "please add a contact" form during
+            // the worst possible moment.
+            if (contactsRef.current.length === 0) {
+              const EMERGENCY_NUMBER = "911"; // TODO: locale-aware (112 EU, 999 UK, etc.)
+              addEvent({
+                type: "call_out",
+                title: isAr ? "لا يوجد جهات اتصال — اتصال طوارئ" : "No personal contacts — dialing emergency services",
+                detail: EMERGENCY_NUMBER,
+                color: "#FF2D55",
+              });
+              try { directCall(EMERGENCY_NUMBER); } catch (e) {
+                console.error("[SOS] no-contacts direct emergency dial failed:", e);
+                try { window.location.href = `tel:${EMERGENCY_NUMBER}`; } catch {}
+              }
+              // Move straight to monitoring — there are no contacts to ring
+              // through the local cascade. Server SOS keeps running.
+              r.phase = "monitoring"; r.phaseTimer = 0;
+              setPhase("monitoring"); setPhaseTimer(0);
+              q.current.monitorSec = 0;
+              break;
+            }
             r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = 0;
             setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             updateContact(0, "calling");
