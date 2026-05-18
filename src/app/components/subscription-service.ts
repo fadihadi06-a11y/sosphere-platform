@@ -24,7 +24,8 @@ export interface SubscriptionInfo {
     walkMe: boolean;
     smsFallback: boolean;
     heartbeat: boolean;
-    forensicPdf: boolean;
+    forensicPdf: boolean;          // R-47: per-incident PDF report. Basic+Elite.
+    monthlySummaryPdf: boolean;    // R-47: auto monthly summary email. Elite only (generator deferred to v1.1).
     aiVoiceCalls: boolean;
     advancedStealth: boolean;
     duressCode: boolean;
@@ -63,6 +64,7 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
       smsFallback: false,
       heartbeat: false,
       forensicPdf: false,
+      monthlySummaryPdf: false,
       aiVoiceCalls: false,
       advancedStealth: false,
       duressCode: false,
@@ -82,7 +84,8 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
       walkMe: true,
       smsFallback: true,
       heartbeat: true,
-      forensicPdf: false,
+      forensicPdf: true,          // R-47: Basic now gets per-incident PDF reports.
+      monthlySummaryPdf: false,   // Monthly summary is Elite-only.
       aiVoiceCalls: false,
       advancedStealth: false,
       duressCode: false,
@@ -107,6 +110,7 @@ const TIER_CONFIG: Record<SubscriptionTier, SubscriptionInfo> = {
       smsFallback: true,
       heartbeat: true,
       forensicPdf: true,
+      monthlySummaryPdf: true,    // R-47: Elite-exclusive auto monthly digest (generator: v1.1).
       aiVoiceCalls: true,
       advancedStealth: true,
       duressCode: true,

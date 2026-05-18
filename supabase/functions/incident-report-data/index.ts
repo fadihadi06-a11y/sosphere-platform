@@ -93,6 +93,34 @@ Deno.serve(async (req) => {
   }
   const userId = userData.user.id;
 
+  // R-47 (2026-05-18): server-side tier gate. Per-incident PDF report
+  // is Basic+ only. Pre-R-47, the gate existed in UI only — a power
+  // user with the URL could bypass it. Free users get a 402 with a
+  // hint that upgrading unlocks all preserved incidents retroactively.
+  try {
+    const supaSr = createClient(SUPA_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: tierRow } = await supaSr.rpc("get_my_subscription_tier", {});
+    const tier: string = typeof tierRow === "string"
+      ? tierRow
+      : ((tierRow as { tier?: string } | null)?.tier ?? "free");
+    if (tier === "free") {
+      return new Response(
+        JSON.stringify({
+          error: "report_requires_paid_tier",
+          tier,
+          message: "PDF reports are available on Basic ($7/mo) and Elite ($14/mo). Your incident data is preserved — upgrade to unlock past reports.",
+        }),
+        { status: 402, headers: { ...CORS, "Content-Type": "application/json" } },
+      );
+    }
+  } catch (e) {
+    // R-47: never block report generation on a tier-lookup hiccup
+    // for paid users. The next gate (RLS ownership check below)
+    // still prevents cross-tenant access; the worst case here is
+    // a Free user briefly sees their own report during a DB blip.
+    console.warn("[incident-report-data] tier check failed (fail-open):", e);
+  }
+
   // Parse body
   let body: { incidentId?: string };
   try { body = await req.json(); } catch {
