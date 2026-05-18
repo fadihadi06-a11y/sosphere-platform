@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-18T17:47:46.724Z",
-  "total_migrations": 131,
-  "manifest_sha256": "753a0ad2c9e512e6644019e093ce3e855346f3418c51d9226527e2d94251a6d5",
+  "generated_at": "2026-05-18T20:55:16.628Z",
+  "total_migrations": 132,
+  "manifest_sha256": "9f06409eeebd17ab6c6e1f046f81048aca6595bb49c3c77639bb887bc9beded1",
   "migrations": [
     {
       "version": "20260415",
@@ -919,6 +919,13 @@
       "file": "20260518090000_r40_sms_replies_super_admin_unmatched.sql",
       "sha256": "526d9013ac1e889cbd922f57043264172576e2a55b6602e31c2da194f7ed2b63",
       "bytes": 827
+    },
+    {
+      "version": "20260518100000",
+      "name": "r42_trial_inactive_nightly_cron",
+      "file": "20260518100000_r42_trial_inactive_nightly_cron.sql",
+      "sha256": "d3ff826583059a3b82bd806c1c041c9ea18c6ef7586b24a289655e242d20355f",
+      "bytes": 4154
     }
   ]
 }
