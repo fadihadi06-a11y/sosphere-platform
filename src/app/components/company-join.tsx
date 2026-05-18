@@ -22,7 +22,7 @@ export function CompanyJoin({ onSubmit, onBack }: CompanyJoinProps) {
   const { isAr } = useLang();
   const [mode, setMode] = useState<"link"|"code"|null>(null);
   const [inviteLink, setInviteLink] = useState("");
-  const [code, setCode] = useState(["","","","","",""]);
+  const [code, setCode] = useState(["","","","","","","",""]);  // R-41: 8 chars to match company-register invite code length
   const [focusedField, setFocusedField] = useState<string|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -55,7 +55,7 @@ export function CompanyJoin({ onSubmit, onBack }: CompanyJoinProps) {
 
     if (upper && !VALID_CHARS.includes(upper)) return;
     const newCode = [...code]; newCode[index] = upper; setCode(newCode);
-    if (upper && index < 5) codeRefs.current[index+1]?.focus();
+    if (upper && index < 7) codeRefs.current[index+1]?.focus();  // R-41: was index < 5 (6-char)
   };
 
   const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
@@ -64,8 +64,8 @@ export function CompanyJoin({ onSubmit, onBack }: CompanyJoinProps) {
 
   const handleCodePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const paste = e.clipboardData.getData("text").toUpperCase().split("").filter(c=>VALID_CHARS.includes(c)).slice(0,6);
-    if (paste.length>0) { const newCode=[...code]; for(let i=0;i<paste.length&&i<6;i++){newCode[i]=paste[i];} setCode(newCode); codeRefs.current[Math.min(paste.length,5)]?.focus(); }
+    const paste = e.clipboardData.getData("text").toUpperCase().split("").filter(c=>VALID_CHARS.includes(c)).slice(0,8);  // R-41: 6→8
+    if (paste.length>0) { const newCode=[...code]; for(let i=0;i<paste.length&&i<8;i++){newCode[i]=paste[i];} setCode(newCode); codeRefs.current[Math.min(paste.length,7)]?.focus(); }  // R-41: 6→8 chars
   };
 
   const handleVerify = async () => {
@@ -166,7 +166,7 @@ export function CompanyJoin({ onSubmit, onBack }: CompanyJoinProps) {
               <p style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,.3)",letterSpacing:"1.5px",marginBottom:14}}>اختر طريقة الانضمام</p>
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
                 {[
-                  { id:"code" as const, icon:Hash, titleAr:isAr?"رمز الدعوة":"Invite Code", descAr:isAr?"أدخل الرمز المكون من 6 أحرف":"Enter the 6-character invite code", color:"#00C8E0" },
+                  { id:"code" as const, icon:Hash, titleAr:isAr?"رمز الدعوة":"Invite Code", descAr:isAr?"أدخل الرمز المكون من 8 أحرف":"Enter the 8-character invite code", color:"#00C8E0" },
                   { id:"link" as const, icon:Link2, titleAr:isAr?"رابط الدعوة":"Invite Link", descAr:isAr?"الصق رابط الدعوة من البريد الإلكتروني":"Paste the invite link from your email", color:"#7B5EFF" },
                 ].map(({ id, icon: Icon, titleAr, descAr, color }) => (
                   <motion.button key={id} whileTap={{scale:.97}} onClick={()=>setMode(id)} className="w-full flex items-center gap-4 text-right" style={{padding:"16px 18px",borderRadius:18,background:"rgba(255,255,255,.03)",border:`1px solid ${color}20`,direction:"rtl"}}>

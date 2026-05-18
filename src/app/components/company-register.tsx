@@ -1493,31 +1493,50 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                         "invites:", (regResult as any).invite_count);
                     }
 
-                    // ──────────────────────────────────────────────────────
-                    // E1.7 (2026-05-03): trigger Supabase Auth invitation
-                    // emails via the async queue (public.enqueue_job RPC).
-                    //
-                    // WHY ASYNC, NOT SYNCHRONOUS HTTP?
-                    //   The legacy path POSTed to invite-employees inline.
-                    //   Three failure modes:
-                    //     1. invite-employees has a 500-row hard limit;
-                    //        large registrations would 4xx.
-                    //     2. browser tab held open during all batches —
-                    //        any timeout = silent partial failure.
-                    //     3. service-role JWT chain via fetch() is broken
-                    //        in newer Supabase API key model (E1.5 audit).
-                    //
-                    // NEW FLOW
-                    //   • register_company_full RPC has ALREADY persisted
-                    //     invitations rows (atomic transaction) above.
-                    //   • This call only triggers EMAIL DISPATCH via the
-                    //     E1 async worker. Worker (process-bulk-invite v9)
-                    //     skips invitations re-insert if row is already
-                    //     pending — no duplicates.
-                    //   • idempotency_key = `register:${companyId}` —
-                    //     accidental double-submit returns the existing
-                    //     job (no duplicate dispatch).
-                    // ──────────────────────────────────────────────────────
+                    // R-41 (LAUNCH_AUDIT #24, 2026-05-18): DPA MUST run BEFORE
+                    // bulk-invite enqueue. Pre-fix, the enqueue fired async and
+                    // hundreds of employees could have received invitation
+                    // emails for a company whose DPA acceptance failed (legal
+                    // exposure). New order: synchronous DPA + trial first;
+                    // enqueue only if DPA succeeded; on DPA failure the toast
+                    // tells the owner to retry from Settings and NO invites go
+                    // out until then.
+
+                    let dpaSucceeded = false;
+                    try {
+                      const dpaRes = await supabase.rpc("accept_company_dpa", {
+                        p_company_id:       companyId,
+                        p_dpa_version:      DPA_VERSION,
+                        p_signer_full_name: ownerName,
+                        p_signer_title:     signerTitle.trim() || "Owner",
+                      });
+                      if (dpaRes.error || !(dpaRes.data as { success?: boolean })?.success) {
+                        console.warn("[Register] accept_company_dpa failed:", dpaRes.error?.message || (dpaRes.data as { reason?: string })?.reason);
+                        toast.error("DPA acceptance failed — you can retry from Settings. No invitations were sent yet.");
+                      } else {
+                        dpaSucceeded = true;
+                        const trialRes = await supabase.rpc("start_company_trial", {
+                          p_company_id:     companyId,
+                          p_plan:           planId,
+                          p_duration_days:  14,
+                          p_billing_cycle:  billing,
+                          p_employee_limit: recommendedPlan.id === "enterprise" ? 35000 : (recommendedPlan.id === "business" ? 500 : (recommendedPlan.id === "growth" ? 100 : 25)),
+                          p_zone_limit:     recommendedPlan.id === "enterprise" ? 999 : (recommendedPlan.id === "business" ? 999 : (recommendedPlan.id === "growth" ? 10 : 3)),
+                        });
+                        if (trialRes.error || !(trialRes.data as { success?: boolean })?.success) {
+                          console.warn("[Register] start_company_trial failed:", trialRes.error?.message || (trialRes.data as { reason?: string })?.reason);
+                          toast.error("Trial activation failed — you can retry from Settings.");
+                        } else {
+                          console.log("[Register] Trial active:", trialRes.data);
+                        }
+                      }
+                    } catch (e) {
+                      console.warn("[Register] DPA/trial RPC threw (non-fatal):", e);
+                    }
+
+                    // R-41: enqueue invite emails ONLY if DPA acceptance landed.
+                    // Async fire-and-forget is fine here — the DPA gate has
+                    // already protected against unsigned-company outreach.
                     const inviteableEmployees = manualEmployees
                       .filter(e => e.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email))
                       .map(e => ({
@@ -1528,7 +1547,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                         job_title: e.role || "",
                         company_id: companyId,
                       }));
-                    if (inviteableEmployees.length > 0) {
+                    if (dpaSucceeded && inviteableEmployees.length > 0) {
                       void (async () => {
                         try {
                           const { data, error } = await supabase.rpc("enqueue_job", {
@@ -1552,54 +1571,11 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                           console.warn("[Register] enqueue_job threw (non-fatal):", e);
                         }
                       })();
+                    } else if (!dpaSucceeded && inviteableEmployees.length > 0) {
+                      console.warn("[Register] R-41: invitation enqueue SKIPPED — DPA not yet accepted. " + inviteableEmployees.length + " employees will be invited on next retry.");
                     }
 
-                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: invitationsPayload.length, invited_via_email: inviteableEmployees.length });
-
-                    // ──────────────────────────────────────────────────────
-                    // AUTH-5 P3 (#175): record DPA acceptance + start trial.
-                    //
-                    // Order matters: accept_company_dpa MUST land first, because
-                    // start_company_trial validates the current DPA version is
-                    // accepted before allowing the subscription row to be
-                    // inserted. Both calls are idempotent server-side.
-                    //
-                    // Failure handling: if either RPC fails we surface a soft
-                    // toast but DO NOT roll back the company registration —
-                    // the registration itself succeeded, and the owner can
-                    // retry trial activation from Settings later. Safer than
-                    // aborting a half-created company that already has
-                    // employees seeded.
-                    // ──────────────────────────────────────────────────────
-                    try {
-                      const dpaRes = await supabase.rpc("accept_company_dpa", {
-                        p_company_id:       companyId,
-                        p_dpa_version:      DPA_VERSION,
-                        p_signer_full_name: ownerName,
-                        p_signer_title:     signerTitle.trim() || "Owner",
-                      });
-                      if (dpaRes.error || !(dpaRes.data as { success?: boolean })?.success) {
-                        console.warn("[Register] accept_company_dpa failed:", dpaRes.error?.message || (dpaRes.data as { reason?: string })?.reason);
-                        toast.error("DPA acceptance failed — you can retry from Settings.");
-                      } else {
-                        const trialRes = await supabase.rpc("start_company_trial", {
-                          p_company_id:     companyId,
-                          p_plan:           planId,
-                          p_duration_days:  14,
-                          p_billing_cycle:  billing,
-                          p_employee_limit: recommendedPlan.id === "enterprise" ? 35000 : (recommendedPlan.id === "business" ? 500 : (recommendedPlan.id === "growth" ? 100 : 25)),
-                          p_zone_limit:     recommendedPlan.id === "enterprise" ? 999 : (recommendedPlan.id === "business" ? 999 : (recommendedPlan.id === "growth" ? 10 : 3)),
-                        });
-                        if (trialRes.error || !(trialRes.data as { success?: boolean })?.success) {
-                          console.warn("[Register] start_company_trial failed:", trialRes.error?.message || (trialRes.data as { reason?: string })?.reason);
-                          toast.error("Trial activation failed — you can retry from Settings.");
-                        } else {
-                          console.log("[Register] Trial active:", trialRes.data);
-                        }
-                      }
-                    } catch (e) {
-                      console.warn("[Register] DPA/trial RPC threw (non-fatal):", e);
-                    }
+                    console.log("[SUPABASE] company_registered", { companyId, companyName, plan: planId, zones: zones.length, members: invitationsPayload.length, invited_via_email: dpaSucceeded ? inviteableEmployees.length : 0 });
 
                     toast.success("Company registered successfully!");
 
