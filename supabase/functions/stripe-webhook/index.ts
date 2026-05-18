@@ -641,13 +641,24 @@ serve(async (req: Request) => {
       case "invoice.payment_succeeded": {
         const inv = event.data.object;
         if (!inv.subscription) break;
+        // R-19 #4: clear the 3DS action URL.
         const { error: updErr } = await supabase.from("subscriptions").update({
           requires_action_url: null,
           updated_at: new Date().toISOString(),
         }).eq("stripe_subscription_id", inv.subscription)
-          .not("requires_action_url", "is", null); // only touch rows that had a flag
+          .not("requires_action_url", "is", null);
         if (updErr) throw new DbHandlerError("payment_succeeded_clear_failed", updErr);
-        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription} cleared action_url`);
+        // R-43 (LAUNCH_AUDIT cluster B): clear the upcoming_renewal_*
+        // banner data — this invoice.upcoming has now BECOME a paid invoice.
+        const { error: clearUpErr } = await supabase.from("subscriptions").update({
+          upcoming_renewal_at:       null,
+          upcoming_renewal_amount:   null,
+          upcoming_renewal_currency: null,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", inv.subscription)
+          .not("upcoming_renewal_at", "is", null);
+        if (clearUpErr) console.warn("[stripe-webhook] R-43 clear upcoming_renewal failed (non-fatal):", clearUpErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription} cleared action_url + upcoming`);
         break;
       }
 
@@ -667,6 +678,61 @@ serve(async (req: Request) => {
       }
 
       // ── R-19 #6 (MEDIUM): Stripe customer was deleted ──────────────────
+      // ── R-43 (LAUNCH_AUDIT cluster B): subscription.paused ─────────────
+      // Stripe pauses the subscription (manual pause from Dashboard or
+      // via the pause_collection API). Entitlement must STOP — a paused
+      // sub is not 'active' for billing purposes. The user resumes via
+      // subscription.resumed below.
+      case "customer.subscription.paused": {
+        const sub = event.data.object;
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          status: "paused",
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", sub.id);
+        if (updErr) throw new DbHandlerError("subscription_paused_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${sub.id} → paused`);
+        break;
+      }
+
+      // ── R-43: subscription.resumed ─────────────────────────────────────
+      // Operator or user un-paused via Stripe Dashboard / Billing Portal /
+      // API. Entitlement re-grants on next tier read.
+      case "customer.subscription.resumed": {
+        const sub = event.data.object;
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          status: "active",
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", sub.id);
+        if (updErr) throw new DbHandlerError("subscription_resumed_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${sub.id} → active`);
+        break;
+      }
+
+      // ── R-43: invoice.upcoming → 7-day renewal banner data ─────────────
+      // Stripe fires this ~7 days before the next renewal with the
+      // amount + due date. We persist both so the dashboard banner
+      // (LiveBillingPanel) can surface them. Cleared on
+      // invoice.payment_succeeded when the renewal actually charges.
+      case "invoice.upcoming": {
+        const inv = event.data.object;
+        if (!inv.subscription) {
+          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no subscription on invoice — skipping`);
+          break;
+        }
+        const dueAt = inv.next_payment_attempt
+          ? new Date(inv.next_payment_attempt * 1000).toISOString()
+          : (inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null);
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          upcoming_renewal_at:       dueAt,
+          upcoming_renewal_amount:   inv.amount_due ?? null,
+          upcoming_renewal_currency: inv.currency ?? null,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", inv.subscription);
+        if (updErr) throw new DbHandlerError("invoice_upcoming_update_failed", updErr);
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${inv.subscription} due=${dueAt} amt=${inv.amount_due}`);
+        break;
+      }
+
       // ── R-42 (LAUNCH_AUDIT #13): refund cancels entitlement ────────────
       // Customer-initiated refund through Stripe Dashboard or via Stripe
       // API. Pre-R-42: refund money went out but the subscription stayed

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-18T20:58:40.310Z",
-  "total_migrations": 132,
-  "manifest_sha256": "cd8dfcb85342a4a8198de47039c978c62e7491a98ed3e9b9a77ef775b28cd339",
+  "generated_at": "2026-05-18T21:13:36.726Z",
+  "total_migrations": 133,
+  "manifest_sha256": "d2f71885a2f3b58a8f3121aab9e6849c06f91310057a949354638bcfb9fcfdd1",
   "migrations": [
     {
       "version": "20260415",
@@ -926,6 +926,13 @@
       "file": "20260518100000_r42_trial_inactive_nightly_cron.sql",
       "sha256": "765e9efc169244d62322e4568d608aeb7e4fd1b31571f46ce2d562e8a0017959",
       "bytes": 1733
+    },
+    {
+      "version": "20260518110000",
+      "name": "r43_subscription_upcoming_renewal_columns",
+      "file": "20260518110000_r43_subscription_upcoming_renewal_columns.sql",
+      "sha256": "56744b7c25695f177a9298712cb249c6058339e3ae587fae82321b2fe56d3337",
+      "bytes": 2055
     }
   ]
 }
