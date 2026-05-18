@@ -198,9 +198,13 @@ describe("L2-F: session resolution + ledger writes", () => {
     expect(code).toMatch(/snap\[i\]\?\.phone/);
   });
 
-  it("active-session window is bounded (last 1 hour) — no resolving to stale rows", () => {
-    expect(inboundSrc).toMatch(/60\s*\*\s*60\s*\*\s*1000/);
-    expect(inboundSrc).toMatch(/\.gte\(\s*["']started_at["']\s*,\s*oneHourAgo/);
+  it("active-session window is bounded (last 6 hours, R-37) — no resolving to stale rows", () => {
+    // R-37 (LAUNCH_AUDIT #4): window widened from 1h to 6h so a contact
+    // arriving on-scene 70+ min later texting "I'm here" still resolves
+    // to the correct emergency. 6h covers virtually all real in-event
+    // post-arrival replies while still rejecting 12h+ accidental replies.
+    expect(inboundSrc).toMatch(/6\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
+    expect(inboundSrc).toMatch(/\.gte\(\s*["']started_at["']\s*,\s*sixHoursAgo/);
     expect(inboundSrc).toMatch(/\.eq\(\s*["']status["']\s*,\s*["']active["']/);
   });
 
