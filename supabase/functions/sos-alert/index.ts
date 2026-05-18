@@ -36,12 +36,26 @@ import { clientIp } from "../_shared/api-guard.ts";
 import { withDbRetry } from "../_shared/db-retry.ts";
 import { fnUrl } from "../_shared/functions-host.ts";
 import { backgroundOrAwait } from "../_shared/background-work.ts";
+// R-36 (2026-05-17, LAUNCH_AUDIT #1): Twilio circuit breaker integration.
+// sos-alert was POSTing directly to Twilio without consulting the breaker
+// shared with twilio-call / twilio-sms edge functions. During a Twilio
+// degradation, fanouts burned 8s/leg and surfaced null SIDs while the
+// breaker stayed closed because nothing recorded the failures.
+import { checkBreaker, recordBreaker } from "../_shared/twilio-breaker.ts";
 
 const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const TWILIO_FROM   = Deno.env.get("TWILIO_FROM_NUMBER")!;
 const SUPA_URL      = Deno.env.get("SUPABASE_URL")!;
 const SUPA_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// R-36: module-level service-role client used ONLY for the Twilio breaker
+// RPCs (check + record). Twilio calls happen from module-level functions
+// that pre-date the per-request supabase client (created at line 556+);
+// this dedicated client avoids the pass-through plumbing.
+const breakerClient = (SUPA_URL && SUPA_KEY) ? createClient(SUPA_URL, SUPA_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+}) : null;
 const BASE_URL      = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere.co";
 
 // Default country code applied when a contact phone is in national format
@@ -287,6 +301,22 @@ async function twilioCall(
     timeLimitSec?: number;
   } = {}
 ): Promise<{ sid: string; status: string } | null> {
+  // R-36 (LAUNCH_AUDIT #1): consult the shared Twilio breaker BEFORE
+  // burning 8s on a degraded Twilio fetch. When breaker is open, we
+  // short-circuit and let the caller treat this as a soft failure.
+  // checkBreaker is fail-open: a breaker-DB outage cannot itself block
+  // emergency dispatch.
+  if (breakerClient) {
+    try {
+      const breaker = await checkBreaker(breakerClient, "global");
+      if (!breaker.allow) {
+        console.warn(`[sos-alert] Twilio breaker OPEN (state=${breaker.state}, failures=${breaker.failureCount}) — skipping call to ${to.slice(-4)}`);
+        return null;
+      }
+    } catch (e) {
+      console.warn("[sos-alert] checkBreaker threw (fail-open):", e);
+    }
+  }
   try {
     const params = new URLSearchParams({
       To: to,
@@ -313,18 +343,40 @@ async function twilioCall(
       body: params,
     });
     const data = await res.json();
+    // R-36: record outcome with the breaker so consecutive failures
+    // trip it before the next fanout wastes more time.
+    if (breakerClient) {
+      try { await recordBreaker(breakerClient, res.ok, "global"); } catch {}
+    }
     if (!res.ok) {
       console.error("[sos-alert] Twilio call failed:", data.message);
       return null;
     }
     return { sid: data.sid, status: data.status };
   } catch (err) {
+    // R-36: record the throw as a failure too — network timeouts, DNS,
+    // 8s AbortSignal trips, etc. all count toward breaker tripping.
+    if (breakerClient) {
+      try { await recordBreaker(breakerClient, false, "global"); } catch {}
+    }
     console.error("[sos-alert] Twilio call error:", err);
     return null;
   }
 }
 
 async function twilioSMS(to: string, body: string): Promise<string | null> {
+  // R-36: same breaker pattern as twilioCall.
+  if (breakerClient) {
+    try {
+      const breaker = await checkBreaker(breakerClient, "global");
+      if (!breaker.allow) {
+        console.warn(`[sos-alert] Twilio breaker OPEN — skipping SMS to ${to.slice(-4)}`);
+        return null;
+      }
+    } catch (e) {
+      console.warn("[sos-alert] checkBreaker threw (fail-open):", e);
+    }
+  }
   try {
     // G-41 (B-20, 2026-04-26): per-fetch timeout. Twilio API p99 < 2s; 8s is generous.
     const res = await fetch(`${twilioBase}/Messages.json`, {
@@ -337,12 +389,18 @@ async function twilioSMS(to: string, body: string): Promise<string | null> {
       body: new URLSearchParams({ To: to, From: TWILIO_FROM, Body: body }),
     });
     const data = await res.json();
+    if (breakerClient) {
+      try { await recordBreaker(breakerClient, res.ok, "global"); } catch {}
+    }
     if (!res.ok) {
       console.error("[sos-alert] Twilio SMS failed:", data.message);
       return null;
     }
     return data.sid;
   } catch (err) {
+    if (breakerClient) {
+      try { await recordBreaker(breakerClient, false, "global"); } catch {}
+    }
     console.error("[sos-alert] Twilio SMS error:", err);
     return null;
   }
