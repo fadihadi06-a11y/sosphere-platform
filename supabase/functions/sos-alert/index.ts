@@ -1256,40 +1256,49 @@ serve(async (req: Request) => {
       //     directly so they are NEVER stranded
       // ───────────────────────────────────────────────────────────────
       if (usageErr) {
+        // R-35 (2026-05-17, LAUNCH_AUDIT #6): FAIL-SOFT (was fail-secure).
+        // B-10 originally returned 503 here to protect against open-ended
+        // Twilio bill exposure during DB outages. But that means a real
+        // emergency dispatched during a transient DB blip gets aborted
+        // — life safety is more valuable than the rare bill exposure.
+        //
+        // The new behavior:
+        //   - Audit the metering miss with severity=critical so ops
+        //     gets a Sentry alert
+        //   - Continue dispatch with the user's configured tier limits
+        //     applied OPTIMISTICALLY (we cannot enforce them this run,
+        //     but the tier itself is already resolved)
+        //   - Twilio circuit-breaker (separate guard) still protects
+        //     against runaway billing during prolonged DB outages
+        //
+        // Bill-exposure risk: bounded by Twilio breaker open-state.
+        // Safety upside: a stranded user in a real emergency now gets
+        // dispatched even when our metering layer wobbles.
         console.error(
-          `[sos-alert] CRITICAL: rate-limit RPC failed tier=${tier} user=${authUserId}:`,
+          `[sos-alert] WARN: rate-limit RPC failed (fail-soft, dispatching anyway) tier=${tier} user=${authUserId}:`,
           usageErr,
         );
-        // Best-effort audit so ops sees the metering miss. We don't
-        // await anything that would slow the response further.
         try {
           await supabase.rpc("log_sos_audit", {
-            p_action: "rate_limit_check_failed",
+            p_action: "rate_limit_check_failed_soft_pass",
             p_actor: authUserId,
             p_actor_level: "civilian",
             p_operation: "sos_metering_miss",
             p_target: emergencyId,
             p_target_name: userName ?? null,
+            p_severity: "critical",
             p_metadata: {
               tier,
               error_message: usageErr.message ?? String(usageErr),
               source: "sos-alert",
+              behavior: "fail_soft_continue_dispatch",
             },
             p_trace_id: traceId,
           });
         } catch (auditEx) {
           console.error("[sos-alert] audit of rate-limit failure also failed:", auditEx);
         }
-        return new Response(
-          JSON.stringify({
-            error: "rate_limit_check_failed",
-            tier,
-            retry_after_sec: 5,
-            message:
-              "We could not verify your SOS quota right now. Please try again in a few seconds. If this is a real emergency, call 911/999/112 directly.",
-          }),
-          { status: 503, headers: cors },
-        );
+        // INTENTIONALLY: do NOT return. Fall through to dispatch.
       }
 
       // RPC succeeded — apply the configured limits.
