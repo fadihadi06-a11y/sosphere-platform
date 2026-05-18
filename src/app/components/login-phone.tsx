@@ -5,6 +5,11 @@ import { Shield, ArrowRight, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { CountrySheet, COUNTRIES, type Country } from "./country-picker";
 import { OTPVerify } from "./otp-verify";
 import { useLang } from "./useLang";
+// R-45 (LAUNCH_AUDIT, 2026-05-18): forgot-password handler at line ~61
+// references `supabase` directly — previously threw ReferenceError on
+// every Forgot-password click. Adding the import here restores password
+// reset capability for every user.
+import { supabase } from "./api/supabase-client";
 
 interface LoginPhoneProps {
   onSendOTP: (phone: string) => void;
