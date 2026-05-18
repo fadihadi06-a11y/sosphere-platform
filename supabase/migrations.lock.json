@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-17T15:25:56.936Z",
-  "total_migrations": 130,
-  "manifest_sha256": "e8ad1812e6c471f59466d9762495b0432e5c65e64c856df703f45d2a2554b72e",
+  "generated_at": "2026-05-18T17:45:26.866Z",
+  "total_migrations": 131,
+  "manifest_sha256": "383243983aa2d1083e774b7c6201f201c586315d42c9e69e24f5cc5ee8bf17d1",
   "migrations": [
     {
       "version": "20260415",
@@ -912,6 +912,13 @@
       "file": "20260517090000_r30_accept_invitation_role_whitelist.sql",
       "sha256": "ce76f61303930471aafca15e3b86eb4623b8876cbadb042e3381a7e762ccec75",
       "bytes": 6927
+    },
+    {
+      "version": "20260518090000",
+      "name": "r40_sms_replies_super_admin_unmatched",
+      "file": "20260518090000_r40_sms_replies_super_admin_unmatched.sql",
+      "sha256": "881fd5ac357b6f462d1b438ad85a3157609beb277629c09771dfdec77abe7c01",
+      "bytes": 3141
     }
   ]
 }
