@@ -214,12 +214,20 @@ export function BillingPage({ companyState, webMode = false }: {
     if (isPaidPlan(planId)) {
       try {
         hapticLight();
+        // R-44 (LAUNCH_AUDIT, 2026-05-18): thread companyId so a B2B owner's
+        // plan switch creates a COMPANY subscription, not a civilian one.
+        // Pre-fix: switchPlan('growth') from a B2B dashboard routed to the
+        // civilian webhook path because companyId was never passed.
+        const safeCompanyId = typeof window !== "undefined"
+          ? localStorage.getItem("sosphere_company_id") || undefined
+          : undefined;
         await startCheckout({
           planId,
           cycle: billingCycle,
           seats: newPlanDef.maxEmployees > 0
             ? Math.max(0, empCount - newPlanDef.maxEmployees)
             : 0,
+          companyId: safeCompanyId,
         });
         // startCheckout does window.location.assign — execution stops.
         return;
