@@ -139,13 +139,18 @@ export const INDIVIDUAL_PLANS: IndividualPlan[] = [
     name: "Free",
     monthlyPrice: 0,
     annualPrice: 0,
+    // R-46 (LAUNCH_AUDIT, 2026-05-18): aligned with server-enforced limits.
+    // Server (sos-alert TIER_CAP + subscription-service.ts) enforces:
+    //   • 1 emergency contact (TIER_CAP.free.maxContacts = 1)
+    //   • 1 SOS per hour, 3 per day (sos-alert check_sos_rate_limit)
+    // Pre-fix display said "3 SOS/month" and "3 contacts" — both wrong.
     features: [
-      "3 SOS triggers/month",
+      "3 SOS triggers per day",
       "Basic GPS",
-      "3 Emergency Contacts",
+      "1 Emergency Contact",
       "Limited Medical ID",
     ],
-    limits: { sosPerMonth: 3, contacts: 3 },
+    limits: { sosPerMonth: 90, contacts: 1 }, // perDay=3 → ~90/month ceiling; UI displays per-day above
   },
   {
     id: "basic",
