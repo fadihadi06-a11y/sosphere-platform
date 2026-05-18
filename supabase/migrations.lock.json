@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-18T17:45:26.866Z",
+  "generated_at": "2026-05-18T17:47:46.724Z",
   "total_migrations": 131,
-  "manifest_sha256": "383243983aa2d1083e774b7c6201f201c586315d42c9e69e24f5cc5ee8bf17d1",
+  "manifest_sha256": "753a0ad2c9e512e6644019e093ce3e855346f3418c51d9226527e2d94251a6d5",
   "migrations": [
     {
       "version": "20260415",
@@ -917,8 +917,8 @@
       "version": "20260518090000",
       "name": "r40_sms_replies_super_admin_unmatched",
       "file": "20260518090000_r40_sms_replies_super_admin_unmatched.sql",
-      "sha256": "881fd5ac357b6f462d1b438ad85a3157609beb277629c09771dfdec77abe7c01",
-      "bytes": 3141
+      "sha256": "526d9013ac1e889cbd922f57043264172576e2a55b6602e31c2da194f7ed2b63",
+      "bytes": 827
     }
   ]
 }
