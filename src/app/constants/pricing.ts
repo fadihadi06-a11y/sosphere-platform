@@ -157,12 +157,16 @@ export const INDIVIDUAL_PLANS: IndividualPlan[] = [
     name: "Basic",
     monthlyPrice: 7,
     annualPrice: 59,            // ~30% off vs 7*12 = $84
+    // R-47 (2026-05-18): Basic now gets per-incident PDF report — the
+    // strongest perceived value at $7. Elsewhere (subscription-service.ts
+    // TIER_CONFIG.basic.features.forensicPdf=true) controls actual gate.
     features: [
       "Unlimited SOS",
       "Advanced GPS",
       "Full Medical ID",
       "Family Circle (3 people)",
       "Fall Detection",
+      "Per-incident PDF reports (unlimited)",
       "Email + SMS Support",
     ],
     limits: { sosPerMonth: -1, contacts: 5 },
@@ -172,12 +176,20 @@ export const INDIVIDUAL_PLANS: IndividualPlan[] = [
     name: "Elite",
     monthlyPrice: 14,
     annualPrice: 119,           // ~30% off vs 14*12 = $168
+    // R-47 (2026-05-18): "Monthly forensic reports" promise is now
+    // structurally backed by TIER_CONFIG.elite.features.monthlySummaryPdf
+    // = true. The auto-email generator ships in v1.1; the flag exists
+    // today so UI surfaces "Coming with v1.1" until then. All other
+    // Elite-exclusive features (AI calls, duress code, advanced stealth,
+    // Walk-me, Heartbeat) ARE live.
     features: [
       "Everything in Basic",
       "Family Circle (5 people)",
-      "Safe Walk + Buddy System",
+      "Safe Walk (Walk-me) + Heartbeat (Dead-Man's Switch)",
       "Voice-bridge to emergency contacts",
-      "Monthly forensic reports (PDF)",
+      "AI Voice Assistant on SOS calls",
+      "Advanced Stealth + Duress Code",
+      "Monthly safety summary email (coming v1.1)",
       "Priority 24/7 Support",
     ],
     limits: { sosPerMonth: -1, contacts: -1 },
