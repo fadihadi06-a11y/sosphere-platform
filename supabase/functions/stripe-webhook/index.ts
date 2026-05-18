@@ -667,6 +667,60 @@ serve(async (req: Request) => {
       }
 
       // ── R-19 #6 (MEDIUM): Stripe customer was deleted ──────────────────
+      // ── R-42 (LAUNCH_AUDIT #13): refund cancels entitlement ────────────
+      // Customer-initiated refund through Stripe Dashboard or via Stripe
+      // API. Pre-R-42: refund money went out but the subscription stayed
+      // `active` — customer kept Elite features indefinitely AFTER getting
+      // their money back. Now: subscription flips to `canceled` so the
+      // entitlement check returns `free` on the next tier read.
+      //
+      // Idempotent: a refund event on a sub that is already canceled is
+      // a no-op UPDATE (status='canceled' AND status='canceled' WHERE...
+      // returns 0 rows but no error).
+      case "charge.refunded": {
+        const charge = event.data.object;
+        // Walk charge → invoice → subscription. A standalone one-off
+        // refund (no invoice) has nothing to cancel — log + break.
+        const subId: string | null = charge?.invoice
+          ? (await stripeGet(`/invoices/${charge.invoice}`))?.subscription ?? null
+          : null;
+        if (!subId) {
+          console.warn(`[stripe-webhook] ${evtType} id=${evtId} no subscription for charge ${charge.id} (one-off refund, no action)`);
+          break;
+        }
+        const { error: updErr } = await supabase.from("subscriptions").update({
+          status: "canceled",
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        }).eq("stripe_subscription_id", subId);
+        if (updErr) throw new DbHandlerError("refund_cancel_failed", updErr);
+        const { data: refundedRow } = await supabase
+          .from("subscriptions").select("user_id, company_id")
+          .eq("stripe_subscription_id", subId).maybeSingle();
+        if (refundedRow?.user_id || refundedRow?.company_id) {
+          await supabase.rpc("log_sos_audit", {
+            p_action: "stripe_subscription_refunded",
+            p_actor_user_id: refundedRow?.user_id ?? null,
+            p_actor_level: refundedRow?.company_id ? "owner" : "user",
+            p_category: "billing",
+            p_operation: "UPDATE",
+            p_metadata: {
+              stripe_event_id: evtId,
+              stripe_event_type: evtType,
+              subscription_id: subId,
+              charge_id: charge.id,
+              refund_amount: charge.amount_refunded ?? null,
+              currency: charge.currency ?? null,
+              company_id: refundedRow?.company_id ?? null,
+            },
+          }).then((r: { error?: unknown }) => {
+            if (r.error) console.warn(`[stripe-webhook] audit failed for ${evtType}:`, r.error);
+          });
+        }
+        console.log(`[stripe-webhook] ${evtType} id=${evtId} sub=${subId} amount=${charge.amount_refunded}`);
+        break;
+      }
+
       // Operator deleted the customer in Stripe Dashboard (cleanup, GDPR
       // erasure, etc.). The subscription is orphaned. We null out the
       // stripe_customer_id so the next portal call doesn't 502 against a
