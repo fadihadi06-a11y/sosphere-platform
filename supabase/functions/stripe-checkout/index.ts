@@ -246,16 +246,25 @@ serve(async (req: Request) => {
   }
 
   // ── Look up an existing Stripe customer id + trial state on file ──
-  // For B2B: scoped to (company_id). For B2C: (user_id). The subscription
-  // table has a partial UNIQUE INDEX on company_id WHERE NOT NULL, so this
-  // SELECT is at most one row in either branch.
-  const subQuery = supabase
-    .from("subscriptions")
-    .select("stripe_customer_id, status, trial_ends_at")
-    .limit(1);
+  // R-44 (LAUNCH_AUDIT, 2026-05-18): IS NULL discriminator on the opposite
+  // id column. Without it, an owner with both a personal Elite sub
+  // (user_id=X, company_id=NULL) AND a company Business sub
+  // (user_id=NULL, company_id=A) could match the wrong row during checkout.
   const { data: existing } = safeCompanyId
-    ? await subQuery.eq("company_id", safeCompanyId).maybeSingle()
-    : await subQuery.eq("user_id", userId).maybeSingle();
+    ? await supabase
+        .from("subscriptions")
+        .select("stripe_customer_id, status, trial_ends_at")
+        .eq("company_id", safeCompanyId)
+        .is("user_id", null)
+        .limit(1)
+        .maybeSingle()
+    : await supabase
+        .from("subscriptions")
+        .select("stripe_customer_id, status, trial_ends_at")
+        .eq("user_id", userId)
+        .is("company_id", null)
+        .limit(1)
+        .maybeSingle();
 
   // ── Build the Checkout Session params. ──
   // For B2B (safeCompanyId set), we add `metadata.companyId` so the

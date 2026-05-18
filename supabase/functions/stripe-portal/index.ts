@@ -133,15 +133,30 @@ serve(async (req: Request) => {
 
   // Look up the stripe customer id we stashed during checkout. If the
   // caller has never subscribed there's nothing to manage — tell them.
-  // For B2B (safeCompanyId set), scope the lookup to the company subscription
-  // row; otherwise to the civilian (user_id) row.
-  const subQuery = supabase
-    .from("subscriptions")
-    .select("stripe_customer_id")
-    .limit(1);
+  //
+  // R-44 (LAUNCH_AUDIT, 2026-05-18): added IS NULL discriminator on the
+  // OPPOSITE id column to prevent multi-company / personal+company owners
+  // from landing on the WRONG subscription row.
+  //   B2B row: company_id SET   + user_id NULL
+  //   B2C row: company_id NULL + user_id SET
+  // Without the discriminator, an owner who has BOTH a personal Elite
+  // sub (user_id=X, company_id=NULL) AND a company Business sub
+  // (user_id=NULL, company_id=A) could see the WRONG portal open.
   const { data: row } = safeCompanyId
-    ? await subQuery.eq("company_id", safeCompanyId).maybeSingle()
-    : await subQuery.eq("user_id", userId).maybeSingle();
+    ? await supabase
+        .from("subscriptions")
+        .select("stripe_customer_id")
+        .eq("company_id", safeCompanyId)
+        .is("user_id", null)
+        .limit(1)
+        .maybeSingle()
+    : await supabase
+        .from("subscriptions")
+        .select("stripe_customer_id")
+        .eq("user_id", userId)
+        .is("company_id", null)
+        .limit(1)
+        .maybeSingle();
 
   if (!row?.stripe_customer_id) {
     return new Response(
