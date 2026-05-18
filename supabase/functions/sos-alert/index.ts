@@ -513,6 +513,42 @@ function isStatusActive(status: string | null | undefined, periodEnd: string | n
  *
  * Returns null if none of the three paths yield an owner.
  */
+/**
+ * R-39 (2026-05-17, LAUNCH_AUDIT #8 + #9): resolve the SOS user's
+ * effective company_id via a LAYERED fallback. Use this single result
+ * everywhere downstream — broadcast channel, owner-fanout, audit
+ * company_id, sos_sessions.company_id stamp. Two paths previously
+ * diverged (Realtime broadcast read profiles.active_company_id only;
+ * owner-fanout fell back to employees.company_id first), causing a
+ * stale active_company_id to broadcast to a channel no admin
+ * subscribed to.
+ *
+ * Resolution order:
+ *   1. employees.company_id (verified=true, work-context)
+ *   2. profiles.active_company_id (user-chosen active tenant)
+ *   3. null (civilian SOS, no company affiliation)
+ */
+async function resolveEffectiveCompanyId(userId: string, supabase: any): Promise<string | null> {
+  try {
+    const { data: emp } = await supabase
+      .from("employees")
+      .select("company_id")
+      .eq("user_id", userId)
+      .eq("verified", true)
+      .maybeSingle();
+    if (emp?.company_id) return emp.company_id as string;
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("active_company_id")
+      .eq("id", userId)
+      .maybeSingle();
+    return (prof?.active_company_id as string | null) ?? null;
+  } catch (err) {
+    console.warn("[sos-alert] resolveEffectiveCompanyId failed (non-fatal):", err);
+    return null;
+  }
+}
+
 async function resolveCompanyOwnerUserId(companyId: string, supabase: any): Promise<string | null> {
   // Path 1: modern memberships table.
   try {
@@ -1254,6 +1290,10 @@ serve(async (req: Request) => {
     // ── SERVER-SIDE TIER RESOLUTION (ignore client-supplied tier) ──
     const tier = await resolveTier(authUserId, supabase);
 
+    // R-39 (LAUNCH_AUDIT #8 + #9): resolve company once, stamp on
+    // sos_sessions, reuse for broadcast + owner fanout + audit company_id.
+    const effectiveCompanyId = await resolveEffectiveCompanyId(authUserId, supabase);
+
     // FIX 2026-04-24 (pre-launch audit #6+#7): server-side tier limits.
     //
     // TIER_CAP mirrors src/app/components/subscription-service.ts TIER_CONFIG
@@ -1463,6 +1503,10 @@ serve(async (req: Request) => {
       user_name: userName,
       user_phone: userPhone,
       tier,
+      // R-39 (LAUNCH_AUDIT #9): stamp company_id so the row is
+      // tenant-scoped from birth. RLS + admin dashboard joins +
+      // inbound-SMS reply broadcast all depend on this column.
+      company_id: effectiveCompanyId,
       status: "active",
       started_at: nowIso,
       last_heartbeat: nowIso,
@@ -2020,31 +2064,10 @@ serve(async (req: Request) => {
     // ──────────────────────────────────────────────────────────────────
     await backgroundOrAwait((async () => {
       try {
-        // Look up the SOSing user's active company.
-        let companyIdForFanout: string | null = null;
-        try {
-          const { data: emp } = await supabase
-            .from("employees")
-            .select("company_id")
-            .eq("user_id", authUserId)
-            .eq("verified", true)
-            .maybeSingle();
-          companyIdForFanout = emp?.company_id ?? null;
-          if (!companyIdForFanout) {
-            const { data: prof } = await supabase
-              .from("profiles")
-              .select("active_company_id")
-              .eq("id", authUserId)
-              .maybeSingle();
-            companyIdForFanout = prof?.active_company_id ?? null;
-          }
-        } catch (e) {
-          // R-9 (2026-05-14): was silent `catch (_) {}` — promoted to a
-          // logged warn so a real DB failure here surfaces in edge logs
-          // instead of vanishing. Behavior unchanged (still non-throwing
-          // best-effort — we want owner fan-out to be opportunistic).
-          console.warn("[sos-alert] owner fan-out: company lookup failed (non-fatal):", e);
-        }
+        // R-39 (LAUNCH_AUDIT #8): use the SINGLE resolved effectiveCompanyId
+        // captured at the top of this handler. Pre-fix, this block did its
+        // own lookup that could diverge from the broadcast block below.
+        const companyIdForFanout: string | null = effectiveCompanyId;
 
         if (!companyIdForFanout) {
           // Civilian SOS or unresolved company — no fan-out needed.
@@ -2247,18 +2270,14 @@ serve(async (req: Request) => {
     // Realtime Authorization (post-launch hardening) will further gate
     // subscriptions by JWT claim.
     try {
-      // Resolve company for this SOS — look up user's active_company_id
-      let scopedChannel: string;
-      try {
-        const { data: prof } = await supabase
-          .from("profiles").select("active_company_id").eq("id", authUserId).maybeSingle();
-        const companyId = prof?.active_company_id;
-        scopedChannel = companyId
-          ? `sos-live:${companyId}`
-          : `sos-live:civilian:${authUserId}`;
-      } catch {
-        scopedChannel = `sos-live:civilian:${authUserId}`;
-      }
+      // R-39 (LAUNCH_AUDIT #8): use the SINGLE effectiveCompanyId resolved
+      // at the top of the handler. Pre-fix, this block re-queried
+      // profiles.active_company_id only; if that was stale but the user
+      // had an employees row, the broadcast went to civilian channel
+      // while owner fan-out went to the company — admins missed the alert.
+      const scopedChannel: string = effectiveCompanyId
+        ? `sos-live:${effectiveCompanyId}`
+        : `sos-live:civilian:${authUserId}`;
       const ch = supabase.channel(scopedChannel);
       await ch.send({
         type: "broadcast",
