@@ -10,6 +10,13 @@ import { useLang } from "./useLang";
 // every Forgot-password click. Adding the import here restores password
 // reset capability for every user.
 import { supabase } from "./api/supabase-client";
+// R-49 (MOBILE_AUDIT_FINDINGS, 2026-05-19): persist the user's ISO
+// country code at signup so the locale-aware emergency-services lookup
+// (R-48 in sos-emergency.tsx) has a real value to read. Before R-49 the
+// storage key was defined but NEVER WRITTEN, which made R-48's resolver
+// fall through to `navigator.language` — frequently "en-US" on Saudi
+// devices with English UI → "911" instead of "997" in a real emergency.
+import { STORAGE_KEYS } from "./storage-keys";
 
 interface LoginPhoneProps {
   onSendOTP: (phone: string) => void;
@@ -132,6 +139,14 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
     if (!isPhoneValid) return;
     setOtpLoading(true);
     const full = `${country.dial}${phone}`;
+    // R-49: persist the explicitly-selected country BEFORE network I/O. We
+    // do this even though OTP may still fail — the user's intent (they
+    // tapped the SA flag) is the strongest signal we will ever have for
+    // emergency-number resolution. A failed OTP doesn't change which
+    // country they live in. This write is idempotent and storage-safe.
+    try {
+      localStorage.setItem(STORAGE_KEYS.countryCode, country.code.toUpperCase());
+    } catch { /* private mode / quota — fall back to navigator.language at lookup time */ }
     try {
       const { signInWithPhone } = await import("./api/supabase-client");
       const { error } = await signInWithPhone(full);

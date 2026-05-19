@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sosphere.app",
+      "sha256_cert_fingerprints": [
+        "02:A9:86:58:A5:C7:26:85:70:DB:9E:14:0D:8E:F5:26:D6:98:DF:6D:9A:AC:76:9E:E1:59:82:37:E5:92:80:1E"
+      ]
+    }
+  }
+]
