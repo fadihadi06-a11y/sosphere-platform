@@ -196,7 +196,15 @@ describe("BLOCKER #19 / audit trail + observability", () => {
   it("audit metadata captures sent_count, failed_count, transport identifier", () => {
     expect(edgeFnSrc).toMatch(/sent_count:/);
     expect(edgeFnSrc).toMatch(/failed_count:/);
-    expect(edgeFnSrc).toMatch(/transport:\s*"web-push-aes128gcm"/);
+    // R-54 (MOBILE_AUDIT_FINDINGS, 2026-05-19): transport identifier changed
+    // from "web-push-aes128gcm" to "dual-path" when the send-push function
+    // grew the FCM HTTP v1 path alongside Web Push. The metadata also now
+    // includes per-transport counters so the audit row tells you which
+    // delivery path each recipient used. Test asserts the new contract.
+    expect(edgeFnSrc).toMatch(/transport:\s*"dual-path"/);
+    expect(edgeFnSrc).toMatch(/web_push_count:\s*webPushCount/);
+    expect(edgeFnSrc).toMatch(/fcm_count:\s*fcmCount/);
+    expect(edgeFnSrc).toMatch(/fcm_configured:\s*FCM_CONFIGURED/);
   });
 
   it("audit row preserves caller distinction (service_role vs user)", () => {

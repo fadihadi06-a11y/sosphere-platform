@@ -865,12 +865,26 @@ export function MobileApp() {
           // BLOCKER #19 / Audit #4: also register FCM token on cold-start
           // when the session was restored from storage (no SIGNED_IN
           // event fires for restored sessions, only for transitions).
+          //
+          // R-53 (MOBILE_AUDIT_FINDINGS, 2026-05-19): also register the
+          // NATIVE push token alongside Web Push. initFCM is misleadingly
+          // named — it actually uses the Web Push API and only delivers
+          // when /sw.js is alive. On Capacitor WebView in background
+          // that's not reliable, so we run BOTH paths: Web Push for the
+          // dashboard tab, FCM-native for the Android shell. Lazy import
+          // makes the native path a no-op on web builds.
           if (!cancelled && session?.user?.id) {
             try {
               const { initFCM } = await import("./api/fcm-push");
               await initFCM(session.user.id);
             } catch (e) {
               console.warn("[SOS] initFCM (cold-start) failed (non-fatal):", e);
+            }
+            try {
+              const { initNativePush } = await import("./api/push-notifications-native");
+              await initNativePush(session.user.id);
+            } catch (e) {
+              console.warn("[SOS] initNativePush (cold-start) failed (non-fatal):", e);
             }
           }
         } catch (err) {
@@ -896,6 +910,16 @@ export function MobileApp() {
                 await initFCM(session.user.id);
               } catch (err) {
                 console.warn("[SOS] initFCM failed (non-fatal):", err);
+              }
+            })();
+            // R-53 (MOBILE_AUDIT_FINDINGS, 2026-05-19): also register the
+            // native FCM token on auth state change. Idempotent.
+            void (async () => {
+              try {
+                const { initNativePush } = await import("./api/push-notifications-native");
+                await initNativePush(session.user.id);
+              } catch (err) {
+                console.warn("[SOS] initNativePush failed (non-fatal):", err);
               }
             })();
           }
