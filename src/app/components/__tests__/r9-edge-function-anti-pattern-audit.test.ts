@@ -145,7 +145,7 @@ describe("R-9: every edge function index.ts is at least readable + non-empty", (
       // Must end with one of these structural closers — never an
       // unterminated identifier / string / mid-statement break.
       expect(
-        /^[\s)\]\};]+$|^\}\)\;?$|^export\s|^\s*\/\//.test(lastLine) || lastLine.endsWith("}") || lastLine.endsWith(");"),
+        /^[\s)\]};]+$|^}\);?$|^export\s|^\s*\/\//.test(lastLine) || lastLine.endsWith("}") || lastLine.endsWith(");"),
         `${rel} last line looks truncated: "${lastLine.slice(0, 80)}"`,
       ).toBe(true);
     });
