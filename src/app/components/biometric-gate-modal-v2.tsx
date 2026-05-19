@@ -8,15 +8,17 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// CI-FIX-2 (2026-05-19): removed unused EyeOff icon — flagged by
+// no-unused-vars after R-48/49/50/64 raised the lint ceiling.
 import {
   Fingerprint, X, CheckCircle2, AlertTriangle,
-  EyeOff, Lock,
+  Lock,
 } from "lucide-react";
+// CI-FIX-2: removed unused isBiometricVerified import.
 import {
   checkBiometricAvailability,
   enrollBiometric,
   verifyBiometric,
-  isBiometricVerified,
   getBiometricStatus,
   unenrollBiometric,
   type BiometricStatus,
@@ -72,7 +74,8 @@ export function BiometricGateModal({
   allowPinFallback = true,
 }: BiometricGateModalProps) {
   const [state, setState] = useState<ModalState>("checking");
-  const [biometricStatus, setBiometricStatus] = useState<BiometricStatus>("not_available");
+  // CI-FIX-2: biometricStatus value isn't read in render — only setter is used. _ prefix per lint rule.
+  const [_biometricStatus, setBiometricStatus] = useState<BiometricStatus>("not_available");
   const [error, setError] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [pinAttempts, setPinAttempts] = useState(0);
@@ -307,8 +310,9 @@ export function BiometricGateModal({
     setPinInput("");
   };
 
-  // Handle enrollment fallback if biometric fails
-  const handleEnrollmentFallback = async () => {
+  // Handle enrollment fallback if biometric fails.
+  // CI-FIX-2: not wired to any JSX onClick currently — _ prefix per lint rule.
+  const _handleEnrollmentFallback = async () => {
     if (allowPinFallback) {
       setState("pin_fallback");
       setError("");

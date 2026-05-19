@@ -8,10 +8,14 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// CI-FIX-2 (2026-05-19): removed unused lucide-react imports (Phone,
+// Shield, CheckCircle, Heart) that ESLint flagged after R-48/49/50/64
+// landed. The icons are still available via re-import if a future
+// refactor needs them; removing keeps the lint-error ceiling intact.
 import {
-  Users, Link, Unlink, MapPin, Phone, Shield,
-  CheckCircle, AlertTriangle, ChevronRight, X,
-  Heart, Navigation, Clock, Bell, Eye, Zap,
+  Users, Link, Unlink, MapPin,
+  AlertTriangle, ChevronRight, X,
+  Navigation, Clock, Bell, Eye, Zap,
   UserPlus, Search, PhoneCall, Send, UserCheck,
   CheckCircle2, ShieldCheck, Radio,
   Sparkles, CircleCheck, Activity,
