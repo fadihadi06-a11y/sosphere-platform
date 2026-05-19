@@ -34,6 +34,13 @@ import {
   getStorageStats,
   type GPSPoint,
 } from "./offline-database";
+// R-50 (MOBILE_AUDIT_FINDINGS, 2026-05-19): replaced raw navigator.onLine
+// with the unified network-status helper, which prefers @capacitor/network's
+// OS-supplied truth on Android (captive-portal-safe) and falls back to
+// navigator.onLine on web. See utils/network-status.ts for the full
+// rationale and W3-44 (sos-server-trigger.ts) for the original advisory
+// treatment we are upgrading.
+import { isOnline, refreshNetworkStatus, subscribeNetworkStatus } from "./utils/network-status";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -397,8 +404,14 @@ export async function startSync(options?: { categories?: SyncCategory[] }): Prom
     return currentProgress;
   }
 
-  if (!navigator.onLine) {
-    console.warn("[SyncEngine] Cannot sync — offline");
+  // R-50: prefer Capacitor's OS-level status when available. Async refresh
+  // primes the cache; subsequent sync() calls within ~1.5s use the cache.
+  // If Capacitor reports offline AND the navigator agrees, skip. If they
+  // disagree (captive portal scenario) we proceed — the sync itself will
+  // fail fast on the first fetch and retry-with-backoff handles it.
+  await refreshNetworkStatus();
+  if (!isOnline()) {
+    console.warn("[SyncEngine] Cannot sync — offline (capacitor + navigator agree)");
     return currentProgress;
   }
 
@@ -478,18 +491,24 @@ export function enableAutoSync(config?: Partial<SyncEngineConfig>): void {
   if (reconnectListenerAttached) return;
   reconnectListenerAttached = true;
 
-  window.addEventListener("online", async () => {
-    console.log("[SyncEngine] Network restored — starting auto-sync");
+  // R-50: subscribe via the unified helper. This fires on BOTH the
+  // window 'online' event AND Capacitor's networkStatusChange — so on
+  // native Android we get the OS-level transition (works even when the
+  // window event was missed because the WebView wasn't focused), and on
+  // web we get the legacy browser event. De-duped internally.
+  subscribeNetworkStatus(async (status) => {
+    if (!status.connected) return;
+    console.log(`[SyncEngine] Network restored (source=${status.source}) — starting auto-sync`);
 
     // Small delay to ensure stable connection
     await new Promise(r => setTimeout(r, 2000));
 
-    if (navigator.onLine && syncConfig.autoSyncOnReconnect) {
+    if (isOnline() && syncConfig.autoSyncOnReconnect) {
       await startSync();
     }
   });
 
-  console.log("[SyncEngine] Auto-sync on reconnect: enabled");
+  console.log("[SyncEngine] Auto-sync on reconnect: enabled (Capacitor + navigator)");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -523,7 +542,7 @@ export async function getQuickSyncStats(): Promise<QuickSyncStats> {
       incidentsUnsynced: stats.incidentsUnsynced,
       messagesUnsynced: stats.messagesUnsynced,
       lastSyncTime: lastSync,
-      isOnline: navigator.onLine,
+      isOnline: isOnline(),
     };
   } catch {
     return {
@@ -534,7 +553,7 @@ export async function getQuickSyncStats(): Promise<QuickSyncStats> {
       incidentsUnsynced: 0,
       messagesUnsynced: 0,
       lastSyncTime: null,
-      isOnline: navigator.onLine,
+      isOnline: isOnline(),
     };
   }
 }

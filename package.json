@@ -26,6 +26,7 @@
     "@capacitor/device": "^6.0.3",
     "@capacitor/geolocation": "^6.1.1",
     "@capacitor/haptics": "^6.0.3",
+    "@capacitor/network": "^6.0.3",
     "@capacitor/push-notifications": "^6.0.5",
     "@capacitor/status-bar": "^6.0.3",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",

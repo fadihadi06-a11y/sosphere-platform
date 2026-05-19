@@ -87,6 +87,53 @@ import { canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service"
 // FIX 2026-04-23: safeTelCall — directs 911/999/112 through native CallNumber
 // plugin (no chooser), so the emergency-number buttons dial immediately.
 import { safeTelCall } from "./utils/safe-tel";
+// R-48 (MOBILE_AUDIT_FINDINGS, 2026-05-19): locale-aware emergency-services
+// resolution. Before R-48 this file hardcoded "911" in the 0-contacts
+// fallback (line ~2410) and "997"/"911" in the critical-battery screen
+// (line ~3152/3158) — broken on every device outside the US. The
+// primary target market is SA (997, not 911). Resolver uses (in order)
+// the country code persisted by R-49 at signup, then the saved phone
+// number's country code, then the browser locale, then the international
+// fallback 112.
+import { getEmergencyNumber, resolveDispatcherCountry } from "./utils/emergency-services";
+import { countryFromPhone } from "./utils/country-from-phone";
+import { STORAGE_KEYS } from "./storage-keys";
+
+/**
+ * R-48: resolve the dispatcher's emergency-services number using every
+ * signal we have. Pure read-only — safe to call from any code path,
+ * including mid-emergency. Returns "112" if nothing resolves (the
+ * international GSM fallback, which carriers redirect to local emergency
+ * on most modern handsets even with no SIM).
+ *
+ * Sources tried (highest trust first):
+ *   1. localStorage[countryCode] — written by login-phone.tsx after the
+ *      user explicitly tapped the country flag at signup (R-49).
+ *   2. countryFromPhone(savedPhone) — derive from the auth session phone
+ *      number's E.164 prefix. Covers users who logged in BEFORE R-49
+ *      shipped or via OAuth (no country picker on Google sign-in).
+ *   3. navigator.language — last resort. Often wrong on Saudi devices
+ *      with English UI (gives "US"), which is why steps 1 + 2 exist.
+ */
+function resolveEmergencyNumber(): { number: string; label: string; country: string } {
+  let profileCountry: string | undefined;
+  try {
+    profileCountry = localStorage.getItem(STORAGE_KEYS.countryCode) ?? undefined;
+  } catch { /* private mode / quota — ignore */ }
+
+  if (!profileCountry) {
+    try {
+      const savedPhone = localStorage.getItem(STORAGE_KEYS.authAdminPhone);
+      profileCountry = countryFromPhone(savedPhone);
+    } catch { /* ignore */ }
+  }
+
+  const country = resolveDispatcherCountry({
+    profileCountry,
+    browserLocale: typeof navigator !== "undefined" ? navigator.language : undefined,
+  });
+  return getEmergencyNumber(country);
+}
 
 // ─── Haptic Feedback (vibration pattern during active SOS) ───────────────────
 let hapticIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -2406,12 +2453,21 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             // we dial the local emergency line directly so the user is
             // not blocked behind a "please add a contact" form during
             // the worst possible moment.
+            //
+            // R-48 (MOBILE_AUDIT_FINDINGS, 2026-05-19): the original R-34
+            // hard-coded EMERGENCY_NUMBER = "911" with a TODO. For a Saudi
+            // user (primary market) calling 911 reaches NOTHING — Saudi
+            // emergency is 997. resolveEmergencyNumber() walks every
+            // signal we have (country picker selection → phone country
+            // code → browser locale → 112 international fallback) and
+            // returns the right number for THIS user's country.
             if (contactsRef.current.length === 0) {
-              const EMERGENCY_NUMBER = "911"; // TODO: locale-aware (112 EU, 999 UK, etc.)
+              const resolvedEmergency = resolveEmergencyNumber();
+              const EMERGENCY_NUMBER = resolvedEmergency.number;
               addEvent({
                 type: "call_out",
                 title: isAr ? "لا يوجد جهات اتصال — اتصال طوارئ" : "No personal contacts — dialing emergency services",
-                detail: EMERGENCY_NUMBER,
+                detail: `${EMERGENCY_NUMBER} (${resolvedEmergency.country})`,
                 color: "#FF2D55",
               });
               try { directCall(EMERGENCY_NUMBER); } catch (e) {
@@ -3136,6 +3192,14 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       );
     }
     // Only show full-screen modal if idle (not during active SOS)
+    // R-48 (MOBILE_AUDIT_FINDINGS, 2026-05-19): resolve the primary and
+    // international fallback numbers once per render. Primary follows the
+    // user's country (SA → 997, US → 911, GB → 999, etc.). Secondary is
+    // ALWAYS 112 — the international GSM standard that every modern
+    // handset routes locally even with no SIM. The previous build
+    // hardcoded 997 + 911, which was correct for nobody outside the GCC.
+    const primary = resolveEmergencyNumber();
+    const fallback = { number: "112", label: "International", country: "INTL" };
     return (
       <div className="flex flex-col items-center justify-center h-full p-6" style={{ background: "#1A0005" }}>
         <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
@@ -3149,17 +3213,17 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         <p style={{ fontSize: 16, color: "rgba(255,255,255,0.7)", textAlign: "center", marginBottom: 32, lineHeight: 1.8 }}>
           {isAr ? "البطارية أقل من 5% — اتصل بالطوارئ الآن قبل ما ينطفئ الجهاز" : "Battery below 5% — call emergency services NOW before device shuts off"}
         </p>
-        <button onClick={() => directCall("997")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+        <button onClick={() => directCall(primary.number)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
           width: "100%", maxWidth: 320, height: 64, borderRadius: 20, cursor: "pointer",
           background: "linear-gradient(135deg, #FF2D55, #CC0033)", boxShadow: "0 8px 32px rgba(255,45,85,0.4)",
           color: "#fff", fontSize: 22, fontWeight: 800, border: "none" }}>
-          <Phone size={24} /> {isAr ? "اتصل 997 الآن" : "Call 997 NOW"}
+          <Phone size={24} /> {isAr ? `اتصل ${primary.number} الآن` : `Call ${primary.number} NOW`}
         </button>
-        <button onClick={() => directCall("911")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+        <button onClick={() => directCall(fallback.number)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
           width: "100%", maxWidth: 320, height: 54, borderRadius: 16, marginTop: 12, cursor: "pointer",
           background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
           color: "#fff", fontSize: 18, fontWeight: 700 }}>
-          <Phone size={20} /> {isAr ? "اتصل 911" : "Call 911"}
+          <Phone size={20} /> {isAr ? `اتصل ${fallback.number} (دولي)` : `Call ${fallback.number} (Intl.)`}
         </button>
         <button onClick={() => setCriticalBattery(false)}
           style={{ marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.3)", background: "none", border: "none" }}>

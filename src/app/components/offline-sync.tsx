@@ -33,6 +33,10 @@ import {
   subscribeToSyncProgress, getSyncProgress, isSyncRunning,
   getQuickSyncStats, type SyncProgress, type QuickSyncStats,
 } from "./offline-sync-engine";
+// R-50 (MOBILE_AUDIT_FINDINGS, 2026-05-19): unified network-status import.
+// Aliased to networkIsOnline because the OfflineIndicator component uses
+// a local state variable also named isOnline.
+import { isOnline as networkIsOnline, subscribeNetworkStatus } from "./utils/network-status";
 
 // ── Backward-compat exports (used by old code) ────────────────
 // Keep these so existing imports don't break
@@ -88,7 +92,10 @@ export function getCachedLocationCount(): number {
 }
 
 export function triggerOfflineSOS(employeeId: string, employeeName: string, zone: string) {
-  const isOnline = navigator.onLine;
+  // R-50: use unified helper. Same advisory semantics — if helper says
+  // offline we still log the SOS to the queue (life-safety: never skip
+  // queueing). The flag just selects branch labels in the UI.
+  const isOnline = networkIsOnline();
   const locationPromise = new Promise<{ lat: number; lng: number; accuracy: number }>((resolve) => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -328,7 +335,13 @@ interface OfflineIndicatorProps {
 }
 
 export function OfflineIndicator({ compact = false }: OfflineIndicatorProps) {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // R-50 (MOBILE_AUDIT_FINDINGS, 2026-05-19): seed with the unified
+  // network-status helper instead of raw navigator.onLine. The helper
+  // prefers @capacitor/network's OS-supplied truth on native and falls
+  // back to navigator.onLine on web — same value here, but the *updates*
+  // arrive from both sources, so the badge no longer goes stale during
+  // a captive-portal flap on Android Capacitor.
+  const [isOnline, setIsOnline] = useState(networkIsOnline());
   const [expanded, setExpanded] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [justSynced, setJustSynced] = useState(false);
@@ -364,23 +377,16 @@ export function OfflineIndicator({ compact = false }: OfflineIndicatorProps) {
     };
   }, []);
 
-  // Monitor network
+  // Monitor network — R-50: subscribe via the unified helper. On native
+  // we receive Capacitor's networkStatusChange events (works through
+  // captive portals + WebView focus quirks); on web we receive window
+  // online/offline. Single subscription, both sources, deduped.
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      setShowOfflineBanner(false);
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      setShowOfflineBanner(true);
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
+    const unsub = subscribeNetworkStatus((s) => {
+      setIsOnline(s.connected);
+      setShowOfflineBanner(!s.connected);
+    });
+    return unsub;
   }, []);
 
   // Refresh stats when expanded
