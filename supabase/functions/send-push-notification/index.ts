@@ -231,6 +231,200 @@ async function sendOneWebPush(params: { subscriptionJson: string; payloadJson: s
   return { ok: false, dead, reason: res.status + " " + res.statusText + " " + bodyText };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// R-54 (MOBILE_AUDIT_FINDINGS, 2026-05-19) — FCM HTTP v1 dual-path
+// ─────────────────────────────────────────────────────────────────────────
+// The 2026-04-30 PIVOT to Web Push solved the dashboard/web path but left
+// native Android push broken: Capacitor WebView's service worker does not
+// reliably receive push events when the app is backgrounded or killed by
+// Doze. R-53 wired @capacitor/push-notifications on the client side to
+// collect FCM registration tokens with platform='android'. This block
+// adds the SERVER side: FCM HTTP v1 delivery using a Service Account JWT
+// (FCM_SERVICE_ACCOUNT_JSON Supabase secret, uploaded via R-55).
+//
+// Why NOT the legacy API key path the 2026-04-30 commit abandoned:
+//   • Service Account auth is OAuth2 with RS256-signed JWT — a fundamentally
+//     different code path on Google's side from API key auth. The 401
+//     UNAUTHENTICATED failures that triggered the pivot were on the API
+//     key path; they do not apply here.
+//   • Service Account is the recommended modern approach (Google deprecated
+//     the legacy server key in 2024).
+//
+// Detection: every row of push_tokens carries the token. Web Push
+// subscriptions are JSON-stringified objects starting with '{'. FCM
+// registration tokens are plain strings. We route accordingly.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FCM_SERVICE_ACCOUNT_JSON = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON") || "";
+
+interface FcmServiceAccount {
+  project_id: string;
+  client_email: string;
+  private_key: string;
+}
+
+let _fcmServiceAccount: FcmServiceAccount | null | undefined = undefined;
+let _fcmAccessToken: { token: string; expiresAt: number } | null = null;
+let _fcmPrivateKey: CryptoKey | null = null;
+
+function getFcmServiceAccount(): FcmServiceAccount | null {
+  if (_fcmServiceAccount !== undefined) return _fcmServiceAccount;
+  if (!FCM_SERVICE_ACCOUNT_JSON) { _fcmServiceAccount = null; return null; }
+  try {
+    const j = JSON.parse(FCM_SERVICE_ACCOUNT_JSON);
+    if (!j.project_id || !j.client_email || !j.private_key) {
+      console.warn("[FCM] service account JSON missing required fields");
+      _fcmServiceAccount = null; return null;
+    }
+    _fcmServiceAccount = { project_id: j.project_id, client_email: j.client_email, private_key: j.private_key };
+    return _fcmServiceAccount;
+  } catch (e) {
+    console.warn("[FCM] service account JSON parse failed:", (e as Error).message);
+    _fcmServiceAccount = null;
+    return null;
+  }
+}
+
+const FCM_CONFIGURED = !!getFcmServiceAccount();
+
+/** Convert a PEM-encoded PKCS8 RSA private key to a WebCrypto CryptoKey. */
+async function importFcmPrivateKey(): Promise<CryptoKey | null> {
+  if (_fcmPrivateKey) return _fcmPrivateKey;
+  const sa = getFcmServiceAccount();
+  if (!sa) return null;
+  // Strip PEM armor + whitespace, decode base64 to DER bytes.
+  const pem = sa.private_key.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "").replace(/\s/g, "");
+  // PEM uses standard base64 (+,/); convert to b64url so b64uToBytes works.
+  const b64u = pem.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const derBytes = b64uToBytes(b64u);
+  _fcmPrivateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    derBytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return _fcmPrivateKey;
+}
+
+/** Sign a Google-OAuth2 RS256 JWT asserting the service account identity. */
+async function signFcmJwt(): Promise<string | null> {
+  const sa = getFcmServiceAccount();
+  if (!sa) return null;
+  const key = await importFcmPrivateKey();
+  if (!key) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now,
+  };
+  const signingInput = bytesToB64u(utf8(JSON.stringify(header))) + "." + bytesToB64u(utf8(JSON.stringify(claim)));
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, utf8(signingInput));
+  return signingInput + "." + bytesToB64u(new Uint8Array(sig));
+}
+
+/** Exchange the JWT for a short-lived (1h) OAuth2 access token. Cached. */
+async function getFcmAccessToken(): Promise<string | null> {
+  // Refresh ~1 minute before actual expiry to avoid races on long requests.
+  if (_fcmAccessToken && _fcmAccessToken.expiresAt > Date.now() + 60_000) {
+    return _fcmAccessToken.token;
+  }
+  const jwt = await signFcmJwt();
+  if (!jwt) return null;
+  try {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }).toString(),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn("[FCM] oauth2 token exchange failed:", res.status, errText.slice(0, 200));
+      return null;
+    }
+    const j = await res.json();
+    _fcmAccessToken = {
+      token: j.access_token,
+      expiresAt: Date.now() + ((j.expires_in || 3600) * 1000),
+    };
+    return _fcmAccessToken.token;
+  } catch (e) {
+    console.warn("[FCM] oauth2 fetch threw:", (e as Error).message);
+    return null;
+  }
+}
+
+/** Send one FCM HTTP v1 message to a single registration token. */
+async function sendOneFcmV1(params: {
+  registrationToken: string;
+  title: string;
+  body: string;
+  data: Record<string, string>;
+}): Promise<{ ok: boolean; reason?: string; dead?: boolean }> {
+  const sa = getFcmServiceAccount();
+  if (!sa) return { ok: false, reason: "fcm_service_account_not_configured" };
+  const accessToken = await getFcmAccessToken();
+  if (!accessToken) return { ok: false, reason: "fcm_oauth_failed" };
+
+  const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
+  const message = {
+    message: {
+      token: params.registrationToken,
+      // notification block lets Android render a system notification even
+      // when the app is in background / killed. Without this, only
+      // foreground apps would see anything.
+      notification: { title: params.title, body: params.body },
+      // data block carries the deep-link path + custom fields. The client
+      // listener (push-notifications-native.ts) reads data.path for routing.
+      data: params.data,
+      android: {
+        priority: "high",
+        notification: {
+          channel_id: "sosphere_sos",
+          sound: "default",
+          default_sound: true,
+          // Wake the screen + show on lock screen for SOS-severity alerts.
+          notification_priority: "PRIORITY_MAX",
+          visibility: "PUBLIC",
+        },
+      },
+    },
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+    if (res.ok) return { ok: true };
+    const errText = await res.text().catch(() => "");
+    // FCM marks dead tokens with 404 + "UNREGISTERED" or "NOT_FOUND" in the
+    // body. We surface dead=true so the caller can deactivate the row.
+    const dead = res.status === 404 || /UNREGISTERED|NOT_FOUND/i.test(errText);
+    return { ok: false, reason: `HTTP ${res.status}: ${errText.slice(0, 200)}`, dead };
+  } catch (e) {
+    return { ok: false, reason: "exception: " + (e as Error).message };
+  }
+}
+
+/**
+ * Detect whether a push_tokens row stores a Web Push subscription (JSON)
+ * or an FCM registration token (plain string).
+ */
+function isWebPushSubscription(token: string): boolean {
+  if (!token || token.length < 10) return false;
+  return token.trimStart().startsWith("{");
+}
+
+
 Deno.serve(async (req) => {
   const CORS = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -301,10 +495,41 @@ Deno.serve(async (req) => {
   let failedCount = 0;
   const failures: Array<{ tokenId: string; reason: string }> = [];
 
+  // R-54: dual-path delivery. Web Push subscriptions (JSON, starts with
+  // '{') go through the existing AES-128-GCM + VAPID path. FCM
+  // registration tokens (plain strings, platform='android'|'ios') go
+  // through FCM HTTP v1 with the Service Account JWT.
+  let webPushCount = 0;
+  let fcmCount = 0;
   for (const t of tokens) {
     let result: { ok: boolean; reason?: string; dead?: boolean };
-    try { result = await sendOneWebPush({ subscriptionJson: t.token, payloadJson }); }
-    catch (e) { result = { ok: false, reason: "exception: " + (e as Error).message }; }
+    const platform = String(t.platform || "").toLowerCase();
+    const isWebPush = isWebPushSubscription(t.token);
+
+    if (isWebPush) {
+      try { result = await sendOneWebPush({ subscriptionJson: t.token, payloadJson }); }
+      catch (e) { result = { ok: false, reason: "exception: " + (e as Error).message }; }
+      webPushCount++;
+    } else if (platform === "android" || platform === "ios") {
+      if (!FCM_CONFIGURED) {
+        result = { ok: false, reason: "fcm_service_account_not_configured" };
+      } else {
+        try {
+          result = await sendOneFcmV1({
+            registrationToken: t.token,
+            title,
+            body: messageBody,
+            data: stringData,
+          });
+        } catch (e) { result = { ok: false, reason: "exception: " + (e as Error).message }; }
+      }
+      fcmCount++;
+    } else {
+      // Unknown shape — non-JSON token without an android/ios platform tag.
+      // Most likely a legacy row from before R-50 widened the platform check;
+      // mark failed but do NOT deactivate (we don't know what it is).
+      result = { ok: false, reason: `unrecognized_token_shape: platform=${platform || "(empty)"}` };
+    }
 
     if (result.ok) sentCount++;
     else {
@@ -331,7 +556,7 @@ Deno.serve(async (req) => {
       metadata: {
         title, body_preview: messageBody.slice(0, 80), target_user_id: targetUserId,
         sent_count: sentCount, failed_count: failedCount, failures: failures.slice(0, 5),
-        is_service_role: isServiceRole, transport: "web-push-aes128gcm",
+        is_service_role: isServiceRole, transport: "dual-path", web_push_count: webPushCount, fcm_count: fcmCount, fcm_configured: FCM_CONFIGURED,
       },
       created_at: new Date().toISOString(),
     });
