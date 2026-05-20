@@ -795,13 +795,24 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
     });
   };
 
+  // R-84 (MOBILE_AUDIT_FINDINGS, 2026-05-19): use position:fixed + 100dvh
+  // so the modal anchors to the visual viewport. Previously absolute
+  // positioned inside a flex column - keyboard reflow made the panel
+  // slide. dvh collapses to keyboard-visible area on Chrome Android
+  // 108+ which is Capacitor's WebView baseline.
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-40 flex items-end"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+      className="z-40 flex items-end"
+      style={{
+        position: "fixed",
+        top: 0, left: 0, right: 0, bottom: 0,
+        height: "100dvh",
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(8px)",
+      }}
       onClick={onClose}
     >
       <motion.div
@@ -811,9 +822,22 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="w-full"
         onClick={e => e.stopPropagation()}
-        style={{ borderRadius: "24px 24px 0 0", background: "#0A1220", border: "1px solid rgba(255,255,255,0.06)", borderBottom: "none" }}
+        style={{
+          borderRadius: "24px 24px 0 0",
+          background: "#0A1220",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "none",
+          maxHeight: "85dvh",
+        }}
       >
-        <div className="p-6 max-h-[80vh] overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+        <div
+          className="p-6 overflow-y-auto"
+          style={{
+            scrollbarWidth: "none",
+            maxHeight: "85dvh",
+            paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+          }}
+        >
           <div className="w-8 h-1 rounded-full mx-auto mb-5" style={{ background: "rgba(255,255,255,0.1)" }} />
 
           <div className="flex items-center justify-between mb-5">
