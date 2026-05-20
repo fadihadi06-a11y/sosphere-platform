@@ -18,6 +18,10 @@ interface ProfileSettingsProps {
   onLogout: () => void;
   companyName?: string;
   userName?: string;
+  // R-81 (2026-05-19): pass through the auth-session-derived phone +
+  // avatar URL so the profile card stops showing hardcoded placeholders.
+  userPhone?: string;
+  userAvatarUrl?: string;
 }
 
 interface SettingsSection {
@@ -43,7 +47,7 @@ interface SettingsItem {
 
 const AVATAR_URL = "https://images.unsplash.com/photo-1769636929231-3cd7f853d038?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtYW4lMjBwb3J0cmFpdCUyMGhlYWRzaG90JTIwZGFyayUyMGJhY2tncm91bmR8ZW58MXx8fHwxNzcyNzkyMjkwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral";
 
-export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, userName }: ProfileSettingsProps) {
+export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, userName, userPhone, userAvatarUrl }: ProfileSettingsProps) {
   const [notifications, setNotifications] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
@@ -147,7 +151,14 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                   className="size-[64px] rounded-[20px] overflow-hidden"
                   style={{ border: `2px solid ${planConfig.border}` }}
                 >
-                  <ImageWithFallback src={AVATAR_URL} alt="Profile" className="w-full h-full object-cover" />
+                  {userAvatarUrl
+                    ? <ImageWithFallback src={userAvatarUrl} alt={userName || "Profile"} className="w-full h-full object-cover" />
+                    : (
+                      // R-81: no avatar URL -> initials on a tinted background.
+                      <div className="w-full h-full flex items-center justify-center" style={{ background: "rgba(0,200,224,0.12)", fontSize: 22, fontWeight: 700, color: "#00C8E0" }}>
+                        {(userName || "?").trim().split(/\s+/).slice(0,2).map(w => w[0]?.toUpperCase() || "").join("") || "U"}
+                      </div>
+                    )}
                 </div>
                 {/* Plan badge */}
                 <div
@@ -163,8 +174,12 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                 <p className="text-white" style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.3px" }}>
                   {userName || "User"}
                 </p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 2 }}>
-                  +966 5XX XXX XXXX
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 2, direction: "ltr" }}>
+                  {/* R-81 (2026-05-19): show the user's actual phone (from
+                       auth session). Empty -> friendly "Add phone" hint. */}
+                  {userPhone && userPhone.trim().length > 3
+                    ? userPhone
+                    : (companyName ? "—" : "Add phone in Settings")}
                 </p>
                 <div className="flex items-center gap-2 mt-2.5">
                   <div

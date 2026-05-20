@@ -56,6 +56,9 @@ interface IndividualLayoutProps {
   onNavigateToEliteFeatures?: () => void;
   onNavigateToSafeWalk?: () => void;
   onLogout?: () => void;
+  /** R-81: phone + avatar URL passed through to ProfileSettings */
+  userPhone?: string;
+  userAvatarUrl?: string;
   /** Optional translator function. Falls back to English keys if absent. */
   t?: (key: string) => string;
 }
@@ -69,6 +72,8 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
   onNavigateToEliteFeatures,
   onNavigateToSafeWalk,
   onLogout,
+  userPhone,
+  userAvatarUrl,
   t: tProp,
 }, ref) {
   const t = tProp || ((k: string) => k);
@@ -144,6 +149,8 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
       {activeTab === "profile" && (
         <ProfileSettings
           userName={userName}
+          userPhone={userPhone}
+          userAvatarUrl={userAvatarUrl}
           userPlan={userPlan}
           companyName={companyName}
           onNavigate={handleProfileNavigate}
