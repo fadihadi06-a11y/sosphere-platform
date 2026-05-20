@@ -755,3 +755,58 @@ html.native-ios {
  *     linear-gradient(to bottom, rgba(255, 0, 0, 0.1) 0%, rgba(255, 0, 0, 0.1) env(safe-area-inset-top), transparent env(safe-area-inset-top));
  * }
  */
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* R-71 + R-72 (MOBILE_AUDIT_FINDINGS, 2026-05-19) — Disable native text       */
+/* selection / long-press callout on interactive elements.                     */
+/* ─────────────────────────────────────────────────────────────────────────── */
+/**
+ * REAL-DEVICE BUG (Iraqi Android, 2026-05-19):
+ *   • Tap on a service card showed Android's "Copy / Share / Select all"
+ *     long-press menu instead of triggering the card's onClick.
+ *   • The "حزمة الطوارئ" card displayed horizontal-striping artifacts:
+ *     Android WebView was rendering its text-selection highlight on the
+ *     RTL Arabic text inside a glassmorphic button background, producing
+ *     a glitch-like effect.
+ *
+ * Both symptoms have the same root cause: the WebView treats text inside
+ * styled <button>s as selectable, so a long-press (or even a slightly-held
+ * tap on a slow device) triggers the system text-selection UI instead of
+ * the button's click handler.
+ *
+ * STANDARD FIX (Apple HIG + Material Design + every shipping safety app):
+ *   Disable user-select + touch-callout on all interactive elements.
+ *   Leave selection ENABLED inside form inputs and prose containers (so
+ *   the user can still copy a code, a phone number, or a paragraph).
+ *
+ * Why apply globally vs per-component: the codebase has 200+ button
+ * instances. Targeting at the CSS layer covers them all in one pass
+ * and prevents the bug from regressing as new screens are added.
+ */
+button,
+[role="button"],
+a,
+.app-screen [class*="motion"],
+.app-screen [data-tap-target="true"] {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Re-enable selection on form inputs + prose containers (so users can
+ * still copy an OTP code, a phone number, or text from a long article). */
+input,
+textarea,
+select,
+[contenteditable="true"],
+.allow-select,
+.allow-select * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

@@ -676,7 +676,17 @@ export function MobileApp() {
             if (idErr) {
               console.warn("[Auth] canonical identity used fallback path:", idErr.message);
             }
-            if (role === "employee" || role === "dispatcher") {
+            // R-70 (2026-05-19): hard-block the owner case BEFORE we
+            // route to employee-dashboard. Real-device evidence
+            // (fadihadi06@gmail.com): a user who is both a company OWNER
+            // and an individual end-user was non-deterministically routed
+            // to the employee dashboard on alternating logins. Owners use
+            // the WEB dashboard for admin work; on mobile they get the
+            // individual experience. This guard ensures primary_role='owner'
+            // NEVER lands on employee-dashboard regardless of any other state.
+            if (role === "owner") {
+              console.log("[Auth] R-70: owner detected — falling through to individual flow on mobile");
+            } else if (role === "employee" || role === "dispatcher") {
               const id = identity;
               const empName =
                 id?.employee_data?.name ||
