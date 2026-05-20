@@ -1447,6 +1447,16 @@ export function MobileApp() {
 
       console.log("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
       setLoginName(info.name || info.email.split("@")[0]);
+      // R-81 (2026-05-19): cache the Google avatar URL globally so the
+      // ProfileSettings card can show the user's real photo instead of
+      // the Unsplash placeholder. Window scope keeps this dependency-free.
+      try {
+        const pic = (info as { picture?: string; avatar_url?: string }).picture
+          || (info as { picture?: string; avatar_url?: string }).avatar_url;
+        if (pic && typeof window !== "undefined") {
+          (window as { __sosphereGoogleAvatar?: string }).__sosphereGoogleAvatar = pic;
+        }
+      } catch { /* ignore */ }
       setLoginMode("individual");
       setAuthUserId(info.userId || null);
 
@@ -2116,6 +2126,8 @@ export function MobileApp() {
 
             {screen === "individual-home" && (
               <IndividualLayout
+                userPhone={loginPhone}
+                userAvatarUrl={(typeof window !== "undefined" ? (window as { __sosphereGoogleAvatar?: string }).__sosphereGoogleAvatar : undefined) || undefined}
                 ref={individualLayoutRef}
                 userName={loginName}
                 onSOSTrigger={() => { guardedSOSTrigger("hold", "individual-home"); }}

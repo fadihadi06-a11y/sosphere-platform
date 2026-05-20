@@ -773,23 +773,33 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
                   </div>
                 </div>
 
-                {/* Contact Phone — with label */}
+                {/* Contact Phone — with label.
+                    R-81 (2026-05-19): added a leading country-code badge mirroring
+                    the user's own phone country. The original had no visible
+                    country selector here, so users in Iraq/UAE/etc. just typed
+                    a local number that failed Twilio E.164 validation downstream. */}
                 <div>
                   <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 4, marginBottom: 6, textTransform: "uppercase" }}>
                     <Phone className="size-3" />
                     {isAr ? "رقم الهاتف" : "PHONE NUMBER"}
                   </label>
-                  <div style={inputStyle(`c-phone-1`)}>
-                    <input
-                      type="tel"
-                      value={contacts[0]?.phone || ""}
-                      onChange={(e) => updateContact(1, "phone", e.target.value.replace(/\D/g, ""))}
-                      onFocus={() => setFocusedField(`c-phone-1`)}
-                      onBlur={() => setFocusedField(null)}
-                      placeholder={isAr ? "مثال: 07701234567" : "e.g. 07701234567"}
-                      className="w-full bg-transparent text-white outline-none px-3.5 py-[11px]"
-                      style={{ fontSize: "14px", fontFamily: "inherit", letterSpacing: "0.5px", caretColor: "#00C8E0" }}
-                    />
+                  <div className="flex gap-2 items-stretch">
+                    <div className="flex items-center gap-1.5 px-3" style={{ ...inputStyle("c-phone-1"), minWidth: 88 }}>
+                      <span style={{ fontSize: 18, lineHeight: 1 }}>{selectedCountry.flag}</span>
+                      <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: 500, fontFamily: "monospace" }}>{selectedCountry.code}</span>
+                    </div>
+                    <div className="flex-1" style={inputStyle(`c-phone-1`)}>
+                      <input
+                        type="tel"
+                        value={contacts[0]?.phone || ""}
+                        onChange={(e) => updateContact(1, "phone", e.target.value.replace(/\D/g, ""))}
+                        onFocus={() => setFocusedField(`c-phone-1`)}
+                        onBlur={() => setFocusedField(null)}
+                        placeholder={isAr ? "7XX XXX XXXX" : "7XX XXX XXXX"}
+                        className="w-full bg-transparent text-white outline-none px-3.5 py-[11px]"
+                        style={{ fontSize: "14px", fontFamily: "inherit", letterSpacing: "0.5px", caretColor: "#00C8E0", direction: "ltr" }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
