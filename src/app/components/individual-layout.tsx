@@ -151,14 +151,28 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
         />
       )}
 
-      {/* Bottom Nav */}
+      {/* Bottom Nav.
+          R-75 (MOBILE_AUDIT_FINDINGS, 2026-05-19): on Android gesture-bar
+          devices the previous `pb-8` (32px) was getting partially eaten by
+          the system nav bar / home indicator, leaving the actual tab
+          buttons hidden behind the gesture area. Combined with the
+          full-height leaflet container on the Map tab, taps on Home /
+          Family / Profile hit the system bar instead of the nav buttons.
+          Fix: use safe-area-inset-bottom so the nav always clears the
+          system UI. Also bump z-index to keep clicks above the leaflet
+          canvas defensively. */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20"
+        className="absolute bottom-0 left-0 right-0"
         style={{
           background: "linear-gradient(180deg, transparent 0%, rgba(5,7,14,0.97) 35%)",
+          zIndex: 50,
+          pointerEvents: "auto",
         }}
       >
-        <div className="flex items-center justify-around px-4 pb-8 pt-3">
+        <div
+          className="flex items-center justify-around px-4 pt-3"
+          style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}
+        >
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (

@@ -24,6 +24,10 @@ import {
   generateSafetyLink, determineContactType,
   type RippleWave,
 } from "./contact-tier-system";
+// R-76 (2026-05-19): COUNTRIES table for dial-code seeding (see
+// AddEditContactForm). Import at module top so ESLint no-require-imports
+// is satisfied.
+import { COUNTRIES } from "./country-picker";
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -706,7 +710,24 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
   onSave: (data: Partial<SafetyContact>) => void;
 }) {
   const [name, setName] = useState(contact?.name || "");
-  const [phone, setPhone] = useState(contact?.phone || "");
+  // R-76 (MOBILE_AUDIT_FINDINGS, 2026-05-19): pre-fill the phone input
+  // with the user's country dial code (R-49 detection). Before R-76 the
+  // input started empty and the placeholder showed +966 even for an
+  // Iraqi user — so most users typed their local number without country
+  // code, which then failed Twilio E.164 validation downstream.
+  const [phone, setPhone] = useState(() => {
+    if (contact?.phone) return contact.phone;
+    try {
+      const code = typeof window !== "undefined"
+        ? window.localStorage.getItem("sosphere_country_code")
+        : null;
+      if (code) {
+        const c = COUNTRIES.find((x) => x.code === code.toUpperCase());
+        if (c?.dial) return c.dial + " ";
+      }
+    } catch { /* ignore */ }
+    return "";
+  });
   const [relation, setRelation] = useState(contact?.relation || "Friend");
   const [hasApp, setHasApp] = useState(contact?.hasApp ?? true);
   const [theirPlan, setTheirPlan] = useState<ContactPlan>(contact?.theirPlan || "free");
