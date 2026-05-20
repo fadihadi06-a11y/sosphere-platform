@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { CountrySheet, type Country } from "./country-picker";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help" | "elite-features";
@@ -48,6 +49,90 @@ interface SettingsItem {
 const AVATAR_URL = "https://images.unsplash.com/photo-1769636929231-3cd7f853d038?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtYW4lMjBwb3J0cmFpdCUyMGhlYWRzaG90JTIwZGFyayUyMGJhY2tncm91bmR8ZW58MXx8fHwxNzcyNzkyMjkwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral";
 
 export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, userName, userPhone, userAvatarUrl }: ProfileSettingsProps) {
+  // R-82 (2026-05-19): tappable avatar - opens Camera/Gallery picker.
+  // Falls back to a no-op if @capacitor/camera is not loadable (web build).
+  // Saved photo overrides the Google avatar in localStorage.
+  const [customAvatar, setCustomAvatar] = useState<string | null>(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("sosphere_avatar_dataurl") : null; }
+    catch { return null; }
+  });
+  const handleAvatarTap = async () => {
+    try {
+      const mod = await import("@capacitor/camera").catch(() => null) as null | {
+        Camera: { getPhoto: (opts: unknown) => Promise<{ dataUrl?: string }> };
+        CameraSource: { Prompt: string };
+        CameraResultType: { DataUrl: string };
+      };
+      if (!mod?.Camera?.getPhoto) {
+        // Web fallback: trigger a hidden file input
+        const input = document.createElement("input");
+        input.type = "file"; input.accept = "image/*";
+        input.onchange = () => {
+          const f = input.files?.[0]; if (!f) return;
+          const r = new FileReader();
+          r.onload = () => {
+            const url = String(r.result || "");
+            setCustomAvatar(url);
+            try { localStorage.setItem("sosphere_avatar_dataurl", url); } catch { /* ignore */ }
+          };
+          r.readAsDataURL(f);
+        };
+        input.click();
+        return;
+      }
+      const res = await mod.Camera.getPhoto({
+        source: mod.CameraSource.Prompt,
+        resultType: mod.CameraResultType.DataUrl,
+        quality: 80,
+        allowEditing: true,
+        width: 512, height: 512,
+      });
+      if (res?.dataUrl) {
+        setCustomAvatar(res.dataUrl);
+        try { localStorage.setItem("sosphere_avatar_dataurl", res.dataUrl); } catch { /* ignore */ }
+      }
+    } catch (e) {
+      console.warn("[Profile] avatar picker failed:", e);
+    }
+  };
+
+  // R-83 (2026-05-19): inline phone editor. Opens a CountrySheet + number
+  // input modal. Saves locally now; server sync via UPDATE profiles SET
+  // phone happens via the same auth update path used elsewhere.
+  const [showPhoneEditor, setShowPhoneEditor] = useState(false);
+  const [phoneEditCountry, setPhoneEditCountry] = useState<Country | null>(null);
+  const [phoneEditLocal, setPhoneEditLocal] = useState("");
+  const [phoneEditOpenPicker, setPhoneEditOpenPicker] = useState(false);
+  const openPhoneEditor = async () => {
+    const { COUNTRIES } = await import("./country-picker");
+    let isoCode: string | undefined;
+    try { isoCode = localStorage.getItem("sosphere_country_code") || undefined; } catch { /* ignore */ }
+    if (!isoCode && typeof navigator !== "undefined") {
+      const raw = navigator.language || navigator.languages?.[0] || "";
+      const parts = raw.split(/[-_]/);
+      if (parts.length > 1) isoCode = parts[1].toUpperCase();
+    }
+    const c = (isoCode && COUNTRIES.find((x) => x.code === isoCode.toUpperCase()))
+      || COUNTRIES.find((x) => x.code === "SA")!;
+    setPhoneEditCountry(c);
+    setShowPhoneEditor(true);
+  };
+  const savePhoneEdit = async () => {
+    if (!phoneEditCountry || !phoneEditLocal.trim()) { setShowPhoneEditor(false); return; }
+    const fullE164 = phoneEditCountry.dial + phoneEditLocal.replace(/[^0-9]/g, "");
+    try { localStorage.setItem("sosphere_user_phone", fullE164); } catch { /* ignore */ }
+    try {
+      const { supabase } = await import("./api/supabase-client");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        await supabase.from("profiles").update({ phone: fullE164 }).eq("id", user.id);
+      }
+    } catch (e) { console.warn("[Profile] phone server update failed:", e); }
+    setShowPhoneEditor(false);
+    // Force a re-render path - userPhone prop comes from parent; we save
+    // to localStorage which restoreSession reads on next launch.
+    window.location.reload();
+  };
   const [notifications, setNotifications] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
@@ -145,14 +230,14 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
             />
 
             <div className="flex items-center gap-4 relative z-10">
-              {/* Avatar */}
-              <div className="relative">
+              {/* Avatar - R-82: tappable, opens camera/gallery picker. */}
+              <button type="button" onClick={handleAvatarTap} className="relative" aria-label="Change photo">
                 <div
                   className="size-[64px] rounded-[20px] overflow-hidden"
                   style={{ border: `2px solid ${planConfig.border}` }}
                 >
-                  {userAvatarUrl
-                    ? <ImageWithFallback src={userAvatarUrl} alt={userName || "Profile"} className="w-full h-full object-cover" />
+                  {(customAvatar || userAvatarUrl)
+                    ? <ImageWithFallback src={customAvatar || userAvatarUrl || ""} alt={userName || "Profile"} className="w-full h-full object-cover" />
                     : (
                       // R-81: no avatar URL -> initials on a tinted background.
                       <div className="w-full h-full flex items-center justify-center" style={{ background: "rgba(0,200,224,0.12)", fontSize: 22, fontWeight: 700, color: "#00C8E0" }}>
@@ -167,20 +252,32 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                 >
                   <planConfig.icon style={{ width: 12, height: 12, color: planConfig.color }} />
                 </div>
-              </div>
+              </button>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-white" style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.3px" }}>
                   {userName || "User"}
                 </p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 2, direction: "ltr" }}>
-                  {/* R-81 (2026-05-19): show the user's actual phone (from
-                       auth session). Empty -> friendly "Add phone" hint. */}
-                  {userPhone && userPhone.trim().length > 3
-                    ? userPhone
-                    : (companyName ? "—" : "Add phone in Settings")}
-                </p>
+                {/* R-81 + R-83 (2026-05-19): show real phone OR a tappable
+                     "Add phone" button that opens the inline editor. */}
+                {userPhone && userPhone.trim().length > 3 ? (
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 2, direction: "ltr" }}>
+                    {userPhone}
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openPhoneEditor}
+                    style={{
+                      fontSize: 12, color: "#00C8E0", marginTop: 2,
+                      background: "none", border: "none", padding: 0,
+                      textAlign: "start", cursor: "pointer", fontWeight: 600,
+                    }}
+                  >
+                    {companyName ? "—" : "+ Add phone"}
+                  </button>
+                )}
                 <div className="flex items-center gap-2 mt-2.5">
                   <div
                     className="flex items-center gap-1.5 px-2.5 py-1"
@@ -405,6 +502,71 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
           <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0</p>
         </motion.div>
       </div>
+
+      {/* R-83: inline phone editor modal */}
+      {showPhoneEditor && phoneEditCountry && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,0.8)",
+            display: "flex", alignItems: "flex-end", justifyContent: "center",
+          }}
+          onClick={() => setShowPhoneEditor(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: 480,
+              background: "#0A1220", borderRadius: "20px 20px 0 0",
+              padding: "20px 20px max(24px, env(safe-area-inset-bottom))",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 14 }}>Add phone number</h2>
+            <div className="flex gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setPhoneEditOpenPicker(true)}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 15, minWidth: 110 }}
+              >
+                <span style={{ fontSize: 18 }}>{phoneEditCountry.flag}</span>
+                <span style={{ fontFamily: "monospace" }}>{phoneEditCountry.dial}</span>
+                <ChevronRight style={{ width: 14, height: 14, color: "rgba(255,255,255,0.4)", transform: "rotate(90deg)" }} />
+              </button>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phoneEditLocal}
+                onChange={(e) => setPhoneEditLocal(e.target.value.replace(/[^0-9 -]/g, "").slice(0, 15))}
+                placeholder="7XX XXX XXXX"
+                autoFocus
+                style={{ flex: 1, padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 15, outline: "none", direction: "ltr" }}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPhoneEditor(false)}
+                style={{ flex: 1, padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: 600 }}
+              >Cancel</button>
+              <button
+                type="button"
+                disabled={!phoneEditLocal.trim()}
+                onClick={savePhoneEdit}
+                style={{ flex: 2, padding: "14px", borderRadius: 12, background: phoneEditLocal.trim() ? "linear-gradient(135deg, #00C8E0, #00A5C0)" : "rgba(255,255,255,0.04)", color: "#fff", fontSize: 14, fontWeight: 700, border: "none", cursor: phoneEditLocal.trim() ? "pointer" : "not-allowed" }}
+              >Save</button>
+            </div>
+          </div>
+          {phoneEditOpenPicker && (
+            <CountrySheet
+              open={phoneEditOpenPicker}
+              selected={phoneEditCountry}
+              onClose={() => setPhoneEditOpenPicker(false)}
+              onSelect={(c) => { setPhoneEditCountry(c); setPhoneEditOpenPicker(false); }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
