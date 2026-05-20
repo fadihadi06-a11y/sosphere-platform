@@ -61,8 +61,48 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
   // R-46 (LAUNCH_AUDIT, 2026-05-18): internal tier gate. Family Circle
   // is a paid feature (Basic+). A Free user reaching this component
   // (via deep-link, navigation drift, etc.) must NOT see it.
+  //
+  // R-74 (MOBILE_AUDIT_FINDINGS, 2026-05-19): the original "return null"
+  // produced a blank black screen — the user tapped the bottom-nav
+  // Family tab and saw nothing. Now we render a friendly upgrade prompt
+  // so the user understands WHY the feature is locked and how to enable
+  // it (universal SaaS pattern — never silently hide paid features,
+  // always offer a clear upgrade path).
   if (getSubscription().tier === "free") {
-    return null;
+    const isArFree = lang === "ar";
+    return (
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center" style={{ background: "#05070E", minHeight: "100%" }}>
+        <div style={{
+          width: 88, height: 88, borderRadius: 26,
+          background: "linear-gradient(135deg, rgba(0,200,224,0.16), rgba(0,200,224,0.04))",
+          border: "1px solid rgba(0,200,224,0.25)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginBottom: 22,
+        }}>
+          <UserPlus size={36} color="#00C8E0" />
+        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 10 }}>
+          {isArFree ? "دائرة العائلة" : "Family Circle"}
+        </h2>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, marginBottom: 28, maxWidth: 320 }}>
+          {isArFree
+            ? "تتبَّع موقع أفراد عائلتك في الوقت الفعلي وأرسل تنبيهات أمان جماعية. يحتاج الاشتراك الأساسي أو أعلى."
+            : "Track your family members in real time and send group safety alerts. Available on Basic or higher."}
+        </p>
+        <button
+          onClick={() => { try { window.dispatchEvent(new CustomEvent("sosphere:open-subscription")); } catch { /* noop */ } }}
+          style={{
+            padding: "14px 32px", borderRadius: 14,
+            background: "linear-gradient(135deg, #00C8E0, #00A5C0)",
+            color: "#fff", fontSize: 15, fontWeight: 700,
+            border: "none", cursor: "pointer",
+            boxShadow: "0 6px 24px rgba(0,200,224,0.3)",
+          }}
+        >
+          {isArFree ? "عرض الخطط" : "View plans"}
+        </button>
+      </div>
+    );
   }
 
   const isAr = lang === "ar";

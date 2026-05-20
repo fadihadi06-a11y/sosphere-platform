@@ -1448,23 +1448,69 @@ export function MobileApp() {
       console.log("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
       setLoginName(info.name || info.email.split("@")[0]);
       setLoginMode("individual");
+      setAuthUserId(info.userId || null);
 
-      // Step 3: Route through the FULL validation chain
-      // Even returning users must have completed consent + registration locally.
-      // restoreSession handles the "everything already done" case on app launch.
-      // Here we always go through the consent → registration flow.
+      // R-73 (2026-05-19): server-canonical onboarding check. Before R-73
+      // this block looked only at localStorage flags — which completeLogout
+      // wipes on every signout — so EVERY re-login forced the user back
+      // through terms-consent / gps-consent / individual-register even if
+      // their server profile had every field populated.
+      //
+      // New flow: ask the server whether this user is already fully onboarded.
+      // If yes, synthesise the local flags from server state and route
+      // straight to individual-home. Only truly first-time users (or users
+      // whose server profile is incomplete) walk the onboarding screens.
+      // This matches the "server is canonical" principle the rest of the
+      // codebase already follows (B-17 tier sync, F-B age-gate, etc.).
+      try {
+        const { loadCanonicalIdentity } = await import("./api/canonical-identity");
+        const id = await loadCanonicalIdentity(supabase);
+        const ageVerified = await supabase.rpc("is_age_verified")
+          .then((r) => r?.data === true).catch(() => false);
+        const fullName = id?.profile?.full_name;
+
+        if (ageVerified && fullName) {
+          // Fully onboarded on the server — rehydrate local flags so the
+          // rest of the app behaves identically to a fresh-onboarded session.
+          const now = Date.now();
+          try {
+            localStorage.setItem("sosphere_tos_consent", JSON.stringify({
+              accepted: true, timestamp: now, version: "1.0",
+            }));
+            localStorage.setItem("sosphere_gps_consent", JSON.stringify({
+              allowed: true, timestamp: now, declinedWarningShown: false,
+            }));
+            localStorage.setItem("sosphere_individual_profile", JSON.stringify({
+              name: fullName, phone: id?.profile?.phone || "", registeredAt: now,
+            }));
+          } catch { /* private mode — fall through, restoreSession will handle */ }
+
+          console.log("[Auth] R-73: server says onboarded → skipping consent loop");
+          screenHistoryRef.current = [];
+          navigate("individual-home");
+          return;
+        }
+        // Server has profile but missing age verification → register screen
+        // which starts with DOB picker, then redirects to home automatically.
+        if (fullName && !ageVerified) {
+          console.log("[Auth] R-73: server has profile but no age verification → individual-register (DOB)");
+          navigate("individual-register");
+          return;
+        }
+      } catch (e) {
+        console.warn("[Auth] R-73 server check failed, falling back to local-only flow:", e);
+      }
+
+      // Fallback (no server signal): local-only check, same as pre-R-73.
       const consentDone = hasCompletedConsent();
       const gpsConsentDone = hasCompletedGpsConsent();
       const savedProfile = loadJSONSync<{ registeredAt: number } | null>("sosphere_individual_profile", null);
 
       if (!consentDone) {
-        // Must accept terms first
         navigate("terms-consent");
       } else if (!gpsConsentDone) {
-        // Must accept GPS consent
         navigate("gps-consent");
       } else if (!savedProfile?.registeredAt) {
-        // Must complete profile registration
         navigate("individual-register");
       } else {
         // ALL steps verified complete — safe to go home
