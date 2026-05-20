@@ -633,7 +633,8 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
                   </span>
                 )}
               </label>
-              <div className="flex gap-2.5">
+              {/* R-85: force LTR on signup phone row */}
+              <div className="flex gap-2.5" dir="ltr">
                 {/* Country Code — separate box */}
                 <div className="relative shrink-0">
                   <button
@@ -783,7 +784,8 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
                     <Phone className="size-3" />
                     {isAr ? "رقم الهاتف" : "PHONE NUMBER"}
                   </label>
-                  <div className="flex gap-2 items-stretch">
+                  {/* R-85: force LTR on phone row in RTL UI */}
+                  <div className="flex gap-2 items-stretch" dir="ltr">
                     <div className="flex items-center gap-1.5 px-3" style={{ ...inputStyle("c-phone-1"), minWidth: 88 }}>
                       <span style={{ fontSize: 18, lineHeight: 1 }}>{selectedCountry.flag}</span>
                       <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: 500, fontFamily: "monospace" }}>{selectedCountry.code}</span>

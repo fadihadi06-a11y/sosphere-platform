@@ -523,7 +523,8 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
             }}
           >
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 14 }}>Add phone number</h2>
-            <div className="flex gap-2 mb-4">
+            {/* R-85: force LTR on phone row in RTL UI */}
+            <div className="flex gap-2 mb-4" dir="ltr">
               <button
                 type="button"
                 onClick={() => setPhoneEditOpenPicker(true)}

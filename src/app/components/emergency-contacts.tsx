@@ -930,7 +930,9 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
           {/* Phone — R-80 (2026-05-19): split country + local-number inputs */}
           <div className="mb-4">
             <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>PHONE NUMBER</label>
-            <div className="flex gap-2 mt-2">
+            {/* R-85 (2026-05-19): force LTR so RTL UI does not flip the
+                flex order. Phone numbers are universally LTR (E.164). */}
+            <div className="flex gap-2 mt-2" dir="ltr">
               <button
                 type="button"
                 onClick={() => setCountryPickerOpen(true)}
