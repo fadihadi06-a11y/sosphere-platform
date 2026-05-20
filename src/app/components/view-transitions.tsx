@@ -18,21 +18,29 @@ export const motionConfig = {
   easeOutQuad: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number],
   easeInOutQuad: [0.455, 0.03, 0.515, 0.955] as [number, number, number, number],
 
-  // Durations (in seconds)
-  fast: 0.15,
-  normal: 0.3,
-  slow: 0.45,
+  // R-77 (MOBILE_AUDIT_FINDINGS, 2026-05-19): durations reduced from
+  // 0.15 / 0.3 / 0.45. Real-device feedback (Iraqi Android): transitions
+  // felt like slow-motion. Apple HIG recommends <250ms; Material Design
+  // standards are 150-300ms. The previous 0.3 "normal" was on the high
+  // end and compounded with spring physics produced a 400-500ms
+  // perceived duration. New defaults match the snappier end of both
+  // standards while staying smooth.
+  fast: 0.10,
+  normal: 0.18,
+  slow: 0.28,
 
-  // Spring physics for smooth, natural motion
+  // Spring physics for smooth, natural motion. R-77: stiffness bumped
+  // 300 -> 420 so springs settle ~30% faster without overshoot.
   spring: {
     type: "spring" as const,
-    stiffness: 300,
-    damping: 30,
+    stiffness: 420,
+    damping: 32,
   },
 
-  // Stagger timing for card/list reveals
-  staggerDelay: 0.05,
-  listItemDelay: 0.03,
+  // Stagger timing for card/list reveals. R-77: tightened so multi-item
+  // lists do not feel like a wave passing through.
+  staggerDelay: 0.03,
+  listItemDelay: 0.02,
 };
 
 // ─────────────────────────────────────────────────────────────

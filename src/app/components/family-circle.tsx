@@ -57,7 +57,7 @@ const statusConfig = {
 };
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
+export function FamilyCircle({ lang = "en", onUpgrade }: { lang?: Lang; onUpgrade?: () => void } = {}) {
   // R-46 (LAUNCH_AUDIT, 2026-05-18): internal tier gate. Family Circle
   // is a paid feature (Basic+). A Free user reaching this component
   // (via deep-link, navigation drift, etc.) must NOT see it.
@@ -90,7 +90,12 @@ export function FamilyCircle({ lang = "en" }: { lang?: Lang } = {}) {
             : "Track your family members in real time and send group safety alerts. Available on Basic or higher."}
         </p>
         <button
-          onClick={() => { try { window.dispatchEvent(new CustomEvent("sosphere:open-subscription")); } catch { /* noop */ } }}
+          onClick={() => {
+            // R-78 (2026-05-19): prefer the prop; fall back to event for
+            // call sites that have not yet wired the prop drilling.
+            if (onUpgrade) { onUpgrade(); return; }
+            try { window.dispatchEvent(new CustomEvent("sosphere:open-subscription")); } catch { /* noop */ }
+          }}
           style={{
             padding: "14px 32px", borderRadius: 14,
             background: "linear-gradient(135deg, #00C8E0, #00A5C0)",
