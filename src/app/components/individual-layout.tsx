@@ -139,7 +139,7 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           onSafeWalk={onNavigateToSafeWalk}
         />
       )}
-      {activeTab === "family" && <FamilyCircle />}
+      {activeTab === "family" && <FamilyCircle onUpgrade={onNavigateToSubscription} />}
       {activeTab === "map" && <MapScreen onBack={() => setActiveTab("home")} />}
       {activeTab === "profile" && (
         <ProfileSettings

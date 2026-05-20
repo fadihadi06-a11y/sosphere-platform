@@ -717,15 +717,26 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
   // code, which then failed Twilio E.164 validation downstream.
   const [phone, setPhone] = useState(() => {
     if (contact?.phone) return contact.phone;
+    // R-79 (2026-05-19): R-49 only writes sosphere_country_code on phone
+    // OTP signup. Users who sign in with Gmail never get the storage flag,
+    // so R-76's dial-code seeding fell back to "" for them. Add a
+    // navigator.language region fallback (e.g. ar-IQ -> IQ -> +964) so
+    // every user gets the right prefix regardless of how they signed in.
+    let isoCode: string | undefined;
     try {
-      const code = typeof window !== "undefined"
-        ? window.localStorage.getItem("sosphere_country_code")
-        : null;
-      if (code) {
-        const c = COUNTRIES.find((x) => x.code === code.toUpperCase());
-        if (c?.dial) return c.dial + " ";
-      }
+      isoCode = typeof window !== "undefined"
+        ? (window.localStorage.getItem("sosphere_country_code") || undefined)
+        : undefined;
     } catch { /* ignore */ }
+    if (!isoCode && typeof navigator !== "undefined") {
+      const raw = navigator.language || navigator.languages?.[0] || "";
+      const parts = raw.split(/[-_]/);
+      if (parts.length > 1) isoCode = parts[1].toUpperCase();
+    }
+    if (isoCode) {
+      const c = COUNTRIES.find((x) => x.code === isoCode!.toUpperCase());
+      if (c?.dial) return c.dial + " ";
+    }
     return "";
   });
   const [relation, setRelation] = useState(contact?.relation || "Friend");
