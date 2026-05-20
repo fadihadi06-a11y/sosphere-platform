@@ -27,7 +27,7 @@ import {
 // R-76 (2026-05-19): COUNTRIES table for dial-code seeding (see
 // AddEditContactForm). Import at module top so ESLint no-require-imports
 // is satisfied.
-import { COUNTRIES } from "./country-picker";
+import { COUNTRIES, CountrySheet, type Country } from "./country-picker";
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -715,13 +715,19 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
   // input started empty and the placeholder showed +966 even for an
   // Iraqi user — so most users typed their local number without country
   // code, which then failed Twilio E.164 validation downstream.
-  const [phone, setPhone] = useState(() => {
-    if (contact?.phone) return contact.phone;
-    // R-79 (2026-05-19): R-49 only writes sosphere_country_code on phone
-    // OTP signup. Users who sign in with Gmail never get the storage flag,
-    // so R-76's dial-code seeding fell back to "" for them. Add a
-    // navigator.language region fallback (e.g. ar-IQ -> IQ -> +964) so
-    // every user gets the right prefix regardless of how they signed in.
+  // R-80 (2026-05-19): split the phone input into a SEPARATE country
+  // picker (flag + dial code) and a local-number field. Matches the
+  // universal pattern used by WhatsApp / Telegram / our own login
+  // screen. Previous R-76/R-79 inlined the dial code into one string
+  // which was easy to accidentally erase and confusing visually.
+  const detectInitialCountry = (): Country => {
+    const fallback = COUNTRIES.find((c) => c.code === "SA")!;
+    if (contact?.phone) {
+      const match = COUNTRIES
+        .slice().sort((a, b) => b.dial.length - a.dial.length)
+        .find((c) => contact.phone.startsWith(c.dial));
+      if (match) return match;
+    }
     let isoCode: string | undefined;
     try {
       isoCode = typeof window !== "undefined"
@@ -735,10 +741,25 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
     }
     if (isoCode) {
       const c = COUNTRIES.find((x) => x.code === isoCode!.toUpperCase());
-      if (c?.dial) return c.dial + " ";
+      if (c) return c;
     }
-    return "";
+    return fallback;
+  };
+  const [country, setCountry] = useState<Country>(detectInitialCountry);
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  // Local number = the phone WITHOUT the dial code. On edit we strip
+  // the detected dial code so the field shows just the local digits.
+  const [localNumber, setLocalNumber] = useState(() => {
+    if (!contact?.phone) return "";
+    const c = COUNTRIES
+      .slice().sort((a, b) => b.dial.length - a.dial.length)
+      .find((x) => contact.phone.startsWith(x.dial));
+    return c ? contact.phone.slice(c.dial.length).trim() : contact.phone;
   });
+  // `phone` derives from the two parts on save (see handleSubmit). We
+  // keep the variable name so the rest of the component does not change.
+  const phone = `${country.dial}${localNumber.replace(/[^0-9]/g, "")}`;
+  const setPhone = (_full: string) => { /* compatibility shim — split inputs drive state */ void _full; };
   const [relation, setRelation] = useState(contact?.relation || "Friend");
   const [hasApp, setHasApp] = useState(contact?.hasApp ?? true);
   const [theirPlan, setTheirPlan] = useState<ContactPlan>(contact?.theirPlan || "free");
@@ -882,16 +903,34 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
             />
           </div>
 
-          {/* Phone */}
+          {/* Phone — R-80 (2026-05-19): split country + local-number inputs */}
           <div className="mb-4">
             <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>PHONE NUMBER</label>
-            <input
-              type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-              placeholder="+966 5XX XXX XXXX"
-              className="w-full mt-2 px-4 py-3.5 text-white outline-none"
-              style={{ borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15 }}
-            />
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setCountryPickerOpen(true)}
+                className="flex items-center gap-2 px-3 py-3.5"
+                style={{ borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15, color: "#fff", minWidth: 110 }}
+              >
+                <span style={{ fontSize: 18 }}>{country.flag}</span>
+                <span style={{ fontFamily: "'Outfit', monospace", letterSpacing: 0.5 }}>{country.dial}</span>
+                <ChevronDown style={{ width: 14, height: 14, color: "rgba(255,255,255,0.4)" }} />
+              </button>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={localNumber}
+                onChange={(e) => setLocalNumber(e.target.value.replace(/[^0-9 \-]/g, "").slice(0, 15))}
+                placeholder="5XX XXX XXXX"
+                className="flex-1 px-4 py-3.5 text-white outline-none"
+                style={{ borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15, direction: "ltr" }}
+              />
+            </div>
           </div>
+          {countryPickerOpen && (
+            <CountrySheet open={countryPickerOpen} selected={country} onClose={() => setCountryPickerOpen(false)} onSelect={(c) => { setCountry(c); setCountryPickerOpen(false); }} />
+          )}
 
           {/* Relation */}
           <div className="mb-6">
