@@ -35,12 +35,41 @@ type Lang = "ar" | "en";
 // OTHER tabs, so we need our own pub/sub for same-tab updates.
 const listeners = new Set<() => void>();
 
+/**
+ * R-66 (MOBILE_AUDIT_FINDINGS / language UX, 2026-05-19): auto-detect
+ * language from device locale instead of blocking the user with a
+ * picker on first launch. This matches the universal pattern used by
+ * WhatsApp, Telegram, Uber, Netflix and is what Apple HIG and Google
+ * Material Design recommend. The picker still exists in Settings →
+ * Language for the user who wants to override.
+ *
+ * Detection rules (highest trust first):
+ *   1. localStorage[sosphere_lang]  — explicit user choice (Settings)
+ *   2. navigator.language           — device OS / browser locale
+ *      starts with "ar"  → Arabic
+ *      starts with "en"  → English
+ *   3. DEFAULT_LANG = "ar"          — Saudi market default
+ */
+function detectLangFromDevice(): Lang {
+  if (typeof navigator === "undefined") return DEFAULT_LANG;
+  const raw = (navigator.language || navigator.languages?.[0] || "").toLowerCase();
+  if (raw.startsWith("ar")) return "ar";
+  if (raw.startsWith("en")) return "en";
+  return DEFAULT_LANG;
+}
+
 function readLang(): Lang {
   try {
     const saved = typeof window !== "undefined"
       ? window.localStorage.getItem(STORAGE_KEY)
       : null;
-    return saved === "en" ? "en" : saved === "ar" ? "ar" : DEFAULT_LANG;
+    if (saved === "en" || saved === "ar") return saved;
+    // R-66: no explicit choice yet → auto-detect from device locale.
+    // We DO NOT persist this — only an explicit user choice (via
+    // setLang() from Settings) gets written to storage. This keeps the
+    // detection live: if the user switches device language at the OS
+    // level, the next app launch picks up the change automatically.
+    return detectLangFromDevice();
   } catch {
     return DEFAULT_LANG;
   }

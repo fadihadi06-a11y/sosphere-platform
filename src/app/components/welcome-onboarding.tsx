@@ -63,13 +63,28 @@ function ParticleField({ color }: { color: string }) {
 }
 
 export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
-  // Check if language was already chosen
-  const savedLang = (() => {
-    try { return localStorage.getItem("sosphere_lang") as Lang | null; } catch { return null; }
-  })();
+  // R-66 (2026-05-19): language is auto-detected from device locale by
+  // useLang/getLang on first read - no blocking picker. Universal UX
+  // pattern (Apple HIG, Material Design, WhatsApp/Telegram/Uber). The
+  // user can still override via Settings -> Language. We keep
+  // showLangPicker state for the Globe button at the top of the
+  // onboarding (lets the user flip Ar/En mid-onboarding if the
+  // auto-detection guessed wrong), but it now defaults to FALSE - the
+  // onboarding proceeds straight to the first marketing slide.
+  const detectInitialLang = (): Lang => {
+    try {
+      const saved = localStorage.getItem("sosphere_lang") as Lang | null;
+      if (saved === "ar" || saved === "en") return saved;
+    } catch { /* fall through */ }
+    if (typeof navigator !== "undefined") {
+      const raw = (navigator.language || navigator.languages?.[0] || "").toLowerCase();
+      if (raw.startsWith("en")) return "en";
+    }
+    return "ar"; // Saudi market default
+  };
 
-  const [showLangPicker, setShowLangPicker] = useState(!savedLang);
-  const [lang, setLang] = useState<Lang>(savedLang || "ar");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [lang, setLang] = useState<Lang>(detectInitialLang);
   const [current, setCurrent] = useState(0);
   const [dir, setDir] = useState(1);
 
