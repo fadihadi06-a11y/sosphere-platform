@@ -541,7 +541,7 @@ export function ProfileSettings({ userPlan, onNavigate, onLogout, companyName, u
                 onChange={(e) => setPhoneEditLocal(e.target.value.replace(/[^0-9 -]/g, "").slice(0, 15))}
                 placeholder="7XX XXX XXXX"
                 autoFocus
-                style={{ flex: 1, padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 15, outline: "none", direction: "ltr" }}
+                style={{ flex: "1 1 0", minWidth: 0, width: "100%", boxSizing: "border-box", padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 15, outline: "none", direction: "ltr" }}
               />
             </div>
             <div className="flex gap-2">

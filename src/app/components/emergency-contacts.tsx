@@ -950,7 +950,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
                 onChange={(e) => setLocalNumber(e.target.value.replace(/[^0-9 \-]/g, "").slice(0, 15))}
                 placeholder="5XX XXX XXXX"
                 className="flex-1 px-4 py-3.5 text-white outline-none"
-                style={{ borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15, direction: "ltr" }}
+                style={{ flex: "1 1 0", minWidth: 0, width: "100%", boxSizing: "border-box", borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15, direction: "ltr" }}
               />
             </div>
           </div>

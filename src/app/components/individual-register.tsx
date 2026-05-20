@@ -699,7 +699,7 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
                 </div>
 
                 {/* Phone Input — separate box */}
-                <div className="flex-1" style={{...inputStyle("phone"), opacity: initialPhone ? 0.6 : 1}}>
+                <div className="flex-1" style={{...inputStyle("phone"), opacity: initialPhone ? 0.6 : 1, minWidth: 0, overflow: "hidden"}}>
                   <input
                     type="tel"
                     value={phone}
@@ -790,7 +790,7 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
                       <span style={{ fontSize: 18, lineHeight: 1 }}>{selectedCountry.flag}</span>
                       <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: 500, fontFamily: "monospace" }}>{selectedCountry.code}</span>
                     </div>
-                    <div className="flex-1" style={inputStyle(`c-phone-1`)}>
+                    <div className="flex-1" style={{ ...inputStyle(`c-phone-1`), minWidth: 0, overflow: "hidden" }}>
                       <input
                         type="tel"
                         value={contacts[0]?.phone || ""}
