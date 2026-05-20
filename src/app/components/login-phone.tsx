@@ -26,6 +26,44 @@ interface LoginPhoneProps {
   onLoginComplete?: (phone: string) => void;
 }
 
+/**
+ * R-67 (2026-05-19): auto-detect the user's country from device locale
+ * before falling back to Saudi Arabia. An Iraqi user (ar-IQ) gets +964
+ * automatically, an Emirati (ar-AE) gets +971, etc. The previous build
+ * hardcoded SA which forced every non-Saudi user to scroll through 200+
+ * countries to find their dial code.
+ *
+ * Detection priority:
+ *   1. localStorage[sosphere_country_code] — explicit override (R-49)
+ *   2. navigator.language region — "ar-IQ" → IQ, "en-US" → US
+ *   3. SA — the project's primary market default
+ */
+function detectInitialCountry(): Country {
+  const fallback = COUNTRIES.find(c => c.code === "SA")!;
+  try {
+    // R-49 saved override wins
+    const saved = typeof window !== "undefined"
+      ? window.localStorage.getItem("sosphere_country_code")
+      : null;
+    if (saved) {
+      const c = COUNTRIES.find(x => x.code === saved.toUpperCase());
+      if (c) return c;
+    }
+  } catch { /* ignore */ }
+
+  if (typeof navigator !== "undefined") {
+    const raw = navigator.language || navigator.languages?.[0] || "";
+    // Locale shapes: "ar-IQ", "en_US", "fr-CA"
+    const parts = raw.split(/[-_]/);
+    if (parts.length > 1) {
+      const region = parts[1].toUpperCase();
+      const c = COUNTRIES.find(x => x.code === region);
+      if (c) return c;
+    }
+  }
+  return fallback;
+}
+
 export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin, onLoginComplete }: LoginPhoneProps) {
   const { isAr } = useLang();
   const [showOTP, setShowOTP] = useState(false);
@@ -33,7 +71,10 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
   const [otpLoading, setOtpLoading] = useState(false);
   const [pendingPhone, setPendingPhone] = useState("");
   const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState<Country>(COUNTRIES.find(c => c.code === "SA")!);
+  // R-67: auto-detect initial country instead of hardcoding SA. The
+  // detection runs once at mount; the user can still pick a different
+  // country from the picker if our guess was wrong.
+  const [country, setCountry] = useState<Country>(detectInitialCountry);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);

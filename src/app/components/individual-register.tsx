@@ -132,6 +132,8 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
   const [dobYear,  setDobYear]  = useState<string>("");
   const [dobMonth, setDobMonth] = useState<string>("");
   const [dobDay,   setDobDay]   = useState<string>("");
+  // R-68: ref so the calendar-icon button can open the native picker.
+  const dobInputRef = useRef<HTMLInputElement | null>(null);
   const [parentalContact, setParentalContact] = useState<string>("");
   const [ageError, setAgeError] = useState<string>("");
 
@@ -409,14 +411,29 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
           </button>
 
           <div style={{ marginBottom: 28 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 16,
-              background: "linear-gradient(135deg, rgba(0,200,224,0.15), rgba(0,200,224,0.05))",
-              border: "1px solid rgba(0,200,224,0.2)",
-              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18,
-            }}>
+            {/* R-68 (2026-05-19): icon is now a clickable button that opens
+                the native date picker. The previous icon was decorative -
+                users tried to tap it and nothing happened. */}
+            <button
+              type="button"
+              onClick={() => {
+                if (dobInputRef.current) {
+                  try { (dobInputRef.current as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); }
+                  catch { /* Chromium <99 - fall back to focus */ }
+                  dobInputRef.current.focus();
+                }
+              }}
+              aria-label={isAr ? "افتح التقويم" : "Open calendar"}
+              style={{
+                width: 56, height: 56, borderRadius: 16,
+                background: "linear-gradient(135deg, rgba(0,200,224,0.15), rgba(0,200,224,0.05))",
+                border: "1px solid rgba(0,200,224,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18,
+                cursor: "pointer", padding: 0,
+              }}
+            >
               <Calendar size={26} color="#00C8E0" />
-            </div>
+            </button>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-0.4px", marginBottom: 8 }}>
               {isParental
                 ? (isAr ? "موافقة ولي الأمر مطلوبة" : "Parental consent required")
@@ -434,25 +451,49 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
           </div>
 
           {!isParental && (
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <input type="number" inputMode="numeric"
-                placeholder={isAr ? "يوم" : "Day"}
-                value={dobDay} onChange={(e) => setDobDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
-                  outline: "none", textAlign: "center" }} />
-              <input type="number" inputMode="numeric"
-                placeholder={isAr ? "شهر" : "Mo"}
-                value={dobMonth} onChange={(e) => setDobMonth(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
-                  outline: "none", textAlign: "center" }} />
-              <input type="number" inputMode="numeric"
-                placeholder={isAr ? "سنة" : "Year"}
-                value={dobYear} onChange={(e) => setDobYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                style={{ padding: "14px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 16, fontWeight: 600,
-                  outline: "none", textAlign: "center" }} />
+            <div className="mb-6">
+              {/* R-68: single native date input replaces the 3-box manual entry.
+                  Native OS calendar - no Arabic/Western digit mixing, no
+                  RTL field-order confusion. We still derive dobYear/Month/Day
+                  so handleDobSubmit stays untouched. */}
+              <input
+                ref={dobInputRef}
+                type="date"
+                inputMode="none"
+                lang="en-CA"
+                value={
+                  dobYear && dobMonth && dobDay
+                    ? `${dobYear.padStart(4,"0")}-${dobMonth.padStart(2,"0")}-${dobDay.padStart(2,"0")}`
+                    : ""
+                }
+                min="1900-01-01"
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) { setDobYear(""); setDobMonth(""); setDobDay(""); return; }
+                  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                  if (!m) return;
+                  setDobYear(m[1]);
+                  setDobMonth(m[2]);
+                  setDobDay(m[3]);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "16px 14px",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  outline: "none",
+                  fontFamily: "inherit",
+                  direction: "ltr",
+                  textAlign: isAr ? "right" : "left",
+                  colorScheme: "dark",
+                }}
+                placeholder={isAr ? "اختر تاريخ ميلادك" : "Pick your date of birth"}
+              />
             </div>
           )}
 
