@@ -583,7 +583,12 @@ function OutgoingCallbackOverlay({ signal, onDismiss }: { signal: CallSignal; on
         setCallState("connecting");
         voiceUnsubRef.current = voiceCallEngine.subscribe((info) => {
           if (info.state === "ended" && !endedRef.current) handleEndCall();
-          if (info.state === "active") setCallState("connected");
+          // P0-ci-cleanup: VoiceCallState's "in-progress" value is "connected",
+          // not "active" (no such state exists in voice-call-types.ts). The
+          // previous comparison silently never fired, so the UI never advanced
+          // from "connecting" to "connected" when the voice engine reported
+          // the call as live.
+          if (info.state === "connected") setCallState("connected");
         });
         voiceCallEngine.startCall(callId, 120);
       } catch (err) {
