@@ -106,6 +106,15 @@ pre-push:
           fi
         fi
 
+    # R-20 verify gate — full local mirror of CI (gates 1-10):
+    # JSON/YAML parse, ESLint, npm ci dry-run, audit, vite build,
+    # contract tests, migration drift, lockfile parity. Slow (~30s)
+    # but comprehensive — the canonical "did I break main" check.
+    # Restored as part of P0-Z2 cleanup (P0-Z0 dropped it accidentally
+    # when lefthook replaced the legacy .githooks/pre-push wrapper).
+    verify-before-push:
+      run: npm run verify
+
     # Deep secret scan over the full push range (gitleaks).
     gitleaks-deep:
       run: |

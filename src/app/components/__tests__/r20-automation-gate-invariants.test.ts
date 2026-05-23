@@ -40,6 +40,7 @@ let preHookSrc = "";
 let installHookSrc = "";
 let deployWrapperSrc = "";
 let verifyScriptSrc = "";
+let lefthookYmlSrc = "";
 let pkg: { scripts: Record<string, string> } = { scripts: {} };
 
 beforeAll(() => {
@@ -47,20 +48,60 @@ beforeAll(() => {
   installHookSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/install-git-hooks.mjs"), "utf8");
   deployWrapperSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/deploy-edge-function.mjs"), "utf8");
   verifyScriptSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts/verify-before-push.mjs"), "utf8");
+  lefthookYmlSrc = fs.readFileSync(path.resolve(process.cwd(), "lefthook.yml"), "utf8");
   pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"));
 });
 
-describe("R-20 Layer A: pre-push hook", () => {
-  it(".githooks/pre-push exists and is a bash script", () => {
-    expect(preHookSrc).toMatch(/^#!\/usr\/bin\/env bash/);
+// ────────────────────────────────────────────────────────────────────────
+// P0-Z0 (2026-05-23) replaced the legacy R-20 shell-script pre-push hook
+// with lefthook's auto-generated dispatcher. The hook file now starts with
+// `#!/bin/sh` and delegates to `lefthook run pre-push`, which executes the
+// commands declared in lefthook.yml. The R-20 CONTRACT is preserved (verify
+// still runs before push); only the IMPLEMENTATION shape changed. These
+// tests were updated in P0-Z2 to assert the contract at its new location.
+// ────────────────────────────────────────────────────────────────────────
+describe("R-20 Layer A: pre-push hook (lefthook delegation)", () => {
+  it(".githooks/pre-push exists and is a shell-executable hook", () => {
+    // Lefthook's hook is POSIX sh (more portable than bash), and starts with
+    // a standard shebang. Accept either #!/bin/sh or #!/usr/bin/env bash so
+    // the test survives a future lefthook upgrade or a manual rewrite.
+    expect(preHookSrc).toMatch(/^#!(\/bin\/sh|\/usr\/bin\/env bash)/);
   });
 
-  it("hook runs `npm run verify`", () => {
-    expect(preHookSrc).toMatch(/npm run[\s\S]{0,80}verify/);
+  it("pre-push delegates to lefthook (or runs verify directly)", () => {
+    // Two acceptable shapes:
+    //   (a) lefthook dispatcher: contains `call_lefthook run "pre-push"`
+    //   (b) legacy R-20 wrapper: contains `npm run verify`
+    // Either preserves the R-20 contract.
+    const isLefthookDispatcher = /call_lefthook\s+run\s+["']?pre-push["']?/.test(preHookSrc);
+    const isLegacyR20Wrapper = /npm run[\s\S]{0,80}verify/.test(preHookSrc);
+    expect(
+      isLefthookDispatcher || isLegacyR20Wrapper,
+      "pre-push must either delegate to lefthook or call `npm run verify` directly",
+    ).toBe(true);
   });
 
-  it("hook fails the push when verify fails (set -e)", () => {
-    expect(preHookSrc).toMatch(/set -e/);
+  it("lefthook.yml pre-push runs `npm run verify` (R-20 gate preserved)", () => {
+    // Find the pre-push: block, then assert verify-before-push command exists
+    // and runs `npm run verify`. This is the new location of the R-20 gate.
+    const prePushMatch = lefthookYmlSrc.match(/^pre-push:[\s\S]+?(?=^[a-z]|\Z)/m);
+    expect(prePushMatch, "lefthook.yml must declare a pre-push block").toBeTruthy();
+    const prePushBlock = prePushMatch![0];
+    expect(prePushBlock).toMatch(/verify-before-push:/);
+    expect(prePushBlock).toMatch(/npm run verify/);
+  });
+
+  it("hook propagates failures (lefthook returns non-zero on any failed command)", () => {
+    // Lefthook's hook calls `call_lefthook run "pre-push"` and exits with that
+    // status — equivalent to the legacy `set -e` + direct command pattern.
+    // Test by structure: hook either has explicit `set -e` (legacy) or
+    // invokes `call_lefthook` (which propagates exit codes by default).
+    const propagatesViaLefthook = /call_lefthook/.test(preHookSrc);
+    const propagatesViaSetE = /set -e/.test(preHookSrc);
+    expect(
+      propagatesViaLefthook || propagatesViaSetE,
+      "pre-push hook must propagate command failures",
+    ).toBe(true);
   });
 
   it("hook is marked executable in git index (cross-platform)", () => {
