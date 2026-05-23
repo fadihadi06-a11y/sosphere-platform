@@ -1,0 +1,57 @@
+# ════════════════════════════════════════════════════════════════════════
+# Gitleaks configuration — Lighthouse Layer 2 (deep secret scan)
+# ────────────────────────────────────────────────────────────────────
+# This file is read automatically by gitleaks-action and by `gitleaks
+# detect` runs locally. It extends the default rule pack and declares
+# a narrow allowlist for deliberate test fixtures + the rotation
+# runbook, which legitimately reference secret-format prefixes for
+# documentation purposes.
+#
+# Doctrine: PHASE_0_DOCTRINE.md §2 (Lighthouse L2).
+# Added in P0-Z2 because the test fixtures in
+# scripts/__behavior_tests__/secret-guard.spec.mjs construct realistic
+# pattern matches at runtime (via array.join('')); some fragments still
+# pass gitleaks's high-entropy generic-secret rule even though no
+# contiguous literal exists in source. The allowlist below is the
+# minimal scope needed to make CI green without weakening the actual
+# secret-detection signal.
+# ════════════════════════════════════════════════════════════════════════
+
+title = "SOSphere gitleaks config (P0-Z2)"
+
+# ─── Extend default ruleset ─────────────────────────────────────────────
+# We keep every default rule (AWS, GitHub PAT, Stripe, Twilio, Slack,
+# JWT, generic-api-key, etc.) and only add allowlist exceptions.
+[extend]
+useDefault = true
+
+# ─── Global allowlist ───────────────────────────────────────────────────
+# Files listed here are completely excluded from scanning.
+# Keep this list as SHORT AS POSSIBLE — every entry is a hole in the
+# defense surface. Before adding a path, ask: is this path's content
+# fundamentally documentation-of-formats (safe) or actual config (risky)?
+[allowlist]
+description = "Test fixtures + pattern documentation that intentionally reference secret formats"
+
+paths = [
+  # P0-Z2 contract test: builds match-shaped strings at runtime via
+  # array.join('') / string concatenation. No literal secret appears
+  # contiguously in source, but generic-api-key may flag long fragments.
+  '''^scripts/__behavior_tests__/secret-guard\.spec\.mjs$''',
+
+  # P0-Z2 rotation runbook: documents secret prefixes (sk_live_, sbp_,
+  # ghp_, etc.) as part of explaining what to rotate. The references
+  # are bare prefixes followed by ellipsis or markdown formatting; no
+  # real secret is present.
+  '''^docs/runbooks/secret-rotation\.md$''',
+
+  # The .env example template: placeholder-only by contract, verified
+  # universally by secret-guard.spec.mjs every run. Allowlisted here
+  # to prevent generic-api-key false-positives on the longer placeholder
+  # strings (e.g. firebase appId placeholder).
+  '''^\.env\.example$''',
+]
+
+# Future entries land in either the section above (whole-file exclusion)
+# or as per-rule overrides in [[rules.allowlist]] blocks below. Prefer
+# per-rule when possible to keep the surface minimal.
