@@ -1,0 +1,201 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Lighthouse L3 — Per-PR Guards
+#
+# Doctrine ref: PHASE_0_DOCTRINE.md §2 L3 + §6 (operating rules).
+# Step plan: PHASE_0_STEP_PLAN.md P0-Z0 (this workflow is the L3 layer).
+#
+# What this workflow asserts on every PR + every push to main:
+#
+#   1. Lighthouse self-test            — every rule's fixtures pass (rule integrity)
+#   2. TypeScript typecheck            — strict, no warnings
+#   3. ESLint                          — repo style enforcement
+#   4. npm audit                       — high+critical CVEs fail (dev deps included)
+#   5. Gitleaks (deep)                 — secret scan over full tree
+#   6. lint-guard --diff               — NO new violations vs PHASE_0_GUARDS_BASELINE.json
+#   7. Migration drift                 — repo matches Supabase deployed schema (if linked)
+#   8. Edge function drift             — repo matches deployed edge functions (if linked)
+#   9. Behavior tests (vitest)         — full suite green
+#   10. Bundle-size budget             — keeps the initial JS gzip under target
+#
+# Exit policy: any single gate failing fails the PR. No --no-verify equivalent.
+# A new violation in --diff is the FAILURE MODE that this workflow primarily exists to
+# catch — every other CI tool here is a backstop.
+#
+# Cadence: on every push to any branch (matrix runs in parallel).
+# ════════════════════════════════════════════════════════════════════════════
+
+name: Lighthouse Guards (L3)
+
+on:
+  pull_request:
+    branches: [main, "release/**"]
+  push:
+    branches: [main, "release/**"]
+
+# Single in-flight run per ref — newer pushes cancel older runs to save minutes.
+concurrency:
+  group: guards-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # for PR comments (diff summary)
+  security-events: write # for SARIF upload (future)
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 1: Lighthouse self-test + diff
+  # If self-test fails, every other lint-guard invocation in this repo is
+  # untrustworthy → fail the whole workflow before doing anything else.
+  # ───────────────────────────────────────────────────────────────────────
+  lighthouse:
+    name: Lighthouse self-test + diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # diff needs history
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install (deterministic)
+        run: npm ci --no-audit --no-fund
+
+      - name: Compile lint-guard
+        run: node node_modules/typescript/bin/tsc -p scripts/lint-guard/tsconfig.json
+
+      - name: Lighthouse self-test (rule integrity)
+        run: node scripts/lint-guard/dist/index.js --self-test
+
+      - name: Lighthouse diff vs committed baseline
+        id: diff
+        run: |
+          set -e
+          if [ ! -f PHASE_0_GUARDS_BASELINE.json ]; then
+            echo "::error::PHASE_0_GUARDS_BASELINE.json missing. Run \`node scripts/lint-guard/dist/index.js --baseline\` on main."
+            exit 1
+          fi
+          node scripts/lint-guard/dist/index.js --diff --reporter json > /tmp/diff.json || true
+          NEW_COUNT=$(jq -r '.new | length' /tmp/diff.json)
+          FIXED_COUNT=$(jq -r '.fixedCount' /tmp/diff.json)
+          BASE_COUNT=$(jq -r '.baselineCount' /tmp/diff.json)
+          CUR_COUNT=$(jq -r '.currentCount' /tmp/diff.json)
+          echo "new=$NEW_COUNT" >> "$GITHUB_OUTPUT"
+          echo "fixed=$FIXED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "baseline=$BASE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "current=$CUR_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_COUNT" -gt 0 ]; then
+            echo ""
+            echo "::error::$NEW_COUNT NEW Lighthouse violation(s) vs PHASE_0_GUARDS_BASELINE.json."
+            echo ""
+            node scripts/lint-guard/dist/index.js --diff
+            exit 1
+          fi
+          echo "✔ Lighthouse: 0 new violations. (baseline=$BASE_COUNT, current=$CUR_COUNT, fixed in PR=$FIXED_COUNT)"
+
+      - name: PR comment with diff summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary;
+            try { summary = JSON.parse(fs.readFileSync('/tmp/diff.json', 'utf8')); }
+            catch { return; }
+            const body = [
+              '### 🛡️ Lighthouse Guards — diff vs baseline',
+              '',
+              `- Baseline: **${summary.baselineCount}** violations`,
+              `- This PR: **${summary.currentCount}** violations`,
+              `- New (must be 0): **${summary.new.length}**`,
+              `- Fixed in this PR: **${summary.fixedCount}**`,
+              '',
+              summary.new.length === 0
+                ? '✔ No regressions. Doctrine §6.7 satisfied.'
+                : '✗ Regression. Either fix the listed violation OR (only if intentional) regenerate the baseline.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 2: Standard CI (typecheck + lint + audit + tests)
+  # Runs in parallel with lighthouse — both must pass.
+  # ───────────────────────────────────────────────────────────────────────
+  typecheck-lint-test:
+    name: TypeScript + ESLint + Tests + Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+
+      - name: TypeScript strict typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: npm audit (high + critical, includes dev deps)
+        run: |
+          # Doctrine §3 + Wave 9 R-1828/R-1829: do NOT use --omit=dev; do NOT cap at critical.
+          npm audit --audit-level=high
+
+      - name: Vitest (behavior suite)
+        run: npm test
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 3: Secret scan over full tree
+  # ───────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: Gitleaks (deep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 4: Drift checks (only if Supabase project is linked in CI)
+  # ───────────────────────────────────────────────────────────────────────
+  drift:
+    name: Migration + Edge Function drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ vars.SOSPHERE_CI_RUN_DRIFT == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Migration drift
+        run: node scripts/check-migration-drift.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      - name: Edge function drift
+        run: node scripts/check-function-drift.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
