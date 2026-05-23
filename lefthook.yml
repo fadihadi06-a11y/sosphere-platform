@@ -31,14 +31,24 @@ pre-commit:
     # Block any commit touching release secrets / build keystore — even by
     # accident. This is the single most important guard given Wave 9 R-1792.
     block-secrets-touch:
-      glob: "{android/app/keystore.properties,**/*.jks,**/*.keystore,.env,.env.local,.env.production}"
+      # P0-Z2: glob covers both legacy patterns AND the new *.env / .env.* patterns
+      # added to .gitignore. The runtime filter below intentionally allows .env.example
+      # (the placeholder template — must be committable to remain useful as a template).
+      glob: "{android/app/keystore.properties,**/*.jks,**/*.keystore,.env,.env.local,.env.production,*.env,.env.*}"
       run: |
+        PROBLEM=$(echo "{staged_files}" | tr ' ' '\n' | grep -v '^\.env\.example$' | grep -v '^$' || true)
+        if [ -z "$PROBLEM" ]; then
+          # Only .env.example matched the glob — explicitly allowed.
+          exit 0
+        fi
         echo ""
-        echo "🚨 Lighthouse L1: This commit modifies a secrets/keystore file."
-        echo "   See PHASE_0_DOCTRINE.md §2 L1 + Wave 9 R-1792."
+        echo "🚨 Lighthouse L1: This commit modifies a secrets/keystore file:"
+        echo "$PROBLEM" | sed 's/^/   - /'
         echo ""
-        echo "   If this is intentional (P0-Z1 keystore rotation), commit with:"
-        echo "     git commit --no-verify -m 'P0-Z1: rotate keystore'"
+        echo "   See PHASE_0_DOCTRINE.md §2 L1 + Wave 9 R-1792 + P0-Z2 (secret hygiene)."
+        echo ""
+        echo "   If this is intentional (P0-Z1 keystore rotation / P0-Z2 secret rotation), commit with:"
+        echo "     git commit --no-verify -m '<P0-ZN scope>: rotate <thing>'"
         echo "   AND open a ticket explaining the rotation."
         echo ""
         exit 1
@@ -95,6 +105,15 @@ pre-push:
             exit 1
           fi
         fi
+
+    # R-20 verify gate — full local mirror of CI (gates 1-10):
+    # JSON/YAML parse, ESLint, npm ci dry-run, audit, vite build,
+    # contract tests, migration drift, lockfile parity. Slow (~30s)
+    # but comprehensive — the canonical "did I break main" check.
+    # Restored as part of P0-Z2 cleanup (P0-Z0 dropped it accidentally
+    # when lefthook replaced the legacy .githooks/pre-push wrapper).
+    verify-before-push:
+      run: npm run verify
 
     # Deep secret scan over the full push range (gitleaks).
     gitleaks-deep:
