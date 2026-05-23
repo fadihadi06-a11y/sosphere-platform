@@ -4,7 +4,7 @@
 > Reduced to **zero** before exiting Layer -1 (per `PHASE_0_STEP_PLAN.md` exit gate).
 
 **Scanned:** 531 files against 3 rule(s).
-**Total violations:** 1119
+**Total violations:** 1117
 
 ## no-or-company-id-null (3)
 
@@ -16,11 +16,11 @@
 
 - `src/app/components/dashboard-web-page.tsx:1293` — localStorage write of an auth key (`sos_reg_result` — registration result (R-985)).
 - `src/app/components/company-dashboard.tsx:1477` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
+- `src/app/components/stores/dashboard-store.ts:333` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
 - `src/app/components/utils/dashboard-auth-guard.ts:60` — localStorage read of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
 - `src/app/components/utils/dashboard-auth-guard.ts:46` — localStorage write of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
-- `src/app/components/stores/dashboard-store.ts:333` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
 
-## no-source-pin (1111)
+## no-source-pin (1109)
 
 - `src/app/components/__tests__/sos-alert-tier-resolution.test.ts:88` — Source-pinning test detected: `src` was bound from a source-intake call at line 28, and is now asserted with `toContain`.
 - `src/app/components/__tests__/sos-alert-tier-resolution.test.ts:87` — Source-pinning test detected: `src` was bound from a source-intake call at line 28, and is now asserted with `toContain`.
@@ -90,28 +90,26 @@
 - `src/app/components/__tests__/r22-plan-catalog-invariants.test.ts:35` — Source-pinning test detected: `catalogSrc` was bound from a source-intake call at line 13, and is now asserted with `toMatch`.
 - `src/app/components/__tests__/r22-plan-catalog-invariants.test.ts:34` — Source-pinning test detected: `catalogSrc` was bound from a source-intake call at line 13, and is now asserted with `toMatch`.
 - `src/app/components/__tests__/r22-plan-catalog-invariants.test.ts:33` — Source-pinning test detected: `catalogSrc` was bound from a source-intake call at line 13, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:189` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:183` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:177` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:171` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:167` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:166` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:137` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:135` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:131` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:127` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:123` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:119` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:118` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:102` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:98` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:94` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:90` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:89` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:85` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:63` — Source-pinning test detected: `preHookSrc` was bound from a source-intake call at line 46, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:59` — Source-pinning test detected: `preHookSrc` was bound from a source-intake call at line 46, and is now asserted with `toMatch`.
-- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:55` — Source-pinning test detected: `preHookSrc` was bound from a source-intake call at line 46, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:234` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:228` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:222` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:216` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:212` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:211` — Source-pinning test detected: `verifyScriptSrc` was bound from a source-intake call at line 50, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:182` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:180` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:176` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:172` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:168` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:164` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:163` — Source-pinning test detected: `deployWrapperSrc` was bound from a source-intake call at line 49, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:147` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:143` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:139` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:135` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:134` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:130` — Source-pinning test detected: `installHookSrc` was bound from a source-intake call at line 48, and is now asserted with `toMatch`.
+- `src/app/components/__tests__/r20-automation-gate-invariants.test.ts:68` — Source-pinning test detected: `preHookSrc` was bound from a source-intake call at line 47, and is now asserted with `toMatch`.
 - `src/app/components/__tests__/r19-stripe-webhook-atomicity.test.ts:131` — Source-pinning test detected: `webhookSrc` was bound from a source-intake call at line 42, and is now asserted with `toMatch`.
 - `src/app/components/__tests__/r19-stripe-webhook-atomicity.test.ts:127` — Source-pinning test detected: `webhookSrc` was bound from a source-intake call at line 42, and is now asserted with `toMatch`.
 - `src/app/components/__tests__/r19-stripe-webhook-atomicity.test.ts:126` — Source-pinning test detected: `webhookSrc` was bound from a source-intake call at line 42, and is now asserted with `toMatch`.
