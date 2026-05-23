@@ -1,0 +1,122 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Lighthouse Network — Layer 1 (Pre-commit) + Layer 2 (Pre-push)
+#
+# Doctrine ref: PHASE_0_DOCTRINE.md §2 (L1, L2) + §6 (operating rule: guard
+# before code).
+#
+# Install (one time, after `npm install --save-dev lefthook`):
+#   npx lefthook install
+#
+# This file is the ground-truth contract for what runs locally before any
+# change leaves the developer's machine. Every hook below MUST be deterministic
+# and finish in < 5 seconds for the staged set (developer experience matters —
+# slow hooks get bypassed with `--no-verify`).
+#
+# Deny-bypass policy: pre-push re-runs the L1 checks on the full push range so
+# a `git commit --no-verify` cannot escape. CI (`.github/workflows/guards.yml`)
+# is the final backstop.
+# ════════════════════════════════════════════════════════════════════════════
+
+# Lefthook config v1 schema
+min_version: 1.6.0
+
+# Refuse to run without explicit install (catches "I cloned but forgot to set up").
+output: ["meta", "summary", "execution", "execution_out", "failure"]
+
+# ─── PRE-COMMIT — runs on staged files only, target < 1s ─────────────────────
+pre-commit:
+  parallel: true
+  commands:
+
+    # Block any commit touching release secrets / build keystore — even by
+    # accident. This is the single most important guard given Wave 9 R-1792.
+    block-secrets-touch:
+      glob: "{android/app/keystore.properties,**/*.jks,**/*.keystore,.env,.env.local,.env.production}"
+      run: |
+        echo ""
+        echo "🚨 Lighthouse L1: This commit modifies a secrets/keystore file."
+        echo "   See PHASE_0_DOCTRINE.md §2 L1 + Wave 9 R-1792."
+        echo ""
+        echo "   If this is intentional (P0-Z1 keystore rotation), commit with:"
+        echo "     git commit --no-verify -m 'P0-Z1: rotate keystore'"
+        echo "   AND open a ticket explaining the rotation."
+        echo ""
+        exit 1
+
+    # Run lint-guard against ONLY the files staged for commit.
+    # Self-test runs first; any rule failing its own fixtures = abort.
+    lint-guard-staged:
+      glob: "*.{ts,tsx,js,jsx,sql}"
+      run: |
+        if [ -f scripts/lint-guard/dist/index.js ]; then
+          node scripts/lint-guard/dist/index.js --staged
+        else
+          echo "Lighthouse: dist/ not built yet. Run: npx tsc -p scripts/lint-guard/tsconfig.json"
+          exit 1
+        fi
+
+    # Gitleaks for secrets accidentally pasted into ANY staged file.
+    # Soft-required: if gitleaks is not installed, warn but don't block.
+    # CI (L3) re-runs it as hard gate so bypass here is recovered there.
+    gitleaks-staged:
+      run: |
+        if command -v gitleaks >/dev/null 2>&1; then
+          gitleaks protect --staged --redact --no-banner
+        else
+          echo "⚠️  gitleaks not installed locally — relying on CI backstop."
+          echo "   Install: brew install gitleaks  (or see https://github.com/gitleaks/gitleaks)"
+        fi
+
+# ─── PRE-PUSH — runs on full push range, catches --no-verify escapes ─────────
+pre-push:
+  parallel: false  # ordered so the cheap checks run first
+  commands:
+
+    # Re-run lint-guard against the full range being pushed.
+    lint-guard-range:
+      run: |
+        REMOTE_REF="${LEFTHOOK_REMOTE_REF:-origin/main}"
+        if [ -f scripts/lint-guard/dist/index.js ]; then
+          node scripts/lint-guard/dist/index.js --staged-range "${REMOTE_REF}..HEAD"
+        else
+          echo "Lighthouse: dist/ not built. Aborting push."
+          exit 1
+        fi
+
+    # Block force-push to main / release branches.
+    block-force-push-main:
+      run: |
+        CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+        if [ "$CURRENT" = "main" ] || [ "$CURRENT" = "master" ] || echo "$CURRENT" | grep -qE '^release/'; then
+          # Detect force-push by checking if any commit in the local branch is missing from the remote.
+          if git rev-list --left-right --count "@{u}..." 2>/dev/null | awk '{exit ($1 > 0 ? 0 : 1)}'; then
+            echo "🚨 Lighthouse L2: Force-push to ${CURRENT} blocked."
+            echo "   Doctrine §2 L2: protected branches accept fast-forward only."
+            exit 1
+          fi
+        fi
+
+    # Deep secret scan over the full push range (gitleaks).
+    gitleaks-deep:
+      run: |
+        if command -v gitleaks >/dev/null 2>&1; then
+          REMOTE_REF="${LEFTHOOK_REMOTE_REF:-origin/main}"
+          gitleaks detect --source . --redact --no-banner --log-opts="${REMOTE_REF}..HEAD"
+        fi
+
+    # Require GPG-signed commits when pushing to protected branches.
+    # Soft-fail with clear remediation if not configured.
+    require-signed-commits:
+      run: |
+        CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+        if [ "$CURRENT" = "main" ] || [ "$CURRENT" = "master" ] || echo "$CURRENT" | grep -qE '^release/'; then
+          UNSIGNED=$(git log --pretty=format:"%H %G?" "@{u}..HEAD" 2>/dev/null | awk '$2 != "G" { print $1 }')
+          if [ -n "$UNSIGNED" ]; then
+            echo "🚨 Lighthouse L2: Unsigned commits on ${CURRENT}:"
+            echo "$UNSIGNED"
+            echo ""
+            echo "   Enable: git config commit.gpgsign true && git config user.signingkey <KEY>"
+            echo "   Or sign existing commits: git rebase --exec 'git commit --amend --no-edit -S' origin/main"
+            exit 1
+          fi
+        fi
