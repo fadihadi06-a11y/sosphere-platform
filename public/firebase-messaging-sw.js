@@ -14,6 +14,16 @@
 // workers, so we duplicate the public Firebase web config here.
 // All values below are PUBLIC (apiKey is restricted by Firebase
 // security rules + HTTP referrer restrictions, not secret).
+//
+// P0-Z2 NOTE (2026-05-23): even though Firebase web API keys are
+// "public" per Google's security model, we still want to remove
+// the hardcoding for hygiene + to align with the Z2 principle
+// that all config-like values come from a single source of truth.
+// A follow-up task (tentatively P0-Zx-firebase-sw-build-template)
+// will introduce a tiny build step that substitutes these values
+// from VITE_FIREBASE_* env at build time. Until then, treat this
+// file as a deliberate exception, excluded from any future L3
+// "no hardcoded Firebase apiKey" rule via an allowlist.
 // ═══════════════════════════════════════════════════════════════
 
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js");

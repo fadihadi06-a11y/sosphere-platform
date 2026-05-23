@@ -31,14 +31,24 @@ pre-commit:
     # Block any commit touching release secrets / build keystore — even by
     # accident. This is the single most important guard given Wave 9 R-1792.
     block-secrets-touch:
-      glob: "{android/app/keystore.properties,**/*.jks,**/*.keystore,.env,.env.local,.env.production}"
+      # P0-Z2: glob covers both legacy patterns AND the new *.env / .env.* patterns
+      # added to .gitignore. The runtime filter below intentionally allows .env.example
+      # (the placeholder template — must be committable to remain useful as a template).
+      glob: "{android/app/keystore.properties,**/*.jks,**/*.keystore,.env,.env.local,.env.production,*.env,.env.*}"
       run: |
+        PROBLEM=$(echo "{staged_files}" | tr ' ' '\n' | grep -v '^\.env\.example$' | grep -v '^$' || true)
+        if [ -z "$PROBLEM" ]; then
+          # Only .env.example matched the glob — explicitly allowed.
+          exit 0
+        fi
         echo ""
-        echo "🚨 Lighthouse L1: This commit modifies a secrets/keystore file."
-        echo "   See PHASE_0_DOCTRINE.md §2 L1 + Wave 9 R-1792."
+        echo "🚨 Lighthouse L1: This commit modifies a secrets/keystore file:"
+        echo "$PROBLEM" | sed 's/^/   - /'
         echo ""
-        echo "   If this is intentional (P0-Z1 keystore rotation), commit with:"
-        echo "     git commit --no-verify -m 'P0-Z1: rotate keystore'"
+        echo "   See PHASE_0_DOCTRINE.md §2 L1 + Wave 9 R-1792 + P0-Z2 (secret hygiene)."
+        echo ""
+        echo "   If this is intentional (P0-Z1 keystore rotation / P0-Z2 secret rotation), commit with:"
+        echo "     git commit --no-verify -m '<P0-ZN scope>: rotate <thing>'"
         echo "   AND open a ticket explaining the rotation."
         echo ""
         exit 1
