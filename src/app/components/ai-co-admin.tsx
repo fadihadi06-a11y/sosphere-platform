@@ -192,12 +192,17 @@ const buildRealTranscript = (ctx: AICoAdminContext, name: string): TranscriptLin
   try {
     const stored = JSON.parse(localStorage.getItem("sosphere_call_transcripts") || "[]");
     const incident = stored.find((i: any) => i.emergencyId === ctx.emergencyId || i.employeeName === ctx.employeeName);
-    if (incident?.lines?.length > 0) return incident.lines;
+    if (incident?.lines?.length > 0) return incident.lines as TranscriptLine[];
   } catch { /* fallback below */ }
   // Fallback: generate contextual (non-random) transcript from known emergency data
   const now = Date.now();
   const speaker = name || ctx.employeeName || "Employee";
-  const sosMap: Record<string, { text: string; tags: string[] }[]> = {
+  // P0-ci-cleanup: narrow the sosMap tag type to TranscriptLine.tags so
+  // the literal arrays below get inferred as the union (instead of widening
+  // to string[]). This makes the final `lines.map(...)` return TranscriptLine[]
+  // without needing a cast.
+  type TranscriptTag = "LOCATION" | "INJURY" | "HAZARD" | "DISTRESS" | "URGENCY" | "EVACUATION" | "MEDICAL";
+  const sosMap: Record<string, { text: string; tags: TranscriptTag[] }[]> = {
     SOS: [
       { text: `I need help — I'm in ${ctx.zone}`, tags: ["LOCATION", "DISTRESS"] },
       { text: "Please send someone immediately", tags: ["URGENCY"] },

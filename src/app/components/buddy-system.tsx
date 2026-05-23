@@ -23,6 +23,12 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
+// P0-ci-cleanup: missing import — useDashboardStore was referenced on line 109
+// without being imported. TS compiled silently before strict checks (TS2304
+// "Cannot find name" was hidden by some inference quirk). Added explicit
+// import matching the path used by every other consumer (company-dashboard,
+// dashboard-analytics-page, etc.).
+import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface BuddyPair {
