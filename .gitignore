@@ -41,3 +41,15 @@ backup-*.sql
 *.sql.gz
 
 scripts/lint-guard/dist/
+
+# ─────────────────────────────────────────────────────────
+# P0-Z2: Explicit env-file blocklist (defense-in-depth on top
+# of the `.env` and `.env.local` lines above). Catches edge
+# cases like `prod.env`, `.env.production`, `.env.staging`,
+# `service.env`, etc. that could otherwise slip through.
+# Pair with the L1 lefthook gate that blocks commits touching
+# any of these patterns; L2 gitleaks deep-scans on push.
+# ─────────────────────────────────────────────────────────
+*.env
+.env.*
+!.env.example
