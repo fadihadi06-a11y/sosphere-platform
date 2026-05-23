@@ -39,3 +39,5 @@ backups/
 backup-*.sql
 *.dump
 *.sql.gz
+
+scripts/lint-guard/dist/

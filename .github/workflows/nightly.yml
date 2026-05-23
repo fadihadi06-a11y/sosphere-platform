@@ -1,0 +1,186 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Lighthouse L6 — Nightly drift + CVE + secret-age + synthetic probes
+#
+# Doctrine ref: PHASE_0_DOCTRINE.md §2 L6.
+#
+# Why nightly (and not every-N-hours):
+#   Per Doctrine §2 L6, the only failures this catches are EXTERNAL state changes
+#   (CVEs published, secrets aged, certs near expiry, deployed schema drifted) —
+#   things that don't happen on a commit cadence. Nightly + per-PR together is the
+#   industry-standard layered cadence (Stripe, Cloudflare, Microsoft, Google).
+#
+# This workflow does NOT block any PR — it OPENS ISSUES on findings + pages on-call
+# for hard failures. Per-PR blocking lives in `guards.yml`.
+# ════════════════════════════════════════════════════════════════════════════
+
+name: Nightly Drift + CVE + Probe (L6)
+
+on:
+  schedule:
+    - cron: '17 1 * * *'   # 01:17 UTC — quiet hours; off-peak for GitHub Actions
+  workflow_dispatch:        # manual trigger for ad-hoc verification
+
+permissions:
+  contents: read
+  issues: write
+  security-events: write
+
+jobs:
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 1: Lighthouse full re-baseline + diff vs committed baseline.
+  # If the committed baseline drifted from live repo state, this opens an issue.
+  # ───────────────────────────────────────────────────────────────────────
+  lighthouse-drift:
+    name: Lighthouse baseline drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund
+      - run: node node_modules/typescript/bin/tsc -p scripts/lint-guard/tsconfig.json
+      - name: Diff
+        id: diff
+        run: |
+          set -e
+          node scripts/lint-guard/dist/index.js --diff --reporter json > /tmp/diff.json || true
+          NEW=$(jq -r '.new | length' /tmp/diff.json)
+          FIXED=$(jq -r '.fixedCount' /tmp/diff.json)
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "fixed=$FIXED" >> "$GITHUB_OUTPUT"
+      - name: Open issue on drift
+        if: steps.diff.outputs.new != '0' || steps.diff.outputs.fixed != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '### 🌙 Nightly Lighthouse drift detected',
+              '',
+              `- New violations since baseline: **${{ steps.diff.outputs.new }}**`,
+              `- Violations no longer present: **${{ steps.diff.outputs.fixed }}**`,
+              '',
+              'If new > 0: a regression sneaked past per-PR guards (investigate the merge).',
+              'If fixed > 0: regenerate the baseline on `main` to capture the wins.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Lighthouse drift] ${{ steps.diff.outputs.new }} new / ${{ steps.diff.outputs.fixed }} fixed (nightly)`,
+              labels: ['lighthouse', 'drift', 'nightly'],
+              body,
+            });
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 2: Dependency CVE re-scan (npm-audit + OSV).
+  # Catches CVEs published since last commit.
+  # ───────────────────────────────────────────────────────────────────────
+  cve-rescan:
+    name: CVE re-scan (npm + OSV)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund
+      - name: npm audit (high+critical, all deps)
+        id: npm
+        continue-on-error: true
+        run: |
+          npm audit --audit-level=high --json > /tmp/npm-audit.json || true
+          HIGH=$(jq '.metadata.vulnerabilities.high // 0' /tmp/npm-audit.json)
+          CRIT=$(jq '.metadata.vulnerabilities.critical // 0' /tmp/npm-audit.json)
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "critical=$CRIT" >> "$GITHUB_OUTPUT"
+      - name: OSV scanner (cross-source CVE DB)
+        id: osv
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@v1
+        with:
+          scan-args: '--lockfile=./package-lock.json --output=/tmp/osv.json --format=json'
+      - name: Open issue on findings
+        if: steps.npm.outputs.high != '0' || steps.npm.outputs.critical != '0' || steps.osv.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `[CVE nightly] high=${{ steps.npm.outputs.high }} critical=${{ steps.npm.outputs.critical }}`,
+              labels: ['security', 'cve', 'nightly'],
+              body: [
+                'Nightly CVE re-scan found new vulnerabilities since last commit.',
+                '',
+                `- npm audit: high=${{ steps.npm.outputs.high }}, critical=${{ steps.npm.outputs.critical }}`,
+                `- OSV: see workflow run artifacts`,
+                '',
+                'Action: run `npm audit fix` locally, raise a PR, or document waiver in `docs/cve-waivers.md`.',
+              ].join('\n'),
+            });
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 3: Deep gitleaks (whole history) — secret-age + post-hoc detection.
+  # ───────────────────────────────────────────────────────────────────────
+  secret-rescan:
+    name: Gitleaks (deep, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 4: Migration + edge function drift vs deployed.
+  # ───────────────────────────────────────────────────────────────────────
+  deployed-drift:
+    name: Deployed schema + function drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ vars.SOSPHERE_CI_RUN_DRIFT == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/check-migration-drift.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      - run: node scripts/check-function-drift.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Job 5: Synthetic SOS probe — 3 consecutive runs from this region.
+  # Matrix expands to 3 GitHub-Actions runners (regions: us-east, eu-west, custom)
+  # so a regional outage is visible.
+  # ───────────────────────────────────────────────────────────────────────
+  synthetic-probe:
+    name: Synthetic SOS probe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - region: us-east
+            runner: ubuntu-latest
+          - region: eu-west
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Run probe (3 attempts, 10s apart)
+        env:
+          SOSPHERE_SUPABASE_URL: ${{ secrets.SOSPHERE_SUPABASE_URL }}
+          SOSPHERE_PROBE_JWT: ${{ secrets.SOSPHERE_PROBE_JWT }}
+          SOSPHERE_PROBE_REGION: ${{ matrix.region }}
+          SOSPHERE_PROBE_RUNBOOK_URL: ${{ vars.SOSPHERE_PROBE_RUNBOOK_URL }}
+        run: node scripts/synthetic-sos-probe.mjs --runs 3 --sleep 10 --env production
