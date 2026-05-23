@@ -261,11 +261,14 @@ function detectPlatform(): string {
  * for PushManager.subscribe(). This is required because the spec
  * mandates an ArrayBuffer / Uint8Array, not a string.
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+  // P0-ci-cleanup: explicitly allocate the ArrayBuffer so the resulting
+  // Uint8Array has the concrete `Uint8Array<ArrayBuffer>` type — required
+  // by PushManager.subscribe's BufferSource overload in newer TS lib defs.
+  const outputArray = new Uint8Array(new ArrayBuffer(rawData.length));
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }

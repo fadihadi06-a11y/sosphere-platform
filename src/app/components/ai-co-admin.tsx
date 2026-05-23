@@ -93,7 +93,11 @@ interface TranscriptLine {
   id: string;
   speaker: string;
   text: string;
-  tags: ("LOCATION" | "INJURY" | "HAZARD")[];
+  // P0-ci-cleanup: union expanded to include every tag used by the
+  // sosMap fallback transcripts below — DISTRESS/URGENCY/EVACUATION/MEDICAL
+  // legitimately classify SOS-flow speech that the original 3-tag set
+  // couldn't cover.
+  tags: ("LOCATION" | "INJURY" | "HAZARD" | "DISTRESS" | "URGENCY" | "EVACUATION" | "MEDICAL")[];
   timestamp: number;
 }
 
@@ -105,7 +109,7 @@ interface AnalyzedPhoto {
   timestamp: number;
   aiTags: string[];
   confidence: number;
-  category: "Hazard Evidence" | "Injury Evidence" | "Scene Evidence";
+  category: "Hazard Evidence" | "Injury Evidence" | "Scene Evidence" | "Awaiting Photo Upload";
 }
 
 interface Evidence {
