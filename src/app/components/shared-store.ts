@@ -2514,5 +2514,11 @@ const BUDDY_PAIRS_KEY = "sosphere_buddy_pairs";
 export interface StoredBuddyPair {
   id: string;
   employee1Id: string;
-  employee1Name: string;
-  
+/** Load buddy pairs */
+export function loadBuddyPairs(): StoredBuddyPair[] {
+  try {
+    const pairs: StoredBuddyPair[] = JSON.parse(localStorage.getItem(BUDDY_PAIRS_KEY) || "[]");
+    console.log("[SUPABASE_READY] loading buddy_pairs, count:" + pairs.length);
+    return pairs;
+  } catch { return []; }
+}

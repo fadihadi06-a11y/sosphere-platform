@@ -525,5 +525,9 @@ export class TwilioVoiceProvider implements VoiceProvider {
       callId: this.callId,
     };
   }
-
-  // ── Private helpers ──────────────────────
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((t) => t.stop());
+      this.localStream = null;
+    }
+  }
+}

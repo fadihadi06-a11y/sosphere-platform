@@ -4578,5 +4578,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                 {/* Footer — Incident ID for support reference.
                     Moved here (from the top) because it's a 36-char UUID useful
                     to support staff only, not to the person in distress. */}
-                <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                  <p style={{ fontSize: 9, color: "rgba(2
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
