@@ -258,13 +258,19 @@ export function SectionHeader({ title, subtitle, action, icon: Icon, color }: Se
 export interface PageHeaderProps {
   title: string;
   description?: string;
+  /** P0-ci-cleanup-strict-2 (2026-05-24): alias for `description` —
+   * several pages (dashboard-offline-page, dashboard-pages) were
+   * using `subtitle` which is the more conventional React Native /
+   * mobile naming. Accept both, prefer description when both supplied. */
+  subtitle?: string;
   icon?: LucideIcon;
   color?: string;
   badge?: { label: string; color?: string; pulse?: boolean };
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, description, icon: Icon, color = TOKENS.accent.primary, badge, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, subtitle, icon: Icon, color = TOKENS.accent.primary, badge, actions }: PageHeaderProps) {
+  const effectiveDescription = description ?? subtitle;
   return (
     <div style={{
       display: "flex",
