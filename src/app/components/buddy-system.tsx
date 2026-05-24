@@ -101,6 +101,11 @@ const UNASSIGNED = [
   { id: "EMP-017", name: "Faisal Qasim", role: "Driver", zone: "Logistics", avatar: "FQ" },
 ];
 
+// P0-ci-cleanup-strict (2026-05-24): explicit type for the mapped worker
+// shape produced by useMemo at ~line 118. Annotates all .find/.filter/.map
+// lambdas to remove TS7006 (implicit any).
+type Worker = { id: string; name: string; role: string; zone: string; avatar: string };
+
 const ALL_WORKERS = [
   ...UNASSIGNED,
   { id: "EMP-002", name: "Youssef Nabil", role: "Electrician", zone: "Zone B", avatar: "YN" },
@@ -163,8 +168,8 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
         const mock = MOCK_PAIRS.find(m => m.id === sp.id);
         if (mock) return { ...mock, isActive: sp.isActive };
         // For newly created pairs, reconstruct from stored + ALL_WORKERS
-        const w1 = realWorkers.find(w => w.id === sp.employee1Id);
-        const w2 = realWorkers.find(w => w.id === sp.employee2Id);
+        const w1 = realWorkers.find((w: Worker) => w.id === sp.employee1Id);
+        const w2 = realWorkers.find((w: Worker) => w.id === sp.employee2Id);
         return {
           id: sp.id,
           employee1: w1
@@ -233,7 +238,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
   const pairedIds = new Set(
     pairs.filter(p => p.isActive).flatMap(p => [p.employee1.id, p.employee2.id])
   );
-  const dynamicUnassigned = realWorkers.filter(w => !pairedIds.has(w.id));
+  const dynamicUnassigned = realWorkers.filter((w: Worker) => !pairedIds.has(w.id));
 
   const handleToggle = useCallback((id: string) => {
     hapticMedium();
@@ -297,8 +302,8 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
       toast.error("Different Workers Required", { description: "You cannot pair a worker with themselves" });
       return;
     }
-    const w1 = realWorkers.find(w => w.id === newWorker1);
-    const w2 = realWorkers.find(w => w.id === newWorker2);
+    const w1 = realWorkers.find((w: Worker) => w.id === newWorker1);
+    const w2 = realWorkers.find((w: Worker) => w.id === newWorker2);
     if (!w1 || !w2) return;
     const newPair: BuddyPair = {
       id: `BP-${Date.now()}`,
@@ -415,7 +420,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
               </div>
             </Card>
           ) : (
-            dynamicUnassigned.map(emp => (
+            dynamicUnassigned.map((emp: Worker) => (
               <motion.div key={emp.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                 className="flex items-center gap-4 p-4 rounded-xl"
                 style={{ background: "rgba(255,149,0,0.02)", border: "1px solid rgba(255,149,0,0.1)" }}>
@@ -475,7 +480,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
             icon={AlertTriangle} color="#FF9500"
             action={{ label: "Auto-Assign", onClick: () => { hapticMedium(); toast("Auto-Assign", { description: "AI is finding optimal buddy pairs based on zone proximity..." }); } }} />
           <div className="grid grid-cols-3 gap-3 mt-3">
-            {dynamicUnassigned.map(emp => (
+            {dynamicUnassigned.map((emp: Worker) => (
               <Card key={emp.id} glow="#FF9500" padding={14}>
                 <div className="flex items-center gap-3">
                   <div className="size-9 rounded-xl flex items-center justify-center" style={{
@@ -565,7 +570,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
                   <label style={{ ...TYPOGRAPHY.overline, color: TOKENS.text.muted, display: "block", marginBottom: 8 }}>BUDDY 1</label>
                   <select value={newWorker1} onChange={e => setNewWorker1(e.target.value)} style={selectStyle}>
                     <option value="" style={{ background: "#0A1220" }}>Select first worker...</option>
-                    {realWorkers.filter(w => w.id !== newWorker2).map(w => (
+                    {realWorkers.filter((w: Worker) => w.id !== newWorker2).map((w: Worker) => (
                       <option key={w.id} value={w.id} style={{ background: "#0A1220" }}>{w.name} — {w.role} ({w.zone})</option>
                     ))}
                   </select>
@@ -586,7 +591,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
                   <label style={{ ...TYPOGRAPHY.overline, color: TOKENS.text.muted, display: "block", marginBottom: 8 }}>BUDDY 2</label>
                   <select value={newWorker2} onChange={e => setNewWorker2(e.target.value)} style={selectStyle}>
                     <option value="" style={{ background: "#0A1220" }}>Select second worker...</option>
-                    {realWorkers.filter(w => w.id !== newWorker1).map(w => (
+                    {realWorkers.filter((w: Worker) => w.id !== newWorker1).map((w: Worker) => (
                       <option key={w.id} value={w.id} style={{ background: "#0A1220" }}>{w.name} — {w.role} ({w.zone})</option>
                     ))}
                   </select>
@@ -594,8 +599,8 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
 
                 {/* Zone match warning */}
                 {newWorker1 && newWorker2 && (() => {
-                  const w1 = realWorkers.find(w => w.id === newWorker1);
-                  const w2 = realWorkers.find(w => w.id === newWorker2);
+                  const w1 = realWorkers.find((w: Worker) => w.id === newWorker1);
+                  const w2 = realWorkers.find((w: Worker) => w.id === newWorker2);
                   if (!w1 || !w2) return null;
                   const sameZone = w1.zone === w2.zone;
                   return (
@@ -690,7 +695,7 @@ function BuddyPairCard({ pair, onToggle, onRemove, onCall, onLocate, called, loc
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="px-5 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: 14 }}>
-              {[e1, e2].map((emp, i) => {
+              {[e1, e2].map((emp: Worker, i: number) => {
                 const c = i === 0 ? "#00C8E0" : "#00C853";
                 return (
                   <div key={emp.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: `${c}03`, border: `1px solid ${c}08` }}>
