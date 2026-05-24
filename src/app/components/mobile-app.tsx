@@ -196,6 +196,7 @@ type Screen =
   | "welcome"
   | "role-select"
   | "login"
+  | "login-phone"
   | "login-welcome"
   | "terms-consent"
   | "gps-consent"
@@ -1473,10 +1474,14 @@ export function MobileApp() {
       // This matches the "server is canonical" principle the rest of the
       // codebase already follows (B-17 tier sync, F-B age-gate, etc.).
       try {
+        // P0-ci-cleanup-deep (2026-05-24): supabase was referenced without
+        // import in this scope (TS2304). The rest of the file imports it
+        // dynamically per-block; do the same here for consistency.
+        const { supabase } = await import("./api/supabase-client");
         const { loadCanonicalIdentity } = await import("./api/canonical-identity");
         const id = await loadCanonicalIdentity(supabase);
         const ageVerified = await supabase.rpc("is_age_verified")
-          .then((r) => r?.data === true).catch(() => false);
+          .then((r: { data?: unknown }) => r?.data === true).catch(() => false);
         const fullName = id?.profile?.full_name;
 
         if (ageVerified && fullName) {
@@ -2473,4 +2478,3 @@ export function MobileApp() {
     </div>
   );
 }
-

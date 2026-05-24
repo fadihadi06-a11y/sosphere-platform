@@ -127,6 +127,12 @@ let activeEmergencyId: string | null = null;
 let activeTraceId: string | null = null;
 let serverTriggerResult: ServerTriggerResult | null = null;
 
+// P0-ci-cleanup-deep (2026-05-24): auth listener handle for cleanup.
+// Was used at line 1262+ without declaration (TS2552). The subscription
+// returned by supabase.auth.onAuthStateChange must be tracked so that
+// re-attachment doesn't multiply listeners on each replay call.
+let authSubscription: { unsubscribe: () => void } | null = null;
+
 // ── Dedup guard (double-tap / re-render protection) ─────────
 // Two layers:
 //   1. `sosInFlight` — hard lock while a trigger is mid-flight.
