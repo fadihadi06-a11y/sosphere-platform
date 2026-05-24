@@ -322,15 +322,19 @@ export function broadcast(channel: string, data: BroadcastPayload): void {
  */
 export function onBroadcast(channel: string, callback: BroadcastCallback): () => void {
   if (activeBackend === "supabase" && supabaseConfig) {
+    // P0-ci-cleanup: capture into a local const so the closure below
+    // retains TypeScript's null-narrowing (supabaseConfig is a module
+    // let that could be reassigned between subscribe and unsubscribe).
+    const config = supabaseConfig;
     try {
-      const ch = supabaseConfig.client
+      const ch = config.client
         .channel(channel)
         .on("broadcast", { event: "message" }, (payload: { payload: BroadcastPayload }) => {
           callback(payload.payload);
         })
         .subscribe();
 
-      return () => { supabaseConfig.client.removeChannel(ch); };
+      return () => { config.client.removeChannel(ch); };
     } catch (e) {
       console.warn(`[Storage] Supabase subscribe failed on "${channel}":`, e);
       // Fall through to localStorage listener

@@ -158,10 +158,18 @@ export async function withAuthRefresh<T>(
 // Saves the call-site boilerplate; identical semantics to withAuthRefresh.
 export async function invokeWithAuthRefresh<T = unknown>(
   fnName: string,
-  body?: unknown,
+  body?: Record<string, unknown>,
 ): Promise<{ data: T | null; error: unknown }> {
+  // P0-ci-cleanup: body typed as Record<string, unknown> to match the
+  // FunctionInvokeOptions.body union (which accepts Record<string, any>
+  // among other shapes). Previously typed `unknown`, which doesn't fit
+  // any branch of the union and tripped TS2769.
   return withAuthRefresh(
-    () => supabase.functions.invoke(fnName, body !== undefined ? { body } : {}) as Promise<{ data: T | null; error: unknown }>,
+    () =>
+      supabase.functions.invoke(
+        fnName,
+        body !== undefined ? { body } : {},
+      ) as Promise<{ data: T | null; error: unknown }>,
     { label: `invoke:${fnName}` },
   );
 }

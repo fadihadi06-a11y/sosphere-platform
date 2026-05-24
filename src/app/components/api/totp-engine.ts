@@ -36,7 +36,7 @@ function base32Encode(buffer: Uint8Array): string {
   return result;
 }
 
-function base32Decode(encoded: string): Uint8Array {
+function base32Decode(encoded: string): Uint8Array<ArrayBuffer> {
   const cleaned = encoded.replace(/[= ]/g, "").toUpperCase();
   const bytes: number[] = [];
   let bits = 0;
@@ -51,11 +51,20 @@ function base32Decode(encoded: string): Uint8Array {
       bits -= 8;
     }
   }
-  return new Uint8Array(bytes);
+  // P0-ci-cleanup: concrete ArrayBuffer for crypto.subtle.importKey BufferSource
+  const out = new Uint8Array(new ArrayBuffer(bytes.length));
+  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i];
+  return out;
 }
 
 // ── HMAC-SHA1 (required by TOTP standard) ────────────────────
-async function hmacSha1(key: Uint8Array, message: Uint8Array): Promise<Uint8Array> {
+async function hmacSha1(
+  key: Uint8Array<ArrayBuffer>,
+  message: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  // P0-ci-cleanup: tighten param + return to Uint8Array<ArrayBuffer> so
+  // crypto.subtle.importKey/sign BufferSource overloads match (newer TS
+  // distinguishes ArrayBufferLike from ArrayBuffer for BufferSource).
   const cryptoKey = await crypto.subtle.importKey(
     "raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"],
   );
@@ -69,7 +78,7 @@ async function generateTOTP(secret: string, timeStep: number = 30, digits: numbe
   const time = Math.floor(Date.now() / 1000 / timeStep);
 
   // Convert time to 8-byte big-endian
-  const timeBytes = new Uint8Array(8);
+  const timeBytes = new Uint8Array(new ArrayBuffer(8));
   let t = time;
   for (let i = 7; i >= 0; i--) {
     timeBytes[i] = t & 0xff;
@@ -95,7 +104,7 @@ async function generateTOTP(secret: string, timeStep: number = 30, digits: numbe
 
 /** Generate a new TOTP secret (20 random bytes → base32) */
 export function generateSecret(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  const bytes = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(20)));
   return base32Encode(bytes);
 }
 
@@ -119,7 +128,7 @@ export async function verifyTOTP(secret: string, code: string): Promise<boolean>
   // Check previous window (30s ago) for clock skew tolerance
   const prevKey = base32Decode(secret);
   const prevTime = Math.floor(Date.now() / 1000 / 30) - 1;
-  const prevTimeBytes = new Uint8Array(8);
+  const prevTimeBytes = new Uint8Array(new ArrayBuffer(8));
   let t = prevTime;
   for (let i = 7; i >= 0; i--) {
     prevTimeBytes[i] = t & 0xff;

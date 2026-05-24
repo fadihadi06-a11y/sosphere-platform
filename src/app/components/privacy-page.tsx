@@ -2,10 +2,16 @@
 import { useState } from "react";
 import { ArrowLeft, Lock, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 // BLOCKER #14 (2026-04-28): GDPR Art. 15 download button calls the
 // `export-my-data` edge function via supabase.functions.invoke.
 import { supabase } from "./api/supabase-client";
-export function PrivacyPage({ onBack }: { onBack: () => void }) {
+// P0-ci-cleanup wave 3 (2026-05-24): onBack made optional because PrivacyPage
+// is used as a lazy route in src/app/routes.ts:38, which cannot pass props.
+// When invoked without onBack (route mount), fall back to router history.
+export function PrivacyPage({ onBack }: { onBack?: () => void }) {
+  const navigate = useNavigate();
+  const handleBack = onBack ?? (() => navigate(-1));
   const S = { fontFamily: "'Tajawal','Outfit',sans-serif" };
   const sections = [
     { title: "١. البيانات التي نجمعها", body: "نجمع: بيانات الموقع GPS عند تفعيل الطوارئ، رقم الهاتف للتحقق والتواصل، بيانات الحوادث وسجلات الاتصال، ومعلومات الجهاز لتحسين الأداء." },
@@ -19,7 +25,7 @@ export function PrivacyPage({ onBack }: { onBack: () => void }) {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: "#05070E", ...S }}>
       <div className="flex items-center gap-3 px-5 py-4" style={{ paddingTop: "max(20px,env(safe-area-inset-top))", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <button onClick={handleBack} style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ArrowLeft size={18} color="rgba(255,255,255,.6)" />
         </button>
         <Lock size={16} color="#00C8E0" />

@@ -63,8 +63,11 @@ function b64uToBuf(s: string): ArrayBuffer {
   return out.buffer;
 }
 
-function randomChallenge(): Uint8Array {
-  const arr = new Uint8Array(32);
+function randomChallenge(): Uint8Array<ArrayBuffer> {
+  // P0-ci-cleanup: explicit ArrayBuffer allocation so the return type is
+  // Uint8Array<ArrayBuffer> (concrete), required by WebAuthn's BufferSource
+  // params (PublicKeyCredentialCreationOptions.challenge, etc.).
+  const arr = new Uint8Array(new ArrayBuffer(32));
   crypto.getRandomValues(arr);
   return arr;
 }
@@ -255,7 +258,11 @@ export async function enrollBiometric(userId: string, userName: string): Promise
   try {
     if (!await webauthnAvailable()) return false;
 
-    const userIdBytes = new TextEncoder().encode(userId.slice(0, 64) || "user");
+    // P0-ci-cleanup: TextEncoder.encode types vary across TS lib versions
+    // (Uint8Array<ArrayBuffer> vs Uint8Array<ArrayBufferLike>). Cast to
+    // BufferSource so the assignment to user.id (WebAuthn BufferSource)
+    // type-checks under both shapes.
+    const userIdBytes = new TextEncoder().encode(userId.slice(0, 64) || "user") as BufferSource;
     const rpName = "SOSphere";
     // rp.id must match the origin's eTLD+1 or be omitted (browser picks the origin)
     const publicKey: PublicKeyCredentialCreationOptions = {
