@@ -132,6 +132,10 @@ function toGuidedContext(ctx: UnifiedEmergencyContext) {
     employeeRole: ctx.employeeRole,
     zone: ctx.zone,
     sosType: ctx.sosType,
+    // P0-ci-cleanup-strict (2026-05-24): guided-response EmergencyContext
+    // requires `type: EmergencyType`. Default to 'sos_button' as the canonical
+    // emergency category when sosType is the unified shape.
+    type: "sos_button" as const,
     severity: ctx.severity,
     elapsed: ctx.elapsed || 0,
     batteryLevel: ctx.batteryLevel,
