@@ -1285,5 +1285,9 @@ export function startSOSReplayWatcher(): void {
 /**
  * Stop and de-register the replay watcher. Useful for tests + HMR.
  * Idempotent — safe to call multiple times.
- */
-export function s
+  if (visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+  replayListenerAttached = false;
+}
