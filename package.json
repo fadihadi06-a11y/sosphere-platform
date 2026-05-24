@@ -107,6 +107,8 @@
     "@capacitor/core": "^6.2.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.1.12",
+    "@types/react": "^18.3.29",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "4.7.0",
     "eslint": "^10.2.0",
     "globals": "^17.4.0",
