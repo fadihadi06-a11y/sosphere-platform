@@ -174,7 +174,7 @@ export function PINVerifyModal({
             operation: operationType,
             target: targetName || null,
             created_at: new Date().toISOString(),
-          }).then(() => {}).catch(() => {});
+          }).then(() => {}, () => {}); // P0-ci-cleanup-strict: 2-arg then for PromiseLike compat
         }
 
         setTimeout(() => {
@@ -202,7 +202,7 @@ export function PINVerifyModal({
               operation: operationType,
               target: targetName || null,
               created_at: new Date().toISOString(),
-            }).then(() => {}).catch(() => {});
+            }).then(() => {}, () => {}); // P0-ci-cleanup-strict: 2-arg then for PromiseLike compat
           }
         } else {
           setError(`Incorrect PIN — ${MAX_ATTEMPTS - newAttempts} attempt${MAX_ATTEMPTS - newAttempts !== 1 ? "s" : ""} remaining`);
