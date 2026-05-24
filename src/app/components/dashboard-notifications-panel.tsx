@@ -287,7 +287,7 @@ export function NotificationsPanel({
       severity: (e.severity === "critical" ? "critical" : e.severity === "high" ? "high" : "medium") as any,
       title: `🚨 SOS — ${e.employeeName}`,
       body: `${e.type || "Emergency"} in ${e.zone || "Unknown Zone"}. Status: ${e.status}.`,
-      timestamp: new Date(e.triggeredAt || Date.now()),
+      timestamp: new Date((e as { triggeredAt?: string | number }).triggeredAt || Date.now()),  // P0-ci-cleanup-strict-2: triggeredAt is optional on extended EmergencyItem
       read: e.status === "resolved",
       zone: e.zone,
       actorName: e.employeeName,
