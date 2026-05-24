@@ -15,15 +15,20 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Users, Link, Unlink, MapPin,
   AlertTriangle, ChevronRight, X,
-  Navigation, Clock, Bell, Eye, Zap,
-  UserPlus, Search, PhoneCall, Send, UserCheck,
-  CheckCircle2, ShieldCheck, Radio,
-  Sparkles, CircleCheck, Activity,
+  Navigation, Clock, Bell, Zap,
+  UserPlus, Search, PhoneCall,
+  CheckCircle2, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
-import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
+import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
+// P0-ci-cleanup: missing import — useDashboardStore was referenced on line 109
+// without being imported. TS compiled silently before strict checks (TS2304
+// "Cannot find name" was hidden by some inference quirk). Added explicit
+// import matching the path used by every other consumer (company-dashboard,
+// dashboard-analytics-page, etc.).
+import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
 export interface BuddyPair {
@@ -106,7 +111,7 @@ const ALL_WORKERS = [
 ];
 
 // ── Dashboard Buddy System Page ───────────────────────────────
-export function BuddySystemPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
+export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) => string; webMode?: boolean }) {
   const storeEmployees = useDashboardStore(s => s.employees);
 
   // Build a real worker list from actual employees, fall back to ALL_WORKERS mock

@@ -1,6 +1,12 @@
 ﻿import { motion } from "motion/react";
 import { ArrowLeft, Shield } from "lucide-react";
-export function TermsPage({ onBack }: { onBack: () => void }) {
+import { useNavigate } from "react-router";
+// P0-ci-cleanup wave 3 (2026-05-24): onBack made optional because TermsPage
+// is used as a lazy route in src/app/routes.ts:39, which cannot pass props.
+// When invoked without onBack (route mount), fall back to router history.
+export function TermsPage({ onBack }: { onBack?: () => void }) {
+  const navigate = useNavigate();
+  const handleBack = onBack ?? (() => navigate(-1));
   const S = { fontFamily: "'Tajawal','Outfit',sans-serif" };
   const sections = [
     { title: "١. القبول بالشروط", body: "باستخدامك لتطبيق SOSphere فإنك توافق على الالتزام بهذه الشروط. إذا كنت لا توافق يرجى عدم استخدام التطبيق." },
@@ -14,7 +20,7 @@ export function TermsPage({ onBack }: { onBack: () => void }) {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: "#05070E", ...S }}>
       <div className="flex items-center gap-3 px-5 py-4" style={{ paddingTop: "max(20px,env(safe-area-inset-top))", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <button onClick={handleBack} style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ArrowLeft size={18} color="rgba(255,255,255,.6)" />
         </button>
         <Shield size={16} color="#00C8E0" />
