@@ -25,3 +25,28 @@
 // without forcing a full @types/leaflet install (which would pull in
 // additional transitive packages).
 declare module "leaflet";
+
+// P0-ci-cleanup-strict (2026-05-24): @types/qrcode is not in package.json
+// but the qrcode library is used in certification-system.tsx. Shim it.
+declare module "qrcode";
+
+// P0-ci-cleanup-strict (2026-05-24): expand the leaflet shim above so the
+// dashboard-sar-page.tsx's typed references like `leaflet.Map` and
+// `leaflet.LayerGroup` type-check. We keep them as `any` because we
+// intentionally don't depend on @types/leaflet.
+declare module "leaflet" {
+  export const Map: any;
+  export const LayerGroup: any;
+  export const Marker: any;
+  export const Icon: any;
+  export const TileLayer: any;
+  export const LatLngBounds: any;
+  export const latLng: any;
+  export const map: any;
+  export const tileLayer: any;
+  export const marker: any;
+  export const layerGroup: any;
+  export const icon: any;
+  const _default: any;
+  export default _default;
+}
