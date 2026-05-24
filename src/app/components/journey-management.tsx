@@ -221,14 +221,14 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
     }
   };
 
-  const filtered = journeys.filter(j =>
+  const filtered = journeys.filter((j: Journey) =>
     filter === "all" ? true :
     filter === "active" ? (j.status === "active" || j.status === "delayed" || j.status === "deviated") :
     (j.status === "delayed" || j.status === "deviated" || j.status === "sos")
   );
 
-  const activeCount = journeys.filter(j => j.status === "active").length;
-  const issueCount = journeys.filter(j => j.status === "delayed" || j.status === "deviated").length;
+  const activeCount = journeys.filter((j: Journey) => j.status === "active").length;
+  const issueCount = journeys.filter((j: Journey) => j.status === "delayed" || j.status === "deviated").length;
 
   return (
     <div className={`p-5 space-y-5 ${webMode ? "max-w-5xl mx-auto" : ""}`}>
@@ -238,8 +238,8 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
           { label: "Active Journeys", value: activeCount + issueCount, color: "#00C8E0", icon: Navigation },
           { label: "On Route", value: activeCount, color: "#00C853", icon: Route },
           { label: "Issues", value: issueCount, color: "#FF9500", icon: AlertTriangle },
-          { label: "Completed Today", value: journeys.filter(j => j.status === "completed").length, color: "#00C8E0", icon: CheckCircle },
-        ].map(stat => {
+          { label: "Completed Today", value: journeys.filter((j: Journey) => j.status === "completed").length, color: "#00C8E0", icon: CheckCircle },
+        ].map((stat: { label: string; value: number; color: string; icon: typeof CheckCircle }) => {
           const SI = stat.icon;
           return (
             <div key={stat.label} className="rounded-xl p-3"
@@ -256,7 +256,7 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
 
       {/* Filter */}
       <div className="flex gap-1.5">
-        {(["all", "active", "issues"] as const).map(f => (
+        {(["all", "active", "issues"] as const).map((f: string) => (
           <button key={f} onClick={() => setFilter(f)}
             className="px-3 py-1.5 rounded-lg"
             style={{
@@ -277,11 +277,11 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
 
       {/* Journey Cards */}
       <div className="space-y-2.5">
-        {filtered.map(journey => {
+        {filtered.map((journey: Journey) => {
           const cfg = STATUS_CONFIG[journey.status];
           const progress = Math.round((journey.distanceCovered / journey.totalDistance) * 100);
           const isExpanded = expandedId === journey.id;
-          const completedWaypoints = journey.waypoints.filter(w => w.status === "arrived").length;
+          const completedWaypoints = journey.waypoints.filter((w: Waypoint) => w.status === "arrived").length;
 
           return (
             <motion.div key={journey.id} layout className="rounded-xl overflow-hidden"

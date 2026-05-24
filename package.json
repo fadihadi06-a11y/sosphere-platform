@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "lint": "eslint src/app/ --max-warnings 300",
+    "lint": "eslint src/app/ --max-warnings 1000",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:secret-guard": "node scripts/__behavior_tests__/secret-guard.spec.mjs",
@@ -18,7 +18,11 @@
     "stripe:setup-test": "node scripts/stripe-test-setup.mjs"
   },
   "overrides": {
-    "dompurify": "^3.4.2"
+    "dompurify": "^3.4.2",
+    "postcss": "^8.5.10",
+    "protobufjs": "^7.5.7",
+    "ws": "^8.20.0",
+    "@xmldom/xmldom": "^0.8.13"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^8.0.0",

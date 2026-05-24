@@ -1527,8 +1527,10 @@ export function AdminLeaderboardContent({
                   style={{
                     background: `linear-gradient(135deg, ${tierMeta.color}30, ${tierMeta.color}10)`,
                     border: `2px solid ${tierMeta.color}50`,
-                    ringColor: isYou ? "#00C8E0" : undefined,
-                    ringOffsetColor: "#05070E",
+                    // P0-ci-cleanup-strict: ringColor/Offset are Tailwind config
+                    // keys not CSS props. Alias via custom properties.
+                    ["--tw-ring-color" as never]: isYou ? "#00C8E0" : undefined,
+                    ["--tw-ring-offset-color" as never]: "#05070E",
                   }}>
                   <span style={{ fontSize: 16, fontWeight: 900, color: tierMeta.color }}>{admin.avatar}</span>
                 </div>
