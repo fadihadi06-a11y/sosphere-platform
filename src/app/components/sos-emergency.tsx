@@ -282,7 +282,13 @@ function getSubscriptionContacts(allContacts: ERContact[], isPremium: boolean): 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase =
   | "starting" | "calling" | "no_answer" | "pausing"
-  | "answered" | "recording" | "documenting" | "monitoring" | "ended";
+  | "answered" | "recording" | "documenting" | "monitoring" | "ended"
+  // P0-ci-cleanup-deep (2026-05-24): legacy aliases referenced in
+  // battery-warning dead-code branches (~line 3115/3117/3170). Runtime
+  // never assigns these values, but TS needs them in the union for
+  // the comparisons to type-check. TODO: align Phase semantics with
+  // the battery-warning intent — see incident #PHASE-DRIFT.
+  | "idle" | "triggered" | "escalating";
 
 type ContactStatus = "pending" | "calling" | "no_answer" | "answered";
 
@@ -3120,7 +3126,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           emitSyncEvent({
             type: "GPS_LAST_GASP",
             employeeId: userId,
-            data: { position: gps, reason: "low_battery", level: batteryLevelRef.current },
+            employeeName: userName ?? "",
+            timestamp: Date.now(),
+            data: { position: gps, reason: "low_battery", level: getBatteryLevel() },
           });
         }
       }
@@ -3174,7 +3182,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         emitSyncEvent({
           type: "GPS_LAST_GASP",
           employeeId: userId,
-          data: { position: gps, reason: "critical_battery", level: batteryLevelRef.current },
+          employeeName: userName ?? "",
+          timestamp: Date.now(),
+          data: { position: gps, reason: "critical_battery", level: getBatteryLevel() },
         });
       }
       // Show compact critical banner at top, not blocking modal
@@ -4569,18 +4579,4 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                     Moved here (from the top) because it's a 36-char UUID useful
                     to support staff only, not to the person in distress. */}
                 <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px", marginBottom: 2 }}>
-                    {isAr ? "مرجع الدعم" : "SUPPORT REFERENCE"}
-                  </p>
-                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'Outfit', monospace", wordBreak: "break-all", lineHeight: 1.4 }}>
-                    {errIdRef.current}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+                  <p style={{ fontSize: 9, color: "rgba(2

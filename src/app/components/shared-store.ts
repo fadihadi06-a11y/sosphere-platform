@@ -220,7 +220,11 @@ export interface SyncEvent {
     | "SAFE_WALK_STARTED"     // Employee started safe walk with guardian
     | "SAFE_WALK_ENDED"       // Employee ended safe walk (arrived or cancelled)
     // Buddy System — Locate
-    | "BUDDY_LOCATE_REQUEST"; // Admin requested GPS locate of a buddy
+    | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
+    // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
+    // from sos-emergency.tsx — fires when battery hits low/critical during
+    // an active SOS so the server has a final position before shutdown.
+    | "GPS_LAST_GASP";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -701,6 +705,18 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
+    // P0-ci-cleanup-deep (2026-05-24): missing entries — added so the
+    // Record<SyncEvent["type"], string> stays exhaustive.
+    BUDDY_ALERT: "Buddy Alert",
+    MONITORING_ACTIVATED: "Post-Incident Monitoring Activated",
+    MONITORING_CHECKIN: "Monitoring Check-in",
+    MONITORING_MISSED: "Monitoring Check-in Missed",
+    MONITORING_CLEARED: "Monitoring Cleared",
+    PERSONAL_SOS: "Personal SOS",
+    SAFE_WALK_STARTED: "Safe Walk Started",
+    SAFE_WALK_ENDED: "Safe Walk Ended",
+    BUDDY_LOCATE_REQUEST: "Buddy Locate Request",
+    GPS_LAST_GASP: "GPS Last-Gasp Position",
   };
   return map[type];
 }
@@ -730,6 +746,17 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "Radar",
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
+    // P0-ci-cleanup-deep (2026-05-24): missing entries.
+    BUDDY_ALERT: "Users",
+    MONITORING_ACTIVATED: "Eye",
+    MONITORING_CHECKIN: "CheckCircle",
+    MONITORING_MISSED: "AlertCircle",
+    MONITORING_CLEARED: "CheckCircle2",
+    PERSONAL_SOS: "AlertTriangle",
+    SAFE_WALK_STARTED: "Footprints",
+    SAFE_WALK_ENDED: "CheckCircle",
+    BUDDY_LOCATE_REQUEST: "Locate",
+    GPS_LAST_GASP: "BatteryWarning",
   };
   return map[type];
 }
@@ -2488,37 +2515,4 @@ export interface StoredBuddyPair {
   id: string;
   employee1Id: string;
   employee1Name: string;
-  employee2Id: string;
-  employee2Name: string;
-  isActive: boolean;
-}
-
-/** Get the buddy partner for a given employee ID. Returns null if no active buddy. */
-export function getBuddyFor(employeeId: string): { buddyId: string; buddyName: string } | null {
-  try {
-    const raw = localStorage.getItem(BUDDY_PAIRS_KEY);
-    if (!raw) return null;
-    const pairs: StoredBuddyPair[] = JSON.parse(raw);
-    for (const p of pairs) {
-      if (!p.isActive) continue;
-      if (p.employee1Id === employeeId) return { buddyId: p.employee2Id, buddyName: p.employee2Name };
-      if (p.employee2Id === employeeId) return { buddyId: p.employee1Id, buddyName: p.employee1Name };
-    }
-  } catch {}
-  return null;
-}
-
-/** Save buddy pairs (called by buddy-system.tsx) */
-export function saveBuddyPairs(pairs: StoredBuddyPair[]) {
-  safeSetItem(BUDDY_PAIRS_KEY, JSON.stringify(pairs));
-  console.log("[SUPABASE_READY] buddy_pairs:", JSON.stringify(pairs));
-}
-
-/** Load buddy pairs */
-export function loadBuddyPairs(): StoredBuddyPair[] {
-  try {
-    const pairs: StoredBuddyPair[] = JSON.parse(localStorage.getItem(BUDDY_PAIRS_KEY) || "[]");
-    console.log("[SUPABASE_READY] loading buddy_pairs, count:" + pairs.length);
-    return pairs;
-  } catch { return []; }
-}
+  
