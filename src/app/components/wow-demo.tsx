@@ -23,8 +23,12 @@ import {
 import { emitSyncEvent, type SyncEvent } from "./shared-store";
 
 // ── Helper: wrap events with DEMO_ prefix so dashboard ignores them ──
+// P0-ci-cleanup-deep (2026-05-24): the `DEMO_${type}` runtime value
+// intentionally lives OUTSIDE the SyncEvent.type union (the dashboard
+// filters these prefixed events out). Cast through `unknown` so TS
+// allows the type-widening that we want at runtime.
 function emitDemoPrefixedEvent(event: SyncEvent) {
-  emitSyncEvent({ ...event, type: `DEMO_${event.type}` } as SyncEvent);
+  emitSyncEvent({ ...event, type: `DEMO_${event.type}` } as unknown as SyncEvent);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1195,13 +1199,4 @@ export function WowDemo() {
             const isPast = elapsed >= ev.time + ev.duration;
             return (
               <div key={ev.id} className="flex flex-col items-center" style={{ width: `${100 / EVENTS.length}%` }}>
-                <span style={{ fontSize: 5.5, fontWeight: isActive ? 800 : 600, color: isActive ? ev.color : isPast ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)",
-                  letterSpacing: "0.2px", textAlign: "center", transition: "all 0.3s" }}>{ev.title}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+                <span style={{ fontSize: 5.5, fontWeight: isActive ? 800 : 600, color: isActive ? ev.c
