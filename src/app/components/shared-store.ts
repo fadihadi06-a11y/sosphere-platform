@@ -222,8 +222,6 @@ export interface SyncEvent {
     // Buddy System — Locate
     | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
     // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
-    // from sos-emergency.tsx — fires when battery hits low/critical during
-    // an active SOS so the server has a final position before shutdown.
     | "GPS_LAST_GASP";
   employeeId: string;
   employeeName: string;
@@ -705,8 +703,6 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
-    // P0-ci-cleanup-deep (2026-05-24): missing entries — added so the
-    // Record<SyncEvent["type"], string> stays exhaustive.
     BUDDY_ALERT: "Buddy Alert",
     MONITORING_ACTIVATED: "Post-Incident Monitoring Activated",
     MONITORING_CHECKIN: "Monitoring Check-in",
@@ -746,7 +742,6 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "Radar",
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
-    // P0-ci-cleanup-deep (2026-05-24): missing entries.
     BUDDY_ALERT: "Users",
     MONITORING_ACTIVATED: "Eye",
     MONITORING_CHECKIN: "CheckCircle",
@@ -2514,6 +2509,33 @@ const BUDDY_PAIRS_KEY = "sosphere_buddy_pairs";
 export interface StoredBuddyPair {
   id: string;
   employee1Id: string;
+  employee1Name: string;
+  employee2Id: string;
+  employee2Name: string;
+  isActive: boolean;
+}
+
+/** Get the buddy partner for a given employee ID. Returns null if no active buddy. */
+export function getBuddyFor(employeeId: string): { buddyId: string; buddyName: string } | null {
+  try {
+    const raw = localStorage.getItem(BUDDY_PAIRS_KEY);
+    if (!raw) return null;
+    const pairs: StoredBuddyPair[] = JSON.parse(raw);
+    for (const p of pairs) {
+      if (!p.isActive) continue;
+      if (p.employee1Id === employeeId) return { buddyId: p.employee2Id, buddyName: p.employee2Name };
+      if (p.employee2Id === employeeId) return { buddyId: p.employee1Id, buddyName: p.employee1Name };
+    }
+  } catch {}
+  return null;
+}
+
+/** Save buddy pairs (called by buddy-system.tsx) */
+export function saveBuddyPairs(pairs: StoredBuddyPair[]) {
+  safeSetItem(BUDDY_PAIRS_KEY, JSON.stringify(pairs));
+  console.log("[SUPABASE_READY] buddy_pairs:", JSON.stringify(pairs));
+}
+
 /** Load buddy pairs */
 export function loadBuddyPairs(): StoredBuddyPair[] {
   try {

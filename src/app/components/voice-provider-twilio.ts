@@ -142,9 +142,7 @@ export class TwilioClientProvider implements VoiceProvider {
       const { Device, Call } = await import("@twilio/voice-sdk");
 
       // 3. Create Twilio Device
-      // P0-ci-cleanup-deep (2026-05-24): Codec enum lives on Call, not on
-      // Device. The pre-existing `Device.Codec.Opus` was TS2339 because the
-      // @twilio/voice-sdk types only expose Codec via Call.Codec.
+      // P0-ci-cleanup-deep (2026-05-24): Codec enum lives on Call, not Device.
       this._device = new Device(token, {
         codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
         edge: "ashburn",
@@ -525,6 +523,10 @@ export class TwilioVoiceProvider implements VoiceProvider {
       callId: this.callId,
     };
   }
+
+  // ── Private helpers ────────────────────────────────────────
+
+  private cleanupStream(): void {
     if (this.localStream) {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
