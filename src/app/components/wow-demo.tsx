@@ -1198,5 +1198,13 @@ export function WowDemo() {
             const isActive = elapsed >= ev.time && elapsed < ev.time + ev.duration;
             const isPast = elapsed >= ev.time + ev.duration;
             return (
-              <div key={ev.id} className="flex flex-col items-center" style={{ width: `${100 / EVENTS.length}%` }}>
-                <span style={{ fontSize: 5.5, fontWeight: isActive ? 800 : 600, color: isActive ? ev.c
+                <span style={{ fontSize: 5.5, fontWeight: isActive ? 800 : 600, color: isActive ? ev.color : isPast ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)",
+                  letterSpacing: "0.2px", textAlign: "center", transition: "all 0.3s" }}>{ev.title}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
