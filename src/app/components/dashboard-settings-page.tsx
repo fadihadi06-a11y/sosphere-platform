@@ -87,7 +87,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     // Also save admin profile if authState is available
     if (authState) {
       const adminProfile = {
-        name: authState.userId || "Admin",
+        name: (authState as { userId?: string }).userId || "Admin",  /* P0-ci-cleanup-strict-2: userId might come from a wider auth shape */
         role: activeRole || "admin",
         phone: authState.phone || "",
       };

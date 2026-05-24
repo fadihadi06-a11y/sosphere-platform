@@ -222,7 +222,8 @@ export interface SyncEvent {
     // Buddy System — Locate
     | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
     // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
-    | "GPS_LAST_GASP";
+    | "GPS_LAST_GASP"
+    | "CHECKIN_WARNING";  // P0-ci-cleanup-strict-2 (2026-05-24): late check-in warning emitted from checkin-timer.tsx
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -713,6 +714,7 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAFE_WALK_ENDED: "Safe Walk Ended",
     BUDDY_LOCATE_REQUEST: "Buddy Locate Request",
     GPS_LAST_GASP: "GPS Last-Gasp Position",
+    CHECKIN_WARNING: "Check-in Overdue Warning",
   };
   return map[type];
 }
@@ -752,6 +754,7 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAFE_WALK_ENDED: "CheckCircle",
     BUDDY_LOCATE_REQUEST: "Locate",
     GPS_LAST_GASP: "BatteryWarning",
+    CHECKIN_WARNING: "AlertCircle",
   };
   return map[type];
 }
