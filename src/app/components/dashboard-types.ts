@@ -36,6 +36,13 @@ export interface Employee {
   lastCheckin: string;
   phone: string;
   safetyScore: number;
+  // P0-ci-cleanup-strict-2 (2026-05-24): optional fields referenced in
+  // dashboard-pages.tsx (zone at line 555, joinDate at line 1705). They
+  // are populated by the server-side employee profile but were missing
+  // from the client-side interface — surfaced as TS2339 after the
+  // strict-mode sweep.
+  zone?: string;
+  joinDate?: number;
 }
 
 export interface EmergencyItem {

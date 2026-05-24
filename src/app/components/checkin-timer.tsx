@@ -78,8 +78,9 @@ function syncCheckinEvent(event: {
       }
       // Success — clear queue (we just upserted everything in pending+row).
       try { localStorage.removeItem(queueKey); } catch {}
-    })
-    .catch((e: any) => {
+    }, (e: unknown) => {
+      // P0-ci-cleanup-strict-2 (2026-05-24): supabase PostgrestFilterBuilder
+      // returns PromiseLike, not Promise — collapsed .catch into 2-arg .then.
       console.warn("[CheckIn] Supabase sync exception, queued:", e);
       enqueue();
     });

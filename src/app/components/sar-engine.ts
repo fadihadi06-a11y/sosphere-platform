@@ -28,7 +28,7 @@
 
 // ── Types ──────────────────────────────────────────────────────
 
-export type WorkerType = "driver" | "walker" | "solo_remote" | "underground" | "maritime" | "aerial";
+export type WorkerType = "driver" | "walker" | "solo_remote" | "underground" | "maritime" | "aerial" | "field_worker"; // P0-ci-cleanup-strict-2
 export type TerrainType = "urban" | "desert" | "mountain" | "forest" | "marine" | "underground" | "industrial";
 export type SARPhase = "watchdog" | "alert" | "search" | "rescue" | "recovery" | "external" | "critical";
 export type SearchPattern = "expanding_square" | "sector" | "parallel_track" | "creeping_line" | "spiral";
