@@ -245,7 +245,7 @@ export function LandingPage() {
                       <button key={l} onClick={() => { setLang(l); setLangOpen(false); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: lang === l ? "rgba(0,200,224,0.08)" : "transparent", border: "none", color: lang === l ? "#00C8E0" : "rgba(255,255,255,0.6)", fontSize: 13, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
                         <span style={{ fontSize: 15 }}>{l === "en" ? "🇺🇸" : l === "ar" ? "🇸🇦" : l === "fr" ? "🇫🇷" : l === "es" ? "🇪🇸" : l === "de" ? "🇩🇪" : "🌐"}</span>
-                        {l === "en" ? "English" : l === "ar" ? "العربية" : l === "fr" ? "Français" : l === "es" ? "Español" : l === "de" ? "Deutsch" : l.toUpperCase()}
+                        {l === "en" ? "English" : l === "ar" ? "العربية" : l === "fr" ? "Français" : l === "es" ? "Español" : l === "de" ? "Deutsch" : (l as string).toUpperCase()}  /* P0-ci-cleanup-strict-2: l narrowed to never here */
                       </button>
                     ))}
                   </motion.div>
