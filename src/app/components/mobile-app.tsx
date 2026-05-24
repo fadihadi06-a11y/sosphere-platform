@@ -196,6 +196,7 @@ type Screen =
   | "welcome"
   | "role-select"
   | "login"
+  | "login-phone"
   | "login-welcome"
   | "terms-consent"
   | "gps-consent"
@@ -2465,4 +2466,15 @@ export function MobileApp() {
         position="top-center"
         toastOptions={{
           style: {
-         
+            background: "rgba(10,18,32,0.95)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "rgba(255,255,255,0.9)",
+            fontSize: 12,
+            fontFamily: "'Outfit', sans-serif",
+            backdropFilter: "blur(20px)",
+          },
+        }}
+      />
+    </div>
+  );
+}
