@@ -23,8 +23,12 @@ import {
 import { emitSyncEvent, type SyncEvent } from "./shared-store";
 
 // ── Helper: wrap events with DEMO_ prefix so dashboard ignores them ──
+// P0-ci-cleanup-deep (2026-05-24): the `DEMO_${type}` runtime value
+// intentionally lives OUTSIDE the SyncEvent.type union (the dashboard
+// filters these prefixed events out). Cast through `unknown` so TS
+// allows the type-widening that we want at runtime.
 function emitDemoPrefixedEvent(event: SyncEvent) {
-  emitSyncEvent({ ...event, type: `DEMO_${event.type}` } as SyncEvent);
+  emitSyncEvent({ ...event, type: `DEMO_${event.type}` } as unknown as SyncEvent);
 }
 
 // ═══════════════════════════════════════════════════════════════

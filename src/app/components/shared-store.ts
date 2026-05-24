@@ -220,7 +220,9 @@ export interface SyncEvent {
     | "SAFE_WALK_STARTED"     // Employee started safe walk with guardian
     | "SAFE_WALK_ENDED"       // Employee ended safe walk (arrived or cancelled)
     // Buddy System — Locate
-    | "BUDDY_LOCATE_REQUEST"; // Admin requested GPS locate of a buddy
+    | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
+    // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
+    | "GPS_LAST_GASP";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -701,6 +703,16 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "SAR Mission Activated",
     SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
+    BUDDY_ALERT: "Buddy Alert",
+    MONITORING_ACTIVATED: "Post-Incident Monitoring Activated",
+    MONITORING_CHECKIN: "Monitoring Check-in",
+    MONITORING_MISSED: "Monitoring Check-in Missed",
+    MONITORING_CLEARED: "Monitoring Cleared",
+    PERSONAL_SOS: "Personal SOS",
+    SAFE_WALK_STARTED: "Safe Walk Started",
+    SAFE_WALK_ENDED: "Safe Walk Ended",
+    BUDDY_LOCATE_REQUEST: "Buddy Locate Request",
+    GPS_LAST_GASP: "GPS Last-Gasp Position",
   };
   return map[type];
 }
@@ -730,6 +742,16 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAR_ACTIVATED: "Radar",
     SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
+    BUDDY_ALERT: "Users",
+    MONITORING_ACTIVATED: "Eye",
+    MONITORING_CHECKIN: "CheckCircle",
+    MONITORING_MISSED: "AlertCircle",
+    MONITORING_CLEARED: "CheckCircle2",
+    PERSONAL_SOS: "AlertTriangle",
+    SAFE_WALK_STARTED: "Footprints",
+    SAFE_WALK_ENDED: "CheckCircle",
+    BUDDY_LOCATE_REQUEST: "Locate",
+    GPS_LAST_GASP: "BatteryWarning",
   };
   return map[type];
 }

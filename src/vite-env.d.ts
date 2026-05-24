@@ -16,3 +16,12 @@
 // interface ImportMetaEnv {
 //   readonly VITE_MY_CUSTOM_KEY: string;
 // }
+
+// P0-ci-cleanup-deep (2026-05-24): leaflet ships its own types via
+// @types/leaflet, but we don't depend on it (and don't want to). The
+// `leaflet` package is imported in src/app/components/map-screen.tsx via
+// a dynamic import for the lazy map widget. Without a declaration TS7016
+// surfaces. Shim the module as `any` so the dynamic import keeps working
+// without forcing a full @types/leaflet install (which would pull in
+// additional transitive packages).
+declare module "leaflet";

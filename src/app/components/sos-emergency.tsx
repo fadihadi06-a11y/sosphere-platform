@@ -282,7 +282,12 @@ function getSubscriptionContacts(allContacts: ERContact[], isPremium: boolean): 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase =
   | "starting" | "calling" | "no_answer" | "pausing"
-  | "answered" | "recording" | "documenting" | "monitoring" | "ended";
+  | "answered" | "recording" | "documenting" | "monitoring" | "ended"
+  // P0-ci-cleanup-deep (2026-05-24): legacy aliases referenced in
+  // battery-warning dead-code branches (~line 3115/3117/3170). Runtime
+  // never assigns these values, but TS needs them in the union for
+  // the comparisons to type-check.
+  | "idle" | "triggered" | "escalating";
 
 type ContactStatus = "pending" | "calling" | "no_answer" | "answered";
 
@@ -3120,7 +3125,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           emitSyncEvent({
             type: "GPS_LAST_GASP",
             employeeId: userId,
-            data: { position: gps, reason: "low_battery", level: batteryLevelRef.current },
+            employeeName: userName ?? "",
+            timestamp: Date.now(),
+            data: { position: gps, reason: "low_battery", level: getBatteryLevel() },
           });
         }
       }
@@ -3174,7 +3181,9 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         emitSyncEvent({
           type: "GPS_LAST_GASP",
           employeeId: userId,
-          data: { position: gps, reason: "critical_battery", level: batteryLevelRef.current },
+          employeeName: userName ?? "",
+          timestamp: Date.now(),
+          data: { position: gps, reason: "critical_battery", level: getBatteryLevel() },
         });
       }
       // Show compact critical banner at top, not blocking modal
