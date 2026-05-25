@@ -824,8 +824,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         const mobileEmgId = event.data?.emergencyId as string | undefined;
         const empObj = employees.find(e => e.name === event.employeeName);
         // P0-doctrine-completion (2026-05-25, life-safety): wire the worker ID
-        // through from the SyncEvent so monitoring activation, audit log, and SAR
-        // dispatch can key by worker (not just by name, which can collide).
+        // AND the full SOS-context (phone, battery, signal, GPS) through from the
+        // SyncEvent payload onto the new EmergencyItem. This is the bridge from
+        // the worker's device to the admin's triage UI — every field saves time
+        // when seconds count.
+        const sosData = event.data || {};
+        const gps = sosData.lastGPS as { lat: number; lng: number; address?: string } | undefined;
         const newEmergencyId = addEmergency({
           id: mobileEmgId || generateEmergencyId(),
           severity: "critical",
@@ -837,6 +841,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           elapsed: 0,
           sourceEmergencyId: mobileEmgId,
           employeeId: event.employeeId || empObj?.id,
+          phone: (sosData.phone as string | undefined) || empObj?.phone,
+          batteryLevel: typeof sosData.battery === "number" ? sosData.battery : undefined,
+          signalStrength: sosData.signal as "excellent" | "good" | "fair" | "poor" | "none" | undefined,
+          location: gps ? { lat: gps.lat, lng: gps.lng, address: gps.address } : undefined,
         });
 
         trackEventSync(newEmergencyId, "admin_notified",
@@ -1404,7 +1412,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           phone: emp?.phone || "+966 5X XXX XXXX",
           zone: e.zone,
           // FIX 2: Real battery/signal from last sync event
-          batteryLevel: (() => { const sync = getLastEmployeeSync(emp?.id || ""); return sync?.battery ?? null; })(),
+          // P0-doctrine-completion (2026-05-25): null → undefined for SOSEmployee
+          // (popup type expects optional number; null doesn't satisfy `number | undefined`).
+          batteryLevel: (() => { const sync = getLastEmployeeSync(emp?.id || ""); return sync?.battery ?? undefined; })(),
           signalStrength: (() => { const sync = getLastEmployeeSync(emp?.id || ""); const s = sync?.signal; return s === "excellent" ? "excellent" : s === "good" ? "good" : s === "poor" ? "poor" : "good"; })() as "excellent" | "good" | "fair" | "poor",
           elapsedSeconds: e.elapsed,
           status: e.status,
@@ -3283,14 +3293,19 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
   authState?: AuthState;
   companyState?: CompanyState;
   webMode?: boolean;
-  hybridMode?: boolean;
+  // P0-doctrine-completion (2026-05-25): DashboardState.hybridMode is a string
+  // ("auto", "on", "off"), not a boolean. Aligning the prop type ends the
+  // string→boolean mismatch that was hidden by the soft TS warning.
+  hybridMode?: string;
   onGuideMe?: () => void;
   zoneClusters?: ZoneCluster[];
 }) {
   // Gate nav items by RBAC + Plan — Danger Priority Order
   const NAV_LIVE_THREAT = getNavLiveThreat(t).filter(item => {
     if (!authState) return true;
-    if (item.id === "riskMap") return (!companyState || hasFeature(companyState, "risk_map")) && hybridMode !== false;
+    // P0-doctrine-completion (2026-05-25): hybridMode is "auto" | "on" | "off" (string),
+    // so disable risk map only when explicitly set to "off".
+    if (item.id === "riskMap") return (!companyState || hasFeature(companyState, "risk_map")) && hybridMode !== "off";
     return true;
   });
   const NAV_INTELLIGENCE = getNavIntelligence(t);
