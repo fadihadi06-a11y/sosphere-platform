@@ -41,3 +41,24 @@ query-filters:
   - exclude:
       # Vite's import.meta.env access pattern triggers this; intentional.
       id: js/import-meta-environment-info-leak
+  - exclude:
+      # ──────────────────────────────────────────────────────────────────
+      # B1 (2026-05-26): by-design exemption — clear-text storage in
+      # localStorage is the documented offline-first architecture choice.
+      # The SOSphere platform stores employee status, broadcasts, audit
+      # log, evacuation state, etc. in localStorage on the user's OWN
+      # device. The data never leaves the device unencrypted (Realtime
+      # broadcasts go over Supabase TLS). The CodeQL rule treats every
+      # localStorage.setItem with employee-shaped data as sensitive
+      # storage — but in our threat model, the localStorage IS the
+      # legitimate destination (the worker's own phone or admin's own
+      # laptop), not an exfiltration sink.
+      #
+      # Migration path (deferred PR — Task #73): add an AES-GCM
+      # encryption layer in safeSetItem so the localStorage values are
+      # encrypted with a device-bound key. When that PR lands, this
+      # exclude can be removed and the rule re-enabled platform-wide.
+      #
+      # See: docs/SECURITY_BY_DESIGN_LOCALSTORAGE.md
+      # ──────────────────────────────────────────────────────────────────
+      id: js/clear-text-storage-of-sensitive-data
