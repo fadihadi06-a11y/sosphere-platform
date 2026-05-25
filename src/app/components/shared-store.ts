@@ -229,7 +229,15 @@ export interface SyncEvent {
     | "BATTERY_CRITICAL"
     // P0-doctrine-completion (2026-05-25, life-safety): admin-side emergency resolve broadcast.
     // Used by safety-intelligence to lower the live safety score when an emergency closes.
-    | "EMERGENCY_RESOLVED";
+    | "EMERGENCY_RESOLVED"
+    // P0-evacuation-broadcast-hardening (2026-05-25, life-safety): dedicated zone-evacuation
+    // SyncEvents (replace generic STATUS_CHANGE). Mobile listeners (mobile-app.tsx) can route
+    // these to a dedicated full-screen evacuation banner with siren + push, instead of
+    // confusing them with a generic worker status update. data carries
+    // { evacuationId, zoneId, zoneName, reason, assemblyPointId?, triggeredBy }.
+    | "EVACUATION_TRIGGERED"
+    | "EVACUATION_COMPLETED"
+    | "EVACUATION_CANCELLED";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -726,6 +734,9 @@ function formatEventType(type: SyncEvent["type"]): string {
     SOS_ESCALATED: "SOS Escalated",
     BATTERY_CRITICAL: "Battery Critical",
     EMERGENCY_RESOLVED: "Emergency Resolved",
+    EVACUATION_TRIGGERED: "Zone Evacuation Triggered",
+    EVACUATION_COMPLETED: "Zone Evacuation Completed",
+    EVACUATION_CANCELLED: "Zone Evacuation Cancelled",
   };
   return map[type];
 }
@@ -769,6 +780,9 @@ function getIconKey(type: SyncEvent["type"]): string {
     SOS_ESCALATED: "AlertTriangle",
     BATTERY_CRITICAL: "BatteryWarning",
     EMERGENCY_RESOLVED: "CheckCircle",
+    EVACUATION_TRIGGERED: "Siren",
+    EVACUATION_COMPLETED: "CheckCircle2",
+    EVACUATION_CANCELLED: "XCircle",
   };
   return map[type];
 }
