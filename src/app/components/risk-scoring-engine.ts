@@ -27,7 +27,7 @@ export interface EmployeeForRiskScoring {
   joinDate: Date | number;
   hasBuddy: boolean;
   checkInInterval: number; // minutes
-  batteryLevel: number;
+  batteryLevel: number | null; // P0-ci-cleanup-strict-3 (2026-05-25): callers may not have sync data yet — null = "unknown", skip the low-battery factor.
   isWorkingAlone: boolean;
   shift: "day" | "night";
   temperature?: number;
@@ -84,8 +84,8 @@ export function calculateRiskScore(employee: EmployeeForRiskScoring): EmployeeRi
     totalScore += points;
   }
 
-  // FIX J-4: Battery < 20% = +25 points
-  if (employee.batteryLevel < 20) {
+  // FIX J-4: Battery < 20% = +25 points (skip when unknown)
+  if (employee.batteryLevel !== null && employee.batteryLevel < 20) {
     const points = 25;
     factors.push({
       id: "low_battery",
