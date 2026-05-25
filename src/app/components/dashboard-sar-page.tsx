@@ -953,7 +953,9 @@ export function SARProtocolPage() {
               selectedTab={selectedTab}
               onTabChange={setSelectedTab}
               showMapLayers={showMapLayers}
-              onToggleLayer={(layer) => setShowMapLayers(prev => ({ ...prev, [layer]: !prev[layer] }))}
+              // P0-doctrine-completion (2026-05-25): cast `layer` to keyof prev so TS
+              // narrows the index signature (was implicitly any string lookup).
+              onToggleLayer={(layer) => setShowMapLayers(prev => ({ ...prev, [layer]: !prev[layer as keyof typeof prev] }))}
               expandedEscalation={expandedEscalation}
               onToggleEscalation={(id) => setExpandedEscalation(prev => prev === id ? null : id)}
             />

@@ -226,7 +226,10 @@ export interface SyncEvent {
     | "CHECKIN_WARNING"  // P0-ci-cleanup-strict-2 (2026-05-24): late check-in warning emitted from checkin-timer.tsx
     // P0-ci-cleanup-strict-4 (2026-05-25): admin-not-responding + battery-critical sync events fired from sos-emergency.tsx
     | "SOS_ESCALATED"
-    | "BATTERY_CRITICAL";
+    | "BATTERY_CRITICAL"
+    // P0-doctrine-completion (2026-05-25, life-safety): admin-side emergency resolve broadcast.
+    // Used by safety-intelligence to lower the live safety score when an emergency closes.
+    | "EMERGENCY_RESOLVED";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -722,6 +725,7 @@ function formatEventType(type: SyncEvent["type"]): string {
     CHECKIN_WARNING: "Check-in Overdue Warning",
     SOS_ESCALATED: "SOS Escalated",
     BATTERY_CRITICAL: "Battery Critical",
+    EMERGENCY_RESOLVED: "Emergency Resolved",
   };
   return map[type];
 }
@@ -764,6 +768,7 @@ function getIconKey(type: SyncEvent["type"]): string {
     CHECKIN_WARNING: "AlertCircle",
     SOS_ESCALATED: "AlertTriangle",
     BATTERY_CRITICAL: "BatteryWarning",
+    EMERGENCY_RESOLVED: "CheckCircle",
   };
   return map[type];
 }

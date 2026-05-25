@@ -508,7 +508,10 @@ function TripReplayBar({ trip, replayIndex, isPlaying, speed, onPlay, onPause, o
 // Live Weather Sensor Panel
 // ═══════════════════════════════════════════════════════════════
 function WeatherSensorPanel({ weather }: { weather: WeatherData }) {
-  const condIcon = weather.condition.includes("Rain") ? CloudRain : weather.condition.includes("Clear") ? Sun : Wind;
+  // P0-doctrine-completion (2026-05-25): JSX components MUST start with uppercase.
+  // Lowercase \`condIcon\` was being rendered as a literal HTML element <condicon>
+  // (silently broken — the weather icon NEVER appeared in the UI).
+  const CondIcon = weather.condition.includes("Rain") ? CloudRain : weather.condition.includes("Clear") ? Sun : Wind;
   const tempColor = weather.temp > 42 ? "#FF2D55" : weather.temp > 35 ? "#FF9500" : "#00C853";
   const visColor = weather.visibility === "Good" ? "#00C853" : weather.visibility === "Moderate" ? "#FF9500" : "#FF2D55";
   const uvColor = weather.uvIndex > 8 ? "#FF2D55" : weather.uvIndex > 5 ? "#FF9500" : "#00C853";
@@ -519,7 +522,7 @@ function WeatherSensorPanel({ weather }: { weather: WeatherData }) {
         <div className="flex items-center gap-2">
           <div className="size-7 rounded-lg flex items-center justify-center"
             style={{ background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.15)" }}>
-            <condIcon className="size-3.5" style={{ color: "#FF9500", strokeWidth: 1.8 }} />
+            <CondIcon className="size-3.5" style={{ color: "#FF9500", strokeWidth: 1.8 }} />
           </div>
           <div>
             <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.9)", letterSpacing: "-0.01em" }}>Environment</span>
