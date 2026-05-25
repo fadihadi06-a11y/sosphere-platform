@@ -300,7 +300,9 @@ export interface ERREvent {
   id: string; ts: Date;
   type: "sos_start" | "call_out" | "no_answer" | "answered" | "sms_sent"
     | "recording_start" | "recording_end" | "dms_check" | "dms_dismissed"
-    | "dms_confirmed" | "pause_start" | "pause_end" | "location_share" | "sos_end";
+    | "dms_confirmed" | "pause_start" | "pause_end" | "location_share" | "sos_end"
+    // P0-ci-cleanup-strict-4 (2026-05-25): system-fired events (battery critical, duress) appear in the ERR timeline too.
+    | "system";
   title: string; detail?: string; color: string;
 }
 
@@ -2138,7 +2140,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           startTime: record.startTime.getTime(),
           endTime: (record.endTime ?? new Date()).getTime(),
           contactsNotified: contactsRef.current
-            .filter(c => c.status === "answered" || c.status === "calling" || c.status === "queued")
+            // P0-ci-cleanup-strict-4 (2026-05-25): "queued" is not in ContactStatus; remove dead check.
+            .filter(c => c.status === "answered" || c.status === "calling")
             .map(c => ({ name: c.name, phone: c.phone, method: "twilio" })),
           recordingDurationSec: q.current.recordingSec,
           recordingFormat: "webm",
@@ -2556,7 +2559,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               (navigator as any).getBattery().then((b: any) => {
                 const lvl = Math.round(b.level * 100);
                 saveEmployeeSync({ employeeId: userId, battery: lvl, signal: signalType, updatedAt: Date.now() });
-              }).catch((err) => {
+              }).catch((err: unknown) => { /* P0-ci-cleanup-strict-4: implicit any */
                 reportError(err, { type: "battery_api_failed", component: "SOSEmergency" }, "warning");
               });
             }
