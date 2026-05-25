@@ -663,7 +663,7 @@ function startEvacuationSiren(): void {
       // Initial long buzz to grab attention, then repeating pattern
       nav.vibrate([600, 200, 600, 200, 600]);
       _evacVibTimer = setInterval(() => {
-        try { nav.vibrate && nav.vibrate([600, 200, 600]); } catch { /* ignore */ }
+        try { if (nav.vibrate) nav.vibrate([600, 200, 600]); } catch { /* ignore */ }
       }, 1800);
     }
   } catch { /* navigator.vibrate unavailable */ }
@@ -712,7 +712,7 @@ function stopEvacuationSiren(): void {
   }
   try {
     const nav = navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
-    nav.vibrate && nav.vibrate(0);  // cancel any in-flight pattern
+    if (nav.vibrate) nav.vibrate(0);  // cancel any in-flight pattern
   } catch { /* ignore */ }
 }
 
@@ -751,8 +751,8 @@ export function EvacuationAlertOverlay({
       }
     });
     return () => {
-      try { unsubStore && unsubStore(); } catch { /* ignore */ }
-      try { unsubSync && unsubSync(); } catch { /* ignore */ }
+      try { if (unsubStore) unsubStore(); } catch { /* ignore */ }
+      try { if (unsubSync) unsubSync(); } catch { /* ignore */ }
       // Belt-and-suspenders: stop siren if overlay unmounts mid-evacuation
       stopEvacuationSiren();
     };
