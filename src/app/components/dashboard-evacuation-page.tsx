@@ -60,6 +60,10 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   const [selectedEvacPoint, setSelectedEvacPoint] = useState("");
   const [evacuationReason, setEvacuationReason] = useState("");
   const [showEmployeePreview, setShowEmployeePreview] = useState(false);
+  // P0-doctrine-completion (2026-05-25): handleTriggerEvacuation called setShowTriggerModal(false)
+  // but the state was never declared — the modal close was a silent no-op.
+  // Declaring the state explicitly so the trigger modal can actually close.
+  const [, setShowTriggerModal] = useState(false);
 
   useEffect(() => {
     loadData();

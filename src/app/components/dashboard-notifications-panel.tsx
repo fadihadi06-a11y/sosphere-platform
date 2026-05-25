@@ -310,7 +310,10 @@ export function NotificationsPanel({
       severity: (e.severity === "critical" ? "critical" : e.severity === "high" ? "high" : "medium") as any,
       title: `🚨 SOS — ${e.employeeName}`,
       body: `${e.type || "Emergency"} in ${e.zone || "Unknown Zone"}. Status: ${e.status}.`,
-      timestamp: new Date(e.triggeredAt || Date.now()),
+      // P0-doctrine-completion (2026-05-25): same cast as the seed branch at
+      // line ~290 — triggeredAt is an extended runtime field, not in the
+      // canonical EmergencyItem.
+      timestamp: new Date((e as { triggeredAt?: string | number }).triggeredAt || Date.now()),
       read: e.status === "resolved",
       zone: e.zone,
       actorName: e.employeeName,
@@ -414,7 +417,8 @@ export function NotificationsPanel({
           id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           severity: "high",
           category: "sos",
-          icon: "📸",
+          // P0-doctrine-completion (2026-05-25): Notification interface has `emoji?: string`, not `icon`.
+          emoji: "📸",
           title: `Field Evidence Received — ${event.employeeName}`,
           body: `${d?.photoCount || 0} photo(s)${d?.hasRecording ? ` + ${d?.recordingDuration}s voice memo` : ""}${d?.hasComment ? " + worker comment" : ""}. Evidence stored in vault${d?.evidenceId ? ` (${d.evidenceId})` : ""}.`,
           timestamp: new Date(event.timestamp),

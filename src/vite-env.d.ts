@@ -35,12 +35,21 @@ declare module "qrcode";
 // `leaflet.LayerGroup` type-check. We keep them as `any` because we
 // intentionally don't depend on @types/leaflet.
 declare module "leaflet" {
+  // P0-doctrine-completion (2026-05-25): leaflet exports the same identifiers as
+  // BOTH values (constructors / fns) AND types (L.Map, L.LayerGroup as type refs).
+  // Without the `type` aliases, `useRef<L.Map | null>` fails TS2694.
   export const Map: any;
+  export type Map = any;
   export const LayerGroup: any;
+  export type LayerGroup = any;
   export const Marker: any;
+  export type Marker = any;
   export const Icon: any;
+  export type Icon = any;
   export const TileLayer: any;
+  export type TileLayer = any;
   export const LatLngBounds: any;
+  export type LatLngBounds = any;
   export const latLng: any;
   export const map: any;
   export const tileLayer: any;

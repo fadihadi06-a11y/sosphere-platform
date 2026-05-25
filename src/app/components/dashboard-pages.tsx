@@ -1286,8 +1286,21 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
       </div>
 
       {/* FIX 3: Emergency Watchdog — Auto-escalation after 5min unattended */}
+      {/* P0-doctrine-completion (2026-05-25): EmergencyWatchdog defines its own
+          Emergency type with required employeeId + number timestamp + narrower
+          status union. Convert EmergencyItem[] → Emergency[] at this boundary
+          so TS strict can verify the contract end-to-end. */}
       <EmergencyWatchdog
-        emergencies={sorted}
+        emergencies={sorted.map(e => ({
+          id: e.id,
+          employeeName: e.employeeName,
+          employeeId: e.employeeId || e.id,
+          zone: e.zone,
+          severity: e.severity,
+          timestamp: e.timestamp.getTime(),
+          status: e.status === "responding" ? "active" : e.status,
+          actionsLog: [],
+        }))}
         onTakeAction={(id) => {
           const emergency = sorted.find(e => e.id === id);
           if (emergency) {
