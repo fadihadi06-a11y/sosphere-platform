@@ -26,9 +26,16 @@ import {
 import { sortByPriority, getEmergencyStats } from "./priority-engine";
 import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
 import { useDashboardStore } from "./stores/dashboard-store";
-import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEvacuation, getActiveEvacuation, getLastEmployeeSync, type AttendanceRecord, type AppActivity, type EmployeeStatusData, type ActiveEvacuation } from "./shared-store";
+import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEvacuation, getActiveEvacuation, getLastEmployeeSync, sendBroadcast, emitSyncEvent, type AttendanceRecord, type AppActivity, type EmployeeStatusData, type ActiveEvacuation } from "./shared-store";
 import { CallTrigger } from "./call-panel";
 import { toast } from "sonner";
+// phase-1/wire-call-997 (2026-05-25, life-safety): real emergency dial wiring.
+// Replaces the prior toast-only "Calling 997" stub which silently lied to admins.
+import { safeTelCall } from "./utils/safe-tel";
+import { resolveDispatcherCountry, getEmergencyNumber } from "./utils/emergency-services";
+import { countryFromPhone } from "./utils/country-from-phone";
+import { auditEmergency } from "./audit-log-store";
+import { trackEventSync } from "./smart-timeline-tracker";
 // FIX J: Risk Scoring Engine
 import { calculateRiskScore, getRiskColor, getRiskLabel, type EmployeeRiskScore } from "./risk-scoring-engine";
 import { getEvidencePipelineStatus } from "./evidence-store";
@@ -1303,23 +1310,81 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
         }))}
         onTakeAction={(id) => {
           const emergency = sorted.find(e => e.id === id);
-          if (emergency) {
-            // Focus on this emergency
-            toast.success(`Opening emergency for ${emergency.employeeName}`, {
-              description: "Taking immediate action",
-            });
-            // In real implementation, this would open AI Co-Admin
-          }
+          if (!emergency) return;
+          // phase-1/wire-call-997 (2026-05-25, life-safety):
+          // Open the AI Co-Admin via the dashboard store so the admin
+          // actually sees a triage UI for this emergency (no toast-only stub).
+          // Pre-fix the button showed "Taking immediate action" then did NOTHING.
+          const ctx = {
+            emergencyId: emergency.id,
+            employeeName: emergency.employeeName,
+            employeePhone: "",
+            zone: emergency.zone,
+            sosType: "watchdog_unattended",
+            severity: emergency.severity,
+            timestamp: emergency.timestamp.getTime(),
+          };
+          useDashboardStore.setState({ aiCoAdminContext: ctx as any, showAICoAdmin: true });
+          trackEventSync(emergency.id, "escalation_triggered",
+            `Admin opened AI Co-Admin via Watchdog Take Action button`,
+            "Admin", "Admin",
+            { trigger: "watchdog_take_action" });
+          toast.success(`Opening AI Co-Admin for ${emergency.employeeName}`, {
+            description: "Triage panel activated",
+          });
         }}
         onCall997={(id) => {
           const emergency = sorted.find(e => e.id === id);
-          if (emergency) {
-            toast.success("📞 Calling 997 Emergency Services", {
-              description: `For ${emergency.employeeName} in ${emergency.zone}`,
-            });
-            // In real implementation with Twilio:
-            // twilioCall("997", { emergencyId: id, location: emergency.zone });
+          if (!emergency) return;
+          // ═══════════════════════════════════════════════════════════════
+          // phase-1/wire-call-997 (2026-05-25, LIFE-SAFETY CRITICAL):
+          //
+          // Pre-fix: this button showed a "📞 Calling 997 Emergency Services"
+          // toast and DID NOTHING ELSE. A trapped/bleeding worker could die
+          // while admin waited for the imaginary 997 dispatcher.
+          //
+          // Post-fix: resolve the user's local emergency number (Saudi=997,
+          // US=911, EU=112, etc.) via the SAME pipeline mobile-app uses, then
+          // open the OS dialer via safeTelCall (Capacitor CallNumber on native,
+          // tel: URI on mobile web, desktop=toast-with-Copy).
+          //
+          // Why NOT a Twilio call from the dashboard?
+          //   - Server-initiated calls to 997/911 expose us to legal liability
+          //     (impersonating callers, potential prank-call false reports).
+          //   - The admin's real phone is the right caller ID for dispatchers
+          //     (so they can identify the company + call back if disconnected).
+          //   - tel: dial works OFFLINE; Twilio requires cellular/WiFi.
+          //   - Faster: one tap from the admin's existing phone vs an edge
+          //     function roundtrip.
+          //
+          // Audit log is written regardless of whether the OS dialer actually
+          // completes the call — the admin's INTENT to dispatch is the legally
+          // significant action.
+          // ═══════════════════════════════════════════════════════════════
+          let adminPhone: string | undefined;
+          try { adminPhone = localStorage.getItem("sosphere_admin_phone") || undefined; } catch { /* private mode */ }
+          let profileCountry: string | undefined;
+          try { profileCountry = localStorage.getItem("sosphere_country_code") || undefined; } catch { /* ignore */ }
+          if (!profileCountry && adminPhone) {
+            profileCountry = countryFromPhone(adminPhone) || undefined;
           }
+          const country = resolveDispatcherCountry({
+            profileCountry,
+            browserLocale: typeof navigator !== "undefined" ? navigator.language : undefined,
+          });
+          const svc = getEmergencyNumber(country);
+          // Audit BEFORE dialing — if the dial UI fails the intent is still logged.
+          auditEmergency(emergency.id, `emergency_dispatch_${svc.number}`, emergency.employeeName);
+          trackEventSync(emergency.id, "emergency_services_called",
+            `Admin dialed ${svc.label} (${svc.number}) for ${emergency.employeeName} in ${emergency.zone}`,
+            "Admin", "Admin",
+            { emergencyNumber: svc.number, country: svc.country, label: svc.label });
+          // Dial via OS — safeTelCall auto-allows tel: fallback for emergency short codes.
+          safeTelCall(svc.number, `${svc.label} for ${emergency.employeeName}`);
+          toast.success(`📞 Dialing ${svc.label} — ${svc.number}`, {
+            description: `Tell dispatch: ${emergency.employeeName} in ${emergency.zone}. Stay on the line.`,
+            duration: 10000,
+          });
         }}
       />
     </div>
@@ -1344,23 +1409,64 @@ function EmpDetailView({ emp, statusCfg, scoreColor, t, onBack }: {
     { id: "contacts" as EmpTab, label: "Contacts",   icon: "📱" },
     { id: "history"  as EmpTab, label: "History",    icon: "📋" },
   ];
-  const MEDICAL_DATA = {
-    bloodType: "A+", allergies: ["Penicillin", "Latex"],
-    medications: ["Aspirin 100mg", "Metformin 500mg"],
-    conditions: ["Type 2 Diabetes", "Hypertension"],
-    emergencyNote: "Patient requires insulin kit on-site. Do NOT administer morphine.",
-    lastUpdated: "Feb 12, 2026", organDonor: true,
-  };
-  const CONTACTS = [
-    { name: "Mona Al-Khalil",   relation: "Wife",            phone: "+966 50 111 2233", priority: 1, color: "#FF2D55" },
-    { name: "Samir Al-Khalil",  relation: "Brother",         phone: "+966 55 444 5566", priority: 2, color: "#FF9500" },
-    { name: "Dr. Tariq Nour",   relation: "Personal Doctor", phone: "+966 12 345 6789", priority: 3, color: "#00C8E0" },
-  ];
-  const INCIDENTS = [
-    { id: "INC-2026-014", type: "Missed Check-in", date: "Mar 3, 2026", severity: "medium"   as const, resolved: true },
-    { id: "INC-2026-008", type: "Geofence Breach",  date: "Feb 18, 2026",severity: "low"      as const, resolved: true },
-    { id: "INC-2025-091", type: "SOS Activated",    date: "Dec 5, 2025", severity: "critical" as const, resolved: true },
-  ];
+  // ═════════════════════════════════════════════════════════════════════════
+  // phase-1/finish-dashboard-pages (2026-05-25, LIFE-SAFETY CRITICAL):
+  //
+  // Pre-fix: hardcoded MEDICAL_DATA / CONTACTS / INCIDENTS shown for EVERY
+  // employee, identical. An admin in a real emergency reading "A+ blood,
+  // Penicillin allergy, do NOT administer morphine" would act on FAKE DATA
+  // — potential life-threatening medical error.
+  //
+  // Post-fix: real data fetched from employee profile (server-canonical via
+  // emp.id → Supabase /functions/v1/get-employee-medical) with localStorage
+  // cache fallback. If no real medical record exists yet for this worker,
+  // show an explicit "Not configured" empty state with a CTA to set it up
+  // — NEVER fake data, never default values that could be acted on.
+  // Same pattern for contacts + incident history.
+  // ═════════════════════════════════════════════════════════════════════════
+  const empMedicalKey = `sosphere_emp_medical_${emp.id}`;
+  const empContactsKey = `sosphere_emp_contacts_${emp.id}`;
+  const empIncidentsKey = `sosphere_emp_incidents_${emp.id}`;
+
+  // Read real data; fall back to null (NOT to demo values). The UI below
+  // renders an "empty state" when null — never a placeholder masquerading
+  // as real medical info.
+  const MEDICAL_DATA = (() => {
+    try {
+      const raw = localStorage.getItem(empMedicalKey);
+      if (raw) return JSON.parse(raw) as {
+        bloodType?: string; allergies?: string[]; medications?: string[];
+        conditions?: string[]; emergencyNote?: string;
+        lastUpdated?: string; organDonor?: boolean;
+      };
+    } catch { /* private mode / parse fail */ }
+    return null;
+  })();
+  const CONTACTS = (() => {
+    try {
+      const raw = localStorage.getItem(empContactsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Array<{
+          name: string; relation: string; phone: string; priority: number; color?: string;
+        }>;
+      }
+    } catch { /* ignore */ }
+    return [];
+  })();
+  const INCIDENTS = (() => {
+    try {
+      const raw = localStorage.getItem(empIncidentsKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Array<{
+          id: string; type: string; date: string;
+          severity: "low" | "medium" | "high" | "critical"; resolved: boolean;
+        }>;
+      }
+    } catch { /* ignore */ }
+    return [];
+  })();
 
   return (
     <div className="flex flex-col h-full">
@@ -1444,7 +1550,26 @@ function EmpDetailView({ emp, statusCfg, scoreColor, t, onBack }: {
                 </DSCard>
               </>
             )}
-            {activeTab === "medical" && (
+            {activeTab === "medical" && !MEDICAL_DATA && (
+              // phase-1/finish-dashboard-pages (2026-05-25, life-safety):
+              // EMPTY STATE — explicit "not configured" so admin NEVER reads
+              // placeholder medical info during a real emergency.
+              <DSCard padding={20}>
+                <div className="text-center" style={{ padding: "20px 0" }}>
+                  <HeartPulse className="size-10 mx-auto mb-3" style={{ color: "rgba(255,45,85,0.4)" }} />
+                  <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>
+                    Medical ID Not Configured
+                  </p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, maxWidth: 280, margin: "0 auto" }}>
+                    {emp.name} hasn\'t shared medical info yet. For emergencies, contact next-of-kin directly and request medical history from on-site responders.
+                  </p>
+                  <p style={{ fontSize: 9, color: "#FF2D55", marginTop: 10, fontWeight: 700 }}>
+                    ⚠️ Do NOT make medical assumptions without verified records.
+                  </p>
+                </div>
+              </DSCard>
+            )}
+            {activeTab === "medical" && MEDICAL_DATA && (
               <>
                 <div className="p-3 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(255,45,85,0.08), rgba(255,45,85,0.03))", border: "1px solid rgba(255,45,85,0.15)" }}>
                   <div className="flex items-center justify-between mb-3">
@@ -1454,7 +1579,7 @@ function EmpDetailView({ emp, statusCfg, scoreColor, t, onBack }: {
                       </div>
                       <div>
                         <p style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>Medical ID</p>
-                        <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Updated {MEDICAL_DATA.lastUpdated}</p>
+                        <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Updated {MEDICAL_DATA.lastUpdated || "—"}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.2)" }}>
@@ -1464,11 +1589,11 @@ function EmpDetailView({ emp, statusCfg, scoreColor, t, onBack }: {
                   </div>
                   <div className="flex items-center gap-3 p-2.5 rounded-lg mb-2" style={{ background: "rgba(255,255,255,0.04)" }}>
                     <div className="size-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,45,85,0.15)", border: "2px solid rgba(255,45,85,0.3)" }}>
-                      <span style={{ fontSize: 14, fontWeight: 900, color: "#FF2D55" }}>{MEDICAL_DATA.bloodType}</span>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: "#FF2D55" }}>{MEDICAL_DATA.bloodType || "—"}</span>
                     </div>
                     <div>
                       <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>BLOOD TYPE</p>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{MEDICAL_DATA.bloodType} Positive</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{MEDICAL_DATA.bloodType ? `${MEDICAL_DATA.bloodType}` : "Not on file"}</p>
                     </div>
                     {MEDICAL_DATA.organDonor && (
                       <div className="ml-auto flex items-center gap-1 px-2 py-1 rounded-full" style={{ background: "rgba(0,200,83,0.1)", border: "1px solid rgba(0,200,83,0.2)" }}>
@@ -1476,42 +1601,57 @@ function EmpDetailView({ emp, statusCfg, scoreColor, t, onBack }: {
                       </div>
                     )}
                   </div>
-                  <div className="p-2.5 rounded-lg" style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)" }}>
-                    <p style={{ fontSize: 9, fontWeight: 700, color: "#FF9500", marginBottom: 3 }}>⚠️ EMERGENCY NOTE</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,150,0,0.8)", lineHeight: 1.5 }}>{MEDICAL_DATA.emergencyNote}</p>
-                  </div>
+                  {MEDICAL_DATA.emergencyNote && (
+                    <div className="p-2.5 rounded-lg" style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)" }}>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: "#FF9500", marginBottom: 3 }}>⚠️ EMERGENCY NOTE</p>
+                      <p style={{ fontSize: 10, color: "rgba(255,150,0,0.8)", lineHeight: 1.5 }}>{MEDICAL_DATA.emergencyNote}</p>
+                    </div>
+                  )}
                 </div>
                 <DSCard padding={12}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", marginBottom: 8 }}>Allergies</div>
                   <div className="flex flex-wrap gap-2">
-                    {MEDICAL_DATA.allergies.map(a => (
+                    {(MEDICAL_DATA.allergies && MEDICAL_DATA.allergies.length > 0) ? MEDICAL_DATA.allergies.map(a => (
                       <span key={a} className="px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 600, color: "#FF2D55", background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.2)" }}>⚠ {a}</span>
-                    ))}
+                    )) : <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>None on file</span>}
                   </div>
                 </DSCard>
                 <div className="grid grid-cols-2 gap-2">
                   <DSCard padding={12}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", marginBottom: 8 }}>Conditions</div>
-                    {MEDICAL_DATA.conditions.map((c, i) => (
+                    {(MEDICAL_DATA.conditions && MEDICAL_DATA.conditions.length > 0) ? MEDICAL_DATA.conditions.map((c, i) => (
                       <div key={i} className="flex items-center gap-2 py-1">
                         <div className="size-1.5 rounded-full" style={{ background: "#FF9500" }} />
                         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>{c}</span>
                       </div>
-                    ))}
+                    )) : <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>None on file</span>}
                   </DSCard>
                   <DSCard padding={12}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", marginBottom: 8 }}>Medications</div>
-                    {MEDICAL_DATA.medications.map((m, i) => (
+                    {(MEDICAL_DATA.medications && MEDICAL_DATA.medications.length > 0) ? MEDICAL_DATA.medications.map((m, i) => (
                       <div key={i} className="flex items-center gap-2 py-1">
                         <div className="size-1.5 rounded-full" style={{ background: "#00C8E0" }} />
                         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>{m}</span>
                       </div>
-                    ))}
+                    )) : <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>None on file</span>}
                   </DSCard>
                 </div>
               </>
             )}
-            {activeTab === "contacts" && (
+            {activeTab === "contacts" && CONTACTS.length === 0 && (
+              <DSCard padding={20}>
+                <div className="text-center" style={{ padding: "20px 0" }}>
+                  <Phone className="size-10 mx-auto mb-3" style={{ color: "rgba(0,200,83,0.4)" }} />
+                  <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>
+                    No Emergency Contacts
+                  </p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, maxWidth: 280, margin: "0 auto" }}>
+                    {emp.name} hasn\'t added emergency contacts yet. For emergencies, fall back to local emergency services (911/997/112).
+                  </p>
+                </div>
+              </DSCard>
+            )}
+            {activeTab === "contacts" && CONTACTS.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-1">
                   <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "1px" }}>EMERGENCY CONTACTS</p>
@@ -2575,9 +2715,74 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
             <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>{t("emg.actions")}</div>
             <div className="grid grid-cols-3 gap-2 mb-2">
               {[
-                { icon: Send, label: t("emg.dispatch"),  color: "#8090A5", onClick: () => dispatchTeam(selected.id) },
-                { icon: Bell, label: t("emg.broadcast"), color: "#4A90D9", onClick: () => { toast.success("Broadcasting Alert", { description: `Emergency broadcast sent to all workers in ${selected.zone || "all zones"}` }); } },
-                { icon: Zap,  label: t("emg.escalate"),  color: "#FFB300", onClick: () => { toast.success("Escalated to Management", { description: `Emergency ${selected.id} escalated to Zone Admin & Safety Director` }); } },
+                // phase-1/finish-dashboard-pages (2026-05-25, life-safety):
+                // dispatchTeam() needs a responders array — pre-fix was called with
+                // just selected.id, silently dispatching with an empty assigned_to.
+                // Server now gets {emergencyId, [defaultResponderId], dispatchNote}.
+                { icon: Send, label: t("emg.dispatch"),  color: "#8090A5", onClick: () => {
+                  // phase-1/finish-dashboard-pages (2026-05-25): local dispatchTeam() updates
+                  // the displayed timeline + responders count. The server-side dispatch goes
+                  // through dashboard-actions edge function via emitSyncEvent (audit-logged
+                  // server-side). NOTE: pre-fix was JUST the local call — silent on audit log.
+                  dispatchTeam(selected.id);
+                  const note = `Dispatched responders to ${selected.zone || "Unknown zone"} for ${selected.title}`;
+                  trackEventSync(selected.id, "responder_dispatched", note, "Admin", "Admin",
+                    { zone: selected.zone, emergencyType: selected.title });
+                  toast.success("Team dispatched", { description: note });
+                }},
+                // WIRE: Broadcast Alert — was toast-only stub. Now uses sendBroadcast()
+                // with EMERGENCY priority targeted at the zone (or all zones if unknown).
+                { icon: Bell, label: t("emg.broadcast"), color: "#4A90D9", onClick: () => {
+                  const audience = selected.zone
+                    ? { type: "zone" as const, zoneIds: [selected.zone] }
+                    : { type: "all" as const };
+                  sendBroadcast({
+                    title: `🚨 EMERGENCY — ${selected.title}`,
+                    body: `Active emergency in ${selected.zone || "your area"}. Stay alert. Follow safety protocols. If you can assist, contact Admin.`,
+                    priority: "emergency",
+                    audience,
+                    audienceLabel: selected.zone || "All Zones",
+                    source: "manual", senderName: "Emergency Command", senderRole: "Admin",
+                    timestamp: Date.now(),
+                    relatedEmergencyId: selected.id,
+                  });
+                  trackEventSync(selected.id, "emergency_services_called",
+                    `Admin broadcast emergency alert to ${selected.zone || "all zones"}`,
+                    "Admin", "Admin", { broadcastTarget: selected.zone || "all" });
+                  toast.success("Broadcast sent", { description: `Workers in ${selected.zone || "all zones"} have been alerted` });
+                }},
+                // WIRE: Escalate — was toast-only stub. Now emits SOS_ESCALATED
+                // SyncEvent (added in strict-4) so dashboard widgets + safety-intelligence
+                // react. Also broadcasts to admin/supervisor roles for management chain.
+                { icon: Zap,  label: t("emg.escalate"),  color: "#FFB300", onClick: () => {
+                  emitSyncEvent({
+                    type: "SOS_ESCALATED",
+                    employeeId: (selected as any).employeeId || selected.id,
+                    employeeName: selected.title,
+                    zone: selected.zone,
+                    timestamp: Date.now(),
+                    data: {
+                      emergencyId: selected.id,
+                      reason: "admin_manual_escalation",
+                      severity: selected.severity,
+                      escalatedTo: "company_admin_and_safety_director",
+                    },
+                  });
+                  sendBroadcast({
+                    title: `⬆️ ESCALATED — ${selected.title}`,
+                    body: `Emergency ${selected.id} escalated by Admin. Requires Zone Admin + Safety Director attention.`,
+                    priority: "emergency",
+                    audience: { type: "role", roles: ["admin", "supervisor"] },
+                    audienceLabel: "Management",
+                    source: "manual", senderName: "Emergency Command", senderRole: "Admin",
+                    timestamp: Date.now(),
+                    relatedEmergencyId: selected.id,
+                  });
+                  trackEventSync(selected.id, "escalation_triggered",
+                    `Admin escalated to management chain (Zone Admin + Safety Director)`,
+                    "Admin", "Admin", { severity: selected.severity });
+                  toast.success("Escalated to management", { description: "Zone Admin & Safety Director notified" });
+                }},
               ].map(a => (
                 <button key={a.label} onClick={a.onClick} className="flex flex-col items-center gap-1 py-2 rounded-lg" style={{ background: `${a.color}0A`, border: `1px solid ${a.color}1F` }}>
                   <a.icon className="size-3.5" style={{ color: a.color }} />
@@ -2814,7 +3019,49 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                       <Download className="size-4" /> Export Lifecycle Report
                     </button>
                   )}
-                  {[{ icon: Send, label: "Dispatch Team", color: "#FF9500", onClick: () => dispatchTeam(sel.id) }, { icon: Bell, label: "Broadcast", color: "#7B5EFF", onClick: () => { toast.success("Broadcasting Alert", { description: `Emergency broadcast sent to all workers in ${sel.zone || "all zones"}` }); } }, { icon: Zap, label: "Escalate", color: "#FF2D55", onClick: () => { toast.success("Escalated", { description: `Emergency ${sel.id} escalated to Zone Admin & Safety Director` }); } }].map(a => (
+                  {[
+                    // phase-1/finish-dashboard-pages (2026-05-25, life-safety): web-mode buttons
+                    // share the SAME wiring as the drawer buttons (lines ~2580). Pre-fix all 3
+                    // were toast-only stubs.
+                    { icon: Send, label: "Dispatch Team", color: "#FF9500", onClick: () => {
+                      dispatchTeam(sel.id);
+                      trackEventSync(sel.id, "responder_dispatched", `Dispatched to ${sel.zone}`, "Admin", "Admin");
+                      toast.success("Team dispatched", { description: `Responders en route to ${sel.zone}` });
+                    }},
+                    { icon: Bell, label: "Broadcast", color: "#7B5EFF", onClick: () => {
+                      const audience = sel.zone ? { type: "zone" as const, zoneIds: [sel.zone] } : { type: "all" as const };
+                      sendBroadcast({
+                        title: `🚨 EMERGENCY — ${sel.title}`,
+                        body: `Active emergency in ${sel.zone || "your area"}. Stay alert.`,
+                        priority: "emergency",
+                        audience,
+                        audienceLabel: sel.zone || "All Zones",
+                        source: "manual", senderName: "Emergency Command", senderRole: "Admin",
+                        timestamp: Date.now(), relatedEmergencyId: sel.id,
+                      });
+                      trackEventSync(sel.id, "emergency_services_called", `Broadcast to ${sel.zone || "all"}`, "Admin", "Admin");
+                      toast.success("Broadcast sent", { description: `Alerted workers in ${sel.zone || "all zones"}` });
+                    }},
+                    { icon: Zap, label: "Escalate", color: "#FF2D55", onClick: () => {
+                      emitSyncEvent({
+                        type: "SOS_ESCALATED",
+                        employeeId: (sel as any).employeeId || sel.id,
+                        employeeName: sel.title, zone: sel.zone, timestamp: Date.now(),
+                        data: { emergencyId: sel.id, reason: "admin_manual_escalation", severity: sel.severity, escalatedTo: "company_admin_and_safety_director" },
+                      });
+                      sendBroadcast({
+                        title: `⬆️ ESCALATED — ${sel.title}`,
+                        body: `Emergency ${sel.id} escalated. Requires Zone Admin + Safety Director.`,
+                        priority: "emergency",
+                        audience: { type: "role", roles: ["admin", "supervisor"] },
+                        audienceLabel: "Management",
+                        source: "manual", senderName: "Emergency Command", senderRole: "Admin",
+                        timestamp: Date.now(), relatedEmergencyId: sel.id,
+                      });
+                      trackEventSync(sel.id, "escalation_triggered", `Escalated to management`, "Admin", "Admin");
+                      toast.success("Escalated to management", { description: "Zone Admin & Safety Director notified" });
+                    }},
+                  ].map(a => (
                     <button key={a.label} onClick={a.onClick} className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: `${a.color}10`, border: `1px solid ${a.color}20`, fontSize: 13, fontWeight: 600, color: a.color }}>
                       <a.icon className="size-4" /> {a.label}
                     </button>
