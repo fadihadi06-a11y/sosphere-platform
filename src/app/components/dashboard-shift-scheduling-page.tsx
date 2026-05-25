@@ -3,7 +3,7 @@
 // Interactive weekly shift planner with drag-to-assign, templates,
 // conflict detection, and coverage analytics
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Calendar, Clock, Users, Plus, X, Copy, Trash2,
