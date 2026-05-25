@@ -104,7 +104,12 @@ const UNASSIGNED = [
 // P0-ci-cleanup-strict (2026-05-24): explicit type for the mapped worker
 // shape produced by useMemo at ~line 118. Annotates all .find/.filter/.map
 // lambdas to remove TS7006 (implicit any).
-type Worker = { id: string; name: string; role: string; zone: string; avatar: string };
+// P0-doctrine-completion (2026-05-25, life-safety): status appears on every
+// BuddyPair member (explicitly set at construction sites — see lines ~176, 200,
+// 310). Marking optional lets the lookup map (realWorkers / ALL_WORKERS) build
+// status-less rows that later get spread + status-stamped. UI compares for
+// strict equality with 'on-shift', so undefined safely falls to off-shift display.
+type Worker = { id: string; name: string; role: string; zone: string; avatar: string; status?: "on-shift" | "off-shift" };
 
 const ALL_WORKERS = [
   ...UNASSIGNED,
