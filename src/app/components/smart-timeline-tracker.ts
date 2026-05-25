@@ -48,7 +48,11 @@ export type TimelineEventType =
   | "battery_critical"
   | "signal_lost"
   | "buddy_alert"
-  | "custom";
+  | "custom"
+  // P0-ci-cleanup-strict-4 (2026-05-25): used by reportError() helper +
+  // duress PIN flow in sos-emergency.tsx — were missing from the union.
+  | "error_reported"
+  | "duress_triggered";
 
 export interface TimelineEntry {
   id: string;
@@ -423,6 +427,9 @@ export function getTimelineForReport(emergencyId: string): {
     signal_lost: "system",
     buddy_alert: "escalation",
     custom: "action",
+    // P0-ci-cleanup-strict-4 (2026-05-25): classify the two new event kinds.
+    error_reported: "system",
+    duress_triggered: "trigger",
   };
 
   return entries.map(entry => ({

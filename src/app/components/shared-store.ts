@@ -223,7 +223,10 @@ export interface SyncEvent {
     | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
     // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
     | "GPS_LAST_GASP"
-    | "CHECKIN_WARNING";  // P0-ci-cleanup-strict-2 (2026-05-24): late check-in warning emitted from checkin-timer.tsx
+    | "CHECKIN_WARNING"  // P0-ci-cleanup-strict-2 (2026-05-24): late check-in warning emitted from checkin-timer.tsx
+    // P0-ci-cleanup-strict-4 (2026-05-25): admin-not-responding + battery-critical sync events fired from sos-emergency.tsx
+    | "SOS_ESCALATED"
+    | "BATTERY_CRITICAL";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -512,18 +515,19 @@ function checkAndPruneStorage(): void {
 }
 
 // ── Emit event (from Mobile App) ──────────────────────────────
-export function emitSyncEvent(event: SyncEvent) {
+export function emitSyncEvent(event: SyncEvent): Promise<{ delivered: boolean }> {
+  // P0-ci-cleanup-strict-4 (2026-05-25): return an ack so callers can detect
+  // whether the Realtime broadcast actually went out (vs. localStorage-only).
   const newEvent = { ...event, _ts: Date.now() };
+  let realtimeAck: Promise<{ delivered: boolean }> = Promise.resolve({ delivered: false });
 
   // PRIMARY: Supabase Realtime (cross-device)
   if (_syncChannel) {
-    _syncChannel.send({
+    realtimeAck = _syncChannel.send({
       type: "broadcast",
       event: "sync",
       payload: newEvent,
-    }).catch(() => {
-      // Realtime failed — fallback to localStorage below
-    });
+    }).then(() => ({ delivered: true }), () => ({ delivered: false }));
   }
 
   // SECONDARY: localStorage (same-device fallback + offline)
@@ -551,6 +555,7 @@ export function emitSyncEvent(event: SyncEvent) {
   });
   safeSetItem(ACTIVITY_KEY, JSON.stringify(activities.slice(0, 50)));
   window.dispatchEvent(new StorageEvent("storage", { key: STORE_KEY, newValue: payload }));
+  return realtimeAck; // P0-ci-cleanup-strict-4 (2026-05-25): Promise<{delivered}> ack — see signature.
 }
 
 // ── Admin → Employee signal ──────────────────────────────────
@@ -715,6 +720,8 @@ function formatEventType(type: SyncEvent["type"]): string {
     BUDDY_LOCATE_REQUEST: "Buddy Locate Request",
     GPS_LAST_GASP: "GPS Last-Gasp Position",
     CHECKIN_WARNING: "Check-in Overdue Warning",
+    SOS_ESCALATED: "SOS Escalated",
+    BATTERY_CRITICAL: "Battery Critical",
   };
   return map[type];
 }
@@ -755,6 +762,8 @@ function getIconKey(type: SyncEvent["type"]): string {
     BUDDY_LOCATE_REQUEST: "Locate",
     GPS_LAST_GASP: "BatteryWarning",
     CHECKIN_WARNING: "AlertCircle",
+    SOS_ESCALATED: "AlertTriangle",
+    BATTERY_CRITICAL: "BatteryWarning",
   };
   return map[type];
 }
