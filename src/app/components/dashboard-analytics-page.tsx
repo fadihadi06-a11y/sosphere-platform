@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import { getBroadcasts, type BroadcastMessage, ZONE_NAMES } from "./shared-store";
 import { getRealAuditLog } from "./audit-log-store";
-import { getTimelineEntries, getRealResponseTimeSec } from "./smart-timeline-tracker";
+import { getTimelineEntries, getRealResponseTimeSec, getAllTimelineEntries, getAverageResponseTimeSec } from "./smart-timeline-tracker";
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import jsPDF from "jspdf";
@@ -160,7 +160,11 @@ function CustomTooltip({ active, payload, label }: any) {
 function buildRealAnalytics() {
   try {
     const auditLogs = getRealAuditLog();
-    const timelineEntries = getTimelineEntries();
+    // P0-doctrine-completion (2026-05-25, life-safety): use the global helper —
+    // pre-fix the page called getTimelineEntries() without an emergencyId, which
+    // returned [] silently. The HARD gate caught this; getAllTimelineEntries
+    // now returns entries across ALL emergencies for company-wide analytics.
+    const timelineEntries = getAllTimelineEntries();
 
     // Group audit entries by month
     const monthlyMap: Record<string, { sos: number; hazard: number; geofence: number; checkin: number }> = {};
@@ -188,13 +192,18 @@ function buildRealAnalytics() {
     // KPI from real data
     const totalIncidents = auditLogs.filter(e => e.action?.includes("emergency")).length;
     const resolvedCount  = auditLogs.filter(e => e.action?.includes("resolved")).length;
-    const realResponseSec = getRealResponseTimeSec();
+    // P0-doctrine-completion (2026-05-25): aggregate across emergencies (was
+    // calling per-emergency helper without an ID, silent zero). + null guard.
+    const realResponseSec = getAverageResponseTimeSec();
     const avgResponseSec = realResponseSec > 0 ? realResponseSec : null;
 
     // Incident by type from timeline
     const sosCt   = timelineEntries.filter(e => e.type === "sos_triggered").length;
-    const hazCt   = timelineEntries.filter(e => e.type === "sos_triggered" && e.detail?.includes("Hazard")).length;
-    const fallCt  = timelineEntries.filter(e => e.type === "sos_triggered" && e.detail?.includes("Fall")).length;
+    // P0-doctrine-completion (2026-05-25): TimelineEntry has `event` (description),
+    // not `detail`. The HARD gate caught the typo — analytics had been counting 0
+    // for every Hazard/Fall sub-category since the field never matched.
+    const hazCt   = timelineEntries.filter(e => e.type === "sos_triggered" && e.event?.includes("Hazard")).length;
+    const fallCt  = timelineEntries.filter(e => e.type === "sos_triggered" && e.event?.includes("Fall")).length;
     const checkinCt = auditLogs.filter(e => e.action?.includes("checkin")).length;
 
     const incidentByType = sosCt + hazCt + fallCt + checkinCt > 0 ? [

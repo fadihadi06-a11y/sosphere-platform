@@ -507,7 +507,10 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // preserving the type contract — no silent crashes on production-empty tenants.
   const EMPTY_KPI = {
     tableRows: [["No data yet", "—", "—", "Pending first incident"]],
-    chartBars: [{ label: "—", value: 0, color: "#cccccc" }],
+    // P0-doctrine-completion (2026-05-25): MOCK_KPI_DATA.chartBars[i].color is an
+    // RGB tuple (used by the PDF renderer's setFillColor(r,g,b)), not a hex string.
+    // Cast to the same tuple shape so the "as typeof MOCK_KPI_DATA" overlaps cleanly.
+    chartBars: [{ label: "—", value: 0, color: [204, 204, 204] as [number, number, number] }],
   } as typeof MOCK_KPI_DATA;
   const EMPTY_ZONE_RISK = {
     tableRows: [] as string[][],
