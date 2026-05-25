@@ -16,6 +16,12 @@ import {
   getEvacuationPointsByZone,
   updateEmployeeEvacuationStatus,
   onEvacuationChange,
+  // P0-mobile-evacuation-banner (2026-05-26, life-safety): worker-side multi-path
+  // listener. onEvacuationChange covers same-tab/storage delivery; onSyncEvent covers
+  // cross-device push via Supabase Realtime. emitSyncEvent fires EVACUATION_ACK back
+  // to admin so the control panel shows real-time acknowledgement counts.
+  emitSyncEvent,
+  onSyncEvent,
   type ActiveEvacuation,
   type EvacuationPoint,
 } from "./shared-store";
@@ -107,6 +113,16 @@ export function EvacuationScreen({
       status: "acknowledged", acknowledgedAt: Date.now(),
       currentLat, currentLng,
     });
+    // P0-mobile-evacuation-banner (2026-05-26, life-safety): emit ack back to admin
+    // so the control panel shows real-time acknowledgement counts (and SAR can target
+    // workers who NEVER acknowledged within the configured deadline).
+    void emitSyncEvent({
+      type: "EVACUATION_ACK",
+      employeeId, employeeName,
+      zone: active.zoneName,
+      timestamp: Date.now(),
+      data: { evacuationId: active.id, phase: "acknowledged", currentLat, currentLng },
+    });
     setStatus("acknowledged");
   };
 
@@ -120,6 +136,17 @@ export function EvacuationScreen({
       currentLat, currentLng,
       targetPointId: nearestPoint?.id,
     });
+    // P0-mobile-evacuation-banner (2026-05-26): worker started moving toward assembly point.
+    void emitSyncEvent({
+      type: "EVACUATION_ACK",
+      employeeId, employeeName,
+      zone: evacuation.zoneName,
+      timestamp: Date.now(),
+      data: {
+        evacuationId: evacuation.id, phase: "evacuating",
+        currentLat, currentLng, targetPointId: nearestPoint?.id,
+      },
+    });
   };
 
   const handleConfirmArrival = () => {
@@ -129,6 +156,18 @@ export function EvacuationScreen({
       employeeId, employeeName, evacuationId: evacuation.id,
       status: "arrived", acknowledgedAt: Date.now(), arrivedAt: Date.now(),
       currentLat, currentLng, targetPointId: nearestPoint?.id,
+    });
+    // P0-mobile-evacuation-banner (2026-05-26): worker arrived at assembly point.
+    // Admin uses this to mark worker safe and to confirm 100%-arrived before complete.
+    void emitSyncEvent({
+      type: "EVACUATION_ACK",
+      employeeId, employeeName,
+      zone: evacuation.zoneName,
+      timestamp: Date.now(),
+      data: {
+        evacuationId: evacuation.id, phase: "arrived",
+        currentLat, currentLng, targetPointId: nearestPoint?.id,
+      },
     });
   };
 
@@ -595,6 +634,88 @@ interface EvacuationOverlayProps {
   currentZoneId?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// P0-mobile-evacuation-banner (2026-05-26, life-safety)
+// ─────────────────────────────────────────────────────────────
+// Web Audio API siren + navigator.vibrate loop. Single shared instance
+// so two overlay re-renders don't spawn two sirens. Auto-stops on dismiss.
+// Siren pattern: 600Hz <-> 900Hz at 0.5s per slide, square wave, gain 0.25
+// (loud but not clipping). Vibration: 600ms on / 200ms off pattern.
+//
+// Why this matters in zero-hour:
+//   • Phone in pocket — silent banner = missed evacuation order.
+//   • Phone face-down on a noisy site — siren cuts through.
+//   • Vibration backs up audio for hearing-impaired workers or muted phones.
+// All gated by a "user gesture has happened" guard (Web Audio policy);
+// if autoplay is blocked, vibration alone still fires.
+// ═══════════════════════════════════════════════════════════════
+let _evacSirenCtx: AudioContext | null = null;
+let _evacSirenStop: (() => void) | null = null;
+let _evacVibTimer: ReturnType<typeof setInterval> | null = null;
+
+function startEvacuationSiren(): void {
+  // Idempotent — if already running, do nothing
+  if (_evacSirenStop || _evacVibTimer) return;
+  // 1) Vibration (works without audio gesture)
+  try {
+    const nav = navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
+    if (typeof nav.vibrate === "function") {
+      // Initial long buzz to grab attention, then repeating pattern
+      nav.vibrate([600, 200, 600, 200, 600]);
+      _evacVibTimer = setInterval(() => {
+        try { nav.vibrate && nav.vibrate([600, 200, 600]); } catch { /* ignore */ }
+      }, 1800);
+    }
+  } catch { /* navigator.vibrate unavailable */ }
+  // 2) Web Audio siren — may fail silently if no prior user gesture
+  try {
+    const AudioCtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext);
+    if (!AudioCtx) return;
+    _evacSirenCtx = new AudioCtx();
+    const ctx = _evacSirenCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    // Slide frequency 600 <-> 900 every 0.5s
+    const slide = () => {
+      if (!_evacSirenCtx) return;
+      const t = ctx.currentTime;
+      osc.frequency.setValueAtTime(600, t);
+      osc.frequency.linearRampToValueAtTime(900, t + 0.5);
+      osc.frequency.linearRampToValueAtTime(600, t + 1.0);
+    };
+    slide();
+    const slideTimer = setInterval(slide, 1000);
+    _evacSirenStop = () => {
+      try { osc.stop(); } catch { /* osc already stopped */ }
+      try { osc.disconnect(); } catch { /* already disconnected */ }
+      try { gain.disconnect(); } catch { /* already disconnected */ }
+      try { _evacSirenCtx?.close(); } catch { /* already closed */ }
+      clearInterval(slideTimer);
+      _evacSirenCtx = null;
+    };
+  } catch { /* Web Audio unavailable or blocked by autoplay policy */ }
+}
+
+function stopEvacuationSiren(): void {
+  if (_evacSirenStop) {
+    try { _evacSirenStop(); } catch { /* cleanup best-effort */ }
+    _evacSirenStop = null;
+  }
+  if (_evacVibTimer) {
+    clearInterval(_evacVibTimer);
+    _evacVibTimer = null;
+  }
+  try {
+    const nav = navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
+    nav.vibrate && nav.vibrate(0);  // cancel any in-flight pattern
+  } catch { /* ignore */ }
+}
+
 export function EvacuationAlertOverlay({
   employeeId = "EMP-001",
   employeeName = "Ahmed Khalil",
@@ -619,9 +740,34 @@ export function EvacuationAlertOverlay({
       }
     };
     check();
-    const unsub = onEvacuationChange(check);
-    return unsub;
+    const unsubStore = onEvacuationChange(check);
+    // P0-mobile-evacuation-banner (2026-05-26): redundant cross-device path.
+    // Admin emits EVACUATION_TRIGGERED via Supabase Realtime; we listen here
+    // as a second delivery channel alongside the localStorage onEvacuationChange.
+    // If either channel arrives first, we surface the overlay.
+    const unsubSync = onSyncEvent((ev) => {
+      if (ev.type === "EVACUATION_TRIGGERED" || ev.type === "EVACUATION_CANCELLED" || ev.type === "EVACUATION_COMPLETED") {
+        check();
+      }
+    });
+    return () => {
+      try { unsubStore && unsubStore(); } catch { /* ignore */ }
+      try { unsubSync && unsubSync(); } catch { /* ignore */ }
+      // Belt-and-suspenders: stop siren if overlay unmounts mid-evacuation
+      stopEvacuationSiren();
+    };
   }, []);
+
+  // P0-mobile-evacuation-banner (2026-05-26, life-safety): start siren+vibration
+  // whenever the overlay actually becomes visible; stop on dismiss/clear.
+  useEffect(() => {
+    if (evacuation?.status === "active" && !dismissed) {
+      startEvacuationSiren();
+    } else {
+      stopEvacuationSiren();
+    }
+    return () => stopEvacuationSiren();
+  }, [evacuation?.id, evacuation?.status, dismissed]);
 
   const shouldShow = evacuation?.status === "active" && !dismissed;
 
