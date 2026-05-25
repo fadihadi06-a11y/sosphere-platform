@@ -8,7 +8,7 @@ import {
   Shield, Lock, ArrowRight, CheckCircle2,
   Building2, Users, AlertTriangle, Wifi,
   Globe, Eye, Mail, AtSign, RefreshCw,
-  XCircle, AlertCircle, ChevronDown,
+  XCircle, AlertCircle, ChevronDown, Search,
 } from "lucide-react";
 import { supabase, bindSessionToDevice } from "./api/supabase-client";
 import { safeRpc, getStoredUser } from "./api/safe-rpc";

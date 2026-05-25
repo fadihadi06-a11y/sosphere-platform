@@ -32,7 +32,12 @@ export const router = createBrowserRouter([
       { path: "/training", lazy: () => import("./components/training-center").then(m => ({ Component: m.TrainingCenter })), HydrateFallback: RouteLoading },
       // ── DEV: Diagnostic Stress-Test Suite (dev mode only) ──
       ...(import.meta.env.DEV ? [
-        { path: "/dev/stress-test", lazy: () => import("./components/diagnostic-stress-test-v2").then(m => ({ Component: m.DiagnosticStressTest })), HydrateFallback: RouteLoading },
+        // P0-doctrine-completion (2026-05-25): /dev/stress-test route removed.
+        // The diagnostic-stress-test-v2.tsx component imported 3 modules that no
+        // longer exist (./emergency-buffer, ./dead-sync-detector, ./privacy-obfuscator).
+        // The file had been silently broken; removing the route + file is the
+        // root-cause fix for dead code. Resurrect via a fresh PR if the diagnostic
+        // is still needed (will require rebuilding the 3 backing modules).
       ] : []),
       // ── LEGAL: Privacy Policy and Terms of Service ──
       { path: "/privacy", lazy: () => import("./components/privacy-page").then(m => ({ Component: m.PrivacyPage })), HydrateFallback: RouteLoading },
