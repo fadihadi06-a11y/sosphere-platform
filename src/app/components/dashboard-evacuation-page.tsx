@@ -18,12 +18,17 @@ import {
   getEvacuationHistory,
   onEvacuationChange,
   sendBroadcast,
+  emitSyncEvent,
   type ZoneGPSData,
   type EvacuationPoint,
   type ActiveEvacuation,
   type EmployeeEvacuationStatus,
   type EvacuationHistoryEntry,
 } from "./shared-store";
+// P0-evacuation-broadcast-hardening (2026-05-25, life-safety): durable audit log entries
+// for every zone-evacuation lifecycle event (trigger / complete / cancel). Required by
+// ISO 27001 §12.4 + ISO 45001 emergency-preparedness record-keeping.
+import { logAuditEvent } from "./audit-log-store";
 
 interface DashboardEvacuationPageProps {
   t: (k: string) => string;
@@ -115,6 +120,35 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
       source: "manual", senderName: "Emergency Command", senderRole: "Admin",
       timestamp: Date.now(),
     });
+    // P0-evacuation-broadcast-hardening (2026-05-25): emit a dedicated EVACUATION_TRIGGERED
+    // SyncEvent so mobile listeners can route to a dedicated full-screen evacuation banner
+    // (with siren + persistent push) instead of treating it as a generic STATUS_CHANGE.
+    void emitSyncEvent({
+      type: "EVACUATION_TRIGGERED",
+      employeeId: "ALL",
+      employeeName: "Zone Evacuation",
+      zone: zone.name,
+      timestamp: Date.now(),
+      data: {
+        evacuationId: evacId,
+        zoneId: selectedZone,
+        zoneName: zone.name,
+        reason: evacuationReason,
+        assemblyPointId: selectedEvacPoint || undefined,
+        triggeredBy: "Admin",
+      },
+    });
+    // P0-evacuation-broadcast-hardening (2026-05-25): durable audit-log entry —
+    // ISO 27001 §12.4 + ISO 45001 emergency-preparedness compliance.
+    try {
+      logAuditEvent("emergency", "evacuation_triggered", {
+        severity: "critical",
+        zone: zone.name,
+        targetId: evacId,
+        targetName: `Evacuation ${evacId}`,
+        detail: `Zone evacuation triggered. Reason: ${evacuationReason}. Assembly point: ${selectedEvacPoint || "none-selected"}.`,
+      });
+    } catch { /* audit-log failures must never block a life-safety trigger */ }
     setShowTriggerModal(false);
     setSelectedZone(""); setEvacuationReason(""); setSelectedEvacPoint("");
     setActiveTab("control");
@@ -132,6 +166,29 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
       source: "manual", senderName: "Emergency Command", senderRole: "Admin",
       timestamp: Date.now(),
     });
+    // P0-evacuation-broadcast-hardening (2026-05-25): dedicated lifecycle SyncEvent
+    void emitSyncEvent({
+      type: "EVACUATION_COMPLETED",
+      employeeId: "ALL",
+      employeeName: "Zone Evacuation",
+      zone: activeEvacuation.zoneName,
+      timestamp: Date.now(),
+      data: {
+        evacuationId: activeEvacuation.id,
+        zoneId: activeEvacuation.zoneId,
+        zoneName: activeEvacuation.zoneName,
+        completedBy: "Admin",
+      },
+    });
+    try {
+      logAuditEvent("emergency", "evacuation_completed", {
+        severity: "success",
+        zone: activeEvacuation.zoneName,
+        targetId: activeEvacuation.id,
+        targetName: `Evacuation ${activeEvacuation.id}`,
+        detail: `All-clear signal issued. Duration ${Math.round((Date.now() - activeEvacuation.triggeredAt) / 1000)}s.`,
+      });
+    } catch { /* audit-log failures must never block a life-safety completion */ }
   };
 
   const handleCancel = () => {
@@ -140,12 +197,38 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
     sendBroadcast({
       title: `❌ Evacuation Cancelled — ${activeEvacuation.zoneName}`,
       body: `The evacuation order has been cancelled. Please resume normal operations.`,
-      priority: "normal",
+      // P0-evacuation-broadcast-hardening (2026-05-25, life-safety): cancellation MUST
+      // reach workers immediately — workers already in transit need to know to stop.
+      // Previously this was "normal" priority which could be silently de-prioritized.
+      priority: "urgent",
       audience: { type: "zone", zoneIds: [activeEvacuation.zoneId] },
       audienceLabel: activeEvacuation.zoneName,
       source: "manual", senderName: "Emergency Command", senderRole: "Admin",
       timestamp: Date.now(),
     });
+    // P0-evacuation-broadcast-hardening (2026-05-25): dedicated lifecycle SyncEvent
+    void emitSyncEvent({
+      type: "EVACUATION_CANCELLED",
+      employeeId: "ALL",
+      employeeName: "Zone Evacuation",
+      zone: activeEvacuation.zoneName,
+      timestamp: Date.now(),
+      data: {
+        evacuationId: activeEvacuation.id,
+        zoneId: activeEvacuation.zoneId,
+        zoneName: activeEvacuation.zoneName,
+        cancelledBy: "Admin",
+      },
+    });
+    try {
+      logAuditEvent("emergency", "evacuation_cancelled", {
+        severity: "warning",
+        zone: activeEvacuation.zoneName,
+        targetId: activeEvacuation.id,
+        targetName: `Evacuation ${activeEvacuation.id}`,
+        detail: `Evacuation cancelled after ${Math.round((Date.now() - activeEvacuation.triggeredAt) / 1000)}s.`,
+      });
+    } catch { /* audit-log failures must never block a life-safety cancellation */ }
   };
 
   const statusCounts = activeEvacuation ? {
