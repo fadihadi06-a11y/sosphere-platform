@@ -735,7 +735,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               </AnimatePresence>
 
               {/* Sim Controls (for demo — hidden in production) */}
-              {process.env.NODE_ENV === 'development' && (
+              {/* P0-ci-cleanup-strict-3 (2026-05-25): use Vite's import.meta.env.DEV
+                  instead of process.env (TS2591 — no @types/node here). */}
+              {import.meta.env.DEV && (
               <div className="px-5 mb-4">
                 <p className="mb-2" style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.08)", letterSpacing: "0.5px" }}>
                   DEMO SIMULATION

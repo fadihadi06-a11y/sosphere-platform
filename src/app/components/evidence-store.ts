@@ -221,16 +221,6 @@ function saveVault(entries: EvidenceEntry[]) {
   saveVaultAsync(entries).catch(() => {});
 }
 
-// Notify other tabs/devices about evidence changes
-function notifyChange(evidenceId: string, action: string) {
-  // localStorage event for same-browser tabs
-  const payload = JSON.stringify({ evidenceId, action, _ts: Date.now() });
-  localStorage.setItem(EVIDENCE_EVENT_KEY, payload);
-  window.dispatchEvent(
-    new StorageEvent("storage", { key: EVIDENCE_EVENT_KEY, newValue: payload })
-  );
-
-  
 /**
  * R-2 (2026-05-13): scope the evidence-changes Realtime channel by
  * COMPANY (not by individual user). All authenticated members of the
@@ -245,6 +235,10 @@ function notifyChange(evidenceId: string, action: string) {
  *
  * Supersedes the L5-SEC-9 per-user band-aid (which was tighter than
  * the actual privacy model required and broke admin observation).
+ *
+ * P0-ci-cleanup-strict-3 (2026-05-25): hoisted to MODULE scope (was
+ * accidentally nested inside notifyChange below, which made it invisible
+ * to onEvidenceChange — surfaced as TS2304).
  */
 let _cachedCompanyChannel: string | null = null;
 let _cachedForUserId: string | null = null;
@@ -282,6 +276,15 @@ function evidenceChannelName(): string | null {
   return _cachedCompanyChannel;
 }
 
+// Notify other tabs/devices about evidence changes
+function notifyChange(evidenceId: string, action: string) {
+  // localStorage event for same-browser tabs
+  const payload = JSON.stringify({ evidenceId, action, _ts: Date.now() });
+  localStorage.setItem(EVIDENCE_EVENT_KEY, payload);
+  window.dispatchEvent(
+    new StorageEvent("storage", { key: EVIDENCE_EVENT_KEY, newValue: payload })
+  );
+
   // Supabase Realtime broadcast for cross-device sync
   // R-2 (2026-05-13): company-scoped channel — admins + members in the
   // same company observe each other's evidence updates; cross-company
@@ -294,8 +297,8 @@ function evidenceChannelName(): string | null {
         type: "broadcast",
         event: "evidence_update",
         payload: { evidenceId, action },
-      }).catch(() => {});
-    }).catch(() => {});
+      }).then(() => {}, () => {}); // P0-ci-cleanup-strict-3: PromiseLike has no .catch.
+    }, () => {}); // P0-ci-cleanup-strict-3: same — 2-arg then for rejection.
   }
 }
 

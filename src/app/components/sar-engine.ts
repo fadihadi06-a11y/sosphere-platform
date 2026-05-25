@@ -218,6 +218,9 @@ const SPEED_BY_TYPE: Record<WorkerType, { walk: number; run: number; vehicle: nu
   underground:  { walk: 0.8, run: 1.5, vehicle: 5.0 },
   maritime:     { walk: 0.5, run: 1.0, vehicle: 8.0 },
   aerial:       { walk: 1.4, run: 3.0, vehicle: 50.0 },
+  // P0-ci-cleanup-strict-3 (2026-05-25): generic field worker variant — added
+  // after WorkerType union grew in prior PR. Same profile as a default walker.
+  field_worker: { walk: 1.4, run: 3.0, vehicle: 0 },
 };
 
 /** Terrain speed modifiers */

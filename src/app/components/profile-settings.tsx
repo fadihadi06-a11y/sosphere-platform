@@ -11,7 +11,7 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { CountrySheet, type Country } from "./country-picker";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help" | "elite-features";
+type SubScreen = "main" | "medical-id" | "subscription" | "incident-history" | "emergency-packet" | "emergency-services" | "emergency-contacts" | "language" | "privacy" | "connected-devices" | "help" | "elite-features" | "terms"; // P0-ci-cleanup-strict-3 (2026-05-25): terms is navigated to from the Terms & Privacy item.
 
 interface ProfileSettingsProps {
   userPlan: "free" | "pro" | "employee";

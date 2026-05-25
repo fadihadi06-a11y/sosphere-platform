@@ -97,7 +97,7 @@ export function recordRRPSession(session: Omit<RRPSession, "id" | "timestamp">):
         auto_escalated: record.autoEscalated,
         opened_ire: record.openedIRE,
         created_at: record.timestamp,
-      }).then(() => {}).catch((e: any) => console.warn("[RRP] Supabase save failed:", e));
+      }).then(() => {}, (e: unknown) => console.warn("[RRP] Supabase save failed:", e)); // P0-ci-cleanup-strict-3: PromiseLike has no .catch — collapse to 2-arg then.
     }
   }
 

@@ -543,7 +543,9 @@ export function IntelligentGuide({
   useEffect(() => {
     if (phase === "scanning" || phase === "complete") return;
     const battery = context.batteryLevel ?? 100;
-    const isEarly = phase !== "complete" && phase !== "scanning";
+    // P0-ci-cleanup-strict-3 (2026-05-25): the early-return above already
+    // narrows phase to action phases — redundant comparison removed (TS2367).
+    const isEarly = true;
     const fastPathReason = battery <= 5
       ? `battery_critical_${battery}pct`
       : (battery <= 10 && isEarly)
@@ -1108,7 +1110,9 @@ export function IntelligentGuide({
                 </div>
 
                 {/* ── FIX 4: Per-phase countdown bar ── */}
-                {phase !== "scanning" && phase !== "complete" && (() => {
+                {/* P0-ci-cleanup-strict-3 (2026-05-25): outer JSX guard at line
+                    1073 already narrowed phase — inner redundancy removed (TS2367). */}
+                {(() => {
                   const budget = getPhaseTimeBudget(assessment?.level || 5);
                   const pct = budget > 0 ? (phaseCountdown / budget) * 100 : 0;
                   const barColor = phaseTimedOut ? "#FF2D55" : phaseCountdown <= 10 ? "#FF9500" : phaseMeta.color;
