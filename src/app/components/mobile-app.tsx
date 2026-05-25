@@ -1459,7 +1459,7 @@ export function MobileApp() {
         }
       } catch { /* ignore */ }
       setLoginMode("individual");
-      setAuthUserId(info.userId || null);
+      setAuthUserId((info as { userId?: string; id?: string }).userId || info.id || null); /* P0-ci-cleanup-strict-3 (2026-05-25): info shape lacks userId; fall back to .id */
 
       // R-73 (2026-05-19): server-canonical onboarding check. Before R-73
       // this block looked only at localStorage flags — which completeLogout
@@ -1481,7 +1481,7 @@ export function MobileApp() {
         const { loadCanonicalIdentity } = await import("./api/canonical-identity");
         const id = await loadCanonicalIdentity(supabase);
         const ageVerified = await supabase.rpc("is_age_verified")
-          .then((r: { data?: unknown }) => r?.data === true).catch(() => false);
+          .then((r: { data?: unknown }) => r?.data === true, () => false); /* P0-ci-cleanup-strict-3: PromiseLike has no .catch — 2-arg then. */
         const fullName = id?.profile?.full_name;
 
         if (ageVerified && fullName) {
@@ -1496,7 +1496,7 @@ export function MobileApp() {
               allowed: true, timestamp: now, declinedWarningShown: false,
             }));
             localStorage.setItem("sosphere_individual_profile", JSON.stringify({
-              name: fullName, phone: id?.profile?.phone || "", registeredAt: now,
+              name: fullName, phone: (id?.profile as { phone?: string } | undefined)?.phone || "", registeredAt: now, /* P0-ci-cleanup-strict-3: profile shape extended at use site. */
             }));
           } catch { /* private mode — fall through, restoreSession will handle */ }
 
