@@ -237,7 +237,12 @@ export interface SyncEvent {
     // { evacuationId, zoneId, zoneName, reason, assemblyPointId?, triggeredBy }.
     | "EVACUATION_TRIGGERED"
     | "EVACUATION_COMPLETED"
-    | "EVACUATION_CANCELLED";
+    | "EVACUATION_CANCELLED"
+    // P0-mobile-evacuation-banner (2026-05-26, life-safety): worker-side ack of an
+    // active evacuation. data carries { evacuationId, phase: "acknowledged"|"evacuating"|"arrived",
+    // currentLat?, currentLng?, targetPointId? }. Admin uses this for real-time ack counts
+    // in the evacuation control panel and to trigger SAR for workers who never ack.
+    | "EVACUATION_ACK";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -737,6 +742,7 @@ function formatEventType(type: SyncEvent["type"]): string {
     EVACUATION_TRIGGERED: "Zone Evacuation Triggered",
     EVACUATION_COMPLETED: "Zone Evacuation Completed",
     EVACUATION_CANCELLED: "Zone Evacuation Cancelled",
+    EVACUATION_ACK: "Worker Acknowledged Evacuation",
   };
   return map[type];
 }
@@ -783,6 +789,7 @@ function getIconKey(type: SyncEvent["type"]): string {
     EVACUATION_TRIGGERED: "Siren",
     EVACUATION_COMPLETED: "CheckCircle2",
     EVACUATION_CANCELLED: "XCircle",
+    EVACUATION_ACK: "CheckCircle",
   };
   return map[type];
 }
