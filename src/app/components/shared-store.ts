@@ -575,26 +575,36 @@ export function emitSyncEvent(event: SyncEvent): Promise<{ delivered: boolean }>
 }
 
 // ── Admin → Employee signal ──────────────────────────────────
+// P0-sar-audit-fixes (2026-05-26, life-safety): upgraded to Promise<{ delivered }>
+// matching the emitSyncEvent ack pattern from strict-4. Existing fire-and-forget
+// callers are unchanged (the Promise floats). Callers that need delivery ack
+// (e.g. SAR "Alert Workers" — toast should differ for delivered vs offline-queued)
+// can await it. delivered=true only when the Supabase Realtime channel acknowledges
+// the broadcast; delivered=false means the message is stored in localStorage but
+// has NOT yet been pushed to other devices.
 export function emitAdminSignal(
   type: "ADMIN_UNREACHABLE" | "ADMIN_ACKNOWLEDGED" | "SAR_ACTIVATED" | "SAR_WORKER_FOUND" | "BUDDY_ALERT",
   employeeId: string,
   extra?: Record<string, any>,
-) {
+): Promise<{ delivered: boolean }> {
   const data = { type, employeeId, _ts: Date.now(), ...extra };
 
-  // PRIMARY: Supabase Realtime
-  if (_adminChannel) {
-    _adminChannel.send({
-      type: "broadcast",
-      event: "signal",
-      payload: data,
-    }).catch(() => {});
-  }
-
-  // SECONDARY: localStorage fallback
+  // SECONDARY: localStorage fallback (always — survives offline + same-tab listeners)
   const payload = JSON.stringify(data);
   safeSetItem(ADMIN_KEY, payload);
   window.dispatchEvent(new StorageEvent("storage", { key: ADMIN_KEY, newValue: payload }));
+
+  // PRIMARY: Supabase Realtime — return the delivery ack
+  if (!_adminChannel) {
+    return Promise.resolve({ delivered: false });
+  }
+  return _adminChannel.send({
+    type: "broadcast",
+    event: "signal",
+    payload: data,
+  })
+    .then(() => ({ delivered: true }))
+    .catch(() => ({ delivered: false }));
 }
 
 // ── Listen for Admin signals ─────────────────────────────────
