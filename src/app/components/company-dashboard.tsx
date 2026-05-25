@@ -964,7 +964,20 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
       }
       if (event.type === "AUDIO_EVIDENCE") incrementNotifCount();
       if (event.type === "EMERGENCY_CHAT") incrementNotifCount();
-      if (event.type === "GPS_TRAIL_UPDATE") incrementNotifCount();
+      if (event.type === "GPS_TRAIL_UPDATE") {
+        // phase-1/sync-event-handlers (2026-05-25, life-safety):
+        // Pre-fix: just incremented notif count. The actual GPS update was
+        // dropped on the floor — admin's map view stayed at the initial SOS
+        // GPS point even as the worker moved.
+        // Post-fix: update the matched emergency's location field so the map
+        // + AI Co-Admin context see the live position.
+        incrementNotifCount();
+        const gps = event.data?.lastGPS as { lat: number; lng: number; address?: string } | undefined;
+        const emgId = event.data?.emergencyId as string | undefined;
+        if (gps && emgId) {
+          updateEmergency(emgId, { location: gps });
+        }
+      }
       if (event.type === "SOS_CONTACT_ANSWERED") {
         incrementNotifCount();
         toast.success(`${event.data?.contactName || "Contact"} answered — location shared`, { duration: 4000 });
@@ -1029,9 +1042,17 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         });
       }
       if (event.type === "CONNECTION_LOST") {
+        // phase-1/sync-event-handlers (2026-05-25, life-safety):
+        // Pre-fix: created an emergency + showed toast, but forced admin to
+        // manually navigate to SAR Protocol page. Seconds lost.
+        // Post-fix: AUTO-NAVIGATE to SAR Protocol page (within the dashboard).
+        // The mission isn't auto-created (SAR scenario picker requires terrain
+        // + worker-type info we don't have here), but the admin lands on the
+        // right page immediately and can start SAR with one click.
         incrementNotifCount();
+        const lostEmgId = generateEmergencyId();
         addEmergency({
-          id: generateEmergencyId(),
+          id: lostEmgId,
           severity: "high",
           employeeName: event.employeeName,
           zone: event.zone || "Unknown Zone",
@@ -1039,26 +1060,46 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           timestamp: new Date(event.timestamp),
           status: "active",
           elapsed: 0,
+          employeeId: event.employeeId,
         });
         toast.error(`Connection lost: ${event.employeeName}`, {
-          description: `${event.zone || "Unknown zone"} — worker unreachable. Monitor or initiate SAR.`,
+          description: `${event.zone || "Unknown zone"} — auto-navigating to SAR Protocol`,
           duration: 8000,
+          action: {
+            label: "Open SAR",
+            onClick: () => setCurrentPage("emergencyHub"),
+          },
         });
+        // Auto-navigate after 1s if admin doesn't dismiss
+        setTimeout(() => {
+          if (useDashboardStore.getState().currentPage !== "emergencyHub") {
+            setCurrentPage("emergencyHub");
+          }
+        }, 1000);
       }
       if (event.type === "SAR_ACTIVATED") incrementNotifCount();
       // ── FIX FATAL-2: Battery critical — show admin toast with last known position ──
       if (event.type === "BATTERY_CRITICAL") {
+        // phase-1/sync-event-handlers (2026-05-25, life-safety):
+        // Pre-fix: 15-second toast then it disappeared. If admin away from
+        // screen → missed the critical battery alert → potentially fatal
+        // (worker's device dies, no GPS updates, no SOS escalation).
+        // Post-fix: Infinity duration toast (until admin dismisses) + an
+        // entry in the emergencies list (persistent record). Also wires
+        // location into the EmergencyItem for map display.
         incrementNotifCount();
         const battLvl = event.data?.batteryLevel ?? "?";
-        const lastPos = event.data?.lastPosition as { lat?: number; lng?: number } | undefined;
+        const lastPos = event.data?.lastPosition as { lat?: number; lng?: number; address?: string } | undefined;
         toast.error(`🔋 Battery Critical: ${event.employeeName} (${battLvl}%)`, {
           description: lastPos
-            ? `Last GPS: ${lastPos.lat?.toFixed(5)}, ${lastPos.lng?.toFixed(5)} — ${event.zone || "Unknown zone"}`
-            : `Location unavailable — ${event.zone || "Unknown zone"}`,
-          duration: 15000,
+            ? `Last GPS: ${lastPos.lat?.toFixed(5)}, ${lastPos.lng?.toFixed(5)} — ${event.zone || "Unknown zone"}. Worker may go offline soon.`
+            : `Location unavailable — ${event.zone || "Unknown zone"}. Worker may go offline soon.`,
+          duration: Infinity, // persists until admin dismisses
+          closeButton: true,
         });
+        const battEmgId = generateEmergencyId();
         addEmergency({
-          id: generateEmergencyId(),
+          id: battEmgId,
           severity: "high",
           employeeName: event.employeeName,
           zone: event.zone || "Unknown Zone",
@@ -1066,6 +1107,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           timestamp: new Date(event.timestamp),
           status: "active",
           elapsed: 0,
+          employeeId: event.employeeId,
+          batteryLevel: typeof event.data?.batteryLevel === "number" ? event.data.batteryLevel : undefined,
+          // Capture last-known GPS so map widgets can show the position
+          location: lastPos && typeof lastPos.lat === "number" && typeof lastPos.lng === "number"
+            ? { lat: lastPos.lat, lng: lastPos.lng, address: lastPos.address }
+            : undefined,
         });
       }
       // ── FIX FATAL-3: Check-in warning — admin sees overdue check-ins before SOS ──
