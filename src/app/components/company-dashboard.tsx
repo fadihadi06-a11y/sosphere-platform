@@ -852,29 +852,71 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           "System", "System",
           { severity: "critical", type: "SOS Button (App)" });
 
-        // ── AUTO-TRIGGER AI CO-ADMIN on first SOS ──
-        // Only auto-open if < 2 active emergencies (prevent UI spam on mass casualty)
-        // Feature gate: AI Co-Admin requires Business plan or above
+        // ═══════════════════════════════════════════════════════════════
+        // phase-1/aicoadmin-key-fix (2026-05-25, LIFE-SAFETY CRITICAL):
+        //
+        // FIXED 3 CRITICAL SILENT BUGS in the SOS-to-AI triage pipeline:
+        //
+        // BUG 1 — KEY MISMATCH (was silent since launch):
+        //   AICoAdminContext.batteryLevel was reading event.data.batteryLevel
+        //   but mobile (sos-emergency.tsx:2535) sends event.data.battery.
+        //   Result: AI always saw batteryLevel=undefined.
+        //   FIX: read event.data.battery (mobile's actual key).
+        //
+        // BUG 2 — KEY MISMATCH (same pattern, signal):
+        //   AICoAdminContext.signalStrength was reading event.data.signalStrength
+        //   but mobile sends event.data.signal.
+        //   FIX: read event.data.signal.
+        //
+        // BUG 3 — lastGPS not in SOS_TRIGGERED payload:
+        //   AICoAdminContext.lastGPS was reading event.data.lastGPS — but mobile
+        //   does NOT include lastGPS in SOS_TRIGGERED (only in BATTERY_CRITICAL).
+        //   The newEmergencyId already wired location via sosData (lines 832-847).
+        //   FIX: read from the newly-created EmergencyItem instead, so we use
+        //   the same data that was wired in PR #11.
+        //
+        // BUG 4 — 2-second delay BEFORE opening AI Co-Admin:
+        //   In a mass-casualty event those 2s matter. Toast notification is
+        //   already shown by sonner system in parallel. FIX: open immediately.
+        //
+        // BUG 5 — Multi-SOS gate skips 2nd+ concurrent emergencies:
+        //   activeCount <= 1 means: 2nd worker in SOS during 1st's open AI panel
+        //   gets NO triage. Mass casualty UX bug.
+        //   FIX (partial): also open if showAICoAdmin true BUT differ emergency
+        //   (the panel itself needs queue support — separate PR #15).
+        //   For now: gate relaxed to allow 2nd+ if different emergencyId.
+        // ═══════════════════════════════════════════════════════════════
         const activeCount = emergencies.filter(e => e.status === "active").length;
         const aiGate = checkFeatureGate("ai_co_admin", companyState);
-        if (activeCount <= 1 && !showAICoAdmin && aiGate.allowed) {
-          setTimeout(() => {
-            const ctx: AICoAdminContext = {
-              emergencyId: newEmergencyId,
-              employeeName: event.employeeName,
-              employeePhone: empObj?.phone || "",
-              zone: event.zone || "Unknown Zone",
-              sosType: "SOS Button (App)",
-              severity: "critical",
-              batteryLevel: event.data?.batteryLevel as number | undefined,
-              signalStrength: event.data?.signalStrength as "excellent" | "good" | "fair" | "poor" | "none" | undefined,
-              lastGPS: event.data?.lastGPS as { lat: number; lng: number; address?: string } | undefined,
-              timestamp: event.timestamp,
-              zoneEmployeeCount: employees.filter(emp => emp.zone === (event.zone || "Unknown Zone")).length,
-            };
-            setAICoAdminContext(ctx);
-            setShowAICoAdmin(true);
-          }, 2000); // 2s delay to show SOS notification first
+        // Find the EmergencyItem we just created to read its already-wired fields
+        // (battery/signal/location from sosData) — single source of truth.
+        const newEmg = { phone: (sosData.phone as string | undefined) || empObj?.phone,
+                          batteryLevel: typeof sosData.battery === "number" ? sosData.battery : undefined,
+                          signalStrength: sosData.signal as "excellent" | "good" | "fair" | "poor" | "none" | undefined,
+                          location: gps };
+        // Open IMMEDIATELY for first SOS, or for a different concurrent emergency
+        // (relaxed multi-SOS gate — queue handled in PR #15).
+        const shouldOpenAI = aiGate.allowed && (
+          (activeCount <= 1 && !showAICoAdmin) ||
+          (showAICoAdmin && useDashboardStore.getState().aiCoAdminContext?.emergencyId !== newEmergencyId)
+        );
+        if (shouldOpenAI) {
+          const ctx: AICoAdminContext = {
+            emergencyId: newEmergencyId,
+            employeeName: event.employeeName,
+            employeePhone: newEmg.phone || "",
+            zone: event.zone || "Unknown Zone",
+            sosType: "SOS Button (App)",
+            severity: "critical",
+            // FIXED: read the same keys mobile actually sends
+            batteryLevel: newEmg.batteryLevel,
+            signalStrength: newEmg.signalStrength,
+            lastGPS: newEmg.location,
+            timestamp: event.timestamp,
+            zoneEmployeeCount: employees.filter(emp => emp.zone === (event.zone || "Unknown Zone")).length,
+          };
+          setAICoAdminContext(ctx);
+          setShowAICoAdmin(true);
         }
       }
       if (event.type === "HAZARD_REPORT") {
