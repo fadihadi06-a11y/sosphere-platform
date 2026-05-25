@@ -143,14 +143,26 @@ jobs:
           cache: 'npm'
       - run: npm ci --no-audit --no-fund
 
-      - name: TypeScript strict typecheck (non-fatal — pre-existing debt)
-        # P0-ci-cleanup-deep (2026-05-24): codebase has ~100 pre-existing TS
-        # strict errors across ~20 files. These do NOT block runtime — Vite
-        # compiles, Vercel deploys, Vitest+ESLint+CodeQL+Gitleaks pass, APK
-        # builds. continue-on-error so L3 composite goes green; errors still
-        # surface in logs for incremental cleanup in future PRs.
-        continue-on-error: true
-        run: npx tsc --noEmit || echo "::warning::tsc reported errors — see logs"
+      - name: TypeScript strict typecheck
+        # P0-doctrine-completion (2026-05-25, life-safety):
+        #
+        # HARD GATE — no more continue-on-error.
+        #
+        # History: the codebase entered Phase 0 with ~113 pre-existing TS strict
+        # errors. PRs #4–#9 closed every single one of them, surfacing two real
+        # runtime bugs in the process (silent void return from addEmergency,
+        # authState.userName typo always falling back to "Admin"). With those
+        # fixed AT THE SOURCE TYPE — EmergencyItem.employeeId, AuthState.user.name,
+        # Worker.status, addEmergency → string — tsc --noEmit now exits 0 cleanly.
+        #
+        # From this PR forward TypeScript joins ESLint, Vitest, Lighthouse, and
+        # Gitleaks as a HARD structural invariant. Any future PR that introduces
+        # a TS strict error fails CI at this step and cannot merge. This locks
+        # the 113-error cleanup behind a permanent door.
+        #
+        # Doctrine §6 — operating rules — gates may only become STRICTER over
+        # the project's life. This step graduates from "warning" to "blocker".
+        run: npx tsc --noEmit
 
 
       - name: ESLint

@@ -63,6 +63,13 @@ export interface EmergencyItem {
   manualPriorityAt?: Date;
   /** FIX AUDIT-2.2: Links dashboard emergency to mobile SOS session ID */
   sourceEmergencyId?: string;
+  /** P0-doctrine-completion (2026-05-25, life-safety):
+   *  Worker ID who triggered this emergency. Populated from mobile SyncEvent.employeeId
+   *  on SOS_TRIGGERED ingress. Used by monitoring activation to key by worker,
+   *  by audit log to attribute to the right person, and by SAR engine to find
+   *  the missing worker. Optional because admin-created emergencies (manual
+   *  reports from dashboard CreateEmergencyDrawer) may not have a worker. */
+  employeeId?: string;
 }
 
 export interface ZoneData {

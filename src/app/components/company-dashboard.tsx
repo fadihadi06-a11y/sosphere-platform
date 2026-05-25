@@ -823,6 +823,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         // FIX AUDIT-2.2: Use mobile's emergencyId as sourceEmergencyId for cancel matching
         const mobileEmgId = event.data?.emergencyId as string | undefined;
         const empObj = employees.find(e => e.name === event.employeeName);
+        // P0-doctrine-completion (2026-05-25, life-safety): wire the worker ID
+        // through from the SyncEvent so monitoring activation, audit log, and SAR
+        // dispatch can key by worker (not just by name, which can collide).
         const newEmergencyId = addEmergency({
           id: mobileEmgId || generateEmergencyId(),
           severity: "critical",
@@ -833,6 +836,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           status: "active",
           elapsed: 0,
           sourceEmergencyId: mobileEmgId,
+          employeeId: event.employeeId || empObj?.id,
         });
 
         trackEventSync(newEmergencyId, "admin_notified",
@@ -1175,8 +1179,13 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     if (emg && (resolutionType === "minor" || resolutionType === "monitoring")) {
       const checkInInterval = 30; // minutes
       const monitorDuration = 120; // 2 hours
+      // P0-doctrine-completion (2026-05-25, life-safety): emergency.employeeId may
+      // be missing on dashboard-created emergencies (CreateEmergencyDrawer). Use the
+      // emergency.id as a stable fallback so every monitoring record has a unique key
+      // and every sync event has a non-empty recipient field.
+      const monitoringKey = emg.employeeId || emg.id;
       const monitoringData = {
-        employeeId: emg.employeeId,
+        employeeId: monitoringKey,
         employeeName: emg.employeeName,
         zone: emg.zone,
         checkInInterval,
@@ -1184,16 +1193,19 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         monitorUntil: Date.now() + (monitorDuration * 60 * 1000),
         reason: emg.type,
         activatedAt: Date.now(),
-        activatedBy: authState?.userName || "Admin",
+        // P0-doctrine-completion (2026-05-25, life-safety): authState.user.name is the
+        // canonical path; the prior authState.userName was a silent typo that always
+        // fell back to "Admin", losing audit attribution on every monitoring activation.
+        activatedBy: authState?.user?.name || "Admin",
       };
       
       // Save to localStorage
-      localStorage.setItem(`monitoring_${emg.employeeId}`, JSON.stringify(monitoringData));
+      localStorage.setItem(`monitoring_${monitoringKey}`, JSON.stringify(monitoringData));
       
       // Emit signal to employee mobile app
       emitSyncEvent({
         type: "MONITORING_ACTIVATED",
-        employeeId: emg.employeeId,
+        employeeId: monitoringKey,
         employeeName: emg.employeeName,
         zone: emg.zone,
         timestamp: Date.now(),
@@ -1238,7 +1250,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           toast.info("Emergency reactivated");
           // Also clear monitoring if it was activated
           if (emg && (resolutionType === "minor" || resolutionType === "monitoring")) {
-            localStorage.removeItem(`monitoring_${emg.employeeId}`);
+            // P0-doctrine-completion (2026-05-25): same fallback as activation site.
+            localStorage.removeItem(`monitoring_${emg.employeeId || emg.id}`);
           }
         },
       },

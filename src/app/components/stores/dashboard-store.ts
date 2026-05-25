@@ -177,7 +177,12 @@ export interface DashboardActions {
     Priority overrides (takeOwnership, handlePinAsActive, handleClearPriority)
     will write to 'emergency_audit_log' table.
   */
-  addEmergency: (emergency: EmergencyItem) => void;
+  /** P0-doctrine-completion (2026-05-25, life-safety): returns the
+   *  emergency.id so callers can wire follow-up audit events without
+   *  re-derivation. Prior to this PR addEmergency returned void but the
+   *  company-dashboard onSyncEvent handler treated the result as a string ID,
+   *  silently passing undefined to trackEventSync and AICoAdminContext. */
+  addEmergency: (emergency: EmergencyItem) => string;
   updateEmergency: (id: string, updates: Partial<EmergencyItem>) => void;
   resolveEmergency: (id: string) => void;
   /** FIX AUDIT-2.2: ID-based cancel â€” matches emergencyId first, name as fallback */
@@ -532,15 +537,20 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       Priority overrides (takeOwnership, handlePinAsActive, handleClearPriority)
       will write to 'emergency_audit_log' table.
     */
-    addEmergency: (emergency) => set(s => {
+    addEmergency: (emergency) => {
       // SOS is never blocked by trial status â€” safety first
       // SUPABASE_MIGRATION_POINT: this guarantee must be
       // enforced server-side via RLS â€” SOS table always writable
       console.log("[SUPABASE_READY] addEmergency:", emergency.id, emergency.type);
       auditEmergency(emergency.id, emergency.type, emergency.employeeName);
-      const emergencies = [emergency, ...s.emergencies];
-      return { emergencies, ...recompute(emergencies) };
-    }),
+      set(s => {
+        const emergencies = [emergency, ...s.emergencies];
+        return { emergencies, ...recompute(emergencies) };
+      });
+      // P0-doctrine-completion (2026-05-25, life-safety): return the ID so
+      // the SOS ingress handler can chain trackEventSync + AICoAdmin context.
+      return emergency.id;
+    },
 
     updateEmergency: (id, updates) => set(s => {
       console.log("[SUPABASE_READY] updateEmergency:", id, Object.keys(updates));
