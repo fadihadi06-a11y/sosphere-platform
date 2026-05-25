@@ -29,6 +29,13 @@ import { useDashboardStore } from "./stores/dashboard-store";
 import { getAttendanceRecords, getActivityLog, getAllEmployeeStatuses, triggerEvacuation, getActiveEvacuation, getLastEmployeeSync, type AttendanceRecord, type AppActivity, type EmployeeStatusData, type ActiveEvacuation } from "./shared-store";
 import { CallTrigger } from "./call-panel";
 import { toast } from "sonner";
+// phase-1/wire-call-997 (2026-05-25, life-safety): real emergency dial wiring.
+// Replaces the prior toast-only "Calling 997" stub which silently lied to admins.
+import { safeTelCall } from "./utils/safe-tel";
+import { resolveDispatcherCountry, getEmergencyNumber } from "./utils/emergency-services";
+import { countryFromPhone } from "./utils/country-from-phone";
+import { auditEmergency } from "./audit-log-store";
+import { trackEventSync } from "./smart-timeline-tracker";
 // FIX J: Risk Scoring Engine
 import { calculateRiskScore, getRiskColor, getRiskLabel, type EmployeeRiskScore } from "./risk-scoring-engine";
 import { getEvidencePipelineStatus } from "./evidence-store";
@@ -1303,23 +1310,81 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
         }))}
         onTakeAction={(id) => {
           const emergency = sorted.find(e => e.id === id);
-          if (emergency) {
-            // Focus on this emergency
-            toast.success(`Opening emergency for ${emergency.employeeName}`, {
-              description: "Taking immediate action",
-            });
-            // In real implementation, this would open AI Co-Admin
-          }
+          if (!emergency) return;
+          // phase-1/wire-call-997 (2026-05-25, life-safety):
+          // Open the AI Co-Admin via the dashboard store so the admin
+          // actually sees a triage UI for this emergency (no toast-only stub).
+          // Pre-fix the button showed "Taking immediate action" then did NOTHING.
+          const ctx = {
+            emergencyId: emergency.id,
+            employeeName: emergency.employeeName,
+            employeePhone: "",
+            zone: emergency.zone,
+            sosType: "watchdog_unattended",
+            severity: emergency.severity,
+            timestamp: emergency.timestamp.getTime(),
+          };
+          useDashboardStore.setState({ aiCoAdminContext: ctx as any, showAICoAdmin: true });
+          trackEventSync(emergency.id, "escalation_triggered",
+            `Admin opened AI Co-Admin via Watchdog Take Action button`,
+            "Admin", "Admin",
+            { trigger: "watchdog_take_action" });
+          toast.success(`Opening AI Co-Admin for ${emergency.employeeName}`, {
+            description: "Triage panel activated",
+          });
         }}
         onCall997={(id) => {
           const emergency = sorted.find(e => e.id === id);
-          if (emergency) {
-            toast.success("📞 Calling 997 Emergency Services", {
-              description: `For ${emergency.employeeName} in ${emergency.zone}`,
-            });
-            // In real implementation with Twilio:
-            // twilioCall("997", { emergencyId: id, location: emergency.zone });
+          if (!emergency) return;
+          // ═══════════════════════════════════════════════════════════════
+          // phase-1/wire-call-997 (2026-05-25, LIFE-SAFETY CRITICAL):
+          //
+          // Pre-fix: this button showed a "📞 Calling 997 Emergency Services"
+          // toast and DID NOTHING ELSE. A trapped/bleeding worker could die
+          // while admin waited for the imaginary 997 dispatcher.
+          //
+          // Post-fix: resolve the user's local emergency number (Saudi=997,
+          // US=911, EU=112, etc.) via the SAME pipeline mobile-app uses, then
+          // open the OS dialer via safeTelCall (Capacitor CallNumber on native,
+          // tel: URI on mobile web, desktop=toast-with-Copy).
+          //
+          // Why NOT a Twilio call from the dashboard?
+          //   - Server-initiated calls to 997/911 expose us to legal liability
+          //     (impersonating callers, potential prank-call false reports).
+          //   - The admin's real phone is the right caller ID for dispatchers
+          //     (so they can identify the company + call back if disconnected).
+          //   - tel: dial works OFFLINE; Twilio requires cellular/WiFi.
+          //   - Faster: one tap from the admin's existing phone vs an edge
+          //     function roundtrip.
+          //
+          // Audit log is written regardless of whether the OS dialer actually
+          // completes the call — the admin's INTENT to dispatch is the legally
+          // significant action.
+          // ═══════════════════════════════════════════════════════════════
+          let adminPhone: string | undefined;
+          try { adminPhone = localStorage.getItem("sosphere_admin_phone") || undefined; } catch { /* private mode */ }
+          let profileCountry: string | undefined;
+          try { profileCountry = localStorage.getItem("sosphere_country_code") || undefined; } catch { /* ignore */ }
+          if (!profileCountry && adminPhone) {
+            profileCountry = countryFromPhone(adminPhone) || undefined;
           }
+          const country = resolveDispatcherCountry({
+            profileCountry,
+            browserLocale: typeof navigator !== "undefined" ? navigator.language : undefined,
+          });
+          const svc = getEmergencyNumber(country);
+          // Audit BEFORE dialing — if the dial UI fails the intent is still logged.
+          auditEmergency(emergency.id, `emergency_dispatch_${svc.number}`, emergency.employeeName);
+          trackEventSync(emergency.id, "emergency_services_called",
+            `Admin dialed ${svc.label} (${svc.number}) for ${emergency.employeeName} in ${emergency.zone}`,
+            "Admin", "Admin",
+            { emergencyNumber: svc.number, country: svc.country, label: svc.label });
+          // Dial via OS — safeTelCall auto-allows tel: fallback for emergency short codes.
+          safeTelCall(svc.number, `${svc.label} for ${emergency.employeeName}`);
+          toast.success(`📞 Dialing ${svc.label} — ${svc.number}`, {
+            description: `Tell dispatch: ${emergency.employeeName} in ${emergency.zone}. Stay on the line.`,
+            duration: 10000,
+          });
         }}
       />
     </div>
