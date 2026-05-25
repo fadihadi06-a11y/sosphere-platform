@@ -126,10 +126,13 @@ function parseCSVToMappings(file: File): Promise<{ mappings: ColumnMapping[]; ro
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      // P0-doctrine-completion (2026-05-25): papaparse is shimmed as `any` in
+      // vite-env.d.ts (we don't depend on @types/papaparse). Annotate callback
+      // params so implicit-any doesn't trip the HARD tsc gate.
+      complete: (results: { data: Record<string, string>[]; meta: { fields?: string[] } }) => {
         const rows = results.data as Record<string, string>[];
-        const headers = results.meta.fields ?? [];
-        const mappings: ColumnMapping[] = headers.map(header => {
+        const headers: string[] = results.meta.fields ?? [];
+        const mappings: ColumnMapping[] = headers.map((header: string) => {
           const { field, confidence } = autoMapColumn(header);
           const sampleValues = rows
             .slice(0, 3)
@@ -139,7 +142,7 @@ function parseCSVToMappings(file: File): Promise<{ mappings: ColumnMapping[]; ro
         });
         resolve({ mappings, rowCount: rows.length, rawData: rows });
       },
-      error: (err) => reject(err),
+      error: (err: unknown) => reject(err),
     });
   });
 }

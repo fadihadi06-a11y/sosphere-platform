@@ -39,8 +39,12 @@ const LANGUAGES = [
   { code: "ja", name: "Japanese", native: "日本語", flag: "🇯🇵" },
 ];
 
-export function LanguageScreen({ onBack }: { onBack: () => void }) {
-  const [selected, setSelected] = useState("en");
+// P0-doctrine-completion (2026-05-25, life-safety + UX): callers (mobile-app)
+// pass `lang` + `onChangeLang` so the picked language actually propagates to the
+// app. Pre-fix the component had only local state — picking a language did
+// nothing app-wide. Now the parent's setter is wired through.
+export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => void; lang?: string; onChangeLang?: (code: string) => void }) {
+  const [selected, setSelected] = useState(lang || "en");
 
   return (
     <div className="relative flex flex-col h-full">
@@ -53,7 +57,7 @@ export function LanguageScreen({ onBack }: { onBack: () => void }) {
               {LANGUAGES.map((lang, i) => (
                 <button
                   key={lang.code}
-                  onClick={() => setSelected(lang.code)}
+                  onClick={() => { setSelected(lang.code); onChangeLang?.(lang.code); }}
                   className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left"
                   style={{ borderBottom: i < LANGUAGES.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}
                 >

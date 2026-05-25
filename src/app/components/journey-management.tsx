@@ -179,7 +179,7 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
     const interval = setInterval(() => {
       setConnectionWatchdog(prev => {
         const updated = { ...prev };
-        journeys.forEach(j => {
+        journeys.forEach((j: typeof MOCK_JOURNEYS[0]) => {
           if (j.status === "deviated" || (j.status === "delayed" && j.estimatedEnd.getTime() < Date.now() - 15 * 60 * 1000)) {
             if (!updated[j.id]) {
               updated[j.id] = { lostAt: Date.now(), minutesLost: 0 };
@@ -256,7 +256,7 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
 
       {/* Filter */}
       <div className="flex gap-1.5">
-        {(["all", "active", "issues"] as const).map((f: string) => (
+        {(["all", "active", "issues"] as const).map((f) => (
           <button key={f} onClick={() => setFilter(f)}
             className="px-3 py-1.5 rounded-lg"
             style={{

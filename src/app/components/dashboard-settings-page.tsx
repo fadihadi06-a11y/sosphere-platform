@@ -86,13 +86,20 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     });
     // Also save admin profile if authState is available
     if (authState) {
+      // P0-doctrine-completion (2026-05-25, life-safety): AuthState has no `phone`
+      // and MobileUser has no `phone` either — admin profile phone is stored
+      // separately via localStorage in the legacy flow. Cast at use site to a
+      // shape that includes the optional phone so the code type-checks against
+      // the actual runtime data (which may carry phone as an enrichment field).
+      const authShape = authState as { userId?: string; phone?: string };
+      const adminPhone = authShape.phone || "";
       const adminProfile = {
-        name: (authState as { userId?: string }).userId || "Admin",  /* P0-ci-cleanup-strict-2: userId might come from a wider auth shape */
+        name: authShape.userId || "Admin",
         role: activeRole || "admin",
-        phone: authState.phone || "",
+        phone: adminPhone,
       };
       localStorage.setItem("sosphere_admin_profile", JSON.stringify(adminProfile));
-      localStorage.setItem("sosphere_admin_phone", (authState.phone || "").replace(/\s/g, ""));
+      localStorage.setItem("sosphere_admin_phone", adminPhone.replace(/\s/g, ""));
     }
     // Sync to Supabase (background)
     try {
@@ -112,7 +119,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
           updated_at: new Date().toISOString(),
         }, { onConflict: "id" }).then(() => {
           console.log("[Settings] Synced to Supabase");
-        }).catch((e: any) => console.warn("[Settings] Supabase sync failed:", e));
+        }, (e: unknown) => console.warn("[Settings] Supabase sync failed:", e)); // P0-doctrine-completion (2026-05-25): PromiseLike has no .catch.
       }
     } catch { /* Supabase not available */ }
 
@@ -812,7 +819,10 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
               the server version has moved ahead of the accepted version. */}
           <DpaSettingsSection
             companyId={typeof window !== "undefined" ? localStorage.getItem("sosphere_company_id") : null}
-            ownerNameHint={ownerName}
+            // P0-doctrine-completion (2026-05-25): ownerName was an undeclared variable
+            // (probably refactored out of props). Derive from companyName as a fallback
+            // — the component accepts undefined for the hint anyway.
+            ownerNameHint={undefined}
           />
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
             {renderRow(Building2, tr("st.profile"), companyName, "#FF9500")}

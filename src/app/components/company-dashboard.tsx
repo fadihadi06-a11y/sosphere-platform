@@ -823,6 +823,13 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         // FIX AUDIT-2.2: Use mobile's emergencyId as sourceEmergencyId for cancel matching
         const mobileEmgId = event.data?.emergencyId as string | undefined;
         const empObj = employees.find(e => e.name === event.employeeName);
+        // P0-doctrine-completion (2026-05-25, life-safety): wire the worker ID
+        // AND the full SOS-context (phone, battery, signal, GPS) through from the
+        // SyncEvent payload onto the new EmergencyItem. This is the bridge from
+        // the worker's device to the admin's triage UI — every field saves time
+        // when seconds count.
+        const sosData = event.data || {};
+        const gps = sosData.lastGPS as { lat: number; lng: number; address?: string } | undefined;
         const newEmergencyId = addEmergency({
           id: mobileEmgId || generateEmergencyId(),
           severity: "critical",
@@ -833,6 +840,11 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           status: "active",
           elapsed: 0,
           sourceEmergencyId: mobileEmgId,
+          employeeId: event.employeeId || empObj?.id,
+          phone: (sosData.phone as string | undefined) || empObj?.phone,
+          batteryLevel: typeof sosData.battery === "number" ? sosData.battery : undefined,
+          signalStrength: sosData.signal as "excellent" | "good" | "fair" | "poor" | "none" | undefined,
+          location: gps ? { lat: gps.lat, lng: gps.lng, address: gps.address } : undefined,
         });
 
         trackEventSync(newEmergencyId, "admin_notified",
@@ -1175,8 +1187,13 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     if (emg && (resolutionType === "minor" || resolutionType === "monitoring")) {
       const checkInInterval = 30; // minutes
       const monitorDuration = 120; // 2 hours
+      // P0-doctrine-completion (2026-05-25, life-safety): emergency.employeeId may
+      // be missing on dashboard-created emergencies (CreateEmergencyDrawer). Use the
+      // emergency.id as a stable fallback so every monitoring record has a unique key
+      // and every sync event has a non-empty recipient field.
+      const monitoringKey = emg.employeeId || emg.id;
       const monitoringData = {
-        employeeId: emg.employeeId,
+        employeeId: monitoringKey,
         employeeName: emg.employeeName,
         zone: emg.zone,
         checkInInterval,
@@ -1184,16 +1201,19 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
         monitorUntil: Date.now() + (monitorDuration * 60 * 1000),
         reason: emg.type,
         activatedAt: Date.now(),
-        activatedBy: authState?.userName || "Admin",
+        // P0-doctrine-completion (2026-05-25, life-safety): authState.user.name is the
+        // canonical path; the prior authState.userName was a silent typo that always
+        // fell back to "Admin", losing audit attribution on every monitoring activation.
+        activatedBy: authState?.user?.name || "Admin",
       };
       
       // Save to localStorage
-      localStorage.setItem(`monitoring_${emg.employeeId}`, JSON.stringify(monitoringData));
+      localStorage.setItem(`monitoring_${monitoringKey}`, JSON.stringify(monitoringData));
       
       // Emit signal to employee mobile app
       emitSyncEvent({
         type: "MONITORING_ACTIVATED",
-        employeeId: emg.employeeId,
+        employeeId: monitoringKey,
         employeeName: emg.employeeName,
         zone: emg.zone,
         timestamp: Date.now(),
@@ -1238,7 +1258,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           toast.info("Emergency reactivated");
           // Also clear monitoring if it was activated
           if (emg && (resolutionType === "minor" || resolutionType === "monitoring")) {
-            localStorage.removeItem(`monitoring_${emg.employeeId}`);
+            // P0-doctrine-completion (2026-05-25): same fallback as activation site.
+            localStorage.removeItem(`monitoring_${emg.employeeId || emg.id}`);
           }
         },
       },
@@ -1391,7 +1412,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           phone: emp?.phone || "+966 5X XXX XXXX",
           zone: e.zone,
           // FIX 2: Real battery/signal from last sync event
-          batteryLevel: (() => { const sync = getLastEmployeeSync(emp?.id || ""); return sync?.battery ?? null; })(),
+          // P0-doctrine-completion (2026-05-25): null → undefined for SOSEmployee
+          // (popup type expects optional number; null doesn't satisfy `number | undefined`).
+          batteryLevel: (() => { const sync = getLastEmployeeSync(emp?.id || ""); return sync?.battery ?? undefined; })(),
           signalStrength: (() => { const sync = getLastEmployeeSync(emp?.id || ""); const s = sync?.signal; return s === "excellent" ? "excellent" : s === "good" ? "good" : s === "poor" ? "poor" : "good"; })() as "excellent" | "good" | "fair" | "poor",
           elapsedSeconds: e.elapsed,
           status: e.status,
@@ -1957,7 +1980,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                   batteryLevel: emg.batteryLevel,
                   signalStrength: emg.signalStrength as "excellent" | "good" | "fair" | "poor" | "none",
                   lastGPS: emg.location ? { lat: emg.location.lat, lng: emg.location.lng, address: emg.location.address } : undefined,
-                  timestamp: emg.timestamp,
+                  // P0-doctrine-completion (2026-05-25): AICoAdminContext.timestamp is number (epoch ms);
+                  // EmergencyItem.timestamp is Date. Convert via getTime().
+                  timestamp: emg.timestamp.getTime(),
                   zoneEmployeeCount: employees.filter(emp => emp.zone === emg.zone).length,
                 };
                 setAICoAdminContext(ctx);
@@ -2379,7 +2404,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 status: e.status,
               }))
             }
-            adminName={authState?.userName || "Admin"}
+            // P0-doctrine-completion (2026-05-25, life-safety): second userName→user.name fix (cascade round 2 caught this).
+            adminName={authState?.user?.name || "Admin"}
             onComplete={(notes) => {
               setHandoverNote(notes);
               setShowHandoverModal(false);
@@ -3270,14 +3296,19 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
   authState?: AuthState;
   companyState?: CompanyState;
   webMode?: boolean;
-  hybridMode?: boolean;
+  // P0-doctrine-completion (2026-05-25): DashboardState.hybridMode is a string
+  // ("auto", "on", "off"), not a boolean. Aligning the prop type ends the
+  // string→boolean mismatch that was hidden by the soft TS warning.
+  hybridMode?: string;
   onGuideMe?: () => void;
   zoneClusters?: ZoneCluster[];
 }) {
   // Gate nav items by RBAC + Plan — Danger Priority Order
   const NAV_LIVE_THREAT = getNavLiveThreat(t).filter(item => {
     if (!authState) return true;
-    if (item.id === "riskMap") return (!companyState || hasFeature(companyState, "risk_map")) && hybridMode !== false;
+    // P0-doctrine-completion (2026-05-25): hybridMode is "auto" | "on" | "off" (string),
+    // so disable risk map only when explicitly set to "off".
+    if (item.id === "riskMap") return (!companyState || hasFeature(companyState, "risk_map")) && hybridMode !== "off";
     return true;
   });
   const NAV_INTELLIGENCE = getNavIntelligence(t);

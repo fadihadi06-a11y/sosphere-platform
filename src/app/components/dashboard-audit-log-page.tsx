@@ -1529,11 +1529,13 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       const wmTx = pw / 2 - (wmTW * wmCos) / 2;
       const wmTy = ph / 2 - (wmTW * wmSin) / 2;
 
-      doc.internal.write(
+      // P0-doctrine-completion (2026-05-25): jsPDF private API for PDF transform matrix.
+      // Same pattern as compliance-reports.tsx.
+      (doc.internal as any).write(
         `q ${wmCos.toFixed(4)} ${wmSin.toFixed(4)} ${(-wmSin).toFixed(4)} ${wmCos.toFixed(4)} ${(wmTx * 72 / 25.4).toFixed(2)} ${((ph - wmTy) * 72 / 25.4).toFixed(2)} cm`
       );
       doc.text(wmText, 0, 0);
-      doc.internal.write("Q");
+      (doc.internal as any).write("Q");
       doc.restoreGraphicsState();
 
       // Corner security marks

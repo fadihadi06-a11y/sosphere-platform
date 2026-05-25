@@ -149,6 +149,10 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
   });
 
   // Add any warnings for employees not in store
+  // P0-doctrine-completion (2026-05-25): the warning-only branch lacks
+  // warningCycle / warningTimestamp fields that the inferred array element
+  // type carries from the conditional branch above. They're optional at
+  // runtime so we make them explicit nullable here.
   warnings.forEach(w => {
     if (!baseEmployees.find(e => e.id === w.employeeId)) {
       allEmployees.push({
@@ -158,6 +162,8 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
         status: w.warningCycle >= 2 ? "overdue" as const : "due_soon" as const,
         lastCheckin: w.timestamp - 30 * 60000,
         nextDue: w.deadlineAt,
+        warningCycle: w.warningCycle,
+        warningTimestamp: w.timestamp,
       });
     }
   });

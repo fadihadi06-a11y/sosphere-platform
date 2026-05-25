@@ -63,6 +63,23 @@ export interface EmergencyItem {
   manualPriorityAt?: Date;
   /** FIX AUDIT-2.2: Links dashboard emergency to mobile SOS session ID */
   sourceEmergencyId?: string;
+  /** P0-doctrine-completion (2026-05-25, life-safety):
+   *  Worker ID who triggered this emergency. Populated from mobile SyncEvent.employeeId
+   *  on SOS_TRIGGERED ingress. Used by monitoring activation to key by worker,
+   *  by audit log to attribute to the right person, and by SAR engine to find
+   *  the missing worker. Optional because admin-created emergencies (manual
+   *  reports from dashboard CreateEmergencyDrawer) may not have a worker. */
+  employeeId?: string;
+  /** P0-doctrine-completion (2026-05-25, life-safety) — SOS context enrichment.
+   *  Populated on SOS_TRIGGERED ingress from the mobile SyncEvent.data payload
+   *  so the dashboard AI Co-Admin and SAR engine can triage with full context
+   *  (battery for dispatch urgency, signal for callback strategy, GPS for SAR
+   *  cone, phone for direct dial). All optional — admin-created emergencies
+   *  may lack them and must still resolve through the same code path. */
+  phone?: string;
+  batteryLevel?: number;
+  signalStrength?: "excellent" | "good" | "fair" | "poor" | "none";
+  location?: { lat: number; lng: number; address?: string };
 }
 
 export interface ZoneData {
@@ -72,6 +89,10 @@ export interface ZoneData {
   employees: number;
   activeAlerts: number;
   status: "active" | "restricted" | "evacuated";
+  /** P0-doctrine-completion (2026-05-25, life-safety): alias for `employees`
+   *  used by the data-export panel to render head count. Optional so existing
+   *  ZoneData literals (mocks + fetched rows) without it still type-check. */
+  workers?: number;
 }
 
 // ── Mock Employees ─────────────────────────────────────────────

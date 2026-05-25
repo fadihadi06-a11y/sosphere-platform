@@ -500,16 +500,33 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // listing fabricated incidents under their REAL company name —
   // false-document liability. Mocks remain available only in DEV.
   const useMockFallback = !!import.meta.env.DEV;
+  // P0-doctrine-completion (2026-05-25): fallbacks must be PROPERLY-SHAPED empty
+  // stubs (not bare `[]`) so the rest of the function can access .tableRows /
+  // .chartBars / .incidentChart / .workersChart without union narrowing failures.
+  // The empty-shape pattern keeps the PDF render a no-op for missing data while
+  // preserving the type contract — no silent crashes on production-empty tenants.
   const EMPTY_KPI = {
     tableRows: [["No data yet", "—", "—", "Pending first incident"]],
-    chartBars: [{ label: "—", value: 0, color: "#cccccc" }],
+    // P0-doctrine-completion (2026-05-25): MOCK_KPI_DATA.chartBars[i].color is an
+    // RGB tuple (used by the PDF renderer's setFillColor(r,g,b)), not a hex string.
+    // Cast to the same tuple shape so the "as typeof MOCK_KPI_DATA" overlaps cleanly.
+    chartBars: [{ label: "—", value: 0, color: [204, 204, 204] as [number, number, number] }],
   } as typeof MOCK_KPI_DATA;
+  const EMPTY_ZONE_RISK = {
+    tableRows: [] as string[][],
+    incidentChart: [] as Array<{ label: string; value: number; color: [number, number, number] }>,
+    workersChart: [] as Array<{ label: string; value: number; color: [number, number, number] }>,
+  } as typeof MOCK_ZONE_RISK;
+  const EMPTY_CHECKIN_COMPLIANCE = {
+    tableRows: [] as string[][],
+    chartBars: [] as Array<{ label: string; value: number; max: number; color: [number, number, number]; suffix: string }>,
+  } as typeof MOCK_CHECKIN_COMPLIANCE;
   const kpi               = data?.kpi               ?? (useMockFallback ? MOCK_KPI_DATA : EMPTY_KPI);
   const incidents         = data?.incidents         ?? (useMockFallback ? MOCK_INCIDENT_TABLE : []);
   const correctiveActions = data?.correctiveActions ?? (useMockFallback ? MOCK_CORRECTIVE_ACTIONS : []);
-  const zoneRisk          = data?.zoneRisk          ?? (useMockFallback ? MOCK_ZONE_RISK : []);
+  const zoneRisk          = data?.zoneRisk          ?? (useMockFallback ? MOCK_ZONE_RISK : EMPTY_ZONE_RISK);
   const employeeRoster    = data?.employeeRoster    ?? (useMockFallback ? MOCK_EMPLOYEE_ROSTER : []);
-  const checkinCompliance = data?.checkinCompliance ?? (useMockFallback ? MOCK_CHECKIN_COMPLIANCE : []);
+  const checkinCompliance = data?.checkinCompliance ?? (useMockFallback ? MOCK_CHECKIN_COMPLIANCE : EMPTY_CHECKIN_COMPLIANCE);
   const journeyLog        = data?.journeyLog        ?? (useMockFallback ? MOCK_JOURNEY_LOG : []);
   const playbookData      = data?.playbookData      ?? (useMockFallback ? MOCK_PLAYBOOK_DATA : []);
 
@@ -1112,11 +1129,14 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
     const tx = cx - (textW * cos) / 2;
     const ty = cy - (textW * sin) / 2;
 
-    doc.internal.write(
+    // P0-doctrine-completion (2026-05-25): doc.internal.write is a low-level PDF
+    // primitive not in jsPDF's public typings (used here for the rotated watermark
+    // transform matrix). Cast through `any` to acknowledge we're using the internal API.
+    (doc.internal as any).write(
       `q ${cos.toFixed(4)} ${sin.toFixed(4)} ${(-sin).toFixed(4)} ${cos.toFixed(4)} ${(tx * 72 / 25.4).toFixed(2)} ${((pageHeight - ty) * 72 / 25.4).toFixed(2)} cm`
     );
     doc.text(text, 0, 0);
-    doc.internal.write("Q");
+    (doc.internal as any).write("Q");
     doc.restoreGraphicsState();
 
     // ── Corner security marks ──────────────────────────────

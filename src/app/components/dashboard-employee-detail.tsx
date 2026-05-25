@@ -89,8 +89,10 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
     if (!employee) return ACTIVITY_FALLBACK;
     try {
       const logs = getRealAuditLog();
+      // P0-doctrine-completion (2026-05-25): AuditLog.actor is `{id,name,level}`, not a string.
+      // Need .name. Same for detail (already a string, kept as-is).
       const empLogs = logs.filter(e =>
-        e.actor?.toLowerCase().includes(employee.name.toLowerCase()) ||
+        e.actor?.name?.toLowerCase().includes(employee.name.toLowerCase()) ||
         e.detail?.toLowerCase().includes(employee.name.toLowerCase())
       );
       if (empLogs.length === 0) return ACTIVITY_FALLBACK;
@@ -115,9 +117,10 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
     if (!employee) return INCIDENTS_FALLBACK;
     try {
       const logs = getRealAuditLog();
+      // P0-doctrine-completion (2026-05-25): same AuditLog.actor.name access as above.
       const emergencyLogs = logs.filter(e =>
         (e.action?.includes("emergency") || e.action?.includes("sos") || e.action?.includes("fall")) &&
-        (e.actor?.toLowerCase().includes(employee.name.toLowerCase()) ||
+        (e.actor?.name?.toLowerCase().includes(employee.name.toLowerCase()) ||
          e.detail?.toLowerCase().includes(employee.name.toLowerCase()))
       );
       if (emergencyLogs.length === 0) return INCIDENTS_FALLBACK;
