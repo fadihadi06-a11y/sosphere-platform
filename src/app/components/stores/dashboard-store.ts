@@ -558,6 +558,9 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
         // REAL: Record admin response performance in RRP Analytics
         try {
           const responseSec = resolved.elapsed || 0; // seconds admin took to resolve
+          // P0-ci-cleanup-strict-3 (2026-05-25): align with RRPSession shape:
+          // totalTimeSec (not totalResponseTime), openedIRE (not ireUsed),
+          // and drop the unsupported `outcome` field.
           recordRRPSession({
             emergencyId: id,
             employeeName: resolved.employeeName,
@@ -565,13 +568,12 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
             sosType: resolved.type || "SOS",
             severity: resolved.severity || "high",
             threatLevel: resolved.severity === "critical" ? "high" : "medium",
-            totalResponseTime: responseSec,
+            totalTimeSec: responseSec,
             actionsCompleted: 3,
             actionsTotal: 3,
             perActionTimes: [responseSec > 6 ? responseSec - 6 : 5, 3, 3],
             autoEscalated: false,
-            ireUsed: false,
-            outcome: "resolved",
+            openedIRE: false,
           });
         } catch { /* non-blocking */ }
       }
