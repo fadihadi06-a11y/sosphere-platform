@@ -336,6 +336,17 @@ export function getTimelineEntries(emergencyId: string): TimelineEntry[] {
   return timeline?.entries || [];
 }
 
+/** P0-doctrine-completion (2026-05-25, life-safety):
+ *  Global query — return ALL entries across ALL emergencies. Used by the
+ *  dashboard analytics page to aggregate incident counts and response times
+ *  across the company-wide audit timeline.
+ *  Pre-fix the analytics page called getTimelineEntries() without an
+ *  emergencyId, which TypeScript caught only after the HARD gate engaged. */
+export function getAllTimelineEntries(): TimelineEntry[] {
+  const timelines = loadTimelines();
+  return Object.values(timelines).flatMap(t => t.entries);
+}
+
 /** Get the first event (SOS trigger) */
 export function getSOSTriggerTime(emergencyId: string): number | null {
   const entries = getTimelineEntries(emergencyId);
@@ -352,6 +363,21 @@ export function getRealResponseTimeSec(emergencyId: string): number | null {
   );
   if (!trigger || !firstResponse) return null;
   return Math.round((firstResponse.timestampMs - trigger.timestampMs) / 1000);
+}
+
+/** P0-doctrine-completion (2026-05-25, life-safety):
+ *  Aggregate — average response time in seconds across all emergencies that
+ *  reached "first responder" status. Returns null when no emergency yet has
+ *  a complete trigger→first-response pair. Used by the analytics page KPI tile. */
+export function getAverageResponseTimeSec(): number {
+  const timelines = loadTimelines();
+  const samples: number[] = [];
+  for (const id of Object.keys(timelines)) {
+    const v = getRealResponseTimeSec(id);
+    if (v !== null) samples.push(v);
+  }
+  if (samples.length === 0) return 0;
+  return Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
 }
 
 /** Get real total duration in minutes (trigger → resolved) */

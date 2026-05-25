@@ -12,6 +12,13 @@ export interface KPIData {
   resolvedToday: number;
   avgResponseTimeSec: number;
   complianceRate: number;
+  // P0-doctrine-completion (2026-05-25, life-safety): optional enrichment fields
+  // computed at store-hydration time. Without these declared, the dashboard
+  // analytics page accessed phantom fields and got `undefined` at runtime — the
+  // KPI tiles fell back silently. Now the contract is explicit.
+  avgResponseTime?: number;   // alias used by analytics page; mirrors avgResponseTimeSec
+  safetyScore?: number;       // 0-100, computed when employee + emergency data is loaded
+  slaCompliance?: number;     // 0-100, % of emergencies meeting <2min response SLA
 }
 
 export async function fetchKPIs(): Promise<KPIData> {
