@@ -1980,7 +1980,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                   batteryLevel: emg.batteryLevel,
                   signalStrength: emg.signalStrength as "excellent" | "good" | "fair" | "poor" | "none",
                   lastGPS: emg.location ? { lat: emg.location.lat, lng: emg.location.lng, address: emg.location.address } : undefined,
-                  timestamp: emg.timestamp,
+                  // P0-doctrine-completion (2026-05-25): AICoAdminContext.timestamp is number (epoch ms);
+                  // EmergencyItem.timestamp is Date. Convert via getTime().
+                  timestamp: emg.timestamp.getTime(),
                   zoneEmployeeCount: employees.filter(emp => emp.zone === emg.zone).length,
                 };
                 setAICoAdminContext(ctx);
@@ -2402,7 +2404,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
                 status: e.status,
               }))
             }
-            adminName={authState?.userName || "Admin"}
+            // P0-doctrine-completion (2026-05-25, life-safety): second userName→user.name fix (cascade round 2 caught this).
+            adminName={authState?.user?.name || "Admin"}
             onComplete={(notes) => {
               setHandoverNote(notes);
               setShowHandoverModal(false);
