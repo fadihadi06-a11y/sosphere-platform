@@ -1,3 +1,4 @@
+import { buildTelURI, buildMapsDirectionsURI } from "./utils/uri-safe";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -364,7 +365,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
                     <motion.button whileTap={{ scale: 0.97 }}
                       onClick={() => {
                         if (gpsCoords) {
-                          window.open(`https://www.google.com/maps/dir/?api=1&origin=${gpsCoords.lat},${gpsCoords.lng}&destination=${selectedPlace.lat},${selectedPlace.lng}&travelmode=driving`, "_blank");
+                          const mapsURI = buildMapsDirectionsURI(gpsCoords.lat, gpsCoords.lng, selectedPlace.lat, selectedPlace.lng, "driving"); if (mapsURI) window.open(mapsURI, "_blank");
                         }
                       }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
@@ -373,7 +374,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
                       Directions
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.97 }}
-                      onClick={() => { window.location.href = `tel:${selectedPlace.phone}`; }}
+                      onClick={() => { const telURI = buildTelURI(selectedPlace.phone); if (telURI) window.location.href = telURI; }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
                       style={{ borderRadius: 12, background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontSize: 12, fontWeight: 600, color: "#00C853" }}>
                       <Phone style={{ width: 13, height: 13 }} />

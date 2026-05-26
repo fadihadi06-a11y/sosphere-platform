@@ -1,3 +1,4 @@
+import { secureRandomId } from "./utils/secure-random";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Contact Tier System
 // 3 types: Full Contact | Lite Contact | Ghost Contact
@@ -193,7 +194,7 @@ export function generateSafetyLink(contactId: string, userName: string): {
   url: string;
   expiry: number;
 } {
-  const linkId = `SL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const linkId = secureRandomId("SL", 4);
   const expiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   return {
     linkId,

@@ -1,3 +1,4 @@
+import { buildWhatsAppURI } from "./utils/uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Unified Call Panel
 // Reusable across: Employee Cards, Emergency Popup, Incident Reports
@@ -101,7 +102,7 @@ export function CallPanel({
 
   const handleWhatsApp = () => {
     const num = phone.replace(/[\s+\-\(\)]/g, "");
-    window.open(`https://wa.me/${num}`);
+    const waURI = buildWhatsAppURI(num); if (waURI) window.open(waURI);
     setCallDone("whatsapp");
     onCallPlaced?.("whatsapp");
   };
