@@ -37,6 +37,9 @@ import {
   getRateLimitHeaders,
 } from "../_shared/rate-limiter.ts";
 import { clientIp } from "../_shared/api-guard.ts";
+// F2 (2026-05-26): import safeErrorResponse to close CodeQL alert #9
+// (js/stack-trace-exposure). See catch block at the bottom of serve().
+import { safeErrorResponse } from "../_shared/safe-error.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
@@ -274,10 +277,15 @@ serve(async (req) => {
       },
     );
   } catch (err) {
-    console.error("[twilio-sms] Error:", err);
-    return new Response(
-      JSON.stringify({ error: "Internal server error", detail: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    // F2 (2026-05-26): root fix for CodeQL js/stack-trace-exposure #9.
+    // Was: returned `JSON.stringify({ error: "...", detail: String(err) })`.
+    // String(err) on an Error object exposes the stack trace, which leaks
+    // file paths, library versions, and internal call sites to any caller
+    // (this is a public Twilio webhook handler — no auth gate before us).
+    // safeErrorResponse logs the full err to the function's stderr with
+    // a correlationId and returns ONLY the correlationId + generic message
+    // to the caller; the operator can grep the log by correlationId to
+    // pull the full stack when debugging.
+    return safeErrorResponse(err, 500, corsHeaders, "twilio-sms");
   }
 });

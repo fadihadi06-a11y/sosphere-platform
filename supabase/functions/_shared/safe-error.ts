@@ -142,6 +142,17 @@ export function probeErrorResponse(
   const message = GENERIC_MESSAGE[status] ?? "Probe failed";
   const truncated = (err instanceof Error ? err.message : String(err)).slice(0, 200);
 
+  // F2 (2026-05-26): CodeQL flags this Response under js/stack-trace-exposure
+  // (alerts #605, #578). The leak is INTENTIONAL: probeErrorResponse is the
+  // admin/operator-only helper used by `forgery-probe` and `sos-dispatch-probe`
+  // to surface debugging context that a generic "Internal server error" would
+  // hide. The truncated message (max 200 chars, no stack frames) lets the
+  // operator diagnose without giving an attacker meaningful internals. For
+  // user-facing endpoints the sibling `safeErrorResponse` (NOT this one) is
+  // mandatory — see safeErrorResponse above. Suppression scoped to this one
+  // Response so the rule keeps firing if a future caller switches the public
+  // endpoints to probeErrorResponse by mistake.
+  // codeql[js/stack-trace-exposure]
   return new Response(
     JSON.stringify({
       error: message,
