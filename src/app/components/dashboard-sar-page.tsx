@@ -38,6 +38,10 @@ import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
 import { emitAdminSignal } from "./shared-store";
+// P0-sar-audit-fixes (2026-05-26, life-safety): durable audit-log entries for every
+// SAR mission state transition (start / pause / resume / end / alert-workers).
+// ISO 27001 §12.4 + ISO 45001 record-keeping for SAR operations.
+import { logAuditEvent } from "./audit-log-store";
 import {
   type SARMission, type WorkerType, type TerrainType, type SARPhase,
   type SearchCone, type EscalationStep, type NearbyWorker, type HazardZone,
@@ -597,10 +601,30 @@ export function SARProtocolPage() {
     setElapsedTimer(0);
     saveSARMission(mission);
     // Auto-alert mobile workers via shared store
-    emitAdminSignal("SAR_ACTIVATED", scenario.employeeId, {
+    // P0-sar-audit-fixes (2026-05-26): include zoneIds[] for mobile-side geo-filtering
+    // and capture delivery ack so admin sees real status instead of always "alerted".
+    void emitAdminSignal("SAR_ACTIVATED", scenario.employeeId, {
       employeeName: scenario.employeeName,
       zone: scenario.zone,
+      zoneIds: [scenario.zone],
+      missionId: mission.id,
+    }).then(({ delivered }) => {
+      if (!delivered) {
+        toast.warning("Mobile alert queued (offline)", {
+          description: "Workers will be notified when the dashboard reconnects.",
+        });
+      }
     });
+    // P0-sar-audit-fixes: durable audit-log entry for SAR start.
+    try {
+      logAuditEvent("emergency", "sar_mission_started", {
+        severity: "critical",
+        zone: scenario.zone,
+        targetId: mission.id,
+        targetName: `SAR ${mission.id} — ${scenario.employeeName}`,
+        detail: `SAR scenario "${scenario.title}" started for ${scenario.employeeName} (worker type: ${scenario.workerType}, terrain: ${scenario.terrain}).`,
+      });
+    } catch { /* audit-log failures must never block a life-safety mission */ }
 
     // #48 SAR Enhancement B (2026-04-28): write an audit_log entry every
     // time a training scenario is loaded. This is the legal counterpart
@@ -664,14 +688,26 @@ export function SARProtocolPage() {
       saveSARMission(updated);
       // Notify mobile workers that the search is over
       if (status === "found_safe" || status === "found_injured") {
-        emitAdminSignal("SAR_WORKER_FOUND", activeMission.employeeId, {
+        void emitAdminSignal("SAR_WORKER_FOUND", activeMission.employeeId, {
           employeeName: activeMission.employeeName,
           status,
+          missionId: activeMission.id,
         });
         toast.success(status === "found_safe" ? "Worker found safe!" : "Worker found — medical attention needed", {
           description: `${activeMission.employeeName} — SAR mission concluded`,
         });
       }
+      // P0-sar-audit-fixes (2026-05-26): durable audit-log entry for SAR resolution.
+      // Severity reflects the outcome — success for safe, critical for injured/cancelled.
+      try {
+        logAuditEvent("emergency", `sar_mission_ended_${status}`, {
+          severity: status === "found_safe" ? "success" : "critical",
+          zone: activeMission.zone,
+          targetId: activeMission.id,
+          targetName: `SAR ${activeMission.id} — ${activeMission.employeeName}`,
+          detail: `SAR mission for ${activeMission.employeeName} ended with status: ${status}.`,
+        });
+      } catch { /* audit-log failures must never block resolution */ }
     }
     setActiveMission(null);
     setShowScenarioPicker(true);
@@ -1293,13 +1329,34 @@ function MissionHeader({
           </div>
 
           {/* Pause/Resume */}
+          {/* P0-sar-audit-fixes (2026-05-26): the pause toggle ONLY freezes the visual
+              timer — the underlying escalation algorithm and search-cone expansion
+              continue. Tooltip + audit log now make this explicit so admins do not
+              believe they have actually paused the mission. */}
           <button
-            onClick={onTogglePause}
+            onClick={() => {
+              const willPause = !isPaused;
+              onTogglePause();
+              try {
+                logAuditEvent("emergency", willPause ? "sar_timer_paused" : "sar_timer_resumed", {
+                  severity: "warning",
+                  zone: mission.zone,
+                  targetId: mission.id,
+                  targetName: `SAR ${mission.id} — ${mission.employeeName}`,
+                  detail: willPause
+                    ? "Visual timer paused — escalation algorithm continues running."
+                    : "Visual timer resumed.",
+                });
+              } catch { /* audit best-effort */ }
+            }}
             style={{
               width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)",
               background: "rgba(255,255,255,0.05)", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
+            title={isPaused
+              ? "Resume visual timer"
+              : "Freeze visual timer only — escalation algorithm keeps running"}
           >
             {isPaused ? <Play size={16} color="#00C853" /> : <Pause size={16} color="rgba(255,255,255,0.5)" />}
           </button>
@@ -1318,14 +1375,41 @@ function MissionHeader({
           </button>
 
           {/* Alert Mobile Workers */}
+          {/* P0-sar-audit-fixes (2026-05-26, life-safety):
+              (a) include zoneIds[] so mobile-side can geo-filter on receive,
+              (b) await delivery ack from emitAdminSignal Promise and show DIFFERENT
+                  toast for delivered vs offline-queued (no more lying "sent" toast),
+              (c) durable audit-log entry so post-incident review knows when an
+                  Alert-Workers broadcast was fired and whether it actually delivered. */}
           <button
             onClick={() => {
-              emitAdminSignal("SAR_ACTIVATED", mission.employeeId, {
+              void emitAdminSignal("SAR_ACTIVATED", mission.employeeId, {
                 employeeName: mission.employeeName,
                 zone: mission.zone,
-              });
-              toast.success("SAR Alert sent to all mobile workers", {
-                description: `Field workers near ${mission.zone} will see the alert on their phones.`,
+                zoneIds: [mission.zone],
+                missionId: mission.id,
+                reAlert: true,
+              }).then(({ delivered }) => {
+                if (delivered) {
+                  toast.success("SAR Alert delivered to mobile workers", {
+                    description: `Field workers near ${mission.zone} will see the alert on their phones.`,
+                  });
+                } else {
+                  toast.warning("Mobile alert queued (offline)", {
+                    description: "Workers will be notified when the dashboard reconnects to Realtime.",
+                  });
+                }
+                try {
+                  logAuditEvent("emergency", "sar_alert_workers", {
+                    severity: delivered ? "warning" : "critical",
+                    zone: mission.zone,
+                    targetId: mission.id,
+                    targetName: `SAR ${mission.id} — ${mission.employeeName}`,
+                    detail: delivered
+                      ? `SAR_ACTIVATED broadcast delivered to mobile clients via Realtime.`
+                      : `SAR_ACTIVATED broadcast queued in localStorage — Realtime offline.`,
+                  });
+                } catch { /* audit best-effort */ }
               });
             }}
             style={{
@@ -1333,7 +1417,7 @@ function MissionHeader({
               background: "rgba(255,149,0,0.1)", cursor: "pointer", color: "#FF9500",
               ...TYPOGRAPHY.caption, display: "flex", alignItems: "center", gap: 6,
             }}
-            title="Send SAR alert to all nearby mobile workers"
+            title="Send SAR alert to all nearby mobile workers — toast shows delivery status"
           >
             <Bell size={14} /> Alert Workers
           </button>
