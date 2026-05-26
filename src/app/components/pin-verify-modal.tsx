@@ -1,3 +1,4 @@
+import { secureRandomId } from "./utils/secure-random";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — 2FA / PIN Verification Modal
 // Required for Owner & Main Admin before sensitive permission changes
@@ -167,7 +168,7 @@ export function PINVerifyModal({
         // Log successful verification to Supabase
         if (SUPABASE_CONFIG.isConfigured) {
           supabase.from("audit_log").insert({
-            id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+            id: secureRandomId("AUD"),
             action: "pin_verified",
             actor: actorName,
             actor_role: actorLevel,
@@ -195,7 +196,7 @@ export function PINVerifyModal({
           // Log lockout to audit
           if (SUPABASE_CONFIG.isConfigured) {
             supabase.from("audit_log").insert({
-              id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+              id: secureRandomId("AUD"),
               action: "pin_lockout",
               actor: actorName,
               actor_role: actorLevel,

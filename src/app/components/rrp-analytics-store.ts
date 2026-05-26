@@ -1,3 +1,4 @@
+import { secureRandomInt } from "./utils/secure-random";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — RRP Analytics Store
 // ─────────────────────────────────────────────────────────────
@@ -306,26 +307,26 @@ export function seedMockRRPData() {
   const now = Date.now();
 
   for (let i = 0; i < 25; i++) {
-    const actionsTotal = 3 + Math.floor(Math.random() * 2);
-    const actionsCompleted = Math.random() > 0.1 ? actionsTotal : actionsTotal - 1;
-    const perActionTimes = Array.from({ length: actionsCompleted }, () => 5 + Math.floor(Math.random() * 20));
-    const totalTime = perActionTimes.reduce((a, b) => a + b, 0) + Math.floor(Math.random() * 10);
+    const actionsTotal = 3 + secureRandomInt(2);
+    const actionsCompleted = secureRandomInt(100) > 10 ? actionsTotal : actionsTotal - 1;
+    const perActionTimes = Array.from({ length: actionsCompleted }, () => 5 + secureRandomInt(20));
+    const totalTime = perActionTimes.reduce((a, b) => a + b, 0) + secureRandomInt(10);
 
     mockSessions.push({
       id: `RRP-MOCK-${i}`,
       emergencyId: `EMG-MOCK-${i}`,
-      employeeName: names[Math.floor(Math.random() * names.length)],
-      zone: zones[Math.floor(Math.random() * zones.length)],
-      sosType: types[Math.floor(Math.random() * types.length)],
-      severity: sevs[Math.floor(Math.random() * sevs.length)],
-      threatLevel: threats[Math.floor(Math.random() * threats.length)],
+      employeeName: names[secureRandomInt(names.length)],
+      zone: zones[secureRandomInt(zones.length)],
+      sosType: types[secureRandomInt(types.length)],
+      severity: sevs[secureRandomInt(sevs.length)],
+      threatLevel: threats[secureRandomInt(threats.length)],
       totalTimeSec: totalTime,
       actionsTotal,
       actionsCompleted,
       perActionTimes,
-      autoEscalated: Math.random() > 0.85,
-      openedIRE: Math.random() > 0.7,
-      timestamp: new Date(now - (25 - i) * 86400000 * (0.5 + Math.random())).toISOString(),
+      autoEscalated: secureRandomInt(100) >= 85,
+      openedIRE: secureRandomInt(100) >= 70,
+      timestamp: new Date(now - (25 - i) * 86400000 * (0.5 + secureRandomInt(1_000_000) / 1_000_000)).toISOString(),
     });
   }
 
