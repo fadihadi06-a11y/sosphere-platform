@@ -1,3 +1,4 @@
+import { safeErrorResponse } from "../_shared/safe-error.ts";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — SOS Alert Orchestrator (Edge Function) — HARDENED v2
 // Handles: POST /functions/v1/sos-alert
@@ -2316,13 +2317,8 @@ serve(async (req: Request) => {
       headers: { ...cors, ...getRateLimitHeaders(triggerRl), "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("[sos-alert] Unhandled error:", err);
-    return new Response(JSON.stringify({
-      error: "Internal error",
-      detail: err instanceof Error ? err.message : String(err),
-    }), {
-      status: 500,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    // P0-safe-error (2026-05-26): full detail logged server-side,
+    // client gets generic message + correlation ID.
+    return safeErrorResponse(err, 500, cors, "sos-alert.handler");
   }
 });

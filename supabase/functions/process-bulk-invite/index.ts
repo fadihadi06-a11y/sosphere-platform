@@ -1,3 +1,4 @@
+import { safeErrorResponse } from "../_shared/safe-error.ts";
 // SOSphere — Edge Function: process-bulk-invite (E1.4 + E1.5 + E1.6.1 + E1.7)
 // World-class async worker. Reads pgmq, drives Supabase Auth admin API
 // directly. E1.6.1 inserts invitations rows for accept_invitation().
@@ -154,7 +155,7 @@ Deno.serve(async (req: Request) => {
 
   } catch (err) {
     console.error("[process-bulk-invite] top-level error:", err);
-    return jsonResponse({ ok: false, error: String(err) }, 500);
+    return safeErrorResponse(err, 500, {}, "process-bulk-invite.unhandled");
   }
 });
 
