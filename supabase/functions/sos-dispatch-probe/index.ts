@@ -429,7 +429,12 @@ serve(async (req) => {
       cleanup.dispatch_attempts_error = "delete_failed";
     }
   } catch (e) {
-    cleanup.dispatch_attempts_threw = String(e).slice(0, 200);
+    // H2 (2026-05-27): was `String(e).slice(0, 200)` which leaked stack
+    // info into the response body. Log to console.error and return a
+    // static marker so the operator knows an exception occurred but
+    // CodeQL no longer flags the response as stack-trace-exposure.
+    console.error("[probe-error] cleanup.dispatch_attempts.threw:", e);
+    cleanup.dispatch_attempts_threw = "exception_thrown";
   }
   try {
     const { error: delSessErr } = await admin
@@ -440,7 +445,9 @@ serve(async (req) => {
       cleanup.session_error = "delete_failed";
     }
   } catch (e) {
-    cleanup.session_threw = String(e).slice(0, 200);
+    // H2 (2026-05-27): same fix as dispatch_attempts_threw above.
+    console.error("[probe-error] cleanup.session.threw:", e);
+    cleanup.session_threw = "exception_thrown";
   }
 
   // ── Result ──────────────────────────────────────────────────────────────
