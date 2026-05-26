@@ -1,3 +1,4 @@
+import { buildMapsURI } from "./utils/uri-safe";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -516,7 +517,7 @@ function ActiveEvacuationBanner({
                 <span style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600 }}>{pt.name}</span>
                 {pt.capacity && <span style={{ fontSize: 10, color: "rgba(0,200,224,0.6)" }}>Cap: {pt.capacity}</span>}
                 <a
-                  href={`https://maps.google.com/?q=${pt.lat},${pt.lng}`}
+                  href={buildMapsURI(pt.lat, pt.lng)}
                   target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1"
                   style={{ fontSize: 10, color: "rgba(0,200,224,0.7)" }}
