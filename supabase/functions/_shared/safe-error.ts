@@ -116,16 +116,27 @@ export function safeErrorResponse(
 }
 
 /**
- * Variant for probe / cleanup / observability Edge Functions
- * where exposing the error detail is intentional (the caller is
- * an admin-only probe, not a public API). Still logs full detail
- * and emits a correlation ID, but additionally returns a
- * truncated detail string in the response — capped at 200 chars
- * so we don't accidentally dump a 50-line stack into the JSON.
+ * Variant for probe / cleanup / observability Edge Functions.
  *
- * The CodeQL rule will still fire on this helper because we
- * intentionally include the detail. If/when we want to silence
- * those alerts too, this is the single function to dismiss.
+ * G (2026-05-26): refactored. Previously this helper included a
+ * truncated copy of the error message in the response body
+ * (`probeDetail`), under the assumption that the caller was an
+ * admin-only probe so leaking 200 chars of internals was OK.
+ * CodeQL's js/stack-trace-exposure rule fires anyway because it
+ * cannot distinguish admin endpoints from public ones, and the
+ * inline suppression comment turned out not to be honored. Rather
+ * than fight the suppression syntax, we removed the leak at the
+ * source: the response body now contains only the generic error
+ * message + a correlationId, and the full detail (name, message,
+ * stack) goes to the function's stderr / Supabase logs.
+ *
+ * Operator workflow stays the same: when a probe returns 500 with
+ * `{ error, correlationId }`, the operator greps the function logs
+ * by correlationId to pull the exact error. No information loss
+ * for the legitimate caller; CodeQL no longer flags the Response.
+ *
+ * Closes alerts #605 (this Response) and transitively #578
+ * (sos-dispatch-probe routes its catch block through this helper).
  */
 export function probeErrorResponse(
   err: unknown,
@@ -137,27 +148,16 @@ export function probeErrorResponse(
   const detail = err instanceof Error
     ? { name: err.name, message: err.message, stack: err.stack }
     : { value: String(err) };
+  // Full detail goes to function stderr -> Supabase logs only.
+  // Operator: grep the log by correlationId to retrieve the stack.
   console.error("[probe-error]", tag, correlationId, detail);
 
   const message = GENERIC_MESSAGE[status] ?? "Probe failed";
-  const truncated = (err instanceof Error ? err.message : String(err)).slice(0, 200);
 
-  // F2 (2026-05-26): CodeQL flags this Response under js/stack-trace-exposure
-  // (alerts #605, #578). The leak is INTENTIONAL: probeErrorResponse is the
-  // admin/operator-only helper used by `forgery-probe` and `sos-dispatch-probe`
-  // to surface debugging context that a generic "Internal server error" would
-  // hide. The truncated message (max 200 chars, no stack frames) lets the
-  // operator diagnose without giving an attacker meaningful internals. For
-  // user-facing endpoints the sibling `safeErrorResponse` (NOT this one) is
-  // mandatory — see safeErrorResponse above. Suppression scoped to this one
-  // Response so the rule keeps firing if a future caller switches the public
-  // endpoints to probeErrorResponse by mistake.
-  // codeql[js/stack-trace-exposure]
   return new Response(
     JSON.stringify({
       error: message,
       correlationId,
-      probeDetail: truncated,
     }),
     {
       status,
