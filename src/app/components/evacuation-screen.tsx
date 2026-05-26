@@ -11,6 +11,11 @@ import {
   Shield, ArrowLeft, ExternalLink, ChevronRight, Info,
   Footprints, Eye, Radio,
 } from "lucide-react";
+// PR (D) 2026-05-26 — root fix for CodeQL js/xss-through-dom alert #41.
+// Replaces the inline `https://maps.google.com/?q=${lat},${lng}` template-string
+// (which CodeQL cannot prove safe) with the centralised buildMapsURI() sanitiser
+// that runs a strict numeric allow-list on the embedded coordinates.
+import { buildMapsURI } from "./utils/uri-safe";
 import {
   getActiveEvacuation,
   getEvacuationPointsByZone,
@@ -218,9 +223,13 @@ export function EvacuationScreen({
     );
   }
 
-  const mapsUrl = nearestPoint
-    ? `https://maps.google.com/?q=${nearestPoint.lat},${nearestPoint.lng}&navigate=yes`
-    : null;
+  // PR (D) — was inline `https://maps.google.com/?q=${lat},${lng}&navigate=yes`.
+  // buildMapsURI() validates lat/lng as finite numbers within +/-90/+/-180
+  // and returns "" on failure, so the `&&` guard at the anchor still
+  // excludes the link when coords are missing. The "&navigate=yes" hint
+  // is no longer appended; Google Maps opens the location card with a
+  // Directions button by default.
+  const mapsUrl = nearestPoint ? buildMapsURI(nearestPoint.lat, nearestPoint.lng) : "";
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
