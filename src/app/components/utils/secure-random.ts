@@ -60,8 +60,15 @@ export function hasSecureRandom(): boolean {
  * Cryptographically secure integer in the half-open range
  * `[0, maxExclusive)`. Uses rejection sampling to avoid modulo
  * bias — caller does not need to worry about uniform distribution.
- * Falls back to Math.random with a console.warn if Web Crypto is
- * unavailable; the fallback is biased but never seen in production.
+ *
+ * Throws if Web Crypto is unavailable. We INTENTIONALLY do not
+ * fall back to Math.random: a CodeQL dataflow trace would chase
+ * the Math.random branch through every caller and re-flag the
+ * sink as Insecure randomness even though the production path is
+ * crypto-backed. A loud throw also exposes the misconfiguration
+ * to the developer instead of silently downgrading to predictable
+ * randomness. Web Crypto is present in every modern browser and
+ * Node ≥ 18; the throw path is unreachable in production.
  */
 export function secureRandomInt(maxExclusive: number): number {
   if (!Number.isInteger(maxExclusive) || maxExclusive <= 0) {
@@ -69,8 +76,10 @@ export function secureRandomInt(maxExclusive: number): number {
   }
   const c = getCrypto();
   if (!c) {
-    console.warn("[secure-random] Web Crypto unavailable — falling back to Math.random");
-    return Math.floor(Math.random() * maxExclusive);
+    throw new Error(
+      "secureRandomInt: Web Crypto API (crypto.getRandomValues) is not available in this environment. " +
+      "Refusing to fall back to Math.random because the call site is security-sensitive."
+    );
   }
   // Rejection sampling against the largest multiple of maxExclusive
   // that fits in 32 bits. This keeps the distribution uniform.
