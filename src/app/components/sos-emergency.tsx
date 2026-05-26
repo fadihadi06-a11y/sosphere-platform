@@ -1,3 +1,4 @@
+import { buildSmsURI, buildTelURI } from "./utils/uri-safe";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -175,7 +176,8 @@ async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: 
   // Web-only fallback — user explicitly gets their browser's sms: handler
   if (typeof window !== "undefined") {
     try {
-      window.location.href = `sms:${contactPhone.replace(/[\s\-()]/g, "")}?body=${encodeURIComponent(message)}`;
+      const smsURI = buildSmsURI(contactPhone, message);
+      if (smsURI) window.location.href = smsURI;
       return true;
     } catch {}
   }
@@ -230,7 +232,8 @@ async function directCall(phone: string): Promise<boolean> {
     // failure. Personal contacts (8+ digits) keep the original behaviour.
     if (/^\d{3,4}$/.test(cleaned)) {
       try {
-        window.location.href = `tel:${cleaned}`;
+        const telURI = buildTelURI(cleaned);
+        if (telURI) window.location.href = telURI;
         console.warn("[SOS] directCall: native paths failed — using tel: fallback for emergency short code:", cleaned);
         return true;
       } catch (telErr) {
@@ -242,7 +245,8 @@ async function directCall(phone: string): Promise<boolean> {
   }
 
   try {
-    window.location.href = `tel:${cleaned}`;
+    const telURI = buildTelURI(cleaned);
+    if (telURI) window.location.href = telURI;
     console.log("[SOS] directCall fallback tel: (web only):", cleaned);
     return true;
   } catch {
@@ -2480,7 +2484,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               });
               try { directCall(EMERGENCY_NUMBER); } catch (e) {
                 console.error("[SOS] no-contacts direct emergency dial failed:", e);
-                try { window.location.href = `tel:${EMERGENCY_NUMBER}`; } catch {}
+                try { const telURI = buildTelURI(EMERGENCY_NUMBER); if (telURI) window.location.href = telURI; } catch {}
               }
               // Move straight to monitoring — there are no contacts to ring
               // through the local cascade. Server SOS keeps running.

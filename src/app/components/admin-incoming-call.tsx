@@ -1,3 +1,4 @@
+import { buildTelURI } from "./utils/uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Admin Incoming Call System
 // Two modes:
@@ -83,7 +84,7 @@ function IncomingCallOverlay({ signal, onDismiss }: IncomingCallOverlayProps) {
           const adminPhone = localStorage.getItem("sosphere_admin_phone");
           if (adminPhone) {
             // Try to ring admin's mobile phone
-            window.open(`tel:${adminPhone.replace(/\s/g, "")}`, "_system");
+            const telURI = buildTelURI(adminPhone); if (telURI) window.open(telURI, "_system");
           }
         } catch {
           // localStorage unavailable or window.open blocked — fall through
