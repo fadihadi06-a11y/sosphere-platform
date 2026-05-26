@@ -1,3 +1,4 @@
+import { secureRandomString } from "./utils/secure-random";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Digital Certification System
 // ─────────────────────────────────────────────────────────────
@@ -68,10 +69,10 @@ function loadDrillProgress(): Record<string, { completed: boolean; bestScore: nu
 }
 
 function generateCertId(): string {
+  // P0-secure-random (2026-05-26): use cryptographically secure RNG so
+  // certificate IDs cannot be predicted by an attacker watching the timestamp.
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let id = "CERT-";
-  for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
-  return id;
+  return "CERT-" + secureRandomString(8, chars);
 }
 
 // Map scenario IDs to categories
