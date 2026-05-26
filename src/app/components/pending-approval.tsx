@@ -1,3 +1,4 @@
+import { buildWhatsAppURI, buildMailtoURI } from "./utils/uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Pending Approval Screen
 // FIX 1: StorageEvent listener + 5s polling for approval
@@ -111,7 +112,7 @@ export function PendingApproval({
     const msg = encodeURIComponent(
       `Hi ${adminName}, this is a new team member waiting for approval on SOSphere for ${companyName}. Could you please approve my request?`
     );
-    window.open(`https://wa.me/${cleanPhone.replace("+", "")}?text=${msg}`, "_blank");
+    const waURI = buildWhatsAppURI(cleanPhone, msg); if (waURI) window.open(waURI, "_blank");
   };
 
   const handleEmail = () => {
@@ -120,7 +121,7 @@ export function PendingApproval({
     const body = encodeURIComponent(
       `Hi ${adminName},\n\nI'm waiting for approval to join ${companyName} on SOSphere.\n\nPlease check your dashboard under People & Teams → Pending Approvals.\n\nThank you.`
     );
-    window.open(`mailto:${adminEmail}?subject=${subject}&body=${body}`, "_blank");
+    const mailURI = buildMailtoURI(adminEmail, subject, body); if (mailURI) window.open(mailURI, "_blank");
   };
 
   const handleCopyPhone = () => {

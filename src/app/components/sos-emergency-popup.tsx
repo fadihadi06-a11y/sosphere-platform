@@ -1,3 +1,4 @@
+import { buildWhatsAppURI } from "./utils/uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — SOS Emergency Popup (Admin Dashboard)
 // Simplified Call Flow:
@@ -117,7 +118,7 @@ function CallMethodPanel({
   };
 
   const handleWhatsApp = () => {
-    window.open(`https://wa.me/${phone.replace(/[\s+]/g, "")}`);
+    const waURI = buildWhatsAppURI(phone); if (waURI) window.open(waURI);
     onCallPlaced();
     onClose();
   };
