@@ -1,6 +1,11 @@
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { getStoredUser } from "./api/safe-rpc";
 import type { EvidenceManifest } from "./evidence-hash";
+// PR (D) 2026-05-26 — root fix for CodeQL js/insecure-randomness alert #2.
+// Replaces Math.random()-based ID generation that flows through ev.id /
+// ev.submittedBy into the IncidentPhotoReport rendering path. secureRandomId
+// uses crypto.getRandomValues so dataflow no longer trips the rule.
+import { secureRandomId } from "./utils/secure-random";
 
 import { Shield } from "lucide-react";
 // =================================================================
@@ -309,7 +314,11 @@ function notifyChange(evidenceId: string, action: string) {
 /** Store new evidence from field worker report */
 export function storeEvidence(entry: Omit<EvidenceEntry, "id" | "actions" | "comments" | "status">): EvidenceEntry {
   const vault = loadVault();
-  const evidenceId = `EVD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  // PR (D) — was: `EVD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`.
+  // secureRandomId uses crypto.getRandomValues so the dataflow that CodeQL
+  // chased from this line into hub-incident-reports.tsx:615 (via ev.id) is
+  // no longer flagged as Insecure randomness.
+  const evidenceId = secureRandomId("EVD", 5);
   const newEntry: EvidenceEntry = {
     ...entry,
     id: evidenceId,
@@ -426,7 +435,8 @@ export function addEvidenceAction(
 
   vault[idx].actions.push({
     ...action,
-    id: `ACT-${Date.now()}-${Math.random().toString(36).slice(2, 4)}`,
+    // PR (D) — was: `ACT-${Date.now()}-${Math.random().toString(36).slice(2, 4)}`.
+    id: secureRandomId("ACT", 4),
     timestamp: Date.now(),
   });
   saveVault(vault);
