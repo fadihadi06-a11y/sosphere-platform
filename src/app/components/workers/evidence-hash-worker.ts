@@ -2,7 +2,21 @@
 /// <reference lib="webworker" />
 declare const self: DedicatedWorkerGlobalScope;
 
+// F2 (2026-05-26): root fix for CodeQL js/missing-origin-check #44.
+// DedicatedWorkers can only receive messages from the script that
+// instantiated them (same-origin invariant of the Web Worker spec),
+// so `ev.origin` is empty-string for legitimate messages from the
+// parent page. We still validate defensively because the alert is a
+// life-safety check: a malicious browser extension or compromised
+// global could in theory dispatch a synthetic MessageEvent with a
+// non-empty origin. Rejecting any non-empty origin closes the rule
+// at the source without changing behaviour for the legitimate caller.
 self.addEventListener("message", async (ev) => {
+  if (ev.origin && ev.origin !== self.location.origin) {
+    // Reject messages claiming a foreign origin — DedicatedWorker
+    // contract says these cannot exist in normal operation.
+    return;
+  }
   const { id, blobs } = ev.data || {};
   try {
     const hashes: string[] = [];
