@@ -62,3 +62,28 @@ query-filters:
       # See: docs/SECURITY_BY_DESIGN_LOCALSTORAGE.md
       # ──────────────────────────────────────────────────────────────────
       id: js/clear-text-storage-of-sensitive-data
+  - exclude:
+      # ──────────────────────────────────────────────────────────────────
+      # B (2026-05-26): noise reduction — unused-local-variable is a
+      # code-quality (style) check, not a security rule. ESLint already
+      # surfaces these as @typescript-eslint/no-unused-vars during every
+      # PR build and in pre-push (verify-before-push) — having CodeQL
+      # ALSO fire on every unused import / function / param produces
+      # hundreds of duplicate "Note" alerts (255 open on main at the
+      # time of this exclude) that flood the platform owner with
+      # GitHub emails on every push and every nightly scan, without
+      # adding any signal ESLint does not already provide.
+      #
+      # We keep the canonical lint enforcement in ESLint where authors
+      # see it inline in their editor and at pre-push, and drop the
+      # duplicate CodeQL channel. No security rule is weakened — every
+      # other CodeQL query continues to fire on these files.
+      #
+      # See: docs/SECURITY_BY_DESIGN_LOCALSTORAGE.md style for the
+      # "documented exclusion not silent suppression" pattern.
+      # ──────────────────────────────────────────────────────────────────
+      id: js/useless-assignment-to-local
+  - exclude:
+      # Same rationale as the rule above — ESLint already surfaces
+      # unused locals via @typescript-eslint/no-unused-vars.
+      id: js/unused-local-variable
