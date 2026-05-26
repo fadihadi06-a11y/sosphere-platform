@@ -19,6 +19,9 @@
 import { getSubscription, type SubscriptionTier } from "./subscription-service";
 import { getLastKnownPosition, getBatteryLevel, getPositionAgeMs, isPositionStale } from "./offline-gps-tracker";
 import { supabase } from "./api/supabase-client";
+// PR (E) 2026-05-26 — global Math.random sweep. SOS trace_id fallback
+// (when crypto.randomUUID isn't available) must still be unpredictable.
+import { secureRandomString } from "./utils/secure-random";
 import { getStoredBearerToken } from "./api/safe-rpc";
 import { publishNeighborAlert, publishNeighborRetract, canBroadcast as canBroadcastNeighbors } from "./neighbor-alert-service";
 import { buildAiScriptPayload } from "./ai-voice-call-service";
@@ -439,9 +442,10 @@ export async function triggerServerSOS(opts: {
   // ── L1-A/B observability: generate trace_id + client_claimed_at ─
   // These are generated as early as possible so they capture the
   // moment of intent (button-press) rather than network arrival.
+  // PR (E) — fallback was Math.random; now crypto.getRandomValues via secureRandomString.
   const traceId = (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    : `${Date.now()}-${secureRandomString(8).toLowerCase()}`;
   const clientClaimedAt = new Date().toISOString();
   console.log(`[SOS-Server] trace_id=${traceId} client_claimed_at=${clientClaimedAt}`);
 

@@ -50,6 +50,9 @@ const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => 
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
+// PR (E) 2026-05-26 — global Math.random sweep. EMG- IDs identify
+// life-safety SOS emergencies; crypto-RNG prevents prediction/forgery.
+import { secureRandomId } from "./utils/secure-random";
 // (ShiftSchedulingPage, GeofencingPage, GPSCompliancePage, BroadcastPage — now merged into hubs/location tabs)
 
 // (DashboardEvacuationPage, EmployeeStatusPage — now merged into hubs via PAGE_TO_HUB redirects)
@@ -166,11 +169,11 @@ import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, ch
 import "./api/integration-checklist";
 
 // FIX 7: Collision-resistant emergency ID generator
-// Uses full timestamp (base36) + 4-char random suffix → ~2.1B unique values/second
+// PR (E) 2026-05-26 — global Math.random sweep. EMG- IDs identify
+// life-safety SOS emergencies; predictability would let an attacker
+// race a real worker and submit forged confirmations.
 function generateEmergencyId(): string {
-  const ts = Date.now().toString(36).toUpperCase();
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `EMG-${ts}-${rand}`;
+  return secureRandomId("EMG", 4);
 }
 
 // ── Smart Navigation: Maps standalone page IDs to their Hub + Tab ──

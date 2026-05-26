@@ -6,6 +6,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { getRealAuditLog, onAuditEvent, type AuditEntry as RealAuditEntry } from "./audit-log-store";
 import { fetchAuditLog } from "./api/data-layer";
+// PR (E) 2026-05-26 — global Math.random sweep.
+import { secureRandomId } from "./utils/secure-random";
 import { motion, AnimatePresence } from "motion/react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -542,7 +544,8 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     const pw = doc.internal.pageSize.getWidth();
     const ph = doc.internal.pageSize.getHeight();
     const today = new Date();
-    const docId = `AUD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    // PR (E) — was Math.random-based AUD doc ID; now crypto-backed.
+    const docId = secureRandomId("AUD", 4);
     const verifyURL = `https://sosphere.app/verify/${docId}`;
     let qrDataURL = "";
     try {

@@ -47,6 +47,8 @@ import { toast } from "sonner";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { safeRpc } from "./api/safe-rpc";
+// PR (E) 2026-05-26 — global Math.random sweep.
+import { secureRandomString } from "./utils/secure-random";
 
 // ── Types ─────────────────────────────────────────────────────
 type JobStatus =
@@ -144,7 +146,9 @@ export function DashboardJobsPage() {
   }, []);
 
   useEffect(() => {
-    const runId = Math.random().toString(36).slice(2, 6);
+    // PR (E) 2026-05-26 — global Math.random sweep. runId is used for
+    // log correlation; non-security but consistent crypto source.
+    const runId = secureRandomString(4).toLowerCase();
     if (!SUPABASE_CONFIG.isConfigured) {
       setLoading(false);
       return;

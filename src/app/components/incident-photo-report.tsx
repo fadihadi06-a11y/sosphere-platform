@@ -6,6 +6,9 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// PR (E) 2026-05-26 — global Math.random sweep. PHOTO- IDs become
+// public S3 keys; predictable IDs would let an attacker enumerate other workers' photos.
+import { secureRandomId } from "./utils/secure-random";
 import {
   Camera, Send, CheckCircle2, AlertTriangle, X,
   ImagePlus, FileText, Users, Shield, ChevronRight,
@@ -233,7 +236,8 @@ export function IncidentPhotoReport({
         const dataUrl = ev.target?.result as string;
         const sizeKB = Math.round(file.size / 1024);
         setPhotos(prev => [...prev, {
-          id: `PHOTO-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          // PR (E) — was Math.random-based PHOTO- ID; now crypto-backed.
+          id: secureRandomId("PHOTO", 4),
           dataUrl,
           size: sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`,
         }]);

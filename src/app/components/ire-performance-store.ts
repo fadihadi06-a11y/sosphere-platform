@@ -12,6 +12,11 @@
 //   Schema defined in api/rls-policies.ts
 // ═══════════════════════════════════════════════════════════════
 
+// PR (E) 2026-05-26 — global Math.random sweep. IRE record IDs use
+// underscores so secureRandomId's dash format isn't a drop-in;
+// we compose manually using secureRandomString for the random suffix.
+import { secureRandomString } from "./utils/secure-random";
+
 const STORAGE_KEY = "sosphere_ire_performance";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -95,7 +100,8 @@ function saveRecords(records: IRERecord[]) {
 export function recordIREResponse(data: Omit<IRERecord, "id" | "timestamp">): IRERecord {
   const record: IRERecord = {
     ...data,
-    id: `ire_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    // PR (E) — was Math.random-based ire_ ID; secureRandomString for the suffix only.
+    id: `ire_${Date.now()}_${secureRandomString(6).toLowerCase()}`,
     timestamp: new Date().toISOString(),
   };
   const records = loadRecords();
