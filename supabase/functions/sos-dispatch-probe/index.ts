@@ -136,12 +136,19 @@ serve(async (req) => {
   let probeUserId: string;
   try {
     const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    if (listErr) return jsonResponse({ pass: false, stage: "list_users", error: listErr.message }, 500, corsHeaders);
+    if (listErr) {
+      // H (2026-05-27): err.message removed from response. Closes #578.
+      console.error("[probe-error] list_users:", listErr);
+      return jsonResponse({ pass: false, stage: "list_users", error: "list_users_failed" }, 500, corsHeaders);
+    }
     const existing = list.users.find((u) => u.email === PROBE_USER_EMAIL);
     if (existing) {
       probeUserId = existing.id;
       const { error: updErr } = await admin.auth.admin.updateUserById(probeUserId, { password: probePassword });
-      if (updErr) return jsonResponse({ pass: false, stage: "update_user", error: updErr.message }, 500, corsHeaders);
+      if (updErr) {
+        console.error("[probe-error] update_user:", updErr);
+        return jsonResponse({ pass: false, stage: "update_user", error: "update_user_failed" }, 500, corsHeaders);
+      }
     } else {
       const { data: created, error: createErr } = await admin.auth.admin.createUser({
         email: PROBE_USER_EMAIL,
@@ -149,7 +156,8 @@ serve(async (req) => {
         email_confirm: true,
       });
       if (createErr || !created?.user) {
-        return jsonResponse({ pass: false, stage: "create_user", error: createErr?.message }, 500, corsHeaders);
+        console.error("[probe-error] create_user:", createErr);
+        return jsonResponse({ pass: false, stage: "create_user", error: "create_user_failed" }, 500, corsHeaders);
       }
       probeUserId = created.user.id;
     }
@@ -164,7 +172,8 @@ serve(async (req) => {
     password: probePassword,
   });
   if (signInErr || !session?.session) {
-    return jsonResponse({ pass: false, stage: "sign_in", error: signInErr?.message }, 500, corsHeaders);
+    console.error("[probe-error] sign_in:", signInErr);
+    return jsonResponse({ pass: false, stage: "sign_in", error: "sign_in_failed" }, 500, corsHeaders);
   }
   const userJwt = session.session.access_token;
 
@@ -254,10 +263,11 @@ serve(async (req) => {
     .eq("id", emergencyId)
     .maybeSingle();
   if (sessErr || !sessRow) {
+    if (sessErr) console.error("[probe-error] read_session:", sessErr);
     return jsonResponse({
       pass: false,
       stage: "read_session",
-      error: sessErr?.message ?? "no row",
+      error: sessErr ? "read_session_failed" : "no_row",
       probeUserId,
       emergencyId,
       triggerResponse: triggerJson,
@@ -270,10 +280,11 @@ serve(async (req) => {
     .select("id, channel, outcome, contact_index, trace_id, contact_phone")
     .eq("emergency_id", emergencyId);
   if (dispatchErr) {
+    console.error("[probe-error] read_dispatch_attempts:", dispatchErr);
     return jsonResponse({
       pass: false,
       stage: "read_dispatch_attempts",
-      error: dispatchErr.message,
+      error: "read_dispatch_attempts_failed",
       probeUserId,
       emergencyId,
     }, 500, corsHeaders);
@@ -288,10 +299,11 @@ serve(async (req) => {
     .order("created_at", { ascending: false })
     .limit(1);
   if (triggerAuditErr) {
+    console.error("[probe-error] read_trigger_audit:", triggerAuditErr);
     return jsonResponse({
       pass: false,
       stage: "read_trigger_audit",
-      error: triggerAuditErr.message,
+      error: "read_trigger_audit_failed",
       probeUserId,
       emergencyId,
     }, 500, corsHeaders);
@@ -338,10 +350,11 @@ serve(async (req) => {
     .eq("id", emergencyId)
     .maybeSingle();
   if (endedErr || !endedRow) {
+    if (endedErr) console.error("[probe-error] read_session_after_end:", endedErr);
     return jsonResponse({
       pass: false,
       stage: "read_session_after_end",
-      error: endedErr?.message ?? "no row",
+      error: endedErr ? "read_session_after_end_failed" : "no_row",
       probeUserId,
       emergencyId,
     }, 500, corsHeaders);
@@ -356,10 +369,11 @@ serve(async (req) => {
     .order("created_at", { ascending: false })
     .limit(1);
   if (endAuditErr) {
+    console.error("[probe-error] read_end_audit:", endAuditErr);
     return jsonResponse({
       pass: false,
       stage: "read_end_audit",
-      error: endAuditErr.message,
+      error: "read_end_audit_failed",
       probeUserId,
       emergencyId,
     }, 500, corsHeaders);
@@ -410,7 +424,10 @@ serve(async (req) => {
     const { error: delDispatchErr } = await admin
       .from("sos_dispatch_attempts").delete().eq("emergency_id", emergencyId);
     cleanup.dispatch_attempts_deleted = !delDispatchErr;
-    if (delDispatchErr) cleanup.dispatch_attempts_error = delDispatchErr.message;
+    if (delDispatchErr) {
+      console.error("[probe-error] cleanup.dispatch_attempts:", delDispatchErr);
+      cleanup.dispatch_attempts_error = "delete_failed";
+    }
   } catch (e) {
     cleanup.dispatch_attempts_threw = String(e).slice(0, 200);
   }
@@ -418,7 +435,10 @@ serve(async (req) => {
     const { error: delSessErr } = await admin
       .from("sos_sessions").delete().eq("id", emergencyId);
     cleanup.session_deleted = !delSessErr;
-    if (delSessErr) cleanup.session_error = delSessErr.message;
+    if (delSessErr) {
+      console.error("[probe-error] cleanup.session:", delSessErr);
+      cleanup.session_error = "delete_failed";
+    }
   } catch (e) {
     cleanup.session_threw = String(e).slice(0, 200);
   }
