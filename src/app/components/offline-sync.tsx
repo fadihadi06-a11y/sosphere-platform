@@ -12,6 +12,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// PR (E) 2026-05-26 — global Math.random sweep.
+import { secureRandomId } from "./utils/secure-random";
 import {
   Wifi, WifiOff, RefreshCw, Check, X,
   AlertTriangle, MapPin, Clock, Database,
@@ -60,7 +62,8 @@ export function addToOfflineQueue(item: Omit<OfflineQueueItem, "id" | "retries" 
   const queue = getOfflineQueue();
   queue.push({
     ...item,
-    id: `OQ-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    // PR (E) — was Math.random-based OQ- ID; now crypto-backed.
+    id: secureRandomId("OQ", 4),
     retries: 0,
     synced: false,
   });

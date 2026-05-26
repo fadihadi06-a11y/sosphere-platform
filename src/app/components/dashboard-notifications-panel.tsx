@@ -13,6 +13,10 @@ import {
   LogIn,
 } from "lucide-react";
 import { onSyncEvent, type SyncEvent } from "./shared-store";
+// PR (E) 2026-05-26 — global Math.random sweep. 7 notification IDs
+// were Math.random-based; replaced with secureRandomId so a malicious
+// extension cannot enumerate N-* IDs to guess upcoming notifications.
+import { secureRandomId } from "./utils/secure-random";
 import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -342,7 +346,7 @@ export function NotificationsPanel({
 
       if (event.type === "SOS_TRIGGERED") {
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "sos", severity: "critical",
           title: `🚨 SOS — ${event.employeeName}`,
           body: `SOS button activated in ${event.zone || "Unknown Zone"}. Immediate response required.`,
@@ -352,7 +356,7 @@ export function NotificationsPanel({
         };
       } else if (event.type === "HAZARD_REPORT") {
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "hazard", severity: "high",
           title: `☢️ Hazard Report — ${event.employeeName}`,
           body: `${event.data?.hazardType || "Environmental"} hazard reported in ${event.zone || "Unknown Zone"}.`,
@@ -362,7 +366,7 @@ export function NotificationsPanel({
         };
       } else if (event.type === "CHECKIN") {
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "checkin", severity: "success",
           title: `✅ Check-in — ${event.employeeName}`,
           body: `Employee checked in at ${event.zone || "their zone"}.`,
@@ -375,7 +379,7 @@ export function NotificationsPanel({
         const photoCount = d?.photoCount || d?.photos?.length || 0;
         const sev = d?.severity || "medium";
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "hazard", severity: sev === "critical" ? "critical" : sev === "high" ? "high" : "medium",
           title: `📋 Incident Report — ${event.employeeName}`,
           body: `${d?.incidentType || "Incident"} report with ${photoCount} photo${photoCount !== 1 ? "s" : ""} from ${event.zone || "Unknown Zone"}. Severity: ${(sev || "medium").toUpperCase()}.${d?.comment ? ` "${d.comment.slice(0, 80)}${d.comment.length > 80 ? "…" : ""}"` : ""}`,
@@ -389,7 +393,7 @@ export function NotificationsPanel({
       if (event.type === "ADMIN_ACKNOWLEDGED") {
         const d = event.data as any;
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "sos", severity: "success",
           title: `✅ Admin Responded — ${event.employeeName}`,
           body: `${d?.adminName || "Safety Admin"} acknowledged SOS in ${d?.responseTimeSec || "?"}s. Response logged.`,
@@ -400,7 +404,7 @@ export function NotificationsPanel({
       } else if (event.type === "ADMIN_UNREACHABLE") {
         const d = event.data as any;
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           category: "sos", severity: "critical",
           title: `⚠️ Admin ${d?.action === "declined" ? "Declined" : "Missed"} SOS — ${event.employeeName}`,
           body: `${d?.adminName || "Safety Admin"} ${d?.action === "declined" ? "declined" : "did not answer"} SOS call after ${d?.responseTimeSec || "30"}s. ${d?.reason || "Escalation may be needed."}`,
@@ -414,7 +418,7 @@ export function NotificationsPanel({
       if (event.type === "SOS_EVIDENCE_SUBMITTED") {
         const d = event.data as any;
         newNotif = {
-          id: `N-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: secureRandomId("N", 4),
           severity: "high",
           category: "sos",
           // P0-doctrine-completion (2026-05-25): Notification interface has `emoji?: string`, not `icon`.

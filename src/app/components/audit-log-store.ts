@@ -15,6 +15,12 @@
 
 import { supabase } from "./api/supabase-client";
 import { getCompanyId } from "./shared-store";
+// PR (E) 2026-05-26 — global Math.random sweep. Audit-log IDs are
+// security-sensitive (chain-of-custody, ISO 27001 §A.12.4). Replaced
+// the previous Math.random suffix with secureRandomId which uses
+// crypto.getRandomValues so entries can't be predicted by an attacker
+// who sees one audit ID and tries to enumerate adjacent entries.
+import { secureRandomId } from "./utils/secure-random";
 
 export type AuditCategory =
   | "permission_change"
@@ -155,7 +161,8 @@ export function logAuditEvent(
   const now = new Date();
 
   const entry: AuditEntry = {
-    id: `AUD-${now.getTime().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`,
+    // PR (E) — was: `AUD-${now.getTime().toString(36).toUpperCase()}-${Math.random()...slice(2,5).toUpperCase()}`.
+    id: secureRandomId("AUD", 3),
     timestamp: now,
     timestampMs: now.getTime(),
     actor,
