@@ -324,9 +324,9 @@ export function seedMockRRPData() {
       actionsTotal,
       actionsCompleted,
       perActionTimes,
-      autoEscalated: Math.random() > 0.85,
-      openedIRE: Math.random() > 0.7,
-      timestamp: new Date(now - (25 - i) * 86400000 * (0.5 + Math.random())).toISOString(),
+      autoEscalated: secureRandomInt(100) >= 85,
+      openedIRE: secureRandomInt(100) >= 70,
+      timestamp: new Date(now - (25 - i) * 86400000 * (0.5 + secureRandomInt(1_000_000) / 1_000_000)).toISOString(),
     });
   }
 
