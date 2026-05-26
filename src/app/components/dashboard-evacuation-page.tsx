@@ -869,12 +869,22 @@ function AssemblyPointsSetup({
                             👥 Cap: {pt.capacity}
                           </span>
                         )}
-                        <a href={`https://maps.google.com/?q=${pt.lat},${pt.lng}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1"
-                          style={{ fontSize: 11, color: "#00C8E0", textDecoration: "none" }}>
-                          <ExternalLink className="size-3" /> Open in Maps
-                        </a>
+                        {/* PR (D) 2026-05-26 — root fix for CodeQL js/xss-through-dom alert #40.
+                            Was inline `https://maps.google.com/?q=${pt.lat},${pt.lng}` template-string
+                            (the same pattern was already migrated to buildMapsURI at line 520 by
+                            PR #18 but this site was missed). buildMapsURI() validates coords; if
+                            invalid it returns "" and we skip rendering the anchor entirely. */}
+                        {(() => {
+                          const url = buildMapsURI(pt.lat, pt.lng);
+                          return url ? (
+                            <a href={url}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1"
+                              style={{ fontSize: 11, color: "#00C8E0", textDecoration: "none" }}>
+                              <ExternalLink className="size-3" /> Open in Maps
+                            </a>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
