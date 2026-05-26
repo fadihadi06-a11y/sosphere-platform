@@ -87,3 +87,26 @@ query-filters:
       # Same rationale as the rule above — ESLint already surfaces
       # unused locals via @typescript-eslint/no-unused-vars.
       id: js/unused-local-variable
+  - exclude:
+      # ──────────────────────────────────────────────────────────────────
+      # F1 (2026-05-26): noise reduction — superfluous-trailing-arguments
+      # is a CodeQL "correctness" check, not a security rule. It fires
+      # when a function is called with more positional arguments than
+      # the declaration accepts. Our codebase has 30+ instances, almost
+      # all in shared-store.ts where the listener-callback API has
+      # evolved over time and older callers pass extra args that newer
+      # signatures ignore — harmless in JS/TS because excess args land
+      # in `arguments`/`...rest` (or are silently dropped).
+      #
+      # TypeScript's strict mode already errors at compile time on
+      # genuine arity mismatches (TS2554 "Expected N arguments, but got M"),
+      # so the real correctness gate runs in `npm run verify` / CI.
+      # The duplicate CodeQL channel produced ~35 Warning alerts on main
+      # that flooded the owner without adding signal TypeScript doesn't
+      # already provide.
+      #
+      # Migration path (deferred): clean up the shared-store listener
+      # surface so legacy callers stop passing extra args, then remove
+      # this exclusion and re-enable the rule.
+      # ──────────────────────────────────────────────────────────────────
+      id: js/superfluous-trailing-arguments
