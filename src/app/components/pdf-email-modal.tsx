@@ -6,6 +6,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// PR (E) 2026-05-26 — global Math.random sweep. PDF email
+// delivery IDs (DLV-*) get sent to the recipient in the email body
+// and must be unpredictable so a recipient cannot guess other DLV-* IDs.
+import { secureRandomId } from "./utils/secure-random";
 import {
   Mail, Send, X, Plus, Lock, Shield,
   CheckCircle2, FileText, Users, Paperclip,
@@ -125,7 +129,8 @@ export function PdfEmailModal({
     if (!canSend) return;
     setSendingState("sending");
     setCurrentStage(0);
-    const id = `DLV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    // PR (E) — was Math.random-based DLV ID; now crypto-backed.
+    const id = secureRandomId("DLV", 4);
     setDeliveryId(id);
 
     // Walk through delivery stages

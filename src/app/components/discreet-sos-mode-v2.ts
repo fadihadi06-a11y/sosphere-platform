@@ -17,6 +17,8 @@
 import { startGPSTracking, stopGPSTracking, activateEmergencyTracking, deactivateEmergencyTracking, getLastKnownPosition } from "./offline-gps-tracker";
 import { emitSyncEvent } from "./shared-store";
 import { recordGPSPoint } from "./offline-database";
+// PR (E) 2026-05-26 — global Math.random sweep.
+import { secureRandomId } from "./utils/secure-random";
 
 // ── State Management ───────────────────────────────────────────
 
@@ -189,7 +191,8 @@ async function saveAudioSegmentToDatabase(audioBlob: Blob): Promise<void> {
     const uint8Array = new Uint8Array(arrayBuffer);
 
     const audioRecord = {
-      id: `audio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      // PR (E) — was Math.random-based audio ID.
+      id: secureRandomId("audio", 6),
       timestamp: Date.now(),
       data: uint8Array, // Store as typed array
       mimeType: audioBlob.type,

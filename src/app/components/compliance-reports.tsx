@@ -10,6 +10,9 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
+// PR (E) 2026-05-26 — global Math.random sweep. Verification IDs
+// printed on compliance PDFs must be unpredictable (RPT-x-x).
+import { secureRandomId } from "./utils/secure-random";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
 import { ZONE_NAMES } from "./shared-store";
@@ -550,7 +553,8 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   let y = 15;
 
   // Generate unique verification ID and QR code
-  const verificationId = `RPT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  // PR (E) — was Math.random-based RPT ID; now crypto-backed.
+  const verificationId = secureRandomId("RPT", 4);
   const verificationURL = `https://sosphere.app/verify/${verificationId}`;
 
   // ── REAL SHA-256: Hash the document identity for legal integrity ──
