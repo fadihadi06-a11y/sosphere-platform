@@ -1,3 +1,4 @@
+import { buildTelURI } from "./uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Safe tel: Link Handler (2026-04-23 hardened)
 // ─────────────────────────────────────────────────────────────
@@ -94,7 +95,8 @@ export async function safeTelCall(
       // even though the OS chooser may appear briefly. Life > UX.
       if (allowFallback) {
         try {
-          window.location.href = `tel:${cleaned}`;
+          const telURI = buildTelURI(cleaned);
+          if (telURI) window.location.href = telURI;
           console.warn(
             "[safeTelCall] using tel: fallback (chooser may appear) — emergency dial:",
             cleaned,
@@ -112,7 +114,7 @@ export async function safeTelCall(
 
   // Tier 2: Mobile web browser
   if (isMobileDevice()) {
-    window.open(`tel:${cleaned}`);
+    const telURI = buildTelURI(cleaned); if (telURI) window.open(telURI);
     return;
   }
 

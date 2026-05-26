@@ -1,3 +1,4 @@
+import { buildWhatsAppURI } from "./utils/uri-safe";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Incident Reports Tab (Emergency Hub)
 // Shows all employee-submitted photo reports
@@ -232,7 +233,7 @@ function CallExplainer({ phone, name }: { phone: string; name: string }) {
           </motion.button>
 
           <motion.button whileTap={{ scale: 0.96 }}
-            onClick={() => window.open(`https://wa.me/${phone.replace(/[\s+]/g, "")}`)}
+            onClick={() => { const waURI = buildWhatsAppURI(phone); if (waURI) window.open(waURI); }}
             className="flex flex-col items-center gap-1.5 py-3 rounded-xl"
             style={{ background: "rgba(37,211,102,0.06)", border: "1px solid rgba(37,211,102,0.12)" }}>
             <MessageCircle className="size-4" style={{ color: "#25D366" }} />
