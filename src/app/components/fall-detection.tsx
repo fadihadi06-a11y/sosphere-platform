@@ -10,6 +10,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// PR (E) 2026-05-26 — global Math.random sweep. SE- IDs are
+// security-sensitive (sensor events feed SOS escalation).
+import { secureRandomId } from "./utils/secure-random";
 import {
   AlertTriangle, X, Phone, Shield, Activity,
   Smartphone, CheckCircle, Clock, Zap, Heart,
@@ -26,7 +29,8 @@ export async function saveSensorEvent(type: "fall" | "shake", acceleration: numb
   // Always save locally
   const events = JSON.parse(localStorage.getItem("sosphere_sensor_events") || "[]");
   const event = {
-    id: `SE-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    // PR (E) — was Math.random-based SE- ID; now crypto-backed.
+    id: secureRandomId("SE", 3),
     type,
     acceleration,
     timestamp: new Date().toISOString(),

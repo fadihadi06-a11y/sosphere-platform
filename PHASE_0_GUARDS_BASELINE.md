@@ -3,7 +3,7 @@
 > Snapshot of all violations existing at the moment Lighthouse Network was installed.
 > Reduced to **zero** before exiting Layer -1 (per `PHASE_0_STEP_PLAN.md` exit gate).
 
-**Scanned:** 531 files against 3 rule(s).
+**Scanned:** 533 files against 3 rule(s).
 **Total violations:** 1117
 
 ## no-or-company-id-null (3)
@@ -15,7 +15,7 @@
 ## no-localStorage-auth (5)
 
 - `src/app/components/dashboard-web-page.tsx:1293` — localStorage write of an auth key (`sos_reg_result` — registration result (R-985)).
-- `src/app/components/company-dashboard.tsx:1589` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
+- `src/app/components/company-dashboard.tsx:1592` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
 - `src/app/components/utils/dashboard-auth-guard.ts:60` — localStorage read of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
 - `src/app/components/utils/dashboard-auth-guard.ts:46` — localStorage write of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
 - `src/app/components/stores/dashboard-store.ts:338` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).

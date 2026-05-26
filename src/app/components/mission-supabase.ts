@@ -30,6 +30,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "./api/supabase-client";
 import type { Mission, MissionStatus } from "./mission-store";
+// PR (E) 2026-05-26 — global Math.random sweep. Realtime channel
+// names don't carry security weight per se, but consistency: use
+// the same crypto-backed source everywhere.
+import { secureRandomString } from "./utils/secure-random";
 
 // ── DB row shape matches the public.missions schema ─────────────
 interface DbMissionRow {
@@ -175,7 +179,8 @@ export async function loadMissionsFromSupabase(): Promise<Mission[]> {
 export function subscribeToMissions(onChange: () => void): () => void {
   // Each subscription gets its own channel name to avoid collisions
   // when MULTIPLE Mission Control instances mount (e.g. two tabs).
-  const channelName = `missions-${Math.random().toString(36).slice(2, 8)}`;
+  // PR (E) — was Math.random; channel name uniqueness via crypto suffix.
+  const channelName = `missions-${secureRandomString(6).toLowerCase()}`;
   const channel = supabase
     .channel(channelName)
     .on(

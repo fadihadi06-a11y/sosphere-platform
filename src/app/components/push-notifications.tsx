@@ -10,6 +10,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// PR (E) 2026-05-26 — global Math.random sweep.
+import { secureRandomId } from "./utils/secure-random";
 import {
   Bell, BellRing, BellOff, Check, X, Shield,
   AlertTriangle, Clock, Volume2, VolumeX, Smartphone,
@@ -166,7 +168,8 @@ export function useNotifications() {
     data?: Record<string, any>,
   ) => {
     const notif: SOSphereNotification = {
-      id: `NOTIF-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      // PR (E) — was Math.random-based NOTIF- ID; now crypto-backed.
+      id: secureRandomId("NOTIF", 3),
       type,
       title,
       body,

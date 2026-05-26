@@ -535,8 +535,14 @@ async function dbDeleteBulk(storeName: string, ids: string[]): Promise<void> {
 
 // ── ID Generator ───────────────────────────────────────────────
 
+// PR (E) 2026-05-26 — global Math.random sweep. The generic genId
+// helper is used across the IndexedDB offline layer; routing it
+// through secureRandomId hardens every caller in one place.
+import { secureRandomId } from "./utils/secure-random";
+
 function genId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // PR (E) — was: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`.
+  return secureRandomId(prefix, 6);
 }
 
 // ═══════════════════════════════════════════════════════════════
