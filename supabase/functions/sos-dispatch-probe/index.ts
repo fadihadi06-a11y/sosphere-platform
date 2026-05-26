@@ -1,3 +1,4 @@
+import { probeErrorResponse } from "../_shared/safe-error.ts";
 // ═══════════════════════════════════════════════════════════════════════════
 // SOSphere — sos-dispatch-probe (R-4 — end-to-end SOS orchestration verify)
 // ─────────────────────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ serve(async (req) => {
       probeUserId = created.user.id;
     }
   } catch (e) {
-    return jsonResponse({ pass: false, stage: "ensure_user_threw", error: String(e).slice(0, 200) }, 500, corsHeaders);
+    return probeErrorResponse(e, 500, corsHeaders, "sos-dispatch-probe.ensure_user");
   }
 
   // ── Stage 2: sign in as probe user → get authenticated JWT ──────────────

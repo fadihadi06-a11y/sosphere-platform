@@ -1,3 +1,4 @@
+import { safeErrorResponse } from "../_shared/safe-error.ts";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — twilio-config-fix (one-shot reset to canonical)
 // ─────────────────────────────────────────────────────────────
@@ -142,10 +143,7 @@ serve(async (req) => {
     const data = await res.json();
     phones = Array.isArray(data.incoming_phone_numbers) ? data.incoming_phone_numbers : [];
   } catch (e) {
-    return new Response(JSON.stringify({ error: "twilio_list_threw", detail: String(e).slice(0, 200) }), {
-      status: 502,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return safeErrorResponse(e, 502, cors, "twilio-config-fix.list_phones");
   }
 
   // 2. PATCH each phone number to canonical. Sequential to avoid rate limits.
