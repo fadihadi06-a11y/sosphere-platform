@@ -31,16 +31,18 @@ function isWebCryptoAvailable(): boolean {
 }
 
 async function deriveKey(seed: Uint8Array): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw", seed, { name: "PBKDF2" } as AlgorithmIdentifier, false, ["deriveKey" as KeyUsage],
-  );
-  return crypto.subtle.deriveKey(
+  // WebCrypto overloads are notoriously strict in TS 5.x — cast to avoid
+  // CI-specific "No overload matches" failures across different lib versions.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subtle = crypto.subtle as any;
+  const keyMaterial: CryptoKey = await subtle.importKey("raw", seed, { name: "PBKDF2" }, false, ["deriveKey"]);
+  return subtle.deriveKey(
     { name: "PBKDF2", salt: new TextEncoder().encode("sosphere-aes-gcm-v1"), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt" as KeyUsage, "decrypt" as KeyUsage],
-  );
+    ["encrypt", "decrypt"],
+  ) as CryptoKey;
 }
 
 async function getOrCreateKey(): Promise<CryptoKey> {
