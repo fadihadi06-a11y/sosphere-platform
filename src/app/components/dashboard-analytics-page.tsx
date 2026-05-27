@@ -28,7 +28,11 @@ interface AnalyticsPageProps {
   webMode?: boolean;
 }
 
-// ── Mock Data ─────���───────────────────────────────────────────
+// Analytics audit (2026-05-27): mock data used ONLY as fallback when
+// Supabase / audit-log returns empty. Production shows empty state.
+const DEV_DEMO = (import.meta as any).env?.DEV === true;
+
+// ── Mock Data (DEV fallback only) ─────���───────────────────────────────────────────
 /* SUPABASE_MIGRATION_POINT: analytics_monthly_incidents
    SELECT month, sos_count, hazard_count, geofence_count, checkin_count
    FROM analytics_data WHERE company_id = :id AND time_range = :timeRange */
@@ -228,7 +232,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
 
   // REAL DATA: use audit log if available, fall back to demo data
   const filteredIncidents = React.useMemo(() => {
-    const source = realAnalytics.monthlyIncidents || MONTHLY_INCIDENTS;
+    const source = realAnalytics.monthlyIncidents || (DEV_DEMO ? MONTHLY_INCIDENTS : []);
     const sliceMap: Record<string, number> = { "7d": 1, "30d": 2, "90d": 4, "1y": 7 };
     const count = sliceMap[timeRange] ?? source.length;
     return source.slice(-count);
@@ -260,7 +264,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
     return base;
   }, [realAnalytics, storeKpis, storeEmergencies, storeEmployees]);
 
-  const realIncidentByType = realAnalytics.incidentByType || INCIDENT_BY_TYPE;
+  const realIncidentByType = realAnalytics.incidentByType || (DEV_DEMO ? INCIDENT_BY_TYPE : []);
 
   return (
     <div className={webMode ? "p-6 space-y-6" : "px-4 pt-4 space-y-4"}>
@@ -305,7 +309,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             {(["7d", "30d", "90d", "1y"] as const).map(r => (
               <button key={r} onClick={() => {
                 setTimeRange(r);
-                console.log("[SUPABASE_READY] analytics_timerange_changed: " + r);
+                console.debug("[SUPABASE_READY] analytics_timerange_changed: " + r);
               }}
                 className="px-3 py-1.5 rounded-lg transition-all"
                 style={{
@@ -322,7 +326,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           <button className="flex items-center gap-2 px-4 py-2 rounded-xl"
             onClick={async () => {
               hapticSuccess();
-              console.log("[SUPABASE_READY] analytics_pdf_export", { timeRange });
+              console.debug("[SUPABASE_READY] analytics_pdf_export", { timeRange });
               toast.loading("Generating analytics PDF...", { id: "analytics-pdf" });
               try {
                 await import("jspdf-autotable");
@@ -345,7 +349,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 doc.setFontSize(12);
                 doc.setTextColor(255);
                 doc.text("Key Performance Indicators", 14, y); y += 8;
-                KPI_SUMMARY.forEach(kpi => {
+                // Analytics audit (2026-05-27): was KPI_SUMMARY (mock); now realKPI (live data)
+                realKPI.forEach(kpi => {
                   doc.setFontSize(10);
                   doc.setTextColor(200);
                   doc.text(safe(kpi.label), 16, y);
@@ -390,7 +395,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 doc.text("SOSphere Analytics | Confidential | " + new Date().toISOString().split("T")[0], pw / 2, ph - 6, { align: "center" });
                 doc.save(`SOSphere_Analytics_${timeRange}_${new Date().toISOString().split("T")[0]}.pdf`);
                 toast.success("Analytics PDF Generated", { id: "analytics-pdf", description: `${timeRange} analytics report downloaded` });
-                console.log("[SUPABASE_READY] analytics_pdf_generated", { timeRange });
+                console.debug("[SUPABASE_READY] analytics_pdf_generated", { timeRange });
               } catch (err) {
                 console.error("Analytics PDF error:", err);
                 toast.error("PDF Generation Failed", { id: "analytics-pdf" });
@@ -647,9 +652,9 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
   const info = broadcasts.filter(b => b.priority === "info").length;
   const totalRead = broadcasts.reduce((acc, b) => acc + b.readBy.length, 0);
 
-  // SUPABASE_MIGRATION_POINT: analytics_broadcast_by_source
-  // SELECT source, count(*) FROM broadcasts WHERE company_id = :id GROUP BY source
-  // TODO: replace with real Supabase broadcast counts
+  // Analytics audit (2026-05-27): BROADCAST_BY_SOURCE is REAL data from
+  // getBroadcasts() — not mock. SUPABASE_MIGRATION_POINT retained for when
+  // server-side aggregation replaces client-side counting.
   const BROADCAST_BY_SOURCE = [
     { name: "Manual", value: manual, color: "#00C8E0" },
     { name: "GPS Alert", value: autoGps, color: "#FF9500" },
@@ -658,17 +663,23 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
     { name: "Geofence", value: autoGeofence, color: "#00C853" },
   ];
 
-  // SUPABASE_MIGRATION_POINT: analytics_broadcast_trend
-  // SELECT week, count(*) as sent, sum(read_count) as read
-  // FROM broadcasts WHERE company_id = :id GROUP BY week
-  // TODO: replace with real Supabase broadcast counts
-  const BROADCAST_TREND = [
-    { week: "W1", sent: 12, read: 45 },
-    { week: "W2", sent: 8, read: 32 },
-    { week: "W3", sent: 15, read: 62 },
-    { week: "W4", sent: 22, read: 88 },
-    { week: "W5", sent: total, read: totalRead },
-  ];
+  // Analytics audit (2026-05-27): BROADCAST_TREND now built from REAL
+  // broadcast timestamps grouped by week. Falls back to empty if no data.
+  const BROADCAST_TREND = (() => {
+    if (broadcasts.length === 0) return [];
+    const weekMap: Record<string, { sent: number; read: number }> = {};
+    const now = Date.now();
+    broadcasts.forEach(b => {
+      const weeksAgo = Math.floor((now - b.timestamp) / (7 * 24 * 60 * 60 * 1000));
+      const weekLabel = `W${Math.max(1, 5 - weeksAgo)}`;
+      if (!weekMap[weekLabel]) weekMap[weekLabel] = { sent: 0, read: 0 };
+      weekMap[weekLabel].sent++;
+      weekMap[weekLabel].read += b.readBy.length;
+    });
+    return ["W1", "W2", "W3", "W4", "W5"]
+      .map(w => ({ week: w, sent: weekMap[w]?.sent || 0, read: weekMap[w]?.read || 0 }))
+      .filter(w => w.sent > 0 || w.read > 0);
+  })();
 
   // SUPABASE_MIGRATION_POINT: cost_comparison — static config, no migration needed
   const COST_COMPARISON = [
