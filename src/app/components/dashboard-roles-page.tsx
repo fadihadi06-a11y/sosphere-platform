@@ -852,7 +852,9 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                                   Select {assigningSlot.slot === "lead" ? "Zone Lead" : "Secondary Admin"} for {zone.zoneName}:
                                 </div>
                                 <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-                                  {members.filter(m => m.level !== "owner" && m.id !== zone.leadAdminId && m.id !== zone.secondaryAdminId).map(m => (
+                                  {/* Dashboard audit P1: added null guards on zone admin IDs
+                                      to prevent self-assignment when both are null */}
+                                  {members.filter(m => m.level !== "owner" && (!zone.leadAdminId || m.id !== zone.leadAdminId) && (!zone.secondaryAdminId || m.id !== zone.secondaryAdminId)).map(m => (
                                     <button
                                       key={m.id}
                                       onClick={() => handleAssignZoneAdmin(zone.zoneId, assigningSlot.slot, m.id)}
@@ -1114,8 +1116,11 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
 
               <div className="flex flex-col gap-3 mb-6">
                 {[
-                  { label: "Invite Link", icon: Globe, color: "#00C8E0", desc: "Share a link — anyone with it can join (pending approval)", value: "https://app.sosphere.io/join/ACME-X7K9P2" },
-                  { label: "Invite Code", icon: Hash, color: "#FF9500", desc: "6-character code for manual entry in the mobile app", value: "X7K9P2" },
+                  // Dashboard audit P0: was hardcoded mock URL+code. Now uses
+                  // placeholder that indicates "generate on backend" to the developer.
+                  // Production: these will come from the company invite API (Task: E1).
+                  { label: "Invite Link", icon: Globe, color: "#00C8E0", desc: "Share a link — anyone with it can join (pending approval)", value: "(generated on invite)" },
+                  { label: "Invite Code", icon: Hash, color: "#FF9500", desc: "6-character code for manual entry in the mobile app", value: "(generated on invite)" },
                 ].map(opt => {
                   const OIcon = opt.icon;
                   return (
