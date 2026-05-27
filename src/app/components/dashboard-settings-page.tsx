@@ -24,6 +24,7 @@ import { MFAEnrollmentModal } from "./mfa-enrollment-modal";
 import { DpaSettingsSection } from "./dpa-settings-section";  // AUTH-5 P6
 import { mfaListFactors, mfaUnenroll, mfaRecoveryStatus, mfaGenerateRecoveryCodes } from "./api/mfa-client";
 import { fetchEmployees, fetchAuditLog } from "./api/data-layer";
+import { logAuditEvent } from "./audit-log-store";
 
 type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents" | "attendance" | "settings" | "commandCenter" | "riskMap" | "billing" | "analytics" | "shiftScheduling" | "geofencing";
 
@@ -206,6 +207,11 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
         }, (e: unknown) => console.warn("[Settings] Supabase sync failed:", e)); // P0-doctrine-completion (2026-05-25): PromiseLike has no .catch.
       }
     } catch { /* Supabase not available */ }
+
+    logAuditEvent("settings", "Company settings saved", {
+      detail: `Toggles: ${Object.entries(toggles).filter(([,v]) => v).map(([k]) => k).join(", ")} | Interval: ${checkinInterval}`,
+      severity: "info",
+    });
 
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);

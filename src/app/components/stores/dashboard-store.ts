@@ -542,7 +542,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       // SUPABASE_MIGRATION_POINT: this guarantee must be
       // enforced server-side via RLS â€” SOS table always writable
       console.log("[SUPABASE_READY] addEmergency:", emergency.id, emergency.type);
-      auditEmergency(emergency.id, emergency.type, emergency.employeeName);
+      auditEmergency(`Emergency created: ${emergency.type}`, `${emergency.employeeName} triggered ${emergency.type} in ${emergency.zone}`, emergency.zone);
       set(s => {
         const emergencies = [emergency, ...s.emergencies];
         return { emergencies, ...recompute(emergencies) };
@@ -564,7 +564,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       console.log("[SUPABASE_READY] resolveEmergency:", id);
       const resolved = s.emergencies.find(e => e.id === id);
       if (resolved) {
-        auditEmergencyResolved(id, resolved.type, resolved.employeeName);
+        auditEmergencyResolved(id, resolved.employeeName, resolved.zone);
         // P0-doctrine-completion (2026-05-25, life-safety): broadcast resolve so
         // safety-intelligence + other live-update widgets can react. Pre-fix the
         // safety score never improved on admin resolve — the listener checked

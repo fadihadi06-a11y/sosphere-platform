@@ -1074,10 +1074,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
           },
         });
         // Auto-navigate after 1s if admin doesn't dismiss
+        // Integration fix (2026-05-27): also auto-select SAR tab
         setTimeout(() => {
           if (useDashboardStore.getState().currentPage !== "emergencyHub") {
             setCurrentPage("emergencyHub");
           }
+          setHubTab("emergencyHub", "sar");
         }, 1000);
       }
       if (event.type === "SAR_ACTIVATED") incrementNotifCount();

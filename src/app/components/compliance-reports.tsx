@@ -13,6 +13,7 @@ import QRCode from "qrcode";
 // PR (E) 2026-05-26 — global Math.random sweep. Verification IDs
 // printed on compliance PDFs must be unpredictable (RPT-x-x).
 import { secureRandomId } from "./utils/secure-random";
+import { getRealAuditLog } from "./audit-log-store";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
 import { ZONE_NAMES } from "./shared-store";
@@ -1009,7 +1010,15 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
     evacuation_report: { title: "Evacuation Readiness", color: [255,45,85], content: "Last evacuation drill: March 1, 2026\nDrill completion time: 4 minutes 22 seconds (target: < 5 minutes)\nAll employees accounted for: YES\nEvacuation points tested: 7/7\nRecommendation: Add signage to Zone D stairwell B." },
     emergency_procedures: { title: "Emergency Procedures", color: [0,200,83], content: "1. SOS Response: Call employee > Dispatch help > Notify admin chain\n2. Evacuation: Trigger alarm > Account for all workers > Report to assembly point\n3. Medical: Call ambulance > Share Medical ID > Secure scene\n4. Security: Silent alert > Lock zone > Contact police\n5. Environmental: Evacuate zone > Call hazmat > Isolate area" },
     weather_log: { title: "Weather Alert Log", color: [255,150,0], content: "March 2: Sandstorm advisory (Moderate) -- Operations paused for 3 hours\nMarch 7: Extreme heat (48 C) -- Mandatory rest cycles enforced\nMarch 10: Thunderstorm warning -- Outdoor work suspended" },
-    audit_log: { title: "Audit Log Excerpt", color: [139,92,246], content: "Mar 1 09:00 -- Admin logged in\nMar 1 09:02 -- Emergency drill initiated\nMar 3 09:14 -- SOS received (EMG-001)\nMar 3 09:15 -- Guided Response activated\nMar 3 09:17 -- Emergency resolved\nMar 5 14:22 -- Fall detection alert\nMar 8 08:45 -- Auto-escalation triggered (missed check-in)" },
+    audit_log: { title: "Audit Log Excerpt", color: [139,92,246], content: (() => {
+      const entries = getRealAuditLog().slice(0, 8);
+      if (entries.length === 0) return "No audit entries recorded yet.";
+      return entries.map(e => {
+        const d = new Date(e.timestamp);
+        const ts = d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+        return ts + " -- " + e.action + (e.actor?.name ? " (" + e.actor.name + ")" : "");
+      }).join("\n");
+    })() },
     admin_performance: { title: "Admin Performance Summary", color: [255,215,0], content: "Rania Al-Dosari: PLATINUM (94 avg, 47 incidents, 12 streak)\nAhmed Al-Rashid: GOLD (87 avg, 31 incidents, 8 streak)\nKhalid Bin Saeed: GOLD (82 avg, 23 incidents, 5 streak)\nNoura Al-Shammari: SILVER (78 avg, 19 incidents, 3 streak)\nOmar Al-Qahtani: SILVER (71 avg, 15 incidents, 2 streak)\nFatima Al-Harbi: BRONZE (65 avg, 8 incidents, 1 streak)\nAvg Response Time: 1m 52s | Training Completion: 78% | Drill Avg Score: 81/100" },
   };
 
