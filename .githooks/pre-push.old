@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+# SOSphere — pre-push gate (R-20 layer A)
+# ─────────────────────────────────────────────────────────────────────────
+# Blocks `git push` if any verify gate fails. Mirrors `npm run verify`
+# which mirrors the CI pipeline. Catches:
+#   - JSON / YAML / lockfile parse errors
+#   - ESLint warnings above threshold
+#   - Migration drift (rows applied to live but missing from lockfile)
+#   - Vitest contract test failures
+#   - node --check on scripts
+#
+# Bypass intentionally with --no-verify if you KNOW what you're doing.
+# ═══════════════════════════════════════════════════════════════════════════
+set -e
+echo "[pre-push] Running verify gate before push..."
+npm run --silent verify
+echo "[pre-push] ✓ All gates green. Push proceeding."

@@ -30,6 +30,15 @@ vi.mock("../subscription-service", () => ({
   hasFeature: vi.fn().mockReturnValue(true),
 }));
 
+// Mock secure-storage so secureSetItem/secureGetItem pass through
+// without AES-GCM — keeps test assertions on raw localStorage values.
+vi.mock("../utils/secure-storage", () => ({
+  secureSetItem: vi.fn(async (key: string, value: string) => { localStorage.setItem(key, value); }),
+  secureGetItem: vi.fn(async (key: string) => localStorage.getItem(key)),
+  SENSITIVE_KEYS: new Set(),
+  isSensitiveKey: vi.fn(() => false),
+}));
+
 import {
   isDuressFeatureAvailable,
   setDuressPin,
@@ -38,6 +47,7 @@ import {
   isDeactivationPin,
   isDuressPinSet,
   isDeactivationPinSet,
+  resetDuressCache,
 } from "../duress-service";
 
 // Skip the whole suite if SubtleCrypto isn't available (ancient Node).
@@ -50,6 +60,7 @@ const d = hasSubtleCrypto ? describe : describe.skip;
 d("duress-service — E-M1 hashed PIN storage", () => {
   beforeEach(() => {
     localStorage.clear();
+    resetDuressCache();
   });
 
   it("feature-gate reports true when hasFeature('duressCode') is true", () => {
@@ -135,6 +146,7 @@ d("duress-service — E-M1 hashed PIN storage", () => {
 
     // Simulate fresh install: clear everything
     localStorage.clear();
+    resetDuressCache();
     await setDuressPin("1234");
     const hash2 = localStorage.getItem("sosphere_duress_pin_hash");
     const salt2 = localStorage.getItem("sosphere_pin_salt");

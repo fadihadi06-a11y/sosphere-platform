@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Phone Input Test — R-86</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 40px 20px;
+    font-family: -apple-system, "Segoe UI", "Tajawal", sans-serif;
+    background: #05070E;
+    color: #fff;
+    min-height: 100dvh;
+  }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.4); text-transform: uppercase;
+    margin: 28px 0 6px; display: block;
+  }
+  .row {
+    display: flex; gap: 8px; align-items: stretch;
+    padding: 0; margin: 0;
+    border: 1px dashed rgba(0,200,224,0.3);
+  }
+  .country {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 12px; min-width: 110px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff; font-size: 15px;
+  }
+  .country .flag { font-size: 18px; }
+  .country .dial { font-family: monospace; }
+  .phone {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+    direction: ltr;
+    font-family: inherit;
+  }
+  .phone::placeholder { color: rgba(255,255,255,0.3); }
+  .row[dir="ltr"] { /* visualize the LTR forced row inside RTL parent */ }
+  .note {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(0,200,224,0.06);
+    border: 1px solid rgba(0,200,224,0.18);
+    border-radius: 10px;
+    font-size: 13px; line-height: 1.7;
+    color: rgba(255,255,255,0.7);
+  }
+  .ok { color: #00C853; font-weight: 700; }
+  .fail { color: #FF2D55; font-weight: 700; }
+  hr { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 40px 0; }
+</style>
+</head>
+<body>
+
+<h1>اختبار الحقل (R-86)</h1>
+<p style="color: rgba(255,255,255,0.5); font-size: 13px; margin: 0 0 16px;">
+  الصفحة بـ RTL (Arabic) عمداً. الحقل أدناه يجب أن يكون:
+  <br>• العلم + <code>+964</code> على <strong>اليسار</strong>
+  <br>• حقل الرقم على <strong>اليمين</strong>
+  <br>• الكتابة فيه LTR (الرقم لا يتجاوز الحدود الخطية المنقّطة)
+</p>
+
+<span class="label">Phone number — مع dir="ltr" + minWidth:0 (R-86)</span>
+<div class="row" dir="ltr">
+  <button class="country">
+    <span class="flag">🇮🇶</span>
+    <span class="dial">+964</span>
+  </button>
+  <input class="phone" type="tel" inputmode="numeric" placeholder="7XX XXX XXXX" />
+</div>
+<div class="note">
+  <strong>التحقق:</strong>
+  <br>1. اكتب رقماً طويلاً (مثلاً <code>1234567890123456</code>)
+  <br>2. الرقم يجب أن يبقى داخل الإطار المنقّط (لا يخرج لليسار ولا لليمين)
+  <br>3. النص الأرقام تذهب left-to-right
+  <br>
+  <br>إذا الرقم بقي داخل الإطار: <span class="ok">CSS صحيح ✓</span> — المشكلة في البناء/الـ cache.
+  <br>إذا الرقم خرج: <span class="fail">CSS خاطئ ✗</span> — أبلغني والتقط صورة، سأعيد تصميم الـ component.
+</div>
+
+<hr>
+
+<h1>المقارنة — الكود القديم (قبل R-86)</h1>
+<p style="color: rgba(255,255,255,0.5); font-size: 13px; margin: 0 0 16px;">
+  هذا هو الكود الذي كان قبل الـ fix — لرؤية فرق السلوك:
+</p>
+
+<span class="label">Phone number — بدون R-86 (الكود القديم)</span>
+<div style="display: flex; gap: 8px; border: 1px dashed rgba(255,45,85,0.3);">
+  <button class="country">
+    <span class="flag">🇮🇶</span>
+    <span class="dial">+964</span>
+  </button>
+  <input style="flex: 1; padding: 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #fff; font-size: 15px; outline: none; direction: ltr;" type="tel" placeholder="7XX XXX XXXX" />
+</div>
+<div class="note" style="background: rgba(255,45,85,0.06); border-color: rgba(255,45,85,0.2);">
+  <strong>التوقع:</strong> هذا الـ row في RTL parent ينقلب — الـ flag/country يذهب لليمين، input يذهب لليسار، و input يتجاوز حدود الـ row لأنه بـ <code>flex: 1</code> بدون <code>minWidth: 0</code>.
+</div>
+
+<hr>
+
+<h1>اختبار modal stability (R-84)</h1>
+<button onclick="document.getElementById('m').style.display='flex'"
+  style="padding: 14px 24px; background: linear-gradient(135deg,#00C8E0,#00A5C0); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 600;">
+  افتح الـ modal
+</button>
+
+<div id="m" style="display:none; position: fixed; inset: 0; height: 100dvh; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); align-items: flex-end; z-index: 99;" onclick="this.style.display='none'">
+  <div onclick="event.stopPropagation()" style="width: 100%; max-height: 85dvh; background: #0A1220; border-radius: 24px 24px 0 0; padding: 24px; padding-bottom: max(24px, env(safe-area-inset-bottom)); border: 1px solid rgba(255,255,255,0.06);">
+    <div style="width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); margin: 0 auto 16px;"></div>
+    <h2 style="margin: 0 0 16px;">Add Safety Contact</h2>
+    <span class="label">FULL NAME</span>
+    <input style="width:100%; box-sizing:border-box; padding: 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #fff; font-size: 15px; outline: none;" placeholder="Enter full name" />
+    <span class="label">PHONE NUMBER</span>
+    <div class="row" dir="ltr">
+      <button class="country">
+        <span class="flag">🇮🇶</span>
+        <span class="dial">+964</span>
+      </button>
+      <input class="phone" type="tel" placeholder="7XX XXX XXXX" />
+    </div>
+    <button style="margin-top: 24px; width:100%; padding: 14px; background: linear-gradient(135deg,#00C8E0,#00A5C0); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 600;" onclick="document.getElementById('m').style.display='none'">Save</button>
+  </div>
+</div>
+<div class="note" style="margin-top: 14px;">
+  <strong>التحقق:</strong>
+  <br>1. اضغط "افتح الـ modal"
+  <br>2. اضغط على input الاسم — الكيبورد يطلع
+  <br>3. الـ modal يجب أن يبقى مرئياً (لا يختفي خلف الكيبورد، لا يهتزّ)
+  <br>4. اكتب في input الرقم — يبقى داخل الإطار
+</div>
+
+</body>
+</html>

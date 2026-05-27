@@ -1,4 +1,5 @@
 import { buildTelURI } from "./utils/uri-safe";
+import { secureGetItem } from "./utils/secure-storage";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Admin Incoming Call System
 // Two modes:
@@ -80,16 +81,15 @@ function IncomingCallOverlay({ signal, onDismiss }: IncomingCallOverlayProps) {
     const timeout = setTimeout(() => {
       if (callState === "ringing") {
         // ── PHONE FALLBACK: Try admin's phone before giving up ──
-        try {
-          const adminPhone = localStorage.getItem("sosphere_admin_phone");
-          if (adminPhone) {
-            // Try to ring admin's mobile phone
-            const telURI = buildTelURI(adminPhone); if (telURI) window.open(telURI, "_system");
-          }
-        } catch {
-          // localStorage unavailable or window.open blocked — fall through
-          // to setCallState("missed") below so the admin sees the timeout.
-        }
+        // Task #73 fix: read through secureGetItem (AES-GCM decryption)
+        void (async () => {
+          try {
+            const adminPhone = await secureGetItem("sosphere_admin_phone");
+            if (adminPhone) {
+              const telURI = buildTelURI(adminPhone); if (telURI) window.open(telURI, "_system");
+            }
+          } catch { /* decryption or window.open failed */ }
+        })();
 
         setCallState("missed");
         voiceCallEngine.forceReset();

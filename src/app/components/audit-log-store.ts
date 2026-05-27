@@ -21,6 +21,10 @@ import { getCompanyId } from "./shared-store";
 // crypto.getRandomValues so entries can't be predicted by an attacker
 // who sees one audit ID and tries to enumerate adjacent entries.
 import { secureRandomId } from "./utils/secure-random";
+// Task #73 follow-up (2026-05-27): admin profile is a SENSITIVE_KEY --
+// must read through secureGetItem (async decrypt). We cache the result
+// so the sync getCurrentActor() path stays zero-latency.
+import { secureGetItem } from "./utils/secure-storage";
 
 export type AuditCategory =
   | "permission_change"
@@ -124,19 +128,31 @@ function saveAuditLog(entries: AuditEntry[]): void {
   localStorage.setItem(AUDIT_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
 }
 
-// ── Get current admin info from localStorage ────────────────────
+// ── Get current admin info ────────────────────────────────────────
+// Task #73 fix: admin profile may be AES-GCM encrypted in localStorage.
+// We keep a sync-readable cache populated by initAuditStore() (async).
+
+let _cachedActor: { id: string; name: string; level: AuditLevel } = {
+  id: "admin", name: "Admin", level: "main_admin",
+};
+
+/** Call once at app startup to decrypt the admin profile into cache. */
+export async function initAuditStore(): Promise<void> {
+  try {
+    const raw = await secureGetItem("sosphere_admin_profile");
+    if (raw) {
+      const adminData = JSON.parse(raw);
+      _cachedActor = {
+        id: adminData.id || "admin",
+        name: adminData.name || adminData.displayName || "Admin",
+        level: (adminData.role as AuditLevel) || "main_admin",
+      };
+    }
+  } catch { /* first run or no profile yet */ }
+}
 
 function getCurrentActor(): { id: string; name: string; level: AuditLevel } {
-  try {
-    const adminData = JSON.parse(localStorage.getItem("sosphere_admin_profile") || "{}");
-    return {
-      id: adminData.id || "admin",
-      name: adminData.name || adminData.displayName || "Admin",
-      level: (adminData.role as AuditLevel) || "main_admin",
-    };
-  } catch {
-    return { id: "admin", name: "Admin", level: "main_admin" };
-  }
+  return _cachedActor;
 }
 
 // ── Core: Log an audit event ─────────────────────────────────────

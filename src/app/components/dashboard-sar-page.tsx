@@ -37,7 +37,7 @@ import "leaflet/dist/leaflet.css";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
-import { emitAdminSignal } from "./shared-store";
+import { emitAdminSignal, onSyncEvent } from "./shared-store";
 // P0-sar-audit-fixes (2026-05-26, life-safety): durable audit-log entries for every
 // SAR mission state transition (start / pause / resume / end / alert-workers).
 // ISO 27001 §12.4 + ISO 45001 record-keeping for SAR operations.
@@ -714,6 +714,45 @@ export function SARProtocolPage() {
     setElapsedTimer(0);
   }, [activeMission]);
 
+  // ── Task #54 (2026-05-27): Mobile Verify — listen for worker self-reporting safe ──
+  // When a worker who was "lost" comes back online and taps "I'm safe" or cancels
+  // their SOS, the SAR dashboard should auto-prompt to resolve the mission.
+  useEffect(() => {
+    if (!activeMission || activeMission.status !== "active") return;
+    const unsub = onSyncEvent((event) => {
+      // Worker came back online and reported safe via STATUS_UPDATE
+      const isSafeReport =
+        event.type === "STATUS_UPDATE" &&
+        (event.data as any)?.status === "safe" &&
+        event.employeeId === activeMission.employeeId;
+      // Worker cancelled their SOS
+      const isCancelled =
+        event.type === "SOS_CANCELLED" &&
+        event.employeeId === activeMission.employeeId;
+
+      if (isSafeReport || isCancelled) {
+        toast.success(`${activeMission.employeeName} reported safe!`, {
+          description: "Worker self-verified via mobile device. Close SAR mission?",
+          duration: 15000,
+          action: {
+            label: "Mark Found Safe",
+            onClick: () => handleEndMission("found_safe"),
+          },
+        });
+        try {
+          logAuditEvent("emergency", "sar_mobile_verify_received", {
+            severity: "success",
+            zone: activeMission.zone,
+            targetId: activeMission.id,
+            targetName: `SAR ${activeMission.id} — ${activeMission.employeeName}`,
+            detail: `Mobile self-verification received from ${activeMission.employeeName} (${event.type}). Admin prompted to close mission.`,
+          });
+        } catch { /* audit-log failures must never block */ }
+      }
+    });
+    return unsub;
+  }, [activeMission, handleEndMission]);
+
   return (
     <div style={{ minHeight: "100vh", color: "white" }}>
       <style>{pulseCSS}</style>
@@ -850,8 +889,8 @@ export function SARProtocolPage() {
           aria-pressed="false"
           aria-disabled="true"
           disabled
-          aria-label="Live mode (coming soon — requires backend wiring)"
-          title="Coming soon — requires live gps_trail subscription + sos_outbox dispatch + Twilio bridge"
+          aria-label="Live mode (requires backend wiring — see Task #54 roadmap)"
+          title="Blocked on: (1) Supabase gps_trail realtime subscription, (2) sos_outbox dispatch table + edge function, (3) Twilio bridge for rescue dispatch. Training mode is fully functional now."
           style={{
             padding: "8px 16px",
             borderRadius: 8,

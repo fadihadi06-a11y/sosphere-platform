@@ -1123,24 +1123,9 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
     doc.setFontSize(62);
     doc.setTextColor(0, 200, 224);
 
-    const cx = pageWidth / 2;
-    const cy = pageHeight / 2;
-    const angle = -40 * (Math.PI / 180);
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const text = "CONFIDENTIAL";
-    const textW = doc.getTextWidth(text);
-    const tx = cx - (textW * cos) / 2;
-    const ty = cy - (textW * sin) / 2;
-
-    // P0-doctrine-completion (2026-05-25): doc.internal.write is a low-level PDF
-    // primitive not in jsPDF's public typings (used here for the rotated watermark
-    // transform matrix). Cast through `any` to acknowledge we're using the internal API.
-    (doc.internal as any).write(
-      `q ${cos.toFixed(4)} ${sin.toFixed(4)} ${(-sin).toFixed(4)} ${cos.toFixed(4)} ${(tx * 72 / 25.4).toFixed(2)} ${((pageHeight - ty) * 72 / 25.4).toFixed(2)} cm`
-    );
-    doc.text(text, 0, 0);
-    (doc.internal as any).write("Q");
+    // P1-fix (2026-05-27): replaced doc.internal.write() private-API matrix hack
+    // with jsPDF's public `angle` option. Stable since jsPDF 2.x.
+    doc.text("CONFIDENTIAL", pageWidth / 2, pageHeight / 2, { align: "center", angle: 40 });
     doc.restoreGraphicsState();
 
     // ── Corner security marks ──────────────────────────────

@@ -150,7 +150,7 @@ describe("Toggle motion.div fix: every boolean toggle has initial={false}", () =
   // Each tuple: (file label, source string, count of toggle motion.divs
   // we expect to find with initial={false} pre-pended).
   const cases: { file: string; src: () => string; expected: number }[] = [
-    { file: "dashboard-settings-page.tsx", src: () => dashSettings,    expected: 5 },
+    { file: "dashboard-settings-page.tsx", src: () => dashSettings,    expected: 6 }, // +1 MobileMFAControl toggle
     { file: "emergency-playbook.tsx",      src: () => emergencyPb,     expected: 1 },
     { file: "pdf-email-modal.tsx",         src: () => pdfEmail,        expected: 1 },
     { file: "pdf-password-modal.tsx",      src: () => pdfPassword,     expected: 2 },
