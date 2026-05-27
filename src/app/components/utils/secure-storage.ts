@@ -31,8 +31,6 @@ function isWebCryptoAvailable(): boolean {
 }
 
 async function deriveKey(seed: Uint8Array): Promise<CryptoKey> {
-  // WebCrypto overloads are notoriously strict in TS 5.x — cast to avoid
-  // CI-specific "No overload matches" failures across different lib versions.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subtle = crypto.subtle as any;
   const keyMaterial: CryptoKey = await subtle.importKey("raw", seed, { name: "PBKDF2" }, false, ["deriveKey"]);

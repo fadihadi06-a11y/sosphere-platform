@@ -39,7 +39,7 @@ const CUSTOMER_RIGHTS = [
 
 function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
-    console.log("[SUPABASE_READY] customer_rights_viewed");
+    console.debug("[SUPABASE_READY] customer_rights_viewed");
   }, []);
 
   return (
@@ -271,7 +271,7 @@ export function BillingPage({ companyState, webMode = false }: {
     }, ...prev]);
 
     hapticSuccess();
-    console.log("[SUPABASE_READY] plan_switched: " + JSON.stringify({ oldPlan, newPlan: planId, newMonthly: newTotal }));
+    console.debug("[SUPABASE_READY] plan_switched: " + JSON.stringify({ oldPlan, newPlan: planId, newMonthly: newTotal }));
     toast.success(`Plan updated to ${newPlanDef.name} — $${newTotal}/month`, {
       description: `Base $${bill.planCost} + ${extraCount > 0 ? `${extraCount} extra employees $${extraCost}` : "no extra employees"} + addons $${addonsTotal}`,
     });
@@ -315,7 +315,8 @@ export function BillingPage({ companyState, webMode = false }: {
     { id: "INV-2026-001", date: "Jan 1, 2026", period: "January 2026", planName: currentPlanName, baseCost: invoiceBasePrice > 0 ? invoiceBasePrice : 0, extraCount: baseExtraCount, extraCost: baseExtraCost, addonsCost: 0, amount: (invoiceBasePrice > 0 ? invoiceBasePrice : 0) + baseExtraCost, seats: empCount },
     { id: "INV-2025-012", date: "Dec 1, 2025", period: "December 2025", planName: currentPlanName, baseCost: invoiceBasePrice > 0 ? invoiceBasePrice : 0, extraCount: baseExtraCount, extraCost: baseExtraCost, addonsCost: 0, amount: (invoiceBasePrice > 0 ? invoiceBasePrice : 0) + baseExtraCost, seats: empCount },
   ];
-  const ALL_INVOICES = [...extraInvoices, ...BASE_INVOICES];
+  const DEV_DEMO = (import.meta as any).env?.DEV === true;
+  const ALL_INVOICES = [...extraInvoices, ...(DEV_DEMO ? BASE_INVOICES : [])];
 
   const usagePercent = employeeUsagePercent(companyState);
 
