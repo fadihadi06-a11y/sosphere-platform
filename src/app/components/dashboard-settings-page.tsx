@@ -23,8 +23,48 @@ import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import { MFAEnrollmentModal } from "./mfa-enrollment-modal";
 import { DpaSettingsSection } from "./dpa-settings-section";  // AUTH-5 P6
 import { mfaListFactors, mfaUnenroll, mfaRecoveryStatus, mfaGenerateRecoveryCodes } from "./api/mfa-client";
+import { fetchEmployees, fetchAuditLog } from "./api/data-layer";
 
 type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents" | "attendance" | "settings" | "commandCenter" | "riskMap" | "billing" | "analytics" | "shiftScheduling" | "geofencing";
+
+// ── P1-fix: mock data used ONLY in dev when Supabase returns empty ──
+const DEV_ONLY = (import.meta as any).env?.DEV === true;
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: "#00C8E0", site_admin: "#7B5EFF", hse_manager: "#00C853",
+  supervisor: "#FF9500", viewer: "#FF2D55", employee: "#34C759",
+};
+
+type TeamMember = {
+  name: string; email: string; role: string;
+  status: string; color: string; lastActive: string;
+};
+
+type SecurityEvent = {
+  event: string; time: string;
+  color: string; icon: React.ElementType;
+};
+
+const MOCK_TEAM: TeamMember[] = [
+  { name: "Jane Mitchell", email: "j.mitchell@acmeindustries.com", role: "Admin", status: "active", color: "#00C8E0", lastActive: "Just now" },
+  { name: "Carlos Silva", email: "c.silva@buildco.com", role: "Site Admin", status: "active", color: "#7B5EFF", lastActive: "5m ago" },
+  { name: "Emma Wilson", email: "l.chen@acmeindustries.com", role: "HSE Manager", status: "active", color: "#00C853", lastActive: "1h ago" },
+  { name: "Khalid Nouri", email: "k.nouri@aramco.com", role: "Supervisor", status: "inactive", color: "#FF9500", lastActive: "2d ago" },
+  { name: "Laura Chen", email: "e.wilson@acmeindustries.com", role: "Viewer", status: "pending", color: "#FF2D55", lastActive: "Pending" },
+];
+
+const SECURITY_ICON_MAP: Record<string, React.ElementType> = {
+  login: Lock, password_change: CheckCircle2, failed_login: ShieldAlert,
+  api_key: RefreshCw, "2fa_event": Shield,
+};
+
+const MOCK_SECURITY: SecurityEvent[] = [
+  { event: "New login from Chrome / Windows 11", time: "Today, 09:14", color: "#FF9500", icon: Lock },
+  { event: "Password changed successfully", time: "Mar 5, 2026", color: "#00C853", icon: CheckCircle2 },
+  { event: "Failed login attempt (x3)", time: "Mar 2, 2026", color: "#FF2D55", icon: ShieldAlert },
+  { event: "API key rotated", time: "Feb 28, 2026", color: "#00C8E0", icon: RefreshCw },
+  { event: "2FA enrolled for all admin accounts", time: "Feb 20, 2026", color: "#7B5EFF", icon: Shield },
+];
 
 // ═══════════════════════════════════════════════════════════════
 // Settings Page
@@ -73,6 +113,48 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     if (saved?.toggles) {
       setToggles(prev => ({ ...prev, ...saved.toggles }));
     }
+  }, []);
+
+  // ── P1-fix (2026-05-27): Fetch team + security events from Supabase ──
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const emps = await fetchEmployees();
+        if (!cancelled && emps.length > 0) {
+          setTeamMembers(emps.map(e => ({
+            name: e.name,
+            email: e.phone || "",
+            role: e.role,
+            status: e.status === "on-shift" ? "active" : "inactive",
+            color: ROLE_COLORS[e.role] || "#00C8E0",
+            lastActive: e.lastCheckin ? new Date(e.lastCheckin).toLocaleString() : "—",
+          })));
+        }
+      } catch { /* Supabase unavailable */ }
+      try {
+        const logs = await fetchAuditLog(5);
+        if (!cancelled && logs.length > 0) {
+          setSecurityEvents(logs.map((l: any) => ({
+            event: l.action || l.action_type || "Event",
+            time: l.timestamp ? new Date(l.timestamp).toLocaleDateString() : "—",
+            color: l.severity === "critical" ? "#FF2D55" : l.severity === "warning" ? "#FF9500" : "#00C853",
+            icon: SECURITY_ICON_MAP[l.action_type] || ShieldAlert,
+          })));
+        }
+      } catch { /* Supabase unavailable */ }
+      if (!cancelled) {
+        setDataLoaded(true);
+        // Fall back to demo data only in DEV if nothing came from Supabase
+        setTeamMembers(prev => prev.length > 0 ? prev : (DEV_ONLY ? MOCK_TEAM : []));
+        setSecurityEvents(prev => prev.length > 0 ? prev : (DEV_ONLY ? MOCK_SECURITY : []));
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   /** Persist all settings to localStorage */
@@ -197,23 +279,12 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       </div>
     );
 
-    // SUPABASE_MIGRATION_POINT: TEAM_MEMBERS → supabase.from('employees').select('name, email, role, status, last_active').eq('company_id', companyId)
-    const TEAM_MEMBERS = [
-      { name: "Jane Mitchell",     email: "j.mitchell@acmeindustries.com",  role: "Admin",       status: "active",   color: "#00C8E0", lastActive: "Just now" },
-      { name: "Carlos Silva",   email: "c.silva@buildco.com",      role: "Site Admin",  status: "active",   color: "#7B5EFF", lastActive: "5m ago"   },
-      { name: "Emma Wilson",   email: "l.chen@acmeindustries.com",     role: "HSE Manager", status: "active",   color: "#00C853", lastActive: "1h ago"   },
-      { name: "Khalid Nouri",    email: "k.nouri@aramco.com",      role: "Supervisor",  status: "inactive", color: "#FF9500", lastActive: "2d ago"   },
-      { name: "Laura Chen", email: "e.wilson@acmeindustries.com",       role: "Viewer",      status: "pending",  color: "#FF2D55", lastActive: "Pending"  },
-    ];
-
-    // SUPABASE_MIGRATION_POINT: SECURITY_EVENTS → supabase.from('audit_log').select('*').eq('category', 'security').order('created_at', { ascending: false }).limit(5)
-    const SECURITY_EVENTS = [
-      { event: "New login from Chrome / Windows 11", time: "Today, 09:14", color: "#FF9500", icon: Lock       },
-      { event: "Password changed successfully",       time: "Mar 5, 2026",  color: "#00C853", icon: CheckCircle2 },
-      { event: "Failed login attempt (×3)",           time: "Mar 2, 2026",  color: "#FF2D55", icon: ShieldAlert  },
-      { event: "API key rotated",                     time: "Feb 28, 2026", color: "#00C8E0", icon: RefreshCw  },
-      { event: "2FA enrolled for all admin accounts", time: "Feb 20, 2026", color: "#7B5EFF", icon: Shield     },
-    ];
+    // P1-fix (2026-05-27): TEAM_MEMBERS & SECURITY_EVENTS now fetched from
+    // Supabase via useEffect above, stored in teamMembers / securityEvents state.
+    // In dev mode, MOCK_TEAM / MOCK_SECURITY are shown when Supabase is empty.
+    const isDemo = dataLoaded && teamMembers.length > 0 && teamMembers === MOCK_TEAM;
+    const TEAM_MEMBERS = teamMembers;
+    const SECURITY_EVENTS = securityEvents;
 
     return (
       <div className="flex h-full" style={{ minHeight: "calc(100vh - 56px)" }}>
@@ -275,15 +346,17 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                           <button onClick={() => { hapticLight(); toast("Upload Logo", { description: "File picker would open here to upload company logo" }); }} className="mt-2 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}>Upload Logo</button>
                         </div>
                       </div>
-                      {/* SUPABASE_MIGRATION_POINT: companyProfile → supabase.from('companies').select('*').eq('id', companyId).single() */}
+                      {/* SUPABASE_MIGRATION_POINT: companyProfile → supabase.from('companies').select('*').eq('id', companyId).single()
+                          P1-note (2026-05-27): Company Name uses real prop; remaining fields are placeholders until
+                          a `companies` profile table is created. Low risk — display-only, no compliance impact. */}
                       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
                         {[
-                          { label: "Company Name",     value: companyName,                   icon: Building2, color: "#FF9500" },
-                          { label: "Industry",          value: "Oil & Gas / Energy",           icon: Layers,    color: "#00C8E0" },
-                          { label: "Company Size",      value: "501–1000 employees",           icon: Users,     color: "#00C853" },
-                          { label: "Country / Region",  value: "Saudi Arabia (KSA)",           icon: Globe,     color: "#7B5EFF" },
-                          { label: "Time Zone",         value: "GMT+3 (Arabian Standard Time)",icon: Clock,     color: "#FF9500" },
-                          { label: "Contact Email",     value: "ops@acmeindustries.com",        icon: Send,      color: "#00C8E0" },
+                          { label: "Company Name",     value: companyName,                     icon: Building2, color: "#FF9500" },
+                          { label: "Industry",          value: "Not configured",                icon: Layers,    color: "#00C8E0" },
+                          { label: "Company Size",      value: companyState ? `${companyState.company.employeeCount} employees` : "—", icon: Users, color: "#00C853" },
+                          { label: "Country / Region",  value: "Not configured",                icon: Globe,     color: "#7B5EFF" },
+                          { label: "Time Zone",         value: Intl.DateTimeFormat().resolvedOptions().timeZone, icon: Clock, color: "#FF9500" },
+                          { label: "Contact Email",     value: "Not configured",                icon: Send,      color: "#00C8E0" },
                         ].map(field => {
                           const Icon = field.icon;
                           return (
@@ -477,6 +550,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                               <Users className="size-4" style={{ color: "#00C8E0" }} />
                             </div>
                             <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Team Members</p>
+                            {isDemo && <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(255,150,0,0.12)", color: "#FF9500", marginLeft: 6 }}>DEMO</span>}
                           </div>
                           <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{TEAM_MEMBERS.length} members</span>
                         </div>
@@ -965,7 +1039,10 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       {activeTab === "security" && (
         <div className="space-y-3">
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
-            {renderToggle("twoFA", tr("st.twoFA"), Lock, "#00C853", tr("st.twoFADesc"))}
+            {/* P1-fix (2026-05-27): replaced cosmetic twoFA toggle with real MFA
+                control that reads server state via mfaListFactors and drives
+                enrollment/unenrollment through the actual Supabase MFA API. */}
+            <MobileMFAControl />
             {renderToggle("auditLog", tr("st.auditLogging"), FileText, "#00C8E0", tr("st.auditDesc"))}
             {renderRow(Shield, tr("st.sessionTimeout"), sessionTimeout, "#FF9500")}
           </div>
@@ -1523,6 +1600,85 @@ function MFAControlSection() {
             </>
           )}
         </div>
+      </div>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// P1-fix (2026-05-27) — Mobile MFA Control
+// Compact version of MFAControlSection for the mobile security tab.
+// Reads real MFA state from Supabase and drives enroll/unenroll.
+// ═══════════════════════════════════════════════════════════════
+function MobileMFAControl() {
+  const [status, setStatus]   = useState<"loading" | "off" | "on">("loading");
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => {
+    const { data } = await mfaListFactors();
+    if (data?.hasTotp) {
+      const verified = data.factors.find((f: any) => f.status === "verified");
+      setFactorId(verified?.id ?? null);
+      setStatus("on");
+    } else {
+      setStatus("off");
+      setFactorId(null);
+    }
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const handleToggle = async () => {
+    if (status === "loading") return;
+    if (status === "off") {
+      setShowEnroll(true);
+      return;
+    }
+    // Status is "on" — confirm disable
+    if (!window.confirm("Disable 2FA?\n\nYour account will be protected by password only.")) return;
+    if (!factorId) return;
+    setBusy(true);
+    const { error } = await mfaUnenroll(factorId);
+    setBusy(false);
+    if (error) {
+      toast.error("Could not disable 2FA", { description: error.message });
+      return;
+    }
+    toast.success("Two-factor authentication disabled");
+    await refresh();
+  };
+
+  const isOn = status === "on";
+
+  return (
+    <>
+      {showEnroll && (
+        <MFAEnrollmentModal
+          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success("2FA enabled"); }}
+          onCancel  ={async () => { setShowEnroll(false); await refresh(); }}
+        />
+      )}
+      <div className="flex items-center gap-3 px-3 py-3" style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+        <div className="size-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(0,200,83,0.1)" }}>
+          <Lock className="size-3.5" style={{ color: "#00C853" }} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-white" style={{ fontSize: 12, fontWeight: 500 }}>Two-Factor Auth</span>
+            {status === "on" && (
+              <span style={{ fontSize: 7, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: "rgba(0,200,83,0.12)", color: "#00C853" }}>ACTIVE</span>
+            )}
+          </div>
+          <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 1 }}>
+            {status === "loading" ? "Checking…" : isOn ? "TOTP authenticator enrolled" : "Tap to set up authenticator app"}
+          </p>
+        </div>
+        <button onClick={handleToggle} disabled={busy || status === "loading"} className="w-9 h-5 rounded-full relative transition-all"
+          style={{ background: isOn ? "rgba(0,200,83,0.4)" : "rgba(255,255,255,0.08)" }}>
+          <motion.div initial={false} animate={{ x: isOn ? 16 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className="absolute top-0.5 left-0.5 size-4 rounded-full" style={{ background: isOn ? "#00C853" : "rgba(255,255,255,0.3)" }} />
+        </button>
       </div>
     </>
   );

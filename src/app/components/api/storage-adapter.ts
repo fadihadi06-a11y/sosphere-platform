@@ -18,6 +18,8 @@
 // ── Backend Types ─────────────────────────────────────────────────
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+// Task #73 (2026-05-27): AES-GCM encryption for sensitive localStorage keys.
+import { isSensitiveKey, secureSetItem, secureGetItem, migrateToEncrypted, initSecureStorage } from "../utils/secure-storage";
 
 export type StorageBackend = "localStorage" | "supabase";
 
@@ -77,9 +79,14 @@ export async function storeJSON<T>(
     return;
   }
 
-  // localStorage mode
+  // localStorage mode -- Task #73: encrypt sensitive keys
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const json = JSON.stringify(value);
+    if (isSensitiveKey(key)) {
+      await secureSetItem(key, json);
+    } else {
+      localStorage.setItem(key, json);
+    }
   } catch (e) {
     console.warn(`[Storage] Failed to write key "${key}":`, e);
   }
@@ -113,8 +120,13 @@ export async function loadJSON<T>(
     }
   }
 
-  // localStorage mode
+  // localStorage mode -- Task #73: decrypt sensitive keys
   try {
+    if (isSensitiveKey(key)) {
+      const raw = await secureGetItem(key);
+      if (raw === null) return defaultValue;
+      return JSON.parse(raw) as T;
+    }
     const raw = localStorage.getItem(key);
     if (raw === null) return defaultValue;
     return JSON.parse(raw) as T;
@@ -149,7 +161,13 @@ export async function removeJSON(key: string, table = "app_state"): Promise<void
 
 export function storeJSONSync<T>(key: string, value: T): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const json = JSON.stringify(value);
+    // Task #73: Sensitive keys get AES-GCM encryption (async, fire-and-forget in sync path)
+    if (isSensitiveKey(key)) {
+      void secureSetItem(key, json);
+    } else {
+      localStorage.setItem(key, json);
+    }
   } catch (e) {
     console.warn(`[Storage] Sync write failed for "${key}":`, e);
   }
@@ -159,6 +177,13 @@ export function loadJSONSync<T>(key: string, defaultValue: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (raw === null) return defaultValue;
+    // Task #73: encrypted values start with "enc:v1:" -- the sync path
+    // cannot decrypt (async), so return default. Use async loadJSON for
+    // sensitive keys in new code. This preserves backward compatibility.
+    if (raw.startsWith("enc:v1:")) {
+      console.warn(`[Storage] Key "${key}" is encrypted; use async loadJSON instead.`);
+      return defaultValue;
+    }
     return JSON.parse(raw) as T;
   } catch {
     return defaultValue;
@@ -358,7 +383,7 @@ export function onBroadcast(channel: string, callback: BroadcastCallback): () =>
 
 /**
  * List all SOSphere keys in localStorage.
- * Useful for migration: dump all data → upload to Supabase.
+ * Useful for migration: dump all data, then upload to Supabase.
  */
 export function listAllLocalKeys(): string[] {
   const keys: string[] = [];
@@ -386,6 +411,20 @@ export function exportAllLocalData(): Record<string, unknown> {
     }
   });
   return data;
+}
+
+// =================================================================
+// Initialisation (call once at app startup)
+// =================================================================
+
+/**
+ * Bootstrap storage: initialise AES-GCM encryption and migrate
+ * any existing plaintext sensitive keys to encrypted form.
+ * Safe to call multiple times; idempotent.
+ */
+export async function initStorage(): Promise<void> {
+  await initSecureStorage();
+  await migrateToEncrypted();
 }
 
 // =================================================================

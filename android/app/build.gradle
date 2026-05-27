@@ -149,3 +149,61 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Task #31 (2026-05-27) — Firebase API Key Restriction Check
+// ─────────────────────────────────────────────────────────────────────────
+// The Firebase API key in google-services.json ships unrestricted
+// (configuration_version: "1"). This allows:
+//   • Quota theft — anyone with the key can burn Firebase quotas
+//   • API abuse — FCM, Firestore, Auth calls under our project
+//
+// HOW TO RESTRICT (Google Cloud Console):
+//   1. Go to https://console.cloud.google.com/apis/credentials
+//   2. Select project: sosphere-809bb
+//   3. Find key: ***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***
+//   4. Under "Application restrictions":
+//      → Select "Android apps"
+//      → Add item:
+//           Package name: com.sosphere.app
+//           SHA-1 fingerprint: (run ./gradlew signingReport to get it)
+//   5. Under "API restrictions":
+//      → Select "Restrict key"
+//      → Allow only: Firebase Cloud Messaging API, Firebase Installations API,
+//        Firebase Dynamic Links API, Token Service API
+//   6. Save
+//
+// To get your SHA-1 fingerprint:
+//   ./gradlew signingReport | grep SHA1
+//
+// After restricting, update google-services.json with the new key if
+// Google generates a separate restricted key, or verify the existing key
+// now has restrictions applied.
+// ═══════════════════════════════════════════════════════════════════════════
+tasks.register('checkFirebaseKeyRestriction') {
+    group = 'Verification'
+    description = 'Warns if Firebase API key appears unrestricted'
+    doLast {
+        def gsFile = file('google-services.json')
+        if (gsFile.exists()) {
+            def content = gsFile.text
+            // configuration_version "1" typically means no restrictions
+            if (content.contains('"configuration_version": "1"')) {
+                logger.warn("")
+                logger.warn("╔══════════════════════════════════════════════════════════╗")
+                logger.warn("║  ⚠ SECURITY: Firebase API key appears UNRESTRICTED      ║")
+                logger.warn("║  Apply Android app + API restrictions in Cloud Console.  ║")
+                logger.warn("║  See build.gradle Task #31 comment for instructions.     ║")
+                logger.warn("╚══════════════════════════════════════════════════════════╝")
+                logger.warn("")
+            }
+        }
+    }
+}
+
+// Run the check automatically before each build
+tasks.configureEach { task ->
+    if (task.name == 'preBuild') {
+        task.dependsOn 'checkFirebaseKeyRestriction'
+    }
+}

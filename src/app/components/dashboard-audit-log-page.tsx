@@ -1352,7 +1352,8 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     doc.setTextColor(100);
     doc.text("Report Generation Method:   Automated / System-Generated", 22, y + 22);
     doc.text("Data Source:                SOSphere Real-Time Event Store", 22, y + 27);
-    doc.text("Tamper Detection:           Blockchain-anchored hash verification", 22, y + 32);
+    // P1-fix (2026-05-27): truthful wording — no blockchain exists in SOSphere.
+    doc.text("Tamper Detection:           SHA-256 content hash (verify against source)", 22, y + 32);
 
     // Verified stamp
     doc.setDrawColor(C.green[0], C.green[1], C.green[2]);
@@ -1524,21 +1525,10 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       doc.setFontSize(62);
       doc.setTextColor(0, 200, 224);
 
-      const wmAngle = -40 * (Math.PI / 180);
-      const wmCos = Math.cos(wmAngle);
-      const wmSin = Math.sin(wmAngle);
-      const wmText = "CONFIDENTIAL";
-      const wmTW = doc.getTextWidth(wmText);
-      const wmTx = pw / 2 - (wmTW * wmCos) / 2;
-      const wmTy = ph / 2 - (wmTW * wmSin) / 2;
-
-      // P0-doctrine-completion (2026-05-25): jsPDF private API for PDF transform matrix.
-      // Same pattern as compliance-reports.tsx.
-      (doc.internal as any).write(
-        `q ${wmCos.toFixed(4)} ${wmSin.toFixed(4)} ${(-wmSin).toFixed(4)} ${wmCos.toFixed(4)} ${(wmTx * 72 / 25.4).toFixed(2)} ${((ph - wmTy) * 72 / 25.4).toFixed(2)} cm`
-      );
-      doc.text(wmText, 0, 0);
-      (doc.internal as any).write("Q");
+      // P1-fix (2026-05-27): replaced doc.internal.write() private-API matrix hack
+      // with jsPDF's public `angle` option on doc.text(). The private write() could
+      // break on any jsPDF minor bump; the public API is stable since jsPDF 2.x.
+      doc.text("CONFIDENTIAL", pw / 2, ph / 2, { align: "center", angle: 40 });
       doc.restoreGraphicsState();
 
       // Corner security marks

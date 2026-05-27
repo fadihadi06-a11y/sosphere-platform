@@ -18,6 +18,14 @@
  */
 
 import { hasFeature } from "./subscription-service";
+// Task #73 fix (2026-05-27): PIN hashes + salt are security-critical.
+import { secureSetItem, secureGetItem, SENSITIVE_KEYS } from "./utils/secure-storage";
+
+SENSITIVE_KEYS.add("sosphere_pin_salt");
+SENSITIVE_KEYS.add("sosphere_duress_pin_hash");
+SENSITIVE_KEYS.add("sosphere_deactivation_pin_hash");
+SENSITIVE_KEYS.add("sosphere_duress_pin");
+SENSITIVE_KEYS.add("sosphere_deactivation_pin");
 
 // ── E-M1: PIN hashing + constant-time compare ────────────────────
 // Previous versions stored the duress and deactivation PINs as
@@ -47,7 +55,31 @@ const DEACTIVATION_PIN_HASH_KEY    = "sosphere_deactivation_pin_hash";
 const PIN_SALT_KEY                 = "sosphere_pin_salt";
 const LEGACY_MARKER                = "__legacy_pre_hash__";
 
+// ── Cached salt + hashes (populated by initDuressService) ─────
+let _cachedSalt: string | null = null;
+let _cachedDuressHash: string | null = null;
+let _cachedDeactHash: string | null = null;
+
+/** Reset in-memory caches — for test isolation only. */
+export function resetDuressCache(): void {
+  _cachedSalt = null;
+  _cachedDuressHash = null;
+  _cachedDeactHash = null;
+}
+
+export async function initDuressService(): Promise<void> {
+  try {
+    const salt = await secureGetItem(PIN_SALT_KEY);
+    if (salt && /^[a-f0-9]{32}$/.test(salt)) _cachedSalt = salt;
+    const dh = await secureGetItem(DURESS_PIN_HASH_KEY);
+    if (dh && /^[a-f0-9]{64}$/.test(dh)) _cachedDuressHash = dh;
+    const ah = await secureGetItem(DEACTIVATION_PIN_HASH_KEY);
+    if (ah && /^[a-f0-9]{64}$/.test(ah)) _cachedDeactHash = ah;
+  } catch { /* first run */ }
+}
+
 function getOrCreateSalt(): string {
+  if (_cachedSalt) return _cachedSalt;
   try {
     let salt = localStorage.getItem(PIN_SALT_KEY);
     if (salt && /^[a-f0-9]{32}$/.test(salt)) return salt;
@@ -55,7 +87,8 @@ function getOrCreateSalt(): string {
     const bytes = new Uint8Array(16);
     (globalThis.crypto || (globalThis as any).msCrypto).getRandomValues(bytes);
     salt = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-    localStorage.setItem(PIN_SALT_KEY, salt);
+    _cachedSalt = salt;
+    void secureSetItem(PIN_SALT_KEY, salt);
     return salt;
   } catch {
     // Deterministic fallback for ancient browsers without crypto —
@@ -121,9 +154,10 @@ export function isDuressFeatureAvailable(): boolean {
  * but semantically different. No external callers exist in-tree.
  */
 export function getDuressPin(): string | null {
+  if (_cachedDuressHash) return _cachedDuressHash;
   try {
     const hash = localStorage.getItem(DURESS_PIN_HASH_KEY);
-    if (hash && /^[a-f0-9]{64}$/.test(hash)) return hash;
+    if (hash && /^[a-f0-9]{64}$/.test(hash)) { _cachedDuressHash = hash; return hash; }
     // Legacy path: if there's a plaintext value, trigger migration
     // fire-and-forget — caller will see null on this tick but the
     // next call will return the hash.
@@ -142,7 +176,8 @@ export async function setDuressPin(pin: string | null): Promise<boolean> {
   try {
     if (pin === null || pin === "") {
       localStorage.removeItem(DURESS_PIN_HASH_KEY);
-      localStorage.removeItem(DURESS_PIN_KEY); // also sweep any legacy
+      localStorage.removeItem(DURESS_PIN_KEY);
+      _cachedDuressHash = null;
       return true;
     }
     if (!/^\d{4,10}$/.test(pin)) return false;
@@ -152,7 +187,8 @@ export async function setDuressPin(pin: string | null): Promise<boolean> {
     const newHash = await hashPin(pin);
     if (!newHash) return false;
     if (deactHash && constantTimeEquals(deactHash, newHash)) return false;
-    localStorage.setItem(DURESS_PIN_HASH_KEY, newHash);
+    await secureSetItem(DURESS_PIN_HASH_KEY, newHash);
+    _cachedDuressHash = newHash;
     localStorage.removeItem(DURESS_PIN_KEY);
     return true;
   } catch {
@@ -204,9 +240,10 @@ export function isDuressPinSync(input: string): boolean {
  * Same semantics as getDuressPin — returns the hash, not the plaintext.
  */
 export function getDeactivationPin(): string | null {
+  if (_cachedDeactHash) return _cachedDeactHash;
   try {
     const hash = localStorage.getItem(DEACTIVATION_PIN_HASH_KEY);
-    if (hash && /^[a-f0-9]{64}$/.test(hash)) return hash;
+    if (hash && /^[a-f0-9]{64}$/.test(hash)) { _cachedDeactHash = hash; return hash; }
     const legacy = localStorage.getItem(DEACTIVATION_PIN_KEY);
     if (legacy && legacy !== LEGACY_MARKER) {
       void migrateLegacyPin(DEACTIVATION_PIN_KEY, DEACTIVATION_PIN_HASH_KEY);
@@ -223,14 +260,16 @@ export async function setDeactivationPin(pin: string | null): Promise<boolean> {
     if (pin === null || pin === "") {
       localStorage.removeItem(DEACTIVATION_PIN_HASH_KEY);
       localStorage.removeItem(DEACTIVATION_PIN_KEY);
+      _cachedDeactHash = null;
       return true;
     }
     if (!/^\d{4,10}$/.test(pin)) return false;
-    const duressHash = localStorage.getItem(DURESS_PIN_HASH_KEY);
+    const duressHash = _cachedDuressHash || localStorage.getItem(DURESS_PIN_HASH_KEY);
     const newHash = await hashPin(pin);
     if (!newHash) return false;
     if (duressHash && constantTimeEquals(duressHash, newHash)) return false;
-    localStorage.setItem(DEACTIVATION_PIN_HASH_KEY, newHash);
+    await secureSetItem(DEACTIVATION_PIN_HASH_KEY, newHash);
+    _cachedDeactHash = newHash;
     localStorage.removeItem(DEACTIVATION_PIN_KEY);
     return true;
   } catch {
