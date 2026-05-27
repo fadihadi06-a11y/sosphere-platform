@@ -12,6 +12,8 @@ import { ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { employeeUsagePercent, type CompanyState } from "./mobile-company";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
+// Dashboard audit P0: EMP-${Date.now()} was collision-prone + predictable.
+import { secureRandomId } from "./utils/secure-random";
 import {
   Card as DSCard, SectionHeader, Badge, AlertItem, Divider,
 } from "./design-system";
@@ -1179,7 +1181,9 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 if (email.trim()) {
                   // Persist zone assignment for each selected zone
-                  const empId = `EMP-${Date.now()}`;
+                  // Dashboard audit P0: was `EMP-${Date.now()}` — collision-prone
+                  // under rapid invitation clicks. secureRandomId adds crypto suffix.
+                  const empId = secureRandomId("EMP", 4);
                   selectedZones.forEach(z => assignEmployeeZone(empId, z));
                   onClose();
                 }
