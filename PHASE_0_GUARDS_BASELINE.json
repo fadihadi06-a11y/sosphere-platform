@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-26T16:47:10.802Z",
+  "generatedAt": "2026-05-28T10:36:38.785Z",
   "summary": {
-    "files": 533,
+    "files": 534,
     "rules": 3,
     "count": 1117
   },
@@ -11,7 +11,7 @@
     "no-or-company-id-null|supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql|13",
     "no-or-company-id-null|supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql|35",
     "no-localStorage-auth|src/app/components/dashboard-web-page.tsx|1293",
-    "no-localStorage-auth|src/app/components/company-dashboard.tsx|1592",
+    "no-localStorage-auth|src/app/components/company-dashboard.tsx|1594",
     "no-localStorage-auth|src/app/components/utils/dashboard-auth-guard.ts|60",
     "no-localStorage-auth|src/app/components/utils/dashboard-auth-guard.ts|46",
     "no-localStorage-auth|src/app/components/stores/dashboard-store.ts|338",
