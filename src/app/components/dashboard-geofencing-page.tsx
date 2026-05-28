@@ -18,6 +18,8 @@ import { TOKENS } from "./design-system";
 import { saveZoneGPS, type ZoneGPSData } from "./shared-store";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { toast } from "sonner";
+
+const DEV_DEMO = (import.meta as any).env?.DEV === true;
 import { hapticSuccess } from "./haptic-feedback";
 
 // ── Supabase Geofence Persistence ────────────────────────────
@@ -191,7 +193,8 @@ const INITIAL_ZONES: GeoZone[] = [
 ];
 
 // Mock employee dots
-const EMPLOYEE_DOTS = [
+// Audit (2026-05-27): mock employee dots, DEV-only
+const EMPLOYEE_DOTS: Array<{x:number;y:number;name:string;color:string}> = DEV_DEMO ? [
   { id: "E1", x: 250, y: 130, name: "Ahmed K.", zone: "GZ-1" },
   { id: "E2", x: 300, y: 160, name: "Omar F.", zone: "GZ-1" },
   { id: "E3", x: 520, y: 150, name: "Fatima H.", zone: "GZ-2" },
@@ -202,7 +205,7 @@ const EMPLOYEE_DOTS = [
   { id: "E8", x: 620, y: 400, name: "Hassan J.", zone: "GZ-5" },
   { id: "E9", x: 270, y: 110, name: "Ali M.", zone: "GZ-1" },
   { id: "E10", x: 370, y: 300, name: "Rania A.", zone: "GZ-3" },
-];
+] : [];
 
 // ═══════════════════════════════════════════════════════════════
 // Main Component

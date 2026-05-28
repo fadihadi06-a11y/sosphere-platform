@@ -73,6 +73,8 @@ const getWeekDates = (offset: number) => {
 };
 
 // ── Initial mock shifts ────────────────────────────────────────
+// SUPABASE_MIGRATION_POINT: shifts → supabase.from('shifts').select('*').eq('company_id', companyId)
+const DEV_DEMO = (import.meta as any).env?.DEV === true;
 const INITIAL_SHIFTS: Shift[] = [
   { id: "S1", employeeId: "EMP-001", day: 0, type: "morning",   startHour: 6,  endHour: 14, zone: "Zone A" },
   { id: "S2", employeeId: "EMP-001", day: 1, type: "morning",   startHour: 6,  endHour: 14, zone: "Zone A" },
@@ -125,7 +127,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch { /* fallback */ }
-    return INITIAL_SHIFTS;
+    return DEV_DEMO ? INITIAL_SHIFTS : [];
   });
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState<ShiftTemplate>(SHIFT_TEMPLATES[0]);

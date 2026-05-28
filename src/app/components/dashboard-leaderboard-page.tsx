@@ -36,7 +36,6 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
   const [activeTab, setActiveTab] = useState<"ranking" | "performance" | "history">("ranking");
 
   useEffect(() => {
-    console.log("[SUPABASE_READY] leaderboard_viewed");
     /* SUPABASE_MIGRATION_POINT: ire_performance
        Replace getAdminRating() with:
        const { data } = await supabase
@@ -50,7 +49,6 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
     setHistory(hist);
     const avgScore = rating?.avgScore || 0;
     const rank = rating ? Math.max(1, 9 - Math.floor(avgScore / 12)) : 8;
-    console.log("[SUPABASE_READY] performance_loaded: " + JSON.stringify({ avgScore, rank, historyCount: hist.length }));
   }, []);
 
   const TIER_COLORS: Record<string, { color: string; icon: typeof Crown }> = {
@@ -147,7 +145,6 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
         ].map(tab => (
           <button key={tab.id} onClick={() => {
               setActiveTab(tab.id);
-              console.log("[SUPABASE_READY] leaderboard_tab_changed: " + tab.id);
             }}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg"
             style={{
@@ -161,10 +158,7 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
       </div>
 
       {/* Tab content */}
-      {activeTab === "ranking" && (() => {
-        console.log("[SUPABASE_READY] leaderboard_rankings_viewed");
-        return <AdminLeaderboardContent adminRating={adminRating} />;
-      })()}
+      {activeTab === "ranking" && <AdminLeaderboardContent adminRating={adminRating} />}
 
       {activeTab === "performance" && (
         <div className="space-y-4">

@@ -161,7 +161,7 @@ try {
 // HOW TO RESTRICT (Google Cloud Console):
 //   1. Go to https://console.cloud.google.com/apis/credentials
 //   2. Select project: sosphere-809bb
-//   3. Find key: ***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***
+//   3. Find the API key listed in google-services.json (do NOT paste it here)
 //   4. Under "Application restrictions":
 //      → Select "Android apps"
 //      → Add item:

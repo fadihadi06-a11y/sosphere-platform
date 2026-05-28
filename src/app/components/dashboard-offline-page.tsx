@@ -310,11 +310,10 @@ export function OfflineMonitoringPage() {
           status: "active",
           severity: "critical",
           type: "offline_sos",
-          note: "SOS triggered while offline — device reconnecting",
-          isOwned: false,
+                    isOwned: false,
           elapsed: Math.round((Date.now() - (worker.lastSOS ?? Date.now())) / 1000),
           timestamp: new Date(worker.lastSOS ?? Date.now()),
-        } as any);
+        });
       }
     });
   }, []);
