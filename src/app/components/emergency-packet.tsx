@@ -8,6 +8,10 @@ import {
   Globe, X, Zap, Download, Users, Radio,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+// CRITICAL FIX (2026-05-27): contacts are now AES-GCM encrypted.
+// Reading them synchronously returns ciphertext; QR payload to first responders
+// would silently be empty without this fix.
+import { secureGetItem } from "./utils/secure-storage";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface PacketModule {
@@ -127,7 +131,22 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
   // FIX 2026-04-23: compute real data once per render from storage.
   const realLocation = readRealLocation();
   const realMedical = readRealMedicalId();
-  const realContacts = readRealContacts();
+  // CRITICAL FIX (2026-05-27): contacts are AES-GCM encrypted now; must load async.
+  const [realContacts, setRealContacts] = useState<Array<{priority:number;name:string;phone:string;relation:string}>>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await secureGetItem("sosphere_emergency_contacts");
+        const arr = raw ? JSON.parse(raw) : [];
+        setRealContacts(arr.map((c: any, i: number) => ({
+          priority: i + 1,
+          name: c.name || "—",
+          phone: c.phone || "—",
+          relation: c.relation || "",
+        })));
+      } catch { /* decryption failed — show empty */ }
+    })();
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setPacketReady(true), 800);
