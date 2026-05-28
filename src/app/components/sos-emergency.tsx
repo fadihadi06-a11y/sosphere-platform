@@ -20,6 +20,27 @@ import { triggerOfflineSOS } from "./offline-sync";
 // FIX FATAL-1: Import real GPS + battery from tracker (was hardcoded before)
 import { getLastKnownPosition, getBatteryLevel, activateEmergencyTracking, deactivateEmergencyTracking } from "./offline-gps-tracker";
 import { trackEventSync } from "./smart-timeline-tracker";
+// Mobile audit (2026-05-27): admin_phone + emergency_contacts are SENSITIVE_KEYS.
+// Use secure cache so SOS works synchronously but respects AES-GCM encryption.
+import { secureGetItem, secureSetItem } from "./utils/secure-storage";
+
+// ── Sensitive-key cache (populated by initSosEmergency on app startup) ──
+let _cachedAdminPhone: string | null = null;
+let _cachedContacts: string | null = null; // JSON string of ERContact[]
+
+/** Call once at app startup to decrypt sensitive SOS data into cache. */
+export async function initSosEmergency(): Promise<void> {
+  try {
+    _cachedAdminPhone = await secureGetItem("sosphere_admin_phone");
+    _cachedContacts = await secureGetItem("sosphere_emergency_contacts");
+  } catch { /* first run — fine */ }
+}
+
+/** Refresh contacts cache from encrypted storage (call after add/edit/delete). */
+async function refreshContactsCache(): Promise<void> {
+  try { _cachedContacts = await secureGetItem("sosphere_emergency_contacts"); }
+  catch { /* keep stale cache */ }
+}
 // FIX 2026-04-23: Replaced silent `reportError` stub with a real handler that
 // forwards to Sentry + records the failure to the smart timeline so it is
 // visible on the audit trail. The previous `const reportError = () => {};`
@@ -124,7 +145,9 @@ function resolveEmergencyNumber(): { number: string; label: string; country: str
 
   if (!profileCountry) {
     try {
-      const savedPhone = localStorage.getItem(STORAGE_KEYS.authAdminPhone);
+      // Mobile audit fix (2026-05-27): admin_phone is encrypted (SENSITIVE_KEY).
+      // Read from cache populated by initSosEmergency on app startup.
+      const savedPhone = _cachedAdminPhone || localStorage.getItem(STORAGE_KEYS.authAdminPhone);
       profileCountry = countryFromPhone(savedPhone);
     } catch { /* ignore */ }
   }
@@ -431,7 +454,10 @@ function getAdminContact(): ERContact | null {
  */
 function getEmergencyContacts(): ERContact[] {
   try {
-    const stored = localStorage.getItem("sosphere_emergency_contacts");
+    // Mobile audit fix (2026-05-27): emergency_contacts is encrypted (SENSITIVE_KEY).
+    // Read from cache; fall back to plain localStorage for backward compat with
+    // pre-encryption installs.
+    const stored = _cachedContacts || localStorage.getItem("sosphere_emergency_contacts");
     if (stored) {
       const parsed = JSON.parse(stored) as ERContact[];
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -441,14 +467,13 @@ function getEmergencyContacts(): ERContact[] {
   } catch (e) {
     console.warn("[SOS] Failed to read stored contacts:", e);
   }
-  // No fallback to fake contacts — return empty, UI will prompt user to add contacts
   return EMPTY_CONTACTS.map(c => ({ ...c }));
 }
 
 /** Check if user has set up emergency contacts */
 function hasEmergencyContacts(): boolean {
   try {
-    const stored = localStorage.getItem("sosphere_emergency_contacts");
+    const stored = _cachedContacts || localStorage.getItem("sosphere_emergency_contacts");
     if (stored) {
       const parsed = JSON.parse(stored);
       return Array.isArray(parsed) && parsed.length > 0;
@@ -1371,11 +1396,16 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       phone: quickPhone.trim(), avatar: "", status: "pending",
     };
     try {
-      const existing = JSON.parse(localStorage.getItem("sosphere_emergency_contacts") || "[]");
+      // Mobile audit fix (2026-05-27): write through secureSetItem (AES-GCM)
+      const existing = JSON.parse(_cachedContacts || localStorage.getItem("sosphere_emergency_contacts") || "[]");
       existing.push(newContact);
-      localStorage.setItem("sosphere_emergency_contacts", JSON.stringify(existing));
+      const serialized = JSON.stringify(existing);
+      void secureSetItem("sosphere_emergency_contacts", serialized);
+      _cachedContacts = serialized;
     } catch {
-      localStorage.setItem("sosphere_emergency_contacts", JSON.stringify([newContact]));
+      const serialized = JSON.stringify([newContact]);
+      void secureSetItem("sosphere_emergency_contacts", serialized);
+      _cachedContacts = serialized;
     }
     setContacts([newContact]);
     setShowQuickSetup(false);
