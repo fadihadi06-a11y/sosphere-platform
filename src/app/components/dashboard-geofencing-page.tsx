@@ -194,7 +194,7 @@ const INITIAL_ZONES: GeoZone[] = [
 
 // Mock employee dots
 // Audit (2026-05-27): mock employee dots, DEV-only
-const EMPLOYEE_DOTS: Array<{x:number;y:number;name:string;color:string}> = DEV_DEMO ? [
+const EMPLOYEE_DOTS: Array<{id:string;x:number;y:number;name:string;zone:string}> = DEV_DEMO ? [
   { id: "E1", x: 250, y: 130, name: "Ahmed K.", zone: "GZ-1" },
   { id: "E2", x: 300, y: 160, name: "Omar F.", zone: "GZ-1" },
   { id: "E3", x: 520, y: 150, name: "Fatima H.", zone: "GZ-2" },
