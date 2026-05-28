@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// CRITICAL FIX (2026-05-27): dialer was fake — only showed "Connecting..." for 2s.
+import { buildTelURI } from "./utils/uri-safe";
+import { logAuditEvent } from "./audit-log-store";
 import {
   Phone, Shield, Hospital, Flame, AlertTriangle,
   Globe, ChevronDown, Search, Star, Clock,
@@ -180,6 +183,17 @@ export function EmergencyServices({ onBack }: EmergencyServicesProps) {
 
   const handleDial = (number: string) => {
     setDialingNumber(number);
+    // CRITICAL FIX (2026-05-27): previously NEVER dialed — silent fake call.
+    try {
+      logAuditEvent("emergency", `Emergency services dialed: ${number}`, {
+        detail: `User initiated dial to ${number}`,
+        severity: "critical",
+      });
+    } catch { /* never block dial */ }
+    const tel = buildTelURI(number);
+    if (tel) {
+      try { window.location.href = tel; } catch { /* surface error */ }
+    }
     setTimeout(() => setDialingNumber(null), 2000);
   };
 

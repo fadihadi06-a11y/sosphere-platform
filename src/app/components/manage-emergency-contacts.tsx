@@ -22,6 +22,8 @@ import { X, Plus, Edit3, Trash2, Check, Phone, AlertTriangle } from "lucide-reac
 import { toast } from "sonner";
 import { normalizeE164 } from "./phone-utils";
 import { useLang } from "./useLang";
+// CRITICAL FIX (2026-05-27): sosphere_emergency_contacts is SENSITIVE_KEY.
+import { secureGetItem, secureSetItem } from "./utils/secure-storage";
 
 interface StoredContact {
   id: number;
@@ -35,9 +37,10 @@ interface StoredContact {
 
 const STORAGE_KEY = "sosphere_emergency_contacts";
 
-function loadContacts(): StoredContact[] {
+// CRITICAL FIX (2026-05-27): AES-GCM encrypted reads/writes.
+async function loadContacts(): Promise<StoredContact[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = await secureGetItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -46,11 +49,10 @@ function loadContacts(): StoredContact[] {
   }
 }
 
-function saveContacts(list: StoredContact[]) {
+async function saveContacts(list: StoredContact[]): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    await secureSetItem(STORAGE_KEY, JSON.stringify(list));
   } catch {
-    // storage full / private mode — surface upstream via toast
     try { toast.error("Storage unavailable — changes not saved"); } catch {}
   }
 }
@@ -64,7 +66,7 @@ export function ManageEmergencyContacts({ onClose }: { onClose: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  useEffect(() => { setContacts(loadContacts()); }, []);
+  useEffect(() => { void loadContacts().then(setContacts); }, []);
 
   const openAdd = () => {
     setEditing({ id: Date.now(), name: "", phone: "", relation: "" });
@@ -77,7 +79,7 @@ export function ManageEmergencyContacts({ onClose }: { onClose: () => void }) {
   const confirmDelete = (id: number) => {
     const next = contacts.filter(c => c.id !== id);
     setContacts(next);
-    saveContacts(next);
+    void saveContacts(next);
     setDeleteId(null);
     try { toast.success(tr("Contact removed", "تم حذف جهة الاتصال")); } catch {}
   };
@@ -113,7 +115,7 @@ export function ManageEmergencyContacts({ onClose }: { onClose: () => void }) {
       ? contacts.map((c, i) => (i === existingIdx ? merged : c))
       : [...contacts, merged];
     setContacts(next);
-    saveContacts(next);
+    void saveContacts(next);
     setShowForm(false);
     setEditing(null);
     try {

@@ -1,4 +1,6 @@
 import { secureRandomId } from "./utils/secure-random";
+// CRITICAL FIX (2026-05-27): LEGACY_ER_KEY mirror is SENSITIVE_KEY — encrypt.
+import { secureSetItem } from "./utils/secure-storage";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Contact Tier System
 // 3 types: Full Contact | Lite Contact | Ghost Contact
@@ -276,7 +278,8 @@ export function saveSafetyContacts(contacts: SafetyContact[]) {
       avatar: "",
       status: "pending",
     }));
-    localStorage.setItem(LEGACY_ER_KEY, JSON.stringify(erProjection));
+    // CRITICAL FIX (2026-05-27): AES-GCM encrypted write.
+    void secureSetItem(LEGACY_ER_KEY, JSON.stringify(erProjection));
   } catch (err) {
     console.warn("[contact-tier-system] failed to mirror to " + LEGACY_ER_KEY, err);
   }
