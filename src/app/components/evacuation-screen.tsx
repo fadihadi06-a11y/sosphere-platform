@@ -30,6 +30,8 @@ import {
   type ActiveEvacuation,
   type EvacuationPoint,
 } from "./shared-store";
+// Mobile audit fix (2026-05-27): evacuation lifecycle MUST be audit-logged.
+import { logAuditEvent } from "./audit-log-store";
 
 // Haversine distance
 function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -59,11 +61,12 @@ interface EvacuationScreenProps {
 }
 
 export function EvacuationScreen({
-  employeeId = "EMP-001",
-  employeeName = "Ahmed Khalil",
-  currentZoneId = "Z-A",
-  currentLat = 24.7136,
-  currentLng = 46.6753,
+  // CRITICAL FIX (2026-05-27): replaced mock identity defaults with UNKNOWN
+  employeeId = "UNKNOWN",
+  employeeName = "Unknown Worker",
+  currentZoneId = "UNKNOWN",
+  currentLat = 0,
+  currentLng = 0,
   onBack,
 }: EvacuationScreenProps) {
   const [evacuation, setEvacuation] = useState<ActiveEvacuation | null>(null);
@@ -128,6 +131,13 @@ export function EvacuationScreen({
       timestamp: Date.now(),
       data: { evacuationId: active.id, phase: "acknowledged", currentLat, currentLng },
     });
+    try {
+      logAuditEvent("emergency", "Evacuation acknowledged", {
+        detail: `${employeeName} acknowledged evacuation ${active.id} in ${active.zoneName}`,
+        zone: active.zoneName, severity: "warning",
+        actorOverride: { id: employeeId, name: employeeName, level: "worker" },
+      });
+    } catch { /* never block evacuation */ }
     setStatus("acknowledged");
   };
 
@@ -152,6 +162,13 @@ export function EvacuationScreen({
         currentLat, currentLng, targetPointId: nearestPoint?.id,
       },
     });
+    try {
+      logAuditEvent("emergency", "Evacuation started", {
+        detail: `${employeeName} started evacuating from ${evacuation.zoneName} toward ${nearestPoint?.name || "assembly point"}`,
+        zone: evacuation.zoneName, severity: "warning",
+        actorOverride: { id: employeeId, name: employeeName, level: "worker" },
+      });
+    } catch { /* never block */ }
   };
 
   const handleConfirmArrival = () => {
@@ -164,6 +181,13 @@ export function EvacuationScreen({
     });
     // P0-mobile-evacuation-banner (2026-05-26): worker arrived at assembly point.
     // Admin uses this to mark worker safe and to confirm 100%-arrived before complete.
+    try {
+      logAuditEvent("emergency", "Evacuation arrival confirmed", {
+        detail: `${employeeName} arrived at ${nearestPoint?.name || "assembly point"} (evacuation ${evacuation.id}, zone ${evacuation.zoneName})`,
+        zone: evacuation.zoneName, severity: "success",
+        actorOverride: { id: employeeId, name: employeeName, level: "worker" },
+      });
+    } catch { /* never block */ }
     void emitSyncEvent({
       type: "EVACUATION_ACK",
       employeeId, employeeName,
@@ -726,9 +750,9 @@ function stopEvacuationSiren(): void {
 }
 
 export function EvacuationAlertOverlay({
-  employeeId = "EMP-001",
-  employeeName = "Ahmed Khalil",
-  currentZoneId = "Z-A",
+  employeeId = "UNKNOWN",
+  employeeName = "Unknown Worker",
+  currentZoneId = "UNKNOWN",
 }: EvacuationOverlayProps) {
   const [evacuation, setEvacuation] = useState<ActiveEvacuation | null>(null);
   const [dismissed, setDismissed] = useState(false);

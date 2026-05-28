@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { emitSyncEvent } from "./shared-store";
+import { auditEmergency } from "./audit-log-store";
 // R-46 (LAUNCH_AUDIT, 2026-05-18): internal tier gate. Walk-me is
 // Basic+ only — Free users hitting this component (deep-link, etc.)
 // must NOT see the active flow. The prop `isPro` was advisory only.
@@ -184,9 +185,25 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
       escalationRef.current = setInterval(() => {
         setEscalationCountdown(c => {
           if (c <= 1) {
-            // Escalate to SOS!
+            // CRITICAL FIX (2026-05-27): previously NEVER fired SOS — silent escalation.
             setPhase("escalated");
             addEvent("sos_escalated", "No response — auto-escalated to SOS!", "danger");
+            void emitSyncEvent({
+              type: "SOS_ESCALATED",
+              employeeId: userId,
+              employeeName: userName,
+              zone: userZone,
+              timestamp: Date.now(),
+              data: { source: "safe-walk-stopped", guardian: selectedGuardian?.name, destination },
+            });
+            try {
+              auditEmergency(
+                "Safe-walk auto-escalated to SOS",
+                `Worker ${userName} stopped moving during walk to ${destination} (guardian: ${selectedGuardian?.name || "none"})`,
+                userZone,
+              );
+            } catch { /* never block life-safety */ }
+            if (onSOSTrigger) onSOSTrigger();
             return 0;
           }
           return c - 1;

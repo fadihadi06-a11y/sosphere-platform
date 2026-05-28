@@ -2038,7 +2038,9 @@ export function MobileApp() {
                       registeredAt: Date.now(),
                     }));
                     if (data.contacts?.length) {
-                      localStorage.setItem("sosphere_emergency_contacts", JSON.stringify(data.contacts));
+                      // Mobile audit fix (2026-05-27): SENSITIVE_KEY — must encrypt
+                      const { secureSetItem } = await import("./utils/secure-storage");
+                      await secureSetItem("sosphere_emergency_contacts", JSON.stringify(data.contacts));
                     }
                   } catch (_) { /* storage full — non-critical */ }
                   // Mark profile as completed in Supabase metadata
