@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, User, Phone, ShieldPlus, Plus, X, Check, Sparkles, ChevronDown, UserCircle, Calendar, AlertTriangle } from "lucide-react";
 import { storeJSONSync } from "./api/storage-adapter";
+// P1 FIX (2026-05-27): individual profile is PII — encrypt at rest.
+import { secureSetItem, SENSITIVE_KEYS } from "./utils/secure-storage";
+SENSITIVE_KEYS.add("sosphere_individual_profile");
 import { useLang } from "./useLang";
 import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 
@@ -327,7 +330,7 @@ export function IndividualRegister({ onComplete, onBack, initialPhone = "" }: In
       contacts: contacts.filter(c => c.name.trim() && c.phone.trim()).map(c => ({ name: c.name.trim(), phone: c.phone.trim() })),
       registeredAt: Date.now(),
     };
-    storeJSONSync("sosphere_individual_profile", profileData);
+    void secureSetItem("sosphere_individual_profile", JSON.stringify(profileData));
     setTimeout(() => onComplete({ name: profileData.name, phone: profileData.phone, contacts: profileData.contacts }), 1500);
   };
 

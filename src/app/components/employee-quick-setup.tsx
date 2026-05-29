@@ -5,6 +5,12 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+// P1 FIX (2026-05-27): avatar (facial biometric — GDPR Art. 9) + employee
+// profile (employer mapping) are sensitive PII. Register + encrypt.
+import { secureSetItem, SENSITIVE_KEYS } from "./utils/secure-storage";
+SENSITIVE_KEYS.add("sosphere_employee_avatar");
+SENSITIVE_KEYS.add("sosphere_employee_profile");
+SENSITIVE_KEYS.add("sosphere_individual_profile");
 import {
   Shield, User, Phone, Camera, Heart, AlertTriangle,
   ArrowRight, ArrowLeft, CheckCircle2, Lock, Droplets,
@@ -382,7 +388,7 @@ export function EmployeeQuickSetup({ prefilledData, onComplete, onBack }: Employ
                         const compressed = await compressImage(f);
                         setPhotoSet(true);
                         setPhotoUrl(compressed);
-                        localStorage.setItem("sosphere_employee_avatar", compressed);
+                        void secureSetItem("sosphere_employee_avatar", compressed);
                       } catch { console.warn("Photo compression failed"); }
                     }} />
                   <input ref={galleryInputRef} type="file" accept="image/*"
@@ -394,7 +400,7 @@ export function EmployeeQuickSetup({ prefilledData, onComplete, onBack }: Employ
                         const compressed = await compressImage(f);
                         setPhotoSet(true);
                         setPhotoUrl(compressed);
-                        localStorage.setItem("sosphere_employee_avatar", compressed);
+                        void secureSetItem("sosphere_employee_avatar", compressed);
                       } catch { console.warn("Photo compression failed"); }
                     }} />
 
@@ -708,7 +714,7 @@ export function EmployeeQuickSetup({ prefilledData, onComplete, onBack }: Employ
                   onClick={() => {
                     // Save employee profile data to localStorage for dashboard
                     try {
-                      localStorage.setItem("sosphere_employee_profile", JSON.stringify({
+                      void secureSetItem("sosphere_employee_profile", JSON.stringify({
                         role: prefilledData.role,
                         department: prefilledData.department,
                         zone: prefilledData.zone,
@@ -716,10 +722,11 @@ export function EmployeeQuickSetup({ prefilledData, onComplete, onBack }: Employ
                         managerName: prefilledData.managerName,
                       }));
                     } catch {}
-                    console.log("[SUPABASE_READY] employee_onboarding:", JSON.stringify({
-                      name: prefilledData.name, bloodType, allergies, conditions,
-                      emergencyContact: { name: emergName, phone: emergPhone, relation: emergRelation }
-                    }));
+                    // P1 FIX (2026-05-27): removed console.log of medical PII + emergency phone.
+                    // GDPR Art. 9 special-category data was being printed to logs in PROD.
+                    if (import.meta.env.DEV) {
+                      console.debug("[employee_onboarding] dev-only: name=" + prefilledData.name + " contacts=" + emergName);
+                    }
                     onComplete();
                   }}
                   className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl"

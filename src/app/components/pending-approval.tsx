@@ -24,7 +24,8 @@ interface PendingApprovalProps {
 
 export function PendingApproval({
   companyName,
-  userPhone = "+966551234567",
+  // P0 FIX (2026-05-27): sentinel "+966551234567" enabled approval spoofing
+  userPhone = "",
   adminName = "Company Admin",
   adminPhone,
   adminEmail,
@@ -410,7 +411,7 @@ export function PendingApproval({
             Contact Admin
           </motion.button>
 
-          {onApproved && (
+          {import.meta.env.DEV && onApproved && (
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={onApproved}
@@ -430,7 +431,7 @@ export function PendingApproval({
             </motion.button>
           )}
 
-          {onApprovedAsEmployee && (
+          {import.meta.env.DEV && onApprovedAsEmployee && (
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={onApprovedAsEmployee}

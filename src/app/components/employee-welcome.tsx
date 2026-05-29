@@ -26,12 +26,12 @@ interface EmployeeWelcomeProps {
 export function EmployeeWelcome({
   employeeName,
   companyName,
-  zoneName = "Zone A",
-  evacuationPoint = "Assembly Point A",
-  managerName = "Company Manager",
+  zoneName = "Not assigned",
+  evacuationPoint = "Not yet configured — contact your supervisor",
+  managerName = "Not yet assigned",
   managerPhone = "",
-  role = "Field Engineer",
-  department = "Operations",
+  role = "Pending role assignment",
+  department = "Pending",
   hasZones,
   onComplete,
 }: EmployeeWelcomeProps) {
