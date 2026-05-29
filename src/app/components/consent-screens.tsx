@@ -114,9 +114,9 @@ export function TermsConsentScreen({ onAccept }: TermsConsentScreenProps) {
 
   const handleAccept = () => {
     if (!checked) return;
-    try { localStorage.setItem(TOS_CONSENT_KEY, JSON.stringify({ accepted: true, timestamp: Date.now(), version: "1.0" })); } catch {}
+    try { localStorage.setItem(TOS_CONSENT_KEY, JSON.stringify({ accepted: true, timestamp: Date.now(), version: "2.0" })); } catch {}
     // B-08: fire-and-forget mirror to server so GDPR Art. 7 has a record.
-    void fireServerMirror("tos", { version: "1.0" });
+    void fireServerMirror("tos", { version: "2.0" });
     onAccept();
   };
 

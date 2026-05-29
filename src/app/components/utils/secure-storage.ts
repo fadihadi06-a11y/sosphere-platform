@@ -13,6 +13,13 @@ export const SENSITIVE_KEYS = new Set([
   "sosphere_pin_hash",
   "sosphere_mfa_backup",
   "sosphere_device_id",
+  // P0 GDPR fix (2026-05-27):
+  "sosphere_medical_id",         // Art. 9 special-category health data
+  "sosphere_avatar_dataurl",     // biometric face data (BIPA/DPDP)
+  "sosphere_user_phone",         // MFA factor — same protection as admin_phone
+  "sosphere_individual_profile", // PII bundle
+  "sosphere_employee_profile",   // employer mapping PII
+  "sosphere_employee_avatar",    // biometric face data
 ]);
 
 const SEED_KEY = "sosphere_ks_v1";

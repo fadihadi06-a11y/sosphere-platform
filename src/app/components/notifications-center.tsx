@@ -36,7 +36,9 @@ const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
   broadcast: { icon: Megaphone, color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
 };
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
+// P0 fix (2026-05-27): visible to all users in PROD — was Sarah/Alex/Mom fake data.
+const DEV_DEMO = (import.meta as any).env?.DEV === true;
+const _RAW_INITIAL_NOTIFICATIONS: Notification[] = [
   { id: "1", type: "family", title: "Sarah checked in", message: "Sarah confirmed she's safe at home.", time: "2m ago", read: false, urgent: false },
   { id: "2", type: "location", title: "Alex left school zone", message: "Alex has moved outside the school geofence area.", time: "18m ago", read: false, urgent: true },
   { id: "3", type: "checkin", title: "Check-in reminder", message: "Your 2-hour check-in timer expires in 5 minutes. Please respond.", time: "45m ago", read: false, urgent: true },
@@ -48,6 +50,7 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
   { id: "9", type: "family", title: "David joined Family Circle", message: "David accepted your invitation and is now part of your safety circle.", time: "5d ago", read: true, urgent: false },
   { id: "10", type: "location", title: "New safe zone added", message: "Home zone has been set up. You'll get alerts when family members arrive or leave.", time: "1w ago", read: true, urgent: false },
 ];
+const INITIAL_NOTIFICATIONS: Notification[] = DEV_DEMO ? _RAW_INITIAL_NOTIFICATIONS : [];
 
 function timeAgo(ts: number): string {
   const diff = Math.floor((Date.now() - ts) / 1000);
@@ -97,7 +100,8 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
   // Load broadcasts on mount and listen for new ones
   useEffect(() => {
     const loadBroadcasts = () => {
-      const broadcasts = getBroadcastsForEmployee("EMP-APP", "employee", "Z-B");
+      const broadcasts = // P0 multi-tenant fix: was hardcoded EMP-APP/Z-B for ALL users
+      getBroadcastsForEmployee(employeeId || "UNKNOWN", role || "employee", zone || "UNKNOWN");
       setBroadcastNotifs(broadcasts.map(broadcastToNotification));
     };
     loadBroadcasts();
@@ -114,7 +118,8 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
   const markAllRead = () => {
     setBaseNotifications(ns => ns.map(n => ({ ...n, read: true })));
     // Mark all broadcasts read
-    const broadcasts = getBroadcastsForEmployee("EMP-APP", "employee", "Z-B");
+    const broadcasts = // P0 multi-tenant fix: was hardcoded EMP-APP/Z-B for ALL users
+      getBroadcastsForEmployee(employeeId || "UNKNOWN", role || "employee", zone || "UNKNOWN");
     broadcasts.forEach(b => markBroadcastRead(b.id, "EMP-APP"));
     setBroadcastNotifs(prev => prev.map(n => ({ ...n, read: true })));
   };
