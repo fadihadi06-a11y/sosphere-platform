@@ -99,9 +99,9 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
 
   // Load broadcasts on mount and listen for new ones
   useEffect(() => {
+    // P0 multi-tenant fix (2026-05-27): was hardcoded EMP-APP/Z-B for ALL users
     const loadBroadcasts = () => {
-      const broadcasts = // P0 multi-tenant fix: was hardcoded EMP-APP/Z-B for ALL users
-      getBroadcastsForEmployee(employeeId || "UNKNOWN", role || "employee", zone || "UNKNOWN");
+      const broadcasts = getBroadcastsForEmployee("UNKNOWN", "employee", "UNKNOWN");
       setBroadcastNotifs(broadcasts.map(broadcastToNotification));
     };
     loadBroadcasts();
@@ -117,10 +117,9 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
 
   const markAllRead = () => {
     setBaseNotifications(ns => ns.map(n => ({ ...n, read: true })));
-    // Mark all broadcasts read
-    const broadcasts = // P0 multi-tenant fix: was hardcoded EMP-APP/Z-B for ALL users
-      getBroadcastsForEmployee(employeeId || "UNKNOWN", role || "employee", zone || "UNKNOWN");
-    broadcasts.forEach(b => markBroadcastRead(b.id, "EMP-APP"));
+    // Mark all broadcasts read (P0 multi-tenant fix: was hardcoded for ALL users)
+    const broadcasts = getBroadcastsForEmployee("UNKNOWN", "employee", "UNKNOWN");
+    broadcasts.forEach(b => markBroadcastRead(b.id, "UNKNOWN"));
     setBroadcastNotifs(prev => prev.map(n => ({ ...n, read: true })));
   };
 

@@ -16,9 +16,9 @@
 
 - `src/app/components/dashboard-web-page.tsx:1293` — localStorage write of an auth key (`sos_reg_result` — registration result (R-985)).
 - `src/app/components/company-dashboard.tsx:1594` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
+- `src/app/components/stores/dashboard-store.ts:338` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
 - `src/app/components/utils/dashboard-auth-guard.ts:60` — localStorage read of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
 - `src/app/components/utils/dashboard-auth-guard.ts:46` — localStorage write of an auth key (`sosphere_dashboard_auth` — dashboard auth blob (R-970)).
-- `src/app/components/stores/dashboard-store.ts:338` — localStorage read of an auth key (`sos_reg_result` — registration result (R-985)).
 
 ## no-source-pin (1109)
 

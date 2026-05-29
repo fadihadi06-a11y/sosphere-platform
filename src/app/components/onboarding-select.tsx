@@ -21,7 +21,7 @@ export function OnboardingSelect({ onSelectIndividual, onSelectCompany }: Onboar
 
   const handleContinue = () => {
     // Audit fix (2026-05-27): replaced console stub with real audit log
-    try { logAuditEvent("settings", "Onboarding path selected", { detail: selected, severity: "info" }); } catch {}
+    try { logAuditEvent("settings", "Onboarding path selected", { detail: String(selected || "none"), severity: "info" }); } catch {}
     console.debug("[SUPABASE_READY] path_selected", { selected });
     if (selected === "individual") onSelectIndividual();
     if (selected === "company-join") onSelectCompany();
