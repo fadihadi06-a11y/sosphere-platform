@@ -50,7 +50,41 @@ paths = [
   # to prevent generic-api-key false-positives on the longer placeholder
   # strings (e.g. firebase appId placeholder).
   '''^\.env\.example$''',
+
+  # R-55 (2026-05-19): FCM service-account uploader. Line 88 contains the
+  # PEM header literal "-----BEGIN PRIVATE KEY-----" as a sanity check on
+  # the user's downloaded JSON. The string is a format check, not a key.
+  '''^scripts/upload-fcm-service-account\.ps1$''',
+
+  # G-17 HMAC test: takes the HMAC `secret` as a function argument
+  # (line 12-18). No hardcoded secret literal — the test wires its own.
+  '''^scripts/test-g17-bridge-twiml-gtok\.mjs$''',
+
+  # 2026-05-29 rotation reference docs: list redacted leaked-key
+  # placeholders (***REDACTED***) and the new keys' format hints.
+  '''^FIREBASE_KEY_ROTATION\.md$''',
+  '''^GIT_HISTORY_CLEANUP\.md$''',
+  '''^scripts/secrets-to-redact\.txt$''',
+  '''^scripts/clean-git-history\.ps1$''',
 ]
+
+# Per-rule allowlists — preferred over whole-file when the false-positive
+# is one well-known string pattern, not the whole file's contents.
+[[rules]]
+id = "generic-api-key"
+
+  [rules.allowlist]
+  description = "Fake UUID test fixtures used to exercise the SOS server-trigger payload builder."
+  regexes = [
+    # Fake Supabase-style UUID used across the trigger-userid test cases.
+    '''7c2d1a9f-0b12-4e3d-8a77-5ab93f0ec111''',
+    # Rate-limiter test seed (synthetic value, not a real key).
+    '''rate-limiter[_-]?test[_-]?seed''',
+  ]
+  paths = [
+    '''^src/app/components/__tests__/sos-server-trigger-userid\.test\.ts$''',
+    '''^src/app/components/__tests__/rate-limiter\.test\.ts$''',
+  ]
 
 # Future entries land in either the section above (whole-file exclusion)
 # or as per-rule overrides in [[rules.allowlist]] blocks below. Prefer
