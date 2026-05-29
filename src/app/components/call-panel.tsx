@@ -101,14 +101,14 @@ export function CallPanel({
   };
 
   const handleWhatsApp = () => {
-    const num = phone.replace(/[\s+\-\(\)]/g, "");
+    const num = phone.replace(/[\s+\-()]/g, "");
     const waURI = buildWhatsAppURI(num); if (waURI) window.open(waURI);
     setCallDone("whatsapp");
     onCallPlaced?.("whatsapp");
   };
 
   const handleCopy = async () => {
-    try { await navigator.clipboard.writeText(phone); } catch {}
+    try { await navigator.clipboard.writeText(phone); } catch { /* clipboard denied — UI still shows feedback */ }
     setCopied(true);
     setCallDone("copy");
     onCallPlaced?.("copy");
@@ -292,7 +292,7 @@ export function CallTrigger({
   className?: string;
 }) {
   const [show, setShow] = useState(false);
-  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
+  const [_anchor, setAnchor] = useState({ x: 0, y: 0 });
   const cfg = REASON_CONFIG[reason];
 
   const handleClick = (e: React.MouseEvent) => {

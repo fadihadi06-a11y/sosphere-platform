@@ -50,7 +50,7 @@ pip install git-filter-repo
 Create `secrets-to-remove.txt` in the repo root:
 
 ```
-***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***==>***REDACTED-FIREBASE-KEY***
+AIzaSy[REDACTED-OLD-ANDROID-KEY]==>***REDACTED-FIREBASE-KEY***
 ```
 
 (Add one line per known secret string. Format: `actual==>replacement`.)
@@ -96,7 +96,7 @@ After the rewrite:
 
 ```powershell
 # Should return ZERO results
-git log --all -p | Select-String "***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***"
+git log --all -p | Select-String "AIzaSy[REDACTED-OLD-ANDROID-KEY]"
 ```
 
 Then run gitleaks locally:

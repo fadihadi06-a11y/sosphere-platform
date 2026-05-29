@@ -30,7 +30,7 @@ importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-messaging-compat.js");
 
 firebase.initializeApp({
-  apiKey: "***REDACTED-OLD-BROWSER-KEY-ROTATED-2026-05-29***",
+  apiKey: "AIzaSyC5bZLpRf_uXZmbn-eIzxKVsncKZM4KzWI",
   authDomain: "sosphere-809bb.firebaseapp.com",
   projectId: "sosphere-809bb",
   storageBucket: "sosphere-809bb.firebasestorage.app",

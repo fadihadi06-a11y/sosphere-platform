@@ -190,7 +190,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
       setPairs(rehydrated);
     } else {
       // First run — seed with real employees if available, else use MOCK_PAIRS
-      const initialPairs = (() => {
+      const _initialPairs = (() => {
         try {
           const savedEmps = JSON.parse(localStorage.getItem("sosphere_employees") || "[]");
           if (savedEmps.length >= 2) {

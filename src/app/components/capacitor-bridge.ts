@@ -84,7 +84,7 @@ export async function requestNativePermissions(
           granted: res?.location === 'granted' || res?.coarseLocation === 'granted',
         };
       }
-    } catch (e) { /* fall through to web branch */ }
+    } catch { /* fall through to web branch */ }
   }
 
   if (permission === 'notifications') {
@@ -94,14 +94,14 @@ export async function requestNativePermissions(
         const res = await mod.PushNotifications.requestPermissions();
         return { permission, granted: res?.receive === 'granted' };
       }
-    } catch {}
+    } catch { /* permission API unavailable */ }
     // Web fallback: actual Notification.requestPermission.
     try {
       if (typeof Notification !== 'undefined') {
         const res = await Notification.requestPermission();
         return { permission, granted: res === 'granted' };
       }
-    } catch {}
+    } catch { /* permission API unavailable */ }
   }
 
   if (permission === 'camera') {
@@ -114,7 +114,7 @@ export async function requestNativePermissions(
           granted: res?.camera === 'granted' || res?.photos === 'granted',
         };
       }
-    } catch {}
+    } catch { /* permission API unavailable */ }
   }
 
   if (permission === 'microphone') {
@@ -123,7 +123,7 @@ export async function requestNativePermissions(
       if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         // Immediately stop tracks — this was just a permission probe.
-        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        try { stream.getTracks().forEach(t => t.stop()); } catch { /* permission API unavailable */ }
         return { permission, granted: true };
       }
     } catch {

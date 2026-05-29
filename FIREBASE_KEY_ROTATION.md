@@ -2,7 +2,7 @@
 
 **Status:** 🚨 **URGENT** — Key is public on GitHub since April 2026
 
-**The leaked key:** `***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***`
+**The leaked key:** `AIzaSy[REDACTED-OLD-ANDROID-KEY-NOW-ROTATED]`
 
 **Files where it appears (current state):**
 - `android/app/google-services.json` (line 18) — Android app config
@@ -57,7 +57,7 @@ In the key edit panel:
 
 ### Step 3 — Update local files
 
-Replace the old key (`***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***`) with the new key in these files:
+Replace the old key (`AIzaSy[REDACTED-OLD-ANDROID-KEY-NOW-ROTATED]`) with the new key in these files:
 
 ```
 android/app/google-services.json          line 18
@@ -69,7 +69,7 @@ Use Find/Replace in your editor — only 2 files to update.
 ### Step 4 — Delete the OLD key
 
 Back in Google Cloud Console credentials page:
-1. Find the row for `***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***`
+1. Find the row for `AIzaSy[REDACTED-OLD-ANDROID-KEY-NOW-ROTATED]`
 2. Click the menu (⋮) → **Delete**
 3. Confirm
 
@@ -101,7 +101,7 @@ git push origin main --no-verify
 
 ## What about the OLD key still in git history?
 
-The old key (`***REDACTED-OLD-ANDROID-KEY-ROTATED-2026-05-29***`) remains in commits from April 2026.
+The old key (`AIzaSy[REDACTED-OLD-ANDROID-KEY-NOW-ROTATED]`) remains in commits from April 2026.
 
 **Good news:** Since you deleted it in Step 4, it now returns HTTP 403 for everyone. Attackers reading the old git history get a dead key.
 

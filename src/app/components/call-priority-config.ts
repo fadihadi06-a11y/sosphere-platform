@@ -45,7 +45,7 @@ export function getCallPriority(): CallPriority {
     if (stored === "local_first" || stored === "twilio_first") {
       return stored;
     }
-  } catch {}
+  } catch { /* localStorage unavailable (private mode / SSR) */ }
   return DEFAULT_PRIORITY;
 }
 
@@ -57,7 +57,7 @@ export function setCallPriority(priority: CallPriority): void {
   try {
     localStorage.setItem(STORAGE_KEY, priority);
     console.info(`[CallPriority] Set to: ${priority}`);
-  } catch {}
+  } catch { /* localStorage quota / private mode */ }
 }
 
 /**
