@@ -23,15 +23,15 @@ import {
   UserCog, Wallet, Radar, ListChecks, BookOpen,
   CloudLightning, Award, Mail,
   Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
-  CreditCard, Lock, Crown, RefreshCw, Activity,
+  Lock, Crown, RefreshCw, Activity,
 } from "lucide-react";
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
-import type { DashPage, Employee, EmergencyItem, ZoneData } from "./dashboard-types";
+import type { DashPage, Employee, EmergencyItem } from "./dashboard-types";
 // Mock data now read from Zustand store — no direct EMPLOYEES/EMERGENCIES/ZONES imports needed
 import { CommandCenterPage } from "./command-center";
 import { IncidentReportsTab } from "./hub-incident-reports";
 import { RiskMapLivePage } from "./risk-map-live";
-import { type PriorityOverrideLog } from "./priority-engine";
+// PriorityOverrideLog type removed — no longer referenced (audit cleanup 2026-05-29)
 import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
 // (LiveAlertOverlay — replaced by SOSEmergencyPopup)

@@ -5,8 +5,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Radio, Send, Users, Shield, HeartPulse, Megaphone,
-  CheckCircle2, Clock, AlertTriangle, Volume2, Hash,
-  ChevronRight, Zap, Signal, Eye,
+  CheckCircle2, Clock, AlertTriangle,
+  Eye,
 } from "lucide-react";
 
 interface CommandCenterProps {

@@ -77,7 +77,7 @@ function syncCheckinEvent(event: {
         return;
       }
       // Success — clear queue (we just upserted everything in pending+row).
-      try { localStorage.removeItem(queueKey); } catch {}
+      try { localStorage.removeItem(queueKey); } catch { /* localStorage unavailable */ }
     }, (e: unknown) => {
       // P0-ci-cleanup-strict-2 (2026-05-24): supabase PostgrestFilterBuilder
       // returns PromiseLike, not Promise — collapsed .catch into 2-arg .then.
@@ -109,7 +109,7 @@ function WheelPicker({ items, selected, onChange, itemHeight = 44, visibleItems 
   const containerHeight = itemHeight * visibleItems;
 
   const haptic = useCallback(() => {
-    try { navigator?.vibrate?.(1); } catch {}
+    try { navigator?.vibrate?.(1); } catch { /* Vibration API blocked */ }
   }, []);
 
   useEffect(() => {
