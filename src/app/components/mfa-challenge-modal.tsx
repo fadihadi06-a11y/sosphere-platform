@@ -26,6 +26,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Shield, KeyRound, AlertTriangle, ArrowRight, X } from "lucide-react";
+import { logAuditEvent } from "./audit-log-store";
 import { mfaChallengeAndVerify, mfaConsumeRecoveryCode } from "./api/mfa-client";
 
 export interface MFAChallengeModalProps {
@@ -60,11 +61,13 @@ export function MFAChallengeModal({ factorId, onVerified, onCancel }: MFAChallen
         setCode("");
         return;
       }
+      try { logAuditEvent("2fa_event", "MFA verified (TOTP)", { detail: `factorId: ${factorId}`, severity: "success" }); } catch {}
       onVerified("totp");
       return;
     }
     // recovery mode
-    if (code.replace(/[^A-Za-z0-9]/g, "").length < 8) {
+    // Audit fix (2026-05-27): was < 8 (permissive); recovery codes are exactly 8
+    if (code.replace(/[^A-Za-z0-9]/g, "").length !== 8) {
       setError("Recovery codes are 8 characters (e.g. ABCD-EFGH).");
       return;
     }
@@ -78,7 +81,7 @@ export function MFAChallengeModal({ factorId, onVerified, onCancel }: MFAChallen
     }
     setRecoveryRemaining(r.data.remaining);
     // Brief pause so user sees the "remaining" count, then proceed.
-    setTimeout(() => onVerified("recovery"), 1200);
+    setTimeout(() => (() => { try { logAuditEvent("2fa_event", "MFA verified (recovery code)", { detail: "User consumed recovery code", severity: "warning" }); } catch {}; onVerified("recovery"); })(), 1200);
   };
 
   return (

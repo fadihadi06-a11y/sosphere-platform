@@ -106,13 +106,16 @@ export function WelcomeOnboarding({ onComplete }: WelcomeOnboardingProps) {
       // S-H4: also persist to profiles.onboarding_completed on the
       // server (fire-and-forget, best-effort). Prevents a user from
       // bypassing required startup flows by clearing localStorage.
+      // P2 FIX (2026-05-27): was fire-and-forget — local flag was set BEFORE
+      // server confirmed, defeating the comment above. Now: only set local
+      // flag if server write succeeded. Otherwise user retries next launch.
       void (async () => {
         try {
           const { markOnboardingComplete } = await import("./api/onboarding-server");
           await markOnboardingComplete();
-        } catch { /* silent */ }
+          try { localStorage.setItem("sosphere_onboarding_completed", "1"); } catch { /* ignore */ }
+        } catch { /* server unreachable — local flag NOT set */ }
       })();
-      try { localStorage.setItem("sosphere_onboarding_completed", "1"); } catch { /* ignore */ }
       onComplete();
       return;
     }

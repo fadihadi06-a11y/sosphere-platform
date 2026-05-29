@@ -1,4 +1,6 @@
 import { useState } from "react";
+// Audit fix (2026-05-27): role change is privilege boundary event
+import { logAuditEvent } from "./audit-log-store";
 import { motion } from "motion/react";
 import {
   Shield, Building2, ShieldCheck, ArrowRight,
@@ -19,6 +21,12 @@ export function RoleSelect({ onSelectCivilian, onSelectEmployee }: RoleSelectPro
   const [selected, setSelected] = useState<Role>(null);
 
   const handleContinue = () => {
+    try {
+      logAuditEvent("role_change", `Role selected: ${selected}`, {
+        detail: `User selected ${selected} path during onboarding`,
+        severity: "info",
+      });
+    } catch { /* never block onboarding */ }
     if (selected === "civilian") onSelectCivilian();
     if (selected === "employee") onSelectEmployee();
   };

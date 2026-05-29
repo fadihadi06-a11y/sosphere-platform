@@ -1,5 +1,7 @@
 import { TermsPage } from "./terms-page";
 import { PrivacyPage } from "./privacy-page";
+// Mobile audit fix (2026-05-27): audit log for compliance + E.164 normalize
+import { logAuditEvent } from "./audit-log-store";
 import { useState } from "react";
 import { Shield, ArrowRight, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { CountrySheet, COUNTRIES, type Country } from "./country-picker";
@@ -179,7 +181,9 @@ export function LoginPhone({ onSendOTP, onGmailLogin, onDemoAccess, onEmailLogin
     setOtpError("");
     if (!isPhoneValid) return;
     setOtpLoading(true);
-    const full = `${country.dial}${phone}`;
+    // Audit fix: strip leading zeros (Twilio 21211 error otherwise)
+    const normalizedPhone = phone.replace(/^0+/, "");
+    const full = `${country.dial}${normalizedPhone}`;
     // R-49: persist the explicitly-selected country BEFORE network I/O. We
     // do this even though OTP may still fail — the user's intent (they
     // tapped the SA flag) is the strongest signal we will ever have for
