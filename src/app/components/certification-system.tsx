@@ -11,10 +11,10 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import {
-  Award, CheckCircle2, Download, Shield, Star,
-  Trophy, GraduationCap, X, Lock, Sparkles,
-  BookOpen, Route, Heart, Megaphone, ShieldAlert,
-  CloudLightning, Crown, Zap, Target,
+  Award, Download, Shield,
+  GraduationCap, X, Lock, Sparkles,
+  Route, Heart, Megaphone, ShieldAlert,
+  CloudLightning, Crown,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -191,7 +191,7 @@ async function generateCertificatePDF(cert: CertificateData) {
     doc.setFontSize(6);
     doc.setTextColor(80, 90, 110);
     doc.text("Scan to verify", w / 2, 187, { align: "center" });
-  } catch {}
+  } catch { /* QR generation failed — cert still valid */ }
 
   // Signature lines
   doc.setDrawColor(60, 70, 90);

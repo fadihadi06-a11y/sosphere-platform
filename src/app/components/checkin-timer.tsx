@@ -60,7 +60,7 @@ function syncCheckinEvent(event: {
 
   // Try to drain the retry queue along with this insert.
   let pending: any[] = [];
-  try { pending = JSON.parse(localStorage.getItem(queueKey) || "[]"); } catch {}
+  try { pending = JSON.parse(localStorage.getItem(queueKey) || "[]"); } catch { /* malformed queue */ }
   const batch = pending.length > 0 ? [...pending, row] : [row];
 
   supabase.from("checkin_events").insert(batch)
@@ -73,7 +73,7 @@ function syncCheckinEvent(event: {
           if (typeof window !== "undefined" && (window as any).__sosphereToast) {
             (window as any).__sosphereToast("Check-in queued — will retry when online");
           }
-        } catch {}
+        } catch { /* toast bridge unavailable */ }
         return;
       }
       // Success — clear queue (we just upserted everything in pending+row).

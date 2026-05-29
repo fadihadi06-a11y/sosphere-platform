@@ -312,7 +312,7 @@ export async function triggerHapticFeedback(type: HapticFeedbackType): Promise<v
 
         navigator.vibrate(patterns[type]);
       }
-    } catch (err) {
+    } catch {
       console.debug('[Haptics] Vibration API not available');
     }
     return;
