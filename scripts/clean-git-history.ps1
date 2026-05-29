@@ -28,29 +28,14 @@ Write-Host ""
 # ── Pre-flight checks ──────────────────────────────────────
 Write-Host "[1/7] Pre-flight checks..." -ForegroundColor Yellow
 
-# Find git-filter-repo: prefer the EXE, fall back to python -m
-$FilterRepoCmd = $null
-if (Get-Command git-filter-repo -ErrorAction SilentlyContinue) {
-    $FilterRepoCmd = @("git-filter-repo")
-    Write-Host "  ✓ git-filter-repo found (PATH)"
+# Find git-filter-repo: prefer python -m (most portable on Windows)
+$pythonCheck = python -c "import git_filter_repo; print('ok')" 2>&1
+if ($pythonCheck -match "ok") {
+    Write-Host "  ✓ git_filter_repo Python module available"
 } else {
-    # Try common pip install locations
-    $UserScripts = "$env:APPDATA\Python\Python314\Scripts\git-filter-repo.exe"
-    if (Test-Path $UserScripts) {
-        $FilterRepoCmd = @($UserScripts)
-        Write-Host "  ✓ git-filter-repo found at $UserScripts"
-    } else {
-        # Fall back to python -m (more portable)
-        $pythonCheck = python -c "import git_filter_repo; print('ok')" 2>&1
-        if ($pythonCheck -match "ok") {
-            $FilterRepoCmd = @("python", "-m", "git_filter_repo")
-            Write-Host "  ✓ git_filter_repo Python module available"
-        } else {
-            Write-Host "  ERROR: git-filter-repo not installed." -ForegroundColor Red
-            Write-Host "  Install with: pip install git-filter-repo" -ForegroundColor Yellow
-            exit 1
-        }
-    }
+    Write-Host "  ERROR: git-filter-repo not installed." -ForegroundColor Red
+    Write-Host "  Install with: pip install git-filter-repo" -ForegroundColor Yellow
+    exit 1
 }
 
 # Check we're in the right repo
@@ -108,8 +93,7 @@ Write-Host "  ✓ Backup: $BackupPath"
 # ── Run the rewrite ────────────────────────────────────────
 Write-Host ""
 Write-Host "[4/7] Rewriting history (this takes 1-5 minutes)..." -ForegroundColor Yellow
-# Invoke whichever form of git-filter-repo we detected in step 1
-& $FilterRepoCmd[0] @($FilterRepoCmd[1..($FilterRepoCmd.Length-1)] + @("--replace-text", "scripts/secrets-to-redact.txt", "--force"))
+python -m git_filter_repo --replace-text scripts/secrets-to-redact.txt --force
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  ERROR: git filter-repo failed. Restore from $BackupPath" -ForegroundColor Red
     exit 1
