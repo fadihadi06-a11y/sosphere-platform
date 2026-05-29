@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-29T12:12:48.528Z",
+  "generatedAt": "2026-05-29T16:54:52.567Z",
   "summary": {
     "files": 534,
     "rules": 3,
@@ -12,7 +12,6 @@
     "no-or-company-id-null|supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql|35",
     "no-localStorage-auth|src/app/components/dashboard-web-page.tsx|1293",
     "no-localStorage-auth|src/app/components/company-dashboard.tsx|1594",
-    "no-localStorage-auth|src/app/components/stores/dashboard-store.ts|338",
     "no-localStorage-auth|src/app/components/utils/dashboard-auth-guard.ts|60",
     "no-localStorage-auth|src/app/components/utils/dashboard-auth-guard.ts|46",
     "no-source-pin|src/app/components/__tests__/sos-alert-tier-resolution.test.ts|88",
@@ -1123,6 +1122,7 @@
     "no-source-pin|src/app/components/__tests__/android-deep-links.test.ts|47",
     "no-source-pin|src/app/components/__tests__/android-deep-links.test.ts|46",
     "no-source-pin|src/app/components/__tests__/android-deep-links.test.ts|42",
-    "no-source-pin|src/app/components/__tests__/android-deep-links.test.ts|41"
+    "no-source-pin|src/app/components/__tests__/android-deep-links.test.ts|41",
+    "no-localStorage-auth|src/app/components/stores/dashboard-store.ts|338"
   ]
 }
