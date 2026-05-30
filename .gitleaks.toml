@@ -87,12 +87,18 @@ paths = [
 id = "generic-api-key"
 
   [rules.allowlist]
-  description = "Fake UUID test fixtures used to exercise the SOS server-trigger payload builder."
+  description = "Test fixtures + Firebase public-by-design client keys. The Firebase keys are also allowlisted under gcp-api-key (their natural rule); they need a duplicate entry here because generic-api-key matches anything high-entropy with an 'apiKey'/'key' label nearby, regardless of the GCP prefix."
   regexes = [
     # Fake Supabase-style UUID used across the trigger-userid test cases.
     '''7c2d1a9f-0b12-4e3d-8a77-5ab93f0ec111''',
     # Rate-limiter test seed (synthetic value, not a real key).
     '''rate-limiter[_-]?test[_-]?seed''',
+    # Firebase Android FCM key — public-by-design, see gcp-api-key block
+    # above for full rationale + restrictions. Duplicated here because
+    # generic-api-key fires independently on high-entropy values.
+    '''AIzaSyCYZOp0r7H-0hch3F4NlIgBHRAvGwzrGGc''',
+    # Firebase Web/SW key — same reasoning as Android key above.
+    '''AIzaSyC5bZLpRf_uXZmbn-eIzxKVsncKZM4KzWI''',
   ]
   paths = [
     '''^src/app/components/__tests__/sos-server-trigger-userid\.test\.ts$''',
