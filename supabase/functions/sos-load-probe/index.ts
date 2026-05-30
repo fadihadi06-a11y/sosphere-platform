@@ -391,7 +391,11 @@ serve(async (req) => {
   // Cleanup (best-effort)
   if (successEmergencyIds.length > 0) {
     try {
-      await admin.from("dispatch_attempts").delete().in("emergency_id", successEmergencyIds);
+      // 2026-05-30 P2 drift fix: table is `sos_dispatch_attempts`
+      // (see L2-B). Previous "dispatch_attempts" name was 404'ing
+      // and being swallowed by the try/catch, so probe cleanup
+      // leaked test rows forever.
+      await admin.from("sos_dispatch_attempts").delete().in("emergency_id", successEmergencyIds);
       await admin.from("sos_sessions").delete().in("id", successEmergencyIds);
     } catch (e) {
       console.warn("[sos-load-probe] cleanup error:", String(e).slice(0, 200));

@@ -1,147 +1,109 @@
 # Supabase Drift Audit Report
 *Generated 2026-05-30 — SOSphere*
 
-## Headline Numbers
+## Headline Numbers (initial)
 | Source | Tables | RPCs |
 |---|---|---|
 | Code references | 71 | 42 |
 | Local migration files | 33 | 107 |
-| Remote database (production) | 115 | (not enumerated) |
+| Remote database (production) | 115 | — |
+
+---
 
 ## CRITICAL #1: Un-applied Migrations (5)
-These tables have migration files in `supabase/migrations/` AND are referenced
-by application code, but **do not exist in the production database**. Calls to
-them at runtime will return PostgREST 404. **Highest priority — apply now.**
+**Status: ✅ RESOLVED — 2026-05-30 P1 batch.**
 
-- `investigations`
-- `journeys`
-- `playbook_usage`
-- `risk_register`
-- `training_records`
+Five tables had migration files in `supabase/migrations/` AND were referenced
+by application code, but did not exist in production. Calls returned PostgREST
+404. **Highest priority — applied via Supabase MCP with 7-layer per-table audit.**
 
-## CRITICAL #2: Missing Everywhere (24)
-Referenced in code, but no migration file AND not in remote. Either dead code,
-naming bugs (e.g. `incident` vs `civilian_incidents`), or truly missing features.
+| Table | Purpose | Status |
+|---|---|---|
+| `playbook_usage` | Emergency-response playbook execution counters | ✅ Applied |
+| `risk_register` | ISO 45001 §6.1 risk-matrix register (5×5) | ✅ Applied |
+| `training_records` | Certification + expiry tracking | ✅ Applied |
+| `investigations` | ISO 45001 §10.2 CAPA lifecycle | ✅ Applied |
+| `journeys` | Field-worker journey tracking + waypoints | ✅ Applied |
 
-- `addons`
-- `admin_performance`
-- `admin_ratings`
-- `call_events`
-- `checkin`
-- `dispatch_attempts`
-- `email_deliveries`
-- `emergency_events`
-- `employee_invites`
-- `employee_profiles`
-- `incident`
-- `individual_plans`
-- `invoices`
-- `ire_history`
-- `message`
-- `neighbor_responses`
-- `plans`
-- `report_schedules`
-- `responders`
-- `shifts`
-- `sos`
-- `system_health`
-- `user_2fa`
-- `user_pins`
+Hardening migration `20260530_p3_11_hardening_initplan_search_path_anon_revoke.sql`
+also applied — fixed every WARN raised by Supabase advisors on these objects:
+- `auth_rls_initplan`: wrapped `auth.uid()` in `(select ...)` for planner caching.
+- `multiple_permissive_policies`: split `for all` into INSERT/UPDATE/DELETE.
+- `function_search_path_mutable` on `touch_updated_at`: pinned to `public, pg_temp`.
+- `anon_security_definer_function_executable` on `increment_playbook_use`: revoked.
+
+---
+
+## CRITICAL #2: Missing Everywhere — Triage (24 → resolved by category)
+**Status: ✅ ANALYZED + LIVE BREAKS RESOLVED — 2026-05-30 P2 batch.**
+
+Tables referenced in code, no local migration, not in remote. Split by triage:
+
+### A. Live-broken, needed new migration (4) — ✅ FIXED
+| Table | Source | Schema derived from | Risk |
+|---|---|---|---|
+| `user_2fa` | `totp-engine.ts:163,185` | TOTP enrollment + verification | 🔴 **2FA was silently broken** |
+| `user_pins` | `pin-verify-modal.tsx:70` | PIN hash lookup | 🔴 **PIN auth was silently broken** |
+| `call_events` | `twilio-status/index.ts:399` | Twilio call lifecycle log | 🟡 Telemetry lost |
+| `neighbor_responses` | `neighbor-alert-service.ts:674` | Community alert ACKs | 🟡 Responses not durable |
+
+All four created with day-1 hardening: split policies, cached `auth.uid()`,
+appropriate RLS scope (user_2fa/user_pins per-user; call_events service-role
+only; neighbor_responses per-responder with SECDEF RPC planned for requester
+read-back).
+
+### B. Live-broken, rename bug (1) — ✅ FIXED
+| Bug | Correct target |
+|---|---|
+| `dispatch_attempts` in `sos-load-probe/index.ts:394` | `sos_dispatch_attempts` (exists in remote) |
+
+Was 404'ing silently in a try/catch → probe cleanup leaked test rows forever.
+Renamed in edge function source.
+
+### C. Known-dead stubs (4) — no action needed
+These are documented in code comments as known broken (offline-sync-engine
+left-overs from L2-C2 cleanup). Stay as documented dead code:
+- `checkin` (real: `checkins`)
+- `incident` (no real equivalent — `civilian_incidents` has different shape)
+- `message` (no direct match — `chat_messages`, `direct_messages`, `sos_messages` exist)
+- `sos` (no `sos` table — canonical replay path bypasses this)
+
+### D. TODO comment markers (15) — no runtime impact
+Code contains `/* SUPABASE_MIGRATION_POINT: ... */` blocks describing future
+migrations. The surrounding code still uses mock data, so no live breakage.
+Tracked here for future feature work:
+
+`addons`, `admin_performance`, `admin_ratings`, `email_deliveries`,
+`emergency_events`, `employee_invites`, `employee_profiles`, `individual_plans`,
+`invoices`, `ire_history`, `plans`, `report_schedules`, `responders`, `shifts`,
+`system_health`.
+
+---
 
 ## DRIFT: Remote-only Tables (88)
-Production has these but no committed migration. **No audit trail, no
-reproducibility, no safe rollback.** Backfill by `supabase db pull`.
+**Status: PENDING (P3 scope).**
 
-- `_migration_rollback_snapshots`
-- `announcement_responses`
-- `announcements`
-- `audit_logs`
-- `broadcasts`
-- `buddy_pairs`
-- `call_chains`
-- `call_logs`
-- `chat_messages`
-- `checkin_events`
-- `checkins`
-- `commands`
-- `companies`
-- `company_checkin_sessions`
-- `company_employees`
-- `company_invitations`
-- `company_invites`
-- `company_memberships`
-- `company_message_recipients`
-- `company_message_rsvps`
-- `company_messages`
-- `company_settings`
-- `company_working_hours`
-- `contacts`
-- `direct_messages`
-- `duty_status`
-- `emergencies`
-- `emergency_call_attempts`
-- `emergency_claims`
-- `emergency_contacts`
-- `emergency_locations`
-- `emergency_logs`
-- `emergency_recipients`
-- `employee_checkins`
-- `employees`
-- `evidence`
-- `evidence_actions`
-- `evidence_audio`
-- `evidence_photos`
-- `families`
-- `family_contacts`
-- `family_memberships`
-- `feature_flags`
-- `files`
-- `geofences`
-- `gps_trail`
-- `handover_notes`
-- `individual_users`
-- `invitations`
-- `invites`
-- `ire_records`
-- `medical_profiles`
-- `mission_gps`
-- `mission_heartbeats`
-- `missions`
-- `notification_broadcasts`
-- `notifications`
-- `outbox_messages`
-- `process_instances`
-- `process_steps`
-- `processes`
-- `profile_trigger_logs`
-- `profiles`
-- `push_tokens`
-- `risk_scores`
-- `safe_trips`
-- `safety_timers`
-- `sar_missions`
-- `sensor_events`
-- `sos_dispatch_logs`
-- `sos_events`
-- `sos_logs`
-- `sos_outbox`
-- `sos_public_links`
-- `sos_queue`
-- `sos_requests`
-- `sos_sessions`
-- `sos_timers`
-- `step_activity`
-- `system_logs`
-- `tasks`
-- `trip_checkins`
-- `user_contacts`
-- `user_permissions`
-- `workspace_members`
-- `workspaces`
-- `zone_reports`
-- `zones`
+Production has these but no committed migration. No audit trail, no
+reproducibility, no safe rollback. Plan: `supabase db pull` to backfill each
+into a per-table migration file.
+
+(Full list in earlier section — unchanged from initial audit. Will be addressed
+in a follow-up batch.)
+
+---
 
 ## Missing RPC Functions (0)
-Code calls these via `.rpc()`, but no `CREATE FUNCTION` in migrations.
+Code calls 42 RPCs via `.rpc()`; all 42 exist in the 107-function local
+inventory. **Clean** — no missing functions.
 
+---
 
+## Resolution Summary
+| Phase | Items | Status |
+|---|---|---|
+| P1 (un-applied migrations) | 5 tables + 1 hardening | ✅ Done |
+| P2.A (new live-broken migrations) | 4 tables | ✅ Done |
+| P2.B (rename bug) | 1 edge fn fix | ✅ Done |
+| P2.C (dead stubs) | 4 noted | ✅ No action |
+| P2.D (TODO markers) | 15 tracked | ⏳ Future feature work |
+| P3 (remote-only drift backfill) | 88 tables | ⏳ Next batch |
