@@ -661,6 +661,42 @@ export interface IncomingNeighborResponse {
  *      the active-SOS screen.
  * Both are best-effort. Never throws.
  */
+/**
+ * P2-Followup B (2026-05-30): Requester-side read of durable responses.
+ * The original realtime channel only delivers responses while subscribed;
+ * if the requester reloads / loses signal / opens the SOS later, they
+ * see nothing. This RPC reads the persisted neighbor_responses rows
+ * (responder_user_id stripped for privacy — see migration).
+ *
+ * Returns an empty list if Supabase is not configured (fail-quiet —
+ * the realtime path remains the live UX; this is a backstop).
+ */
+export interface DurableNeighborResponse {
+  status: string;
+  note: string | null;
+  respondedAt: string;
+}
+
+export async function getRequestResponses(requestId: string): Promise<DurableNeighborResponse[]> {
+  if (!SUPABASE_CONFIG.isConfigured) return [];
+  if (!requestId) return [];
+  try {
+    const { data, error } = await supabase.rpc("get_neighbor_responses_for_request", {
+      p_request_id: requestId,
+    });
+    if (error) {
+      console.warn("[NeighborAlert] getRequestResponses RPC failed:", error.message);
+      return [];
+    }
+    return ((data as Array<{ status: string; note: string | null; responded_at: string }>) ?? []).map(
+      (r) => ({ status: r.status, note: r.note, respondedAt: r.responded_at }),
+    );
+  } catch (e) {
+    console.warn("[NeighborAlert] getRequestResponses threw:", e);
+    return [];
+  }
+}
+
 export async function respondToAlert(
   requestId: string,
   status: NeighborAlertResponse,

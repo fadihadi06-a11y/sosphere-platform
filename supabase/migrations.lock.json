@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-30T13:25:16.945Z",
-  "total_migrations": 140,
-  "manifest_sha256": "4e7c39604cf6fdd82793124feab6b4bed2d7de59506a0b6a29a51b289433c944",
+  "generated_at": "2026-05-30T13:46:39.827Z",
+  "total_migrations": 142,
+  "manifest_sha256": "dd18f91278e76fd762d0fee972cd47c86ff83f47d9583c00400cec099e6305c6",
   "migrations": [
     {
       "version": "20260415",
@@ -968,6 +968,20 @@
       "file": "20260530_p2_drift_user_pins.sql",
       "sha256": "6f5ded0f2cf188169db3a8e4e4413a48d9b1e67d45db91aaf016456d91870449",
       "bytes": 1975
+    },
+    {
+      "version": "20260530",
+      "name": "p2_followup_encrypt_totp_secret",
+      "file": "20260530_p2_followup_encrypt_totp_secret.sql",
+      "sha256": "ef2a486b493df387e2cff6fe0fc3006ddcbbb6f19207c535ee922c922ecbde7f",
+      "bytes": 4440
+    },
+    {
+      "version": "20260530",
+      "name": "p2_followup_neighbor_responses_rpc",
+      "file": "20260530_p2_followup_neighbor_responses_rpc.sql",
+      "sha256": "c9a58bb3395161ab596bdb57c6eb3f4f89c630820ab4aff80fc50efdd5bcc165",
+      "bytes": 2385
     },
     {
       "version": "20260530",

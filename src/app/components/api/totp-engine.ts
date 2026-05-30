@@ -148,25 +148,40 @@ export async function verifyTOTP(secret: string, code: string): Promise<boolean>
 
 // ── Supabase Integration ────────────────────────────────────
 
-/** Save TOTP secret to Supabase (encrypted at rest).
- * S-H3: we no longer fall back to localStorage when Supabase is
- * not configured. Storing a TOTP shared secret as plaintext in
- * localStorage makes it readable by any extension / other tab /
- * XSS payload — defeating the entire point of 2FA. If Supabase
- * is not configured, 2FA setup FAILS CLOSED. */
-export async function saveTOTPSecret(userId: string, secret: string): Promise<boolean> {
+// ═══════════════════════════════════════════════════════════════
+// Supabase Integration — Encrypted-at-rest via SECDEF RPCs
+// ─────────────────────────────────────────────────────────────
+// 2026-05-30 P2-Followup A: the database column was migrated from
+// `totp_secret text` (plaintext) to `totp_secret_enc bytea` (pgcrypto
+// pgp_sym_encrypt with a master key in _app_secrets, locked to
+// service_role). Direct INSERT/UPDATE/DELETE on user_2fa were
+// REVOKEd from `authenticated` — all writes now go through the
+// save_totp_secret() SECDEF RPC. Reads of the decrypted secret
+// only via get_totp_secret_for_verify() RPC (pinned to auth.uid()).
+//
+// The userId parameter is informational ONLY — every RPC reads
+// auth.uid() server-side. Passing a different uid here doesn't
+// circumvent identity; the param is kept to make caller intent
+// explicit at the call site.
+//
+// S-H3 fail-closed contract preserved: if Supabase is not configured
+// we still refuse — never store secrets in localStorage.
+// ═══════════════════════════════════════════════════════════════
+
+/** Save TOTP secret to Supabase (encrypted at rest via SECDEF RPC).
+ *  The `userId` param is informational; the RPC pins to auth.uid(). */
+export async function saveTOTPSecret(_userId: string, secret: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) {
     console.error("[TOTP] S-H3: refusing to save secret — Supabase not configured. 2FA unavailable offline.");
     return false;
   }
   try {
-    await supabase.from("user_2fa").upsert({
-      user_id: userId,
-      totp_secret: secret,
-      enabled: true,
-      enabled_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
-    return true;
+    const { data, error } = await supabase.rpc("save_totp_secret", { p_secret: secret });
+    if (error) {
+      console.warn("[TOTP] save_totp_secret RPC failed:", error.message);
+      return false;
+    }
+    return data === true;
   } catch (e) {
     console.warn("[TOTP] Save failed:", e);
     return false;
@@ -174,10 +189,8 @@ export async function saveTOTPSecret(userId: string, secret: string): Promise<bo
 }
 
 /** Check if user has 2FA enabled.
- * S-H3: no localStorage fallback — without Supabase we cannot
- * tell if 2FA is enabled, so we return false (= not protected).
- * Any caller gating a sensitive action on this MUST also call
- * verifyPermissionServer() from api/server-permission.ts. */
+ *  Direct SELECT on user_2fa.enabled is still allowed by RLS
+ *  for the caller's own row (no secret material involved). */
 export async function is2FAEnabled(userId: string): Promise<boolean> {
   if (!SUPABASE_CONFIG.isConfigured) return false;
   try {
@@ -192,20 +205,19 @@ export async function is2FAEnabled(userId: string): Promise<boolean> {
   }
 }
 
-/** Get TOTP secret for verification.
- * S-H3: no localStorage fallback — verification requires a
- * server-side lookup. Returns null if Supabase is not configured
- * (which means verifyUser2FA() below will also return false, so
- * the user will not be falsely authenticated). */
-export async function getTOTPSecret(userId: string): Promise<string | null> {
+/** Get TOTP secret for verification via SECDEF RPC.
+ *  The decryption happens server-side; the plaintext transits TLS
+ *  to the caller for HMAC verification. Future hardening: implement
+ *  verify_user_2fa() server-side so the secret never leaves the DB. */
+export async function getTOTPSecret(_userId: string): Promise<string | null> {
   if (!SUPABASE_CONFIG.isConfigured) return null;
   try {
-    const { data } = await supabase
-      .from("user_2fa")
-      .select("totp_secret")
-      .eq("user_id", userId)
-      .single();
-    return data?.totp_secret || null;
+    const { data, error } = await supabase.rpc("get_totp_secret_for_verify");
+    if (error) {
+      console.warn("[TOTP] get_totp_secret_for_verify RPC failed:", error.message);
+      return null;
+    }
+    return (data as string | null) || null;
   } catch {
     return null;
   }
