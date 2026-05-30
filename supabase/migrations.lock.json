@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-30T13:46:39.827Z",
-  "total_migrations": 142,
-  "manifest_sha256": "dd18f91278e76fd762d0fee972cd47c86ff83f47d9583c00400cec099e6305c6",
+  "generated_at": "2026-05-30T16:47:06.701Z",
+  "total_migrations": 143,
+  "manifest_sha256": "b85cb0e41f480ea495ead5e81abcee18d7b82f4f4eadc088446ad586c2a6d6e5",
   "migrations": [
     {
       "version": "20260415",
@@ -968,6 +968,13 @@
       "file": "20260530_p2_drift_user_pins.sql",
       "sha256": "6f5ded0f2cf188169db3a8e4e4413a48d9b1e67d45db91aaf016456d91870449",
       "bytes": 1975
+    },
+    {
+      "version": "20260530",
+      "name": "p2_followup_c_server_side_totp_verify",
+      "file": "20260530_p2_followup_c_server_side_totp_verify.sql",
+      "sha256": "edd929ebeed9170ab627a9fd80db9f14627d82dccbe3e18a54ef894f1bd062ba",
+      "bytes": 6469
     },
     {
       "version": "20260530",

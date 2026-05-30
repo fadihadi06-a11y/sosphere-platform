@@ -149,20 +149,24 @@ export async function verifyTOTP(secret: string, code: string): Promise<boolean>
 // ── Supabase Integration ────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════════════
-// Supabase Integration — Encrypted-at-rest via SECDEF RPCs
+// Supabase Integration — Server-side TOTP (gold standard)
 // ─────────────────────────────────────────────────────────────
-// 2026-05-30 P2-Followup A: the database column was migrated from
-// `totp_secret text` (plaintext) to `totp_secret_enc bytea` (pgcrypto
-// pgp_sym_encrypt with a master key in _app_secrets, locked to
-// service_role). Direct INSERT/UPDATE/DELETE on user_2fa were
-// REVOKEd from `authenticated` — all writes now go through the
-// save_totp_secret() SECDEF RPC. Reads of the decrypted secret
-// only via get_totp_secret_for_verify() RPC (pinned to auth.uid()).
+// 2026-05-30 P2-Followup C: every part of the TOTP flow that touches
+// the secret runs INSIDE Postgres. The client only ever sends:
+//   • plaintext secret at enrollment (one-time, over TLS)
+//   • 6-digit code at verification (no secret material)
 //
-// The userId parameter is informational ONLY — every RPC reads
-// auth.uid() server-side. Passing a different uid here doesn't
-// circumvent identity; the param is kept to make caller intent
-// explicit at the call site.
+// Architecture (defence-in-depth, four layers):
+//   1. user_2fa.totp_secret_enc is pgp_sym_encrypt_bytea() of the RAW
+//      decoded secret bytes (not the base32 text).
+//   2. Master key lives in _app_secrets (deny-all RLS).
+//   3. save_totp_secret() base32-decodes then encrypts in one step.
+//   4. verify_user_2fa(code) runs HMAC-SHA1 server-side and returns
+//      a boolean. The decrypted secret never leaves Postgres.
+//
+// The old client-side verifyTOTP() helper stays in this file as a
+// pure RFC-6238 reference implementation (used by tests + as a
+// fallback if a future flow ever needs in-browser verification).
 //
 // S-H3 fail-closed contract preserved: if Supabase is not configured
 // we still refuse — never store secrets in localStorage.
@@ -205,29 +209,24 @@ export async function is2FAEnabled(userId: string): Promise<boolean> {
   }
 }
 
-/** Get TOTP secret for verification via SECDEF RPC.
- *  The decryption happens server-side; the plaintext transits TLS
- *  to the caller for HMAC verification. Future hardening: implement
- *  verify_user_2fa() server-side so the secret never leaves the DB. */
-export async function getTOTPSecret(_userId: string): Promise<string | null> {
-  if (!SUPABASE_CONFIG.isConfigured) return null;
+/** Verify a user's TOTP code end-to-end via server-side RPC.
+ *  The 6-digit code is sent to the DB; the secret stays encrypted
+ *  on the server side. Returns true iff the code matches the
+ *  current or previous 30-second window (RFC 6238 clock skew). */
+export async function verifyUser2FA(_userId: string, code: string): Promise<boolean> {
+  if (!SUPABASE_CONFIG.isConfigured) return false;
+  if (!code || code.length !== 6) return false;
   try {
-    const { data, error } = await supabase.rpc("get_totp_secret_for_verify");
+    const { data, error } = await supabase.rpc("verify_user_2fa", { p_code: code });
     if (error) {
-      console.warn("[TOTP] get_totp_secret_for_verify RPC failed:", error.message);
-      return null;
+      console.warn("[TOTP] verify_user_2fa RPC failed:", error.message);
+      return false;
     }
-    return (data as string | null) || null;
-  } catch {
-    return null;
+    return data === true;
+  } catch (e) {
+    console.warn("[TOTP] Verify failed:", e);
+    return false;
   }
-}
-
-/** Verify a user's TOTP code end-to-end */
-export async function verifyUser2FA(userId: string, code: string): Promise<boolean> {
-  const secret = await getTOTPSecret(userId);
-  if (!secret) return false;
-  return verifyTOTP(secret, code);
 }
 
 /** Disable 2FA for a user.
