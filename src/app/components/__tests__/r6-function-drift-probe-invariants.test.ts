@@ -186,11 +186,15 @@ describe("R-6: probes.yml workflow — trigger + filter invariants", () => {
   });
 
   it("function-drift-probe checks out the repo (needs git source for comparison)", () => {
-    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1000}actions\/checkout@v4/);
+    // 2026-05-30: bumped from @v4 (Node 20) to @v5 (Node 24) ahead of
+    // the June 2026 GitHub deprecation cutoff.
+    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1000}actions\/checkout@v5/);
   });
 
-  it("function-drift-probe uses Node 20", () => {
-    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1200}actions\/setup-node@v4[\s\S]{0,200}node-version:\s*["']?20/);
+  it("function-drift-probe uses Node 22 LTS", () => {
+    // 2026-05-30: bumped from Node 20 (EOL April 2026) to Node 22 LTS
+    // (supported until April 2027). setup-node also went v4 → v5.
+    expect(workflowYml).toMatch(/function-drift-probe[\s\S]{0,1200}actions\/setup-node@v5[\s\S]{0,200}node-version:\s*["']?22/);
   });
 
   it("function-drift-probe has a 5-minute timeout", () => {

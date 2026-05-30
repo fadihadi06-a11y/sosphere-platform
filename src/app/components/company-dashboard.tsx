@@ -697,7 +697,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
   }, []);
 
   // FIX 4: Prototype disclaimer state
-  const [protoDisclaimerVisible, setProtoDisclaimerVisible] = useState(true);
+  const [_protoDisclaimerVisible, _setProtoDisclaimerVisible] = useState(true);
 
   // ── Pre-Shift → Incident source filter bridge ──
   const [incidentSourceFilter, setIncidentSourceFilter] = useState<string | undefined>(undefined);
@@ -750,7 +750,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
 
   // FIX D: Shift Handover State
   const [showHandoverModal, setShowHandoverModal] = useState(false);
-  const [handoverNote, setHandoverNote] = useState<string | null>(null);
+  const [_handoverNote, setHandoverNote] = useState<string | null>(null);
 
   // FIX D: Logout Handler with Handover Check
   const handleLogoutWithHandover = () => {
@@ -765,7 +765,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
 
   const t = useT(lang);
   const dir = LANG_META[lang].dir;
-  const isAr = lang === "ar";
+  const _isAr = lang === "ar";
   const getHubTab = (hub: string) => hubTabs[hub] || HUB_TABS[hub]?.[0]?.id || "";
 
   // ── Initialize sidebar from webMode ───────────────────────────
@@ -1030,7 +1030,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
             tier: "paid",
             retentionDays: 90,
           });
-        } catch {}
+        } catch { /* silent: audit logging is best-effort */ }
         playEmergencyAlert();
       }
       if (event.type === "CHECKIN") incrementNotifCount();
@@ -1220,7 +1220,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 1);
-    } catch (_) { /* silent */ }
+    } catch { /* silent */ }
   }, []);
 
   // zoneClusters now computed automatically inside Zustand store (recompute on emergencies change)
@@ -1250,7 +1250,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.2);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 1.2);
-      } catch {}
+      } catch { /* silent: audio is best-effort */ }
       toast.error(`${cfg.label}: ${worst.zone}`, {
         description: `${worst.affectedCount} simultaneous SOS — ${cfg.description}`,
         duration: 8000,
@@ -1340,7 +1340,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           ownedBy: emg.ownedBy,
         }));
       }
-    } catch {}
+    } catch { /* silent: handover note save is best-effort */ }
 
     toast.success(`Emergency resolved: ${label}`, {
       description: "Click undo within 5s to reverse.",
@@ -1609,7 +1609,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               toast.success("Data exported successfully", {
                 description: `${rows.length - 1} records saved to CSV`,
               });
-            } catch (err) {
+            } catch {
               toast.error("Export failed", { description: "Could not generate CSV file" });
             }
           }}
@@ -2047,7 +2047,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               const emp = emg ? employees.find(e => e.name === emg.employeeName) : null;
               if (emp?.phone) safeTelCall(emp.phone, emp.name);
             }}
-            onViewLocation={(id) => setCurrentPage("riskMap")}
+            onViewLocation={(_id) => setCurrentPage("riskMap")}
             onAcknowledge={(id) => {
               updateEmergency(id, { status: "responding" as const });
             }}
