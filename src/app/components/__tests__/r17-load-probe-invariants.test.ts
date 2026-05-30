@@ -240,8 +240,8 @@ describe("R-17: DB verification covers all 3 critical tables", () => {
 });
 
 describe("R-17: cleanup leaves audit_log intact (forensic guarantee)", () => {
-  it("deletes from dispatch_attempts on the run emergencyIds", () => {
-    expect(probeSrc).toMatch(/from\(["']dispatch_attempts["']\)\.delete\(\)[\s\S]{0,80}\.in\(["']emergency_id["']/);
+  it("deletes from sos_dispatch_attempts on the run emergencyIds", () => {
+    expect(probeSrc).toMatch(/from\(["']sos_dispatch_attempts["']\)\.delete\(\)[\s\S]{0,80}\.in\(["']emergency_id["']/);
   });
 
   it("deletes from sos_sessions on the run emergencyIds", () => {

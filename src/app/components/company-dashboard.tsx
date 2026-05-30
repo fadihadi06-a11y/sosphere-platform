@@ -32,7 +32,7 @@ import { CommandCenterPage } from "./command-center";
 import { IncidentReportsTab } from "./hub-incident-reports";
 import { RiskMapLivePage } from "./risk-map-live";
 // PriorityOverrideLog type removed — no longer referenced (audit cleanup 2026-05-29)
-import { hasPermission, ROLE_CONFIG, type Role, type AuthState } from "./mobile-auth";
+import { hasPermission, ROLE_CONFIG, type AuthState } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
 // (LiveAlertOverlay — replaced by SOSEmergencyPopup)
 import { HazardAlertBanner } from "./hazard-banner";
@@ -102,7 +102,7 @@ import { hapticLight, playUISound } from "./haptic-feedback";
 // ── NEW: Round 1 Features ───────────────────────────────────────
 import { DashboardEmergencyChat } from "./emergency-chat";
 // ── Unified Emergency Engine (replaces 3 separate imports) ──
-import { UnifiedEmergencyEngine, GuideMeButton, type AICoAdminContext, type IREContext } from "./unified-emergency-engine";
+import { UnifiedEmergencyEngine, type AICoAdminContext } from "./unified-emergency-engine";
 import type { UnifiedEmergencyContext } from "./unified-emergency-engine";
 // Legacy imports kept for type compatibility in dashboard-store
 // import { EmergencyResponseWizard, GuideMeButton } from "./guided-response";
@@ -112,7 +112,7 @@ import { requestNotificationPermission } from "./ire-push-notification";
 import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-lifecycle-report";
 import { PdfEmailModal } from "./pdf-email-modal";
 // FIX D: Shift Handover Modal
-import { ShiftHandoverModal, type EmergencyForHandover } from "./shift-handover-modal";
+import { ShiftHandoverModal } from "./shift-handover-modal";
 
 // ── NEW: Round 2 Features ──────────────────────────────────��────
 import { BuddySystemPage } from "./buddy-system";
@@ -160,7 +160,7 @@ import {
 } from "./zone-cluster-engine";
 
 // ── NEW: Error Boundaries for page-level crash protection ───────
-import { PageErrorBoundary, WidgetErrorBoundary } from "./error-boundary";
+import { PageErrorBoundary } from "./error-boundary";
 
 // ── FIX 1+3: Plan Gates + Trial Expired Overlay ────────────────
 import { PlanGate, TrialExpiredOverlay, isPageBlockedByTrial, PlanLimitModal, checkZoneLimit, checkEmployeeLimit, checkFeatureGate } from "./plan-gate";
@@ -178,7 +178,7 @@ function generateEmergencyId(): string {
 
 // ── Smart Navigation: Maps standalone page IDs to their Hub + Tab ──
 // This eliminates dead-end pages and ensures consistent hub context
-const PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
+const _PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
   // ── Current hub sub-pages ──
   workforce:              { hub: "operations",       tab: "workforce" },
   comms:                  { hub: "operations",       tab: "comms" },
@@ -214,7 +214,7 @@ const PAGE_TO_HUB: Record<string, { hub: DashPage; tab: string }> = {
 };
 
 // Page aliases — pages that are simply renamed/moved
-const PAGE_ALIASES: Record<string, DashPage> = {
+const _PAGE_ALIASES: Record<string, DashPage> = {
   zones: "location",
   geofencing: "location",     // Geofencing is now a tab inside LocationZonesPage
   gpsCompliance: "location",  // GPS Compliance is now a tab inside LocationZonesPage
@@ -565,7 +565,7 @@ function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
 // ═══════════════════════════════════════════════════════════════
 // Main Dashboard Component
 // ═══════════════════════════════════════════════════════════════
-export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogout, webMode = false, authUserId = null }: CompanyDashboardProps) {
+export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOSTrigger, onLogout, webMode = false, authUserId = null }: CompanyDashboardProps) {
   // ── Init Supabase Realtime channels on mount ────────────────
   // Uses Supabase session company_id for isolated realtime channel
   useEffect(() => {
@@ -618,7 +618,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     lang, setLang,
     showCreateEmergency, setShowCreateEmergency,
     showNotifPanel, setShowNotifPanel,
-    notifCount, setNotifCount, incrementNotifCount,
+    notifCount, setNotifCount: _setNotifCount, incrementNotifCount,
     notifUnread, setNotifUnread,
     showGlobalSearch, setShowGlobalSearch,
     // SOS
@@ -667,7 +667,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger, onLogou
     // Plan Limit Modal
     planLimitModal, hidePlanLimitModal,
     // Data freshness
-    kpis, lastRefreshedAt, isRefreshing, refreshDashboard,
+    kpis: _kpis, lastRefreshedAt, isRefreshing, refreshDashboard,
   } = useDashboardStore();
 
   // ── [SUPABASE_READY] Trial status logging on mount + hourly refresh (PART B + F) ──

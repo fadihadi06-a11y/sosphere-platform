@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-29T16:54:52.567Z",
+  "generatedAt": "2026-05-30T13:28:53.116Z",
   "summary": {
-    "files": 534,
+    "files": 540,
     "rules": 3,
-    "count": 1117
+    "count": 1119
   },
   "keys": [
     "no-or-company-id-null|supabase-neighbor-and-ai.sql|45",
+    "no-or-company-id-null|supabase/migrations/20260530_p3_drift_baseline_88_tables.sql|143",
+    "no-or-company-id-null|supabase/migrations/20260530_p3_drift_baseline_88_tables.sql|193",
     "no-or-company-id-null|supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql|13",
     "no-or-company-id-null|supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql|35",
     "no-localStorage-auth|src/app/components/dashboard-web-page.tsx|1293",

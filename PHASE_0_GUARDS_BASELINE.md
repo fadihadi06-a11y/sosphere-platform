@@ -3,12 +3,14 @@
 > Snapshot of all violations existing at the moment Lighthouse Network was installed.
 > Reduced to **zero** before exiting Layer -1 (per `PHASE_0_STEP_PLAN.md` exit gate).
 
-**Scanned:** 534 files against 3 rule(s).
-**Total violations:** 1117
+**Scanned:** 540 files against 3 rule(s).
+**Total violations:** 1119
 
-## no-or-company-id-null (3)
+## no-or-company-id-null (5)
 
 - `supabase-neighbor-and-ai.sql:45` — Cross-tenant RLS pattern detected (unrestricted RLS USING(true) — every tenant reads every row).
+- `supabase/migrations/20260530_p3_drift_baseline_88_tables.sql:143` — Cross-tenant RLS pattern detected (unrestricted RLS WITH CHECK(true) — every tenant writes any row).
+- `supabase/migrations/20260530_p3_drift_baseline_88_tables.sql:193` — Cross-tenant RLS pattern detected (unrestricted RLS WITH CHECK(true) — every tenant writes any row).
 - `supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql:13` — Cross-tenant RLS pattern detected (unrestricted RLS USING(true) — every tenant reads every row).
 - `supabase/migrations/20260426120000_g_31_rls_no_policy_cleanup.sql:35` — Cross-tenant RLS pattern detected (unrestricted RLS USING(true) — every tenant reads every row).
 

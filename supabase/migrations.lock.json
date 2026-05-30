@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-20T09:04:25.421Z",
-  "total_migrations": 134,
-  "manifest_sha256": "527ce3b3ae17bc835bd5c91455f90474bd6ce3bc2f6dc5eb6198eaebfa25ceff",
+  "generated_at": "2026-05-30T13:25:16.945Z",
+  "total_migrations": 140,
+  "manifest_sha256": "4e7c39604cf6fdd82793124feab6b4bed2d7de59506a0b6a29a51b289433c944",
   "migrations": [
     {
       "version": "20260415",
@@ -940,6 +940,48 @@
       "file": "20260519100000_r68_age_verify_bypass.sql",
       "sha256": "aa3799d1887b23fb739cc97332d93c09dd5e4e422767459182570b9aa8a885f0",
       "bytes": 7173
+    },
+    {
+      "version": "20260530",
+      "name": "p2_drift_call_events",
+      "file": "20260530_p2_drift_call_events.sql",
+      "sha256": "79466e09266201496a31a4f449e64110639eef0ad87ab0b8467c226e9765e149",
+      "bytes": 2048
+    },
+    {
+      "version": "20260530",
+      "name": "p2_drift_neighbor_responses",
+      "file": "20260530_p2_drift_neighbor_responses.sql",
+      "sha256": "cb9589373c1358707b4878a6e2ddb8bf5ed0b71c9345335bef6440186263c476",
+      "bytes": 2857
+    },
+    {
+      "version": "20260530",
+      "name": "p2_drift_user_2fa",
+      "file": "20260530_p2_drift_user_2fa.sql",
+      "sha256": "0496b6cb489276318f7611f837245a3c8e7b27fbabb2d7de548fbb6319f16682",
+      "bytes": 2278
+    },
+    {
+      "version": "20260530",
+      "name": "p2_drift_user_pins",
+      "file": "20260530_p2_drift_user_pins.sql",
+      "sha256": "6f5ded0f2cf188169db3a8e4e4413a48d9b1e67d45db91aaf016456d91870449",
+      "bytes": 1975
+    },
+    {
+      "version": "20260530",
+      "name": "p3_11_hardening_initplan_search_path_anon_revoke",
+      "file": "20260530_p3_11_hardening_initplan_search_path_anon_revoke.sql",
+      "sha256": "cbaa798558f216afa06b46a171116a518116741ee11529945725ed39ac335a30",
+      "bytes": 4212
+    },
+    {
+      "version": "20260530",
+      "name": "p3_drift_baseline_88_tables",
+      "file": "20260530_p3_drift_baseline_88_tables.sql",
+      "sha256": "70a82e83a90629bfaa541377817950a56a8a8f26a9535f09176521a9d36e0064",
+      "bytes": 220281
     }
   ]
 }
