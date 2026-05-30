@@ -1592,8 +1592,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               // Settings from localStorage
               const settingsRaw = localStorage.getItem("company_settings");
               if (settingsRaw) rows.push(["Settings", "company_settings", settingsRaw]);
-              const regRaw = localStorage.getItem("sos_reg_result");
-              if (regRaw) rows.push(["Settings", "sos_reg_result", regRaw]);
+              // 2026-05-30: removed `sos_reg_result` export — it's an auth
+              // payload (registration result) and dumping it into a
+              // user-downloadable CSV leaks role/JWT material. The user
+              // already authenticated; they don't need a copy of the
+              // auth handshake in their data export. Also resolves the
+              // lint-guard no-localStorage-auth rule (OWASP ASVS V3.3/V8.2).
               // Build CSV
               const csvContent = rows.map(row =>
                 row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
