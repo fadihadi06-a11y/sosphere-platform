@@ -99,6 +99,45 @@ id = "generic-api-key"
     '''^src/app/components/__tests__/rate-limiter\.test\.ts$''',
   ]
 
+# ─── gcp-api-key: Firebase client keys are PUBLIC-BY-DESIGN ─────────────
+# Firebase Browser + Android API keys (the AIzaSy... prefix) are not
+# secrets — they're project identifiers that MUST ship in client code so
+# the SDK can talk to Google's servers. Access control comes from:
+#   • HTTP referrer restrictions in GCP Console → API & Services →
+#     Credentials → Browser key (sosphere.app + localhost only).
+#   • Android SHA-1 + package-name restrictions on the Android key.
+#   • Firebase Security Rules on every collection.
+#
+# Reference (Firebase docs):
+#   https://firebase.google.com/docs/projects/api-keys
+#   "Unlike how API keys are typically used, API keys for Firebase
+#    services are not used to control access to backend resources;
+#    that can only be done with Firebase Security Rules."
+#
+# We allowlist the SPECIFIC current key VALUES (not the file paths) so
+# that if a future commit accidentally introduces a DIFFERENT
+# AIzaSy... key — e.g. a service-account key, or a key for a different
+# project that lacks our restrictions — gitleaks still catches it.
+#
+# Rotation history:
+#   • 2026-04 → 2026-05-29: original keys (AIzaSyAw... / AIzaSyDk...)
+#     were leaked publicly. ROTATED + restricted + history cleaned.
+#   • 2026-05-29 →           : current keys below (AIzaSyCY... / AIzaSyC5...)
+#     are the post-rotation values, restricted from day one.
+[[rules]]
+id = "gcp-api-key"
+
+  [rules.allowlist]
+  description = "Firebase Browser + Android API keys — public-by-design per Firebase architecture; secured by HTTP-referrer + SHA-1 restrictions in GCP, not by secrecy."
+  regexes = [
+    # Android FCM key (google-services.json) — restricted to package
+    # com.sosphere.app + production SHA-1 fingerprint in GCP Console.
+    '''AIzaSyCYZOp0r7H-0hch3F4NlIgBHRAvGwzrGGc''',
+    # Web/SW key (firebase-messaging-sw.js) — restricted to HTTP
+    # referrers sosphere.app, *.sosphere.app, localhost in GCP Console.
+    '''AIzaSyC5bZLpRf_uXZmbn-eIzxKVsncKZM4KzWI''',
+  ]
+
 # Future entries land in either the section above (whole-file exclusion)
 # or as per-rule overrides in [[rules.allowlist]] blocks below. Prefer
 # per-rule when possible to keep the surface minimal.
