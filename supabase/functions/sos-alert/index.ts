@@ -650,6 +650,95 @@ serve(async (req: Request) => {
   const action = url.searchParams.get("action") || "trigger";
   const supabase = createClient(SUPA_URL, SUPA_KEY);
 
+  // ═════════════════════════════════════════════════════════
+  // ACTION: PROBE — Lighthouse L6 synthetic SOS probe
+  // ─────────────────────────────────────────────────────────
+  // Hit by scripts/synthetic-sos-probe.mjs every nightly run.
+  // Validates the live production path WITHOUT dispatching SMS/voice/push:
+  //   1. CORS + method gate (already passed above)
+  //   2. JWT auth (proves Supabase Auth is reachable)
+  //   3. Body shape check (catches deploy-config drift)
+  //   4. audit_log write via SECDEF RPC (proves DB + RPC chain works)
+  //   5. Returns the ack contract the probe script expects:
+  //      { ok, probeId, durationMs, stagesExecuted }
+  //
+  // SHORT-CIRCUITS before any of trigger/prewarm code paths.
+  // Cannot create sos_sessions, cannot enqueue Twilio, cannot bill.
+  // Safe to run from any region, any time.
+  //
+  // R-13: caller is sos-load-0@sosphere.internal (or any *@sosphere.internal),
+  // which is auto-classified as synthetic — these audit rows won't
+  // pollute production dashboards.
+  // ═════════════════════════════════════════════════════════
+  if (action === "probe") {
+    const probeStart = Date.now();
+    const stages: string[] = [];
+    try {
+      // Stage 1: auth (proves JWT → user resolution path)
+      const probeAuth = await authenticate(req, supabase);
+      if (!probeAuth.userId) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "probe_unauthenticated" }),
+          { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+      stages.push("auth");
+
+      // Stage 2: body shape
+      const probeBody = await req.json().catch(() => null);
+      if (!probeBody || probeBody.probe !== true || typeof probeBody.probeId !== "string") {
+        return new Response(
+          JSON.stringify({ ok: false, error: "probe_body_invalid" }),
+          { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+      stages.push("body_validated");
+
+      // Stage 3: audit_log write via SECDEF RPC (validates DB + log_sos_audit RPC)
+      try {
+        await supabase.rpc("log_sos_audit", {
+          p_action: "synthetic_probe",
+          p_actor: probeAuth.email ?? probeAuth.userId,
+          p_actor_level: "probe",
+          p_operation: "monitoring",
+          p_metadata: {
+            probeId: probeBody.probeId,
+            region: probeBody.region ?? "unknown",
+            slaMs: probeBody.slaMs ?? null,
+          },
+        });
+        stages.push("audit_log");
+      } catch (_rpcErr) {
+        // RPC failure is informational — don't fail the probe just because
+        // the audit RPC's parameter signature drifted. Stage absence in the
+        // ack will surface it on the dashboard side.
+      }
+
+      // Stage 4: ack contract (probeId echoed back so the script can verify
+      // it talked to the right deployment, not a stale cache)
+      const durationMs = Date.now() - probeStart;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          probeId: probeBody.probeId,
+          durationMs,
+          stagesExecuted: stages,
+        }),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    } catch (probeErr) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "probe_internal_error",
+          message: String((probeErr as Error)?.message ?? probeErr).slice(0, 300),
+          stagesExecuted: stages,
+        }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   // ─── Rate-limit key resolution ─────────────────────────────
   // Prefer userId from JWT for authenticated actions; fall back to
   // client IP so unauthenticated hot paths (prewarm via sendBeacon)

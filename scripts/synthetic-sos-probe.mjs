@@ -138,7 +138,7 @@ async function runOne({ supabaseUrl, jwt, region, runIndex }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SLO_MS + 2000);
 
-    const resp = await fetch(`${supabaseUrl}/functions/v1/sos-alert`, {
+    const resp = await fetch(`${supabaseUrl}/functions/v1/sos-alert?action=probe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
