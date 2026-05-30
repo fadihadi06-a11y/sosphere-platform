@@ -97,9 +97,14 @@ jobs:
       - name: OSV scanner (cross-source CVE DB)
         id: osv
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@v1
+        # Pinned to v2.3.5 (2026-03-26). v1 was retired upstream; v2 args
+        # are newline-separated per action.yml in google/osv-scanner-action.
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.5
         with:
-          scan-args: '--lockfile=./package-lock.json --output=/tmp/osv.json --format=json'
+          scan-args: |-
+            --lockfile=./package-lock.json
+            --output=/tmp/osv.json
+            --format=json
       - name: Open issue on findings
         if: steps.npm.outputs.high != '0' || steps.npm.outputs.critical != '0' || steps.osv.outcome == 'failure'
         uses: actions/github-script@v7
@@ -165,6 +170,12 @@ jobs:
     name: Synthetic SOS probe
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 5
+    # Gated on vars.SOSPHERE_CI_RUN_PROBES == 'true'. Without that flag (and
+    # the SOSPHERE_SUPABASE_URL / SOSPHERE_PROBE_JWT secrets behind it) the
+    # probe would just exit 2 every night with "probe_misconfigured" and
+    # turn the dashboard red without telling us anything new. Operators flip
+    # the var ON once the probe JWT + URL are provisioned in repo secrets.
+    if: ${{ vars.SOSPHERE_CI_RUN_PROBES == 'true' }}
     strategy:
       fail-fast: false
       matrix:
