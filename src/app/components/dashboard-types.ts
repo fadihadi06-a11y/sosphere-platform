@@ -49,9 +49,13 @@ export interface Employee {
   buddyId?: string;
   checkInInterval?: number;   // minutes
   bloodType?: string;
-  allergies?: string;
-  medications?: string;
-  conditions?: string;
+  /** Medical fields are arrays to match the UI consumers
+   *  (medical-alert-banner.tsx, sos-emergency-popup.tsx).
+   *  Storage layer converts CSV-string ↔ array in emergency-packet.tsx
+   *  when reading from medical_profiles.* */
+  allergies?: string[];
+  medications?: string[];
+  conditions?: string[];
 }
 
 export interface EmergencyItem {

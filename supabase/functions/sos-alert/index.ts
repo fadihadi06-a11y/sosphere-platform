@@ -708,10 +708,14 @@ serve(async (req: Request) => {
           },
         });
         stages.push("audit_log");
-      } catch (_rpcErr) {
+      } catch (rpcErr) {
         // RPC failure is informational — don't fail the probe just because
         // the audit RPC's parameter signature drifted. Stage absence in the
-        // ack will surface it on the dashboard side.
+        // ack already surfaces it on the dashboard side; log a structured
+        // warn so it's also visible in Supabase function logs (R-9 contract
+        // requires non-empty catch blocks — no silent swallows).
+        console.warn("[sos-alert probe] log_sos_audit RPC failed:",
+          String((rpcErr as Error)?.message ?? rpcErr).slice(0, 200));
       }
 
       // Stage 4: ack contract (probeId echoed back so the script can verify

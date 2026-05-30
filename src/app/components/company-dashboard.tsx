@@ -2085,11 +2085,11 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               }
             }}
 
-            onViewFull={(id) => {
+            onViewFull={(_id) => {
               // Navigate to Emergency Hub for full details
               setCurrentPage("emergencyHub");
             }}
-            onLaunchSAR={(id) => {
+            onLaunchSAR={(_id) => {
               // Navigate to SAR tab in Emergency Hub
               setCurrentPage("emergencyHub");
               setHubTab("emergencyHub", "sar");
@@ -2158,7 +2158,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                         details: payload.broadcastMessage.slice(0, 100),
                       });
                     }
-                  } catch {}
+                  } catch { /* silent: evidence action is best-effort */ }
                   toast.success("Safety Warning Broadcast", {
                     description: `Alert sent to ${payload.broadcastTo === "all" ? "all employees" : payload.broadcastTo === "zone" ? pendingIncidentReport.zone : "department"} — ${payload.priority} priority`,
                   });
@@ -2176,7 +2176,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                         actionType: "forwarded",
                       });
                     }
-                  } catch {}
+                  } catch { /* silent: evidence action is best-effort */ }
                   toast.success("Report Forwarded to Owner", {
                     description: `Incident report from ${report.employeeName} forwarded to company owner for review`,
                   });
@@ -2187,7 +2187,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                     const allEvd3 = getAllEvidence();
                     const latest3 = allEvd3.find(e => e.emergencyId === pendingIncidentReport?.emergencyId);
                     if (latest3) updateEvidenceStatus(latest3.id, "reviewed", "Admin", "HSE Manager");
-                  } catch {}
+                  } catch { /* silent: evidence action is best-effort */ }
                   setShowIncidentReportPanel(false);
                   setPendingIncidentReport(null);
                 }}
@@ -2532,7 +2532,7 @@ function GuideQuickPanel({ onClose, onNavigate, onNavigateHub, pipeline, resolve
   resolvedCount: number;
 }) {
   // Play opening sound
-  useEffect(() => { try { playUISound("guideOpen"); hapticLight(); } catch {} }, []);
+  useEffect(() => { try { playUISound("guideOpen"); hapticLight(); } catch { /* silent: UX nicety */ } }, []);
 
   // Build smart action list based on current platform state
   const actions: { id: string; icon: LucideIcon; label: string; detail: string; color: string; badge?: string; onClick: () => void }[] = [];
@@ -2543,7 +2543,7 @@ function GuideQuickPanel({ onClose, onNavigate, onNavigateHub, pipeline, resolve
       id: "evidence", icon: Camera, label: "Review Evidence", color: "#FF9500",
       detail: `${pipeline.pendingReview} item${pipeline.pendingReview > 1 ? "s" : ""} awaiting your review`,
       badge: `${pipeline.pendingReview}`,
-      onClick: () => { try { playUISound("guideAction"); } catch {} onNavigateHub("emergencyHub" as DashPage, "reports"); },
+      onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigateHub("emergencyHub" as DashPage, "reports"); },
     });
   }
 
@@ -2553,7 +2553,7 @@ function GuideQuickPanel({ onClose, onNavigate, onNavigateHub, pipeline, resolve
       id: "investigate", icon: FileWarning, label: "Investigate Incidents", color: "#FF2D55",
       detail: `${resolvedCount} resolved — run RCA & CAPA analysis`,
       badge: `${resolvedCount}`,
-      onClick: () => { try { playUISound("guideAction"); } catch {} onNavigateHub("incidentRisk" as DashPage, "investigation"); },
+      onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigateHub("incidentRisk" as DashPage, "investigation"); },
     });
   }
 
@@ -2562,16 +2562,16 @@ function GuideQuickPanel({ onClose, onNavigate, onNavigateHub, pipeline, resolve
     actions.push({
       id: `sug-${i}`, icon: Sparkles, label: sug.title.slice(0, 35), color: "#7B5EFF",
       detail: "AI-recommended action",
-      onClick: () => { try { playUISound("guideAction"); } catch {} onNavigate(sug.navigateTo as DashPage); },
+      onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigate(sug.navigateTo as DashPage); },
     });
   });
 
   // Always-available smart actions
   actions.push(
-    { id: "safety-intel", icon: Brain, label: "Safety Intelligence", color: "#00C8E0", detail: "AI threat predictions & risk analysis", onClick: () => { try { playUISound("guideAction"); } catch {} onNavigate("safetyIntel" as DashPage); } },
-    { id: "risk-register", icon: Target, label: "Risk Register", color: "#FF9500", detail: "Review 5×5 risk matrix & controls", onClick: () => { try { playUISound("guideAction"); } catch {} onNavigateHub("incidentRisk" as DashPage, "register"); } },
-    { id: "training", icon: Award, label: "Run Safety Drill", color: "#00C853", detail: "Launch a training drill for your team", onClick: () => { try { playUISound("guideAction"); } catch {} window.open("/training", "_blank"); } },
-    { id: "compliance", icon: ScrollText, label: "Compliance Reports", color: "#AF52DE", detail: "ISO 45001 audit & compliance status", onClick: () => { try { playUISound("guideAction"); } catch {} onNavigateHub("reportsAnalytics" as DashPage, "reports"); } },
+    { id: "safety-intel", icon: Brain, label: "Safety Intelligence", color: "#00C8E0", detail: "AI threat predictions & risk analysis", onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigate("safetyIntel" as DashPage); } },
+    { id: "risk-register", icon: Target, label: "Risk Register", color: "#FF9500", detail: "Review 5×5 risk matrix & controls", onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigateHub("incidentRisk" as DashPage, "register"); } },
+    { id: "training", icon: Award, label: "Run Safety Drill", color: "#00C853", detail: "Launch a training drill for your team", onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } window.open("/training", "_blank"); } },
+    { id: "compliance", icon: ScrollText, label: "Compliance Reports", color: "#AF52DE", detail: "ISO 45001 audit & compliance status", onClick: () => { try { playUISound("guideAction"); } catch { /* silent: UX nicety */ } onNavigateHub("reportsAnalytics" as DashPage, "reports"); } },
   );
 
   return (
@@ -3297,8 +3297,8 @@ function GuideSubtitle({ emergencyCount, clusters = [] }: { emergencyCount: numb
     const timer = setInterval(() => {
       setLiveHint(h => (h + 1) % (clusters.length > 0 ? 6 : 4));
       // Subtle sound tick on each hint rotation during SOS
-      try { playUISound("guideHint"); } catch {}
-      try { hapticLight(); } catch {}
+      try { playUISound("guideHint"); } catch { /* silent: UX nicety */ }
+      try { hapticLight(); } catch { /* silent: UX nicety */ }
     }, 3000);
     return () => clearInterval(timer);
   }, [emergencyCount, clusters.length]);
@@ -3447,7 +3447,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
       {/* ── GUIDE ME — Compact inline button ── */}
       <div className="mx-3 mb-2">
         <motion.button
-          onClick={() => { try { hapticLight(); } catch {} onGuideMe?.(); if (!webMode) onToggle(); }}
+          onClick={() => { try { hapticLight(); } catch { /* silent: UX nicety */ } onGuideMe?.(); if (!webMode) onToggle(); }}
           whileTap={{ scale: 0.97 }}
           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg relative overflow-hidden"
           style={{
