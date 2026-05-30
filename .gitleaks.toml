@@ -66,6 +66,19 @@ paths = [
   '''^GIT_HISTORY_CLEANUP\.md$''',
   '''^scripts/secrets-to-redact\.txt$''',
   '''^scripts/clean-git-history\.ps1$''',
+
+  # 2026-05-30 (P0-Z3): src/imports/ technical specs — DELETED from main
+  # in commit 5f9ab1d ("chore: remove dead src/imports/ directory") but
+  # still present in git history. Gitleaks deep-history scan flagged 18
+  # findings here; every one is a documentation PLACEHOLDER, verified by
+  # reading the source: `XYZ123ABC456[DEF789]` is the literal example
+  # token reused across the API-shape docs, and `YOUR_ANON_KEY` /
+  # `YOUR_JWT_TOKEN` are placeholder uppercase tokens in curl examples.
+  # No real secret ever existed in these files. Allowlisted by path
+  # (not history-rewritten) because filter-repo cost outweighs the
+  # benefit when zero credentials are real.
+  '''^src/imports/TECHNICAL_SPEC_DEEP_LINKING\.md$''',
+  '''^src/imports/README_DEVELOPER\.md$''',
 ]
 
 # Per-rule allowlists — preferred over whole-file when the false-positive
