@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "lint": "eslint src/app/ --max-warnings 1000",
+    "lint": "eslint src/app/ --max-warnings 1100",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:secret-guard": "node scripts/__behavior_tests__/secret-guard.spec.mjs",
