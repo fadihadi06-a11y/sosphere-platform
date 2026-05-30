@@ -2771,7 +2771,7 @@ function IreTriagePanel({ emergencies, employees, onSelect, onClose }: {
         <div className="px-4 pb-5 overflow-y-auto" style={{ maxHeight: "60vh", scrollbarWidth: "none" }}>
           <div className="space-y-2">
             {scored.map((emg, i) => {
-              const emp = employees.find(e => e.name === emg.employeeName);
+              const _emp = employees.find(e => e.name === emg.employeeName);
               return (
                 <motion.div
                   key={emg.id}
@@ -2863,7 +2863,7 @@ function IreTriagePanel({ emergencies, employees, onSelect, onClose }: {
 // Cross-Hub Navigation Prompt — "The platform that never forgets"
 // After resolving an emergency, prompts admin to investigate (ISO 45001 §10.2)
 // ═══════════════════════════════════════════════════════════════
-function CrossHubPrompt({ emergencyId, emergencyName, emergencyType, severity, resolvedAt, emergencyRef, onOpenInvestigation, onOpenRiskRegister, onExportPDF, onEmailPDF, onDismiss }: {
+function CrossHubPrompt({ emergencyId: _emergencyId, emergencyName, emergencyType, severity: _severity, resolvedAt: _resolvedAt, emergencyRef: _emergencyRef, onOpenInvestigation, onOpenRiskRegister, onExportPDF, onEmailPDF, onDismiss }: {
   emergencyId: string;
   emergencyName: string;
   emergencyType: string;
@@ -3119,7 +3119,7 @@ function CrossHubPrompt({ emergencyId, emergencyName, emergencyType, severity, r
 // ═══════════════════════════════════════════════════════════════
 // Role Badge Chip — Floating role indicator
 // ══════════════════════════════════════════════════════════════
-function RoleBadgeChip({ authState, t, isAr, onTap }: { authState: AuthState; t: (k:string)=>string; isAr: boolean; onTap: ()=>void }) {
+function _RoleBadgeChip({ authState, t: _t, isAr, onTap }: { authState: AuthState; t: (k:string)=>string; isAr: boolean; onTap: ()=>void }) {
   const cfg = ROLE_CONFIG[authState.user.role];
   return (
     <motion.button
@@ -3203,7 +3203,7 @@ const PAGE_TITLES: Partial<Record<DashPage, string>> = {
 };
 
 // Enterprise Page Header Renderer — with motion entrance & ambient glow
-function EnterprisePageHeader({ page, activeEmergencyCount }: { page: DashPage; activeEmergencyCount?: number }) {
+function EnterprisePageHeader({ page, activeEmergencyCount: _activeEmergencyCount }: { page: DashPage; activeEmergencyCount?: number }) {
   const config = PAGE_HEADER_CONFIG[page];
   if (!config) return null;
   const Icon = config.icon;
@@ -3288,7 +3288,7 @@ function EnterprisePageHeader({ page, activeEmergencyCount }: { page: DashPage; 
 // Guide Me — SOS-Aware + Evidence-Aware Intelligent Subtitle
 // Shows real-time SOS intelligence: GPS trail, recording, contact status
 // ═══════════════════════════��═══════════════════════════════════
-function GuideSubtitle({ emergencyCount, clusters = [] }: { emergencyCount: number; clusters?: ZoneCluster[] }) {
+function _GuideSubtitle({ emergencyCount, clusters = [] }: { emergencyCount: number; clusters?: ZoneCluster[] }) {
   const [liveHint, setLiveHint] = useState(0);
 
   // Cycle through SOS intelligence hints when emergencies are active
@@ -3380,7 +3380,7 @@ function GuideSubtitle({ emergencyCount, clusters = [] }: { emergencyCount: numb
 // ══════════════════════��════════════════════════════════════════
 // Sidebar Component
 // ═══════════════════════════════════════════════════════════════
-function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName, activeEmergencyCount, t, authState, companyState, webMode = false, hybridMode, onGuideMe, zoneClusters = [] }: {
+function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName, activeEmergencyCount, t, authState, companyState, webMode = false, hybridMode, onGuideMe, zoneClusters: _zoneClusters = [] }: {
   currentPage: DashPage;
   onNavigate: (page: DashPage) => void;
   collapsed: boolean;
