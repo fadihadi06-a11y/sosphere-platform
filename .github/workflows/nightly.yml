@@ -194,8 +194,13 @@ jobs:
         with: { node-version: '22' }
       - name: Run probe (3 attempts, 10s apart)
         env:
+          # Dynamic sign-in mode (recommended): script signs in fresh each
+          # run via email+password → gets a fresh JWT. Passwords are
+          # long-lived; JWTs stay short-lived (best practice).
           SOSPHERE_SUPABASE_URL: ${{ secrets.SOSPHERE_SUPABASE_URL }}
-          SOSPHERE_PROBE_JWT: ${{ secrets.SOSPHERE_PROBE_JWT }}
+          SOSPHERE_SUPABASE_ANON_KEY: ${{ secrets.SOSPHERE_SUPABASE_ANON_KEY }}
+          SOSPHERE_PROBE_EMAIL: ${{ secrets.SOSPHERE_PROBE_EMAIL }}
+          SOSPHERE_PROBE_PASSWORD: ${{ secrets.SOSPHERE_PROBE_PASSWORD }}
           SOSPHERE_PROBE_REGION: ${{ matrix.region }}
           SOSPHERE_PROBE_RUNBOOK_URL: ${{ vars.SOSPHERE_PROBE_RUNBOOK_URL }}
         run: node scripts/synthetic-sos-probe.mjs --runs 3 --sleep 10 --env production

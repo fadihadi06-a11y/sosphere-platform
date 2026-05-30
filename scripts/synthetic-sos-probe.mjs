@@ -36,9 +36,17 @@
  *
  * Required env:
  *   SOSPHERE_SUPABASE_URL          — e.g. https://<proj>.supabase.co
- *   SOSPHERE_PROBE_JWT             — short-lived JWT for a dedicated synthetic-probe user
+ *   SOSPHERE_SUPABASE_ANON_KEY     — anon key (for the sign-in call only)
+ *   SOSPHERE_PROBE_EMAIL           — probe-user email (e.g. probe@sosphere.internal)
+ *   SOSPHERE_PROBE_PASSWORD        — probe-user password (stored as GH secret)
  *   SOSPHERE_PROBE_REGION          — informational label: "iad", "fra", "dxb" (default: "local")
  *   SOSPHERE_PROBE_RUNBOOK_URL     — link emitted in alerts (default: README#runbook)
+ *
+ * Auth model: the script signs in with email+password at startup to obtain
+ * a fresh JWT. This keeps the secret material long-lived (passwords don't
+ * expire) while the in-process JWT stays short-lived as Supabase recommends.
+ * Backwards-compat: SOSPHERE_PROBE_JWT is still accepted as a fallback
+ * (pre-2026-05 behavior) — set EITHER the email/password pair OR the JWT.
  *
  * Exit codes:
  *   0 — all runs green
@@ -185,11 +193,50 @@ async function runOne({ supabaseUrl, jwt, region, runIndex }) {
 // ─── Sleep helper ───────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ─── Auth helper: sign in fresh OR use pre-supplied JWT ─────────────────────
+/**
+ * Two supported auth modes:
+ *   (a) email/password sign-in → returns a fresh JWT each run. RECOMMENDED.
+ *       Set: SOSPHERE_SUPABASE_ANON_KEY + SOSPHERE_PROBE_EMAIL + SOSPHERE_PROBE_PASSWORD
+ *   (b) pre-supplied JWT → set SOSPHERE_PROBE_JWT. Used for short-lived
+ *       ad-hoc runs; will fail after the JWT expires (~1h default).
+ */
+async function obtainProbeJwt(supabaseUrl) {
+  if (process.env.SOSPHERE_PROBE_JWT) return process.env.SOSPHERE_PROBE_JWT;
+
+  const anonKey  = requireEnv('SOSPHERE_SUPABASE_ANON_KEY');
+  const email    = requireEnv('SOSPHERE_PROBE_EMAIL');
+  const password = requireEnv('SOSPHERE_PROBE_PASSWORD');
+
+  const resp = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: anonKey },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    emit({
+      level: 'fatal',
+      event: 'probe_signin_failed',
+      httpStatus: resp.status,
+      body: body.slice(0, 300),
+      runbook: process.env.SOSPHERE_PROBE_RUNBOOK_URL ?? 'README.md#probe-runbook',
+    });
+    process.exit(2);
+  }
+  const data = await resp.json();
+  if (!data?.access_token) {
+    emit({ level: 'fatal', event: 'probe_signin_no_token', body: JSON.stringify(data).slice(0, 300) });
+    process.exit(2);
+  }
+  return data.access_token;
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const supabaseUrl = requireEnv('SOSPHERE_SUPABASE_URL');
-  const jwt = requireEnv('SOSPHERE_PROBE_JWT');
+  const jwt = await obtainProbeJwt(supabaseUrl);
   const region = process.env.SOSPHERE_PROBE_REGION ?? 'local';
 
   emit({ level: 'info', event: 'probe_start', env: opts.env, region, runs: opts.runs, sloMs: SLO_MS });
