@@ -120,6 +120,7 @@ import { safeTelCall } from "./utils/safe-tel";
 import { getEmergencyNumber, resolveDispatcherCountry } from "./utils/emergency-services";
 import { countryFromPhone } from "./utils/country-from-phone";
 import { STORAGE_KEYS } from "./storage-keys";
+import { dlog } from "./utils/dev-logger";
 
 /**
  * R-48: resolve the dispatcher's emergency-services number using every
@@ -192,7 +193,7 @@ async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: 
     const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
       // Native: rely on triggerServerSOS (Twilio SMS) — no local sms: URI
-      console.log("[SOS] SMS deferred to server (Twilio) — no local sms: URI to avoid app chooser");
+      dlog("[SOS] SMS deferred to server (Twilio) — no local sms: URI to avoid app chooser");
       return false;
     }
   } catch {}
@@ -204,7 +205,7 @@ async function sendSOSTrackingLink(contactPhone: string, userName: string, lat: 
       return true;
     } catch {}
   }
-  console.log("[SOS] SMS tracking link would be sent:", message);
+  dlog("[SOS] SMS tracking link would be sent:", message);
   return false;
 }
 
@@ -219,7 +220,7 @@ async function directCall(phone: string): Promise<boolean> {
     if (native?.directCall) {
       const ok = native.directCall(cleaned);
       if (ok) {
-        console.log("[SOS] directCall success via SOSphereNative:", cleaned);
+        dlog("[SOS] directCall success via SOSphereNative:", cleaned);
         return true;
       }
     }
@@ -231,7 +232,7 @@ async function directCall(phone: string): Promise<boolean> {
   try {
     const { CallNumber } = await import("capacitor-call-number");
     await CallNumber.call({ number: cleaned, bypassAppChooser: true });
-    console.log("[SOS] directCall success via CallNumber plugin:", cleaned);
+    dlog("[SOS] directCall success via CallNumber plugin:", cleaned);
     return true;
   } catch (err) {
     console.warn("[SOS] CallNumber plugin failed:", err);
@@ -270,7 +271,7 @@ async function directCall(phone: string): Promise<boolean> {
   try {
     const telURI = buildTelURI(cleaned);
     if (telURI) window.location.href = telURI;
-    console.log("[SOS] directCall fallback tel: (web only):", cleaned);
+    dlog("[SOS] directCall fallback tel: (web only):", cleaned);
     return true;
   } catch {
     return false;
@@ -1341,7 +1342,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // Prune expired entries
     sosRateHistory = sosRateHistory.filter(t => t > oneHourAgo);
 
-    console.log("[SUPABASE_READY] rate_limit_check: " + sosRateHistory.length + " recent triggers");
+    dlog("[SUPABASE_READY] rate_limit_check: " + sosRateHistory.length + " recent triggers");
 
     if (sosRateHistory.length >= SOS_RATE_LIMIT.maxPerHour) {
       setShowRateLimitWarning(true);
@@ -1693,7 +1694,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         const { captureForensicPhoto } = await import("./sos-forensic-capture");
         const result = await captureForensicPhoto(emergencyId);
         if (result) {
-          console.log(`[L2-G] forensic photo captured: emergencyId=${emergencyId} sha256=${result.sha256.slice(0, 16)} bytes=${result.bytes} facing=${result.facing}`);
+          dlog(`[L2-G] forensic photo captured: emergencyId=${emergencyId} sha256=${result.sha256.slice(0, 16)} bytes=${result.bytes} facing=${result.facing}`);
           // Best-effort audit-log mirror so the photo capture is visible
           // in the unified compliance timeline alongside the audio/dispatch
           // events. Failure is non-fatal — the capture itself is recorded
@@ -1924,7 +1925,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     const loaded = getContactsForMode(mode, isPremium);
     setContacts(loaded);
     contactsRef.current = loaded;
-    console.log("[SOS] contacts_loaded:", loaded.length, "contacts | tier:", isPremium ? "paid" : "free", "| mode:", mode, "| workHours:", duringWorkHours);
+    dlog("[SOS] contacts_loaded:", loaded.length, "contacts | tier:", isPremium ? "paid" : "free", "| mode:", mode, "| workHours:", duringWorkHours);
   }, []);
 
   const addEvent = useCallback((ev: Omit<ERREvent, "id" | "ts">) => {
@@ -2335,7 +2336,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }).then(result => {
       setServerResult(result);
       if (result.success) {
-        console.log("[SOS] Path B (server) completed:", result.results?.length, "contacts processed");
+        dlog("[SOS] Path B (server) completed:", result.results?.length, "contacts processed");
         addEvent({ type: "sms_sent", title: "Server alerts sent", detail: `Tier: ${result.tier} · ${result.results?.length || 0} contacts`, color: "#00C8E0" });
       } else {
         console.warn("[SOS] Path B (server) failed:", result.error);
@@ -2363,13 +2364,13 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     let callDialStartTime = 0;
     const handleCallState = (e: Event) => {
       const state = (e as CustomEvent).detail?.state;
-      console.log("[SOS] Native call state:", state, "phase:", q.current.phase, "dialStart:", callDialStartTime);
+      dlog("[SOS] Native call state:", state, "phase:", q.current.phase, "dialStart:", callDialStartTime);
 
       if (state === "answered") {
         // OFFHOOK detected — record when dialing started
         callDialStartTime = Date.now();
         reportWatchdogEvent("dialer_ringing"); // Watchdog: call is ringing
-        console.log("[SOS] Call dialing started (OFFHOOK)");
+        dlog("[SOS] Call dialing started (OFFHOOK)");
         // Do NOT mark as answered yet — OFFHOOK fires immediately when dialing
       } else if (state === "ended" && q.current.phase === "calling") {
         // FIX 2026-04-23: when the user has NO emergency contacts, the
@@ -2381,22 +2382,22 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         // "Connected · undefined" and kicked off the document/record flow
         // for a non-existent contact. Ignore and stay in "calling".
         if (contactsRef.current.length === 0) {
-          console.log("[SOS] ignoring call-ended event — 0 contacts; this was user's own emergency-number dial, not a contact answering");
+          dlog("[SOS] ignoring call-ended event — 0 contacts; this was user's own emergency-number dial, not a contact answering");
           callDialStartTime = 0;
           return;
         }
         // Call ended — check if it lasted long enough to have been answered
         const callDuration = callDialStartTime > 0 ? (Date.now() - callDialStartTime) / 1000 : 0;
-        console.log("[SOS] Call ended, duration:", callDuration, "seconds");
+        dlog("[SOS] Call ended, duration:", callDuration, "seconds");
         if (callDuration >= 5) {
           // Call lasted >5 seconds — someone likely answered and talked
-          console.log("[SOS] Call was answered (duration > 5s) — marking connected");
+          dlog("[SOS] Call was answered (duration > 5s) — marking connected");
           manualAnswerRef.current = true;
         }
         // If <5s, it was probably rejected or went to voicemail — let timeout handle it
         callDialStartTime = 0;
       } else if (state === "ended" && q.current.phase !== "ended") {
-        console.log("[SOS] Call ended during phase:", q.current.phase);
+        dlog("[SOS] Call ended during phase:", q.current.phase);
         callDialStartTime = 0;
       }
     };
@@ -2452,7 +2453,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           lastBatteryCriticalEmit = now;
           lastGaspSentRef.current = true;
           const lastPos = getLastKnownPosition();
-          console.log("[SUPABASE_READY] battery_critical_emitted");
+          dlog("[SUPABASE_READY] battery_critical_emitted");
           emitSyncEvent({
             type: "BATTERY_CRITICAL",
             employeeId: userId,
@@ -2477,7 +2478,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             color: "#FF9500",
           });
         } else {
-          console.log("[SUPABASE_READY] battery_critical_throttled");
+          dlog("[SUPABASE_READY] battery_critical_throttled");
         }
       }
 

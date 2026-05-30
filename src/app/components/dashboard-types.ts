@@ -43,6 +43,15 @@ export interface Employee {
   // strict-mode sweep.
   zone?: string;
   joinDate?: number;
+  /** 2026-05-30 (Tier-S type cleanup): fields the dashboard reads via
+   *  (emp as any).<field> were untyped. Made optional on the interface
+   *  so existing literals stay valid while access sites get type checks. */
+  buddyId?: string;
+  checkInInterval?: number;   // minutes
+  bloodType?: string;
+  allergies?: string;
+  medications?: string;
+  conditions?: string;
 }
 
 export interface EmergencyItem {

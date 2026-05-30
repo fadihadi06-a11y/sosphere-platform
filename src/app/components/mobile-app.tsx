@@ -72,6 +72,7 @@ import { Toaster, toast } from "sonner";
 import { loadJSONSync } from "./api/storage-adapter";
 // FIX AUDIT-7.1 + 7.3: Consent screens
 import { TermsConsentScreen, GpsConsentScreen, hasCompletedConsent, hasCompletedGpsConsent } from "./consent-screens";
+import { dlog, dinfo } from "./utils/dev-logger";
 // Android back button support via Capacitor
 let CapacitorApp: any = null;
 try { import("@capacitor/app").then((m: any) => { CapacitorApp = m.App; }); } catch {}
@@ -421,7 +422,7 @@ export function MobileApp() {
       shakeTimerRef.current = null;
     }
     setShakeCountdown(null);
-    console.log("[SUPABASE_READY] shake_sos_cancelled");
+    dlog("[SUPABASE_READY] shake_sos_cancelled");
   }, []);
 
   const confirmShakeSOS = useCallback(() => {
@@ -430,7 +431,7 @@ export function MobileApp() {
       shakeTimerRef.current = null;
     }
     setShakeCountdown(null);
-    console.log("[SUPABASE_READY] shake_sos_confirmed");
+    dlog("[SUPABASE_READY] shake_sos_confirmed");
     // FIX 3: Guarded � shake SOS goes through dedup
     if (!guardedSOSTrigger("shake")) return;
     // [SUPABASE_READY] shake_sos: insert into sos_events with trigger_method='shake'
@@ -548,7 +549,7 @@ export function MobileApp() {
                 if (!session || session.status === "active" || session.status === "prewarm" || session.status === "escalated") {
                   shouldResume = true;
                 } else {
-                  console.log(`[SOS] server says session ${sos.emergencyId} is ${session.status} — clearing stale local`);
+                  dlog(`[SOS] server says session ${sos.emergencyId} is ${session.status} — clearing stale local`);
                   localStorage.removeItem("sosphere_active_sos");
                 }
               } catch (e) {
@@ -566,7 +567,7 @@ export function MobileApp() {
                 sosInProgressRef.current = true;
                 setIsRestoring(false);
                 navigate("sos-emergency");
-                console.log("[SOS] RESUMED active emergency after app restart");
+                dlog("[SOS] RESUMED active emergency after app restart");
                 return;
               }
             }
@@ -626,7 +627,7 @@ export function MobileApp() {
             rehydrateLocalConsent(serverState);
           }
           if (!consentDone) {
-            console.log(`[Auth] consent verification: ${verdict.reason} → consent flow needed`);
+            dlog(`[Auth] consent verification: ${verdict.reason} → consent flow needed`);
           }
         } catch (e) {
           console.warn("[Auth] consent server check failed; falling back to local for this restore:", e);
@@ -686,7 +687,7 @@ export function MobileApp() {
             // individual experience. This guard ensures primary_role='owner'
             // NEVER lands on employee-dashboard regardless of any other state.
             if (role === "owner") {
-              console.log("[Auth] R-70: owner detected — falling through to individual flow on mobile");
+              dlog("[Auth] R-70: owner detected — falling through to individual flow on mobile");
             } else if (role === "employee" || role === "dispatcher") {
               const id = identity;
               const empName =
@@ -726,7 +727,7 @@ export function MobileApp() {
               setIsRestoring(false);
               // AUTH-4 P3b: MFA gate before employee dashboard.
               await gateMfaThenNavigate("employee-dashboard");
-              console.log(`[Auth] FOUNDATION-1 P5: ${empName} → employee-dashboard (${companyName || companyId}, role=${role})`);
+              dlog(`[Auth] FOUNDATION-1 P5: ${empName} → employee-dashboard (${companyName || companyId}, role=${role})`);
               return;
             }
           } catch (e) {
@@ -798,7 +799,7 @@ export function MobileApp() {
               userPlan,
             );
             setUserPlan(tierRes.plan);
-            console.log(`[Auth] tier sync: server="${tierRes.rawTier}" → userPlan=${tierRes.plan} (${tierRes.reason})`);
+            dlog(`[Auth] tier sync: server="${tierRes.rawTier}" → userPlan=${tierRes.plan} (${tierRes.reason})`);
           } catch (e) {
             console.warn("[Auth] tier sync failed; defaulting to free fail-secure:", e);
             setUserPlan("free");
@@ -807,13 +808,13 @@ export function MobileApp() {
           setIsRestoring(false);
 
           if (!ageRes.verified) {
-            console.log(`[Auth] age-verification ${ageRes.reason} → routing to register`);
+            dlog(`[Auth] age-verification ${ageRes.reason} → routing to register`);
             // AUTH-4 P3b: MFA gate before age-gate register too.
             await gateMfaThenNavigate("individual-register");
           } else {
             // AUTH-4 P3b: MFA gate before civilian home.
             await gateMfaThenNavigate("individual-home");
-            console.log("[Auth] Fully restored user:", savedProfile.name);
+            dlog("[Auth] Fully restored user:", savedProfile.name);
           }
           return;
         }
@@ -826,7 +827,7 @@ export function MobileApp() {
           // CRIT-#8 (W3-1): cache UUID even on partial sessions so a SOS
           // triggered from the welcome screen still carries the real id.
           setAuthUserId(session.user.id);
-          console.log("[Auth] Partial session found, sending to welcome for full flow");
+          dlog("[Auth] Partial session found, sending to welcome for full flow");
         }
 
       } catch (e) {
@@ -1031,7 +1032,7 @@ export function MobileApp() {
         removeListener = () => handle.remove();
       } catch (err) {
         // Capacitor not available (pure web dev) — non-fatal.
-        console.info("[SOS] Background lock listener not installed:", err);
+        dinfo("[SOS] Background lock listener not installed:", err);
       }
     })();
 
@@ -1074,7 +1075,7 @@ export function MobileApp() {
           userPlan,
         );
         if (tierRes.plan !== userPlan) {
-          console.log(`[Tier] resync (${reason}) ${userPlan} -> ${tierRes.plan} (${tierRes.reason})`);
+          dlog(`[Tier] resync (${reason}) ${userPlan} -> ${tierRes.plan} (${tierRes.reason})`);
           // W3-24 (B-20, 2026-04-26): if a tier UPGRADE happens during an
           // active SOS, fire an event the SOS UI can pick up to show a
           // "Upgrade detected — Elite features active from next emergency"
@@ -1091,7 +1092,7 @@ export function MobileApp() {
                 window.dispatchEvent(new CustomEvent("sosphere_tier_upgraded_mid_sos", {
                   detail: { from: userPlan, to: tierRes.plan, reason },
                 }));
-                console.log(`[Tier] mid-SOS upgrade detected: ${userPlan} -> ${tierRes.plan}`);
+                dlog(`[Tier] mid-SOS upgrade detected: ${userPlan} -> ${tierRes.plan}`);
               }
             } catch { /* localStorage may be unavailable in some test envs */ }
           }
@@ -1221,7 +1222,7 @@ export function MobileApp() {
         const synced = await syncPendingVaults();
         const locked = await autoLockExpiredVaults();
         if (synced > 0 || locked > 0) {
-          console.log(`[vault] maintenance (${reason}) synced=${synced} locked=${locked}`);
+          dlog(`[vault] maintenance (${reason}) synced=${synced} locked=${locked}`);
         }
       } catch (e) {
         console.warn(`[vault] maintenance (${reason}) failed:`, e);
@@ -1387,13 +1388,13 @@ export function MobileApp() {
         listenerHandle = await CapApp.addListener("backButton", () => {
           // CRITICAL: Block back button during active SOS — safety first
           if (screenRef.current === "sos-emergency") {
-            console.log("[SOS] Back button blocked during emergency");
+            dlog("[SOS] Back button blocked during emergency");
             return; // Do nothing — user must end SOS through the secure flow
           }
           // Also block on the debrief screen so back doesn't pop to the
           // just-ended sos-emergency (which would re-mount and re-arm SOS).
           if (screenRef.current === "post-emergency-debrief") {
-            console.log("[SOS] Back blocked on debrief — use in-screen buttons");
+            dlog("[SOS] Back blocked on debrief — use in-screen buttons");
             return;
           }
           goBack();
@@ -1422,7 +1423,7 @@ export function MobileApp() {
     const { signInWithPhone } = await import("./api/supabase-client");
     const { error } = await signInWithPhone(phoneNumber);
     if (error) { console.error("[Auth] OTP failed:", error); return; }
-    console.log("[Auth] OTP sent to:", phoneNumber);
+    dlog("[Auth] OTP sent to:", phoneNumber);
     // No navigate here — LoginPhone shows its OTP input after this callback returns.
   };
 
@@ -1446,7 +1447,7 @@ export function MobileApp() {
         return;
       }
 
-      console.log("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
+      dlog("[MobileApp] Google auth success:", info.email, "isNew:", info.isNewUser);
       setLoginName(info.name || info.email.split("@")[0]);
       // R-81 (2026-05-19): cache the Google avatar URL globally so the
       // ProfileSettings card can show the user's real photo instead of
@@ -1500,7 +1501,7 @@ export function MobileApp() {
             }));
           } catch { /* private mode — fall through, restoreSession will handle */ }
 
-          console.log("[Auth] R-73: server says onboarded → skipping consent loop");
+          dlog("[Auth] R-73: server says onboarded → skipping consent loop");
           screenHistoryRef.current = [];
           navigate("individual-home");
           return;
@@ -1508,7 +1509,7 @@ export function MobileApp() {
         // Server has profile but missing age verification → register screen
         // which starts with DOB picker, then redirects to home automatically.
         if (fullName && !ageVerified) {
-          console.log("[Auth] R-73: server has profile but no age verification → individual-register (DOB)");
+          dlog("[Auth] R-73: server has profile but no age verification → individual-register (DOB)");
           navigate("individual-register");
           return;
         }
@@ -1578,7 +1579,7 @@ export function MobileApp() {
         relation: string;
         avatar?: string;
       }>>("sosphere_emergency_contacts", []);
-      console.log("[SUPABASE_READY] safe_walk_contacts_loaded: " + (stored?.length ?? 0) + " contacts");
+      dlog("[SUPABASE_READY] safe_walk_contacts_loaded: " + (stored?.length ?? 0) + " contacts");
       return stored ?? [];
     } catch {
       return [];
@@ -2047,7 +2048,7 @@ export function MobileApp() {
                   try {
                     const { markProfileCompleted } = await import("./api/supabase-client");
                     await markProfileCompleted(data.name, data.phone);
-                    console.log("[Auth] Profile marked as completed");
+                    dlog("[Auth] Profile marked as completed");
                   } catch (e) {
                     console.warn("[Auth] Could not mark profile completed:", e);
                   }

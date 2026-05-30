@@ -24,6 +24,7 @@ import {
   CloudLightning, Award, Mail,
   Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
   Lock, Crown, RefreshCw, Activity,
+  type LucideIcon,
 } from "lucide-react";
 import { type Lang, LANG_META, useT, LanguagePicker } from "./dashboard-i18n";
 import type { DashPage, Employee, EmergencyItem } from "./dashboard-types";
@@ -283,7 +284,7 @@ function getNavSystem() {
 }
 
 // ── Hub Tab Configurations ──────────────────────────────────────
-const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: any; color?: string }>> = {
+const HUB_TABS: Record<string, Array<{ id: string; label: string; icon: LucideIcon; color?: string }>> = {
   emergencyHub: [
     { id: "active", label: "Live Alerts", icon: Siren, color: "#FF2D55" },
     { id: "reports", label: "Reports", icon: FileText, color: "#FF9500" },
@@ -1453,9 +1454,9 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         const riskScore = calculateRiskScore({
           id: emp.id,
           name: emp.name,
-          joinDate: (emp as any).joinDate || Date.now(),
-          hasBuddy: !!(emp as any).buddyId,
-          checkInInterval: (emp as any).checkInInterval || 120,
+          joinDate: emp.joinDate || Date.now(),
+          hasBuddy: !!emp.buddyId,
+          checkInInterval: emp.checkInInterval || 120,
           batteryLevel: getLastEmployeeSync(emp.id)?.battery || 100,
           isWorkingAlone: false,
           shift: new Date().getHours() >= 20 || new Date().getHours() < 6 ? "night" : "day",
@@ -1515,10 +1516,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           triggeredAt: e.timestamp,
           sosType: e.type.includes("SOS") ? "sos_button" : e.type.includes("Geofence") ? "geofence" : e.type.includes("Hazard") ? "hazard" : "missed_checkin",
           // Medical data — read from employee profile (if stored during onboarding)
-          bloodType: (emp as any)?.bloodType || undefined,
-          allergies: (emp as any)?.allergies || undefined,
-          medications: (emp as any)?.medications || undefined,
-          conditions: (emp as any)?.conditions || undefined,
+          bloodType: emp?.bloodType || undefined,
+          allergies: emp?.allergies || undefined,
+          medications: emp?.medications || undefined,
+          conditions: emp?.conditions || undefined,
         };
       }),
     [emergencies, dismissedSosIds, employees]
@@ -2534,7 +2535,7 @@ function GuideQuickPanel({ onClose, onNavigate, onNavigateHub, pipeline, resolve
   useEffect(() => { try { playUISound("guideOpen"); hapticLight(); } catch {} }, []);
 
   // Build smart action list based on current platform state
-  const actions: { id: string; icon: any; label: string; detail: string; color: string; badge?: string; onClick: () => void }[] = [];
+  const actions: { id: string; icon: LucideIcon; label: string; detail: string; color: string; badge?: string; onClick: () => void }[] = [];
 
   // Priority 1: Pending evidence
   if (pipeline.pendingReview > 0) {
@@ -3148,7 +3149,7 @@ function RoleBadgeChip({ authState, t, isAr, onTap }: { authState: AuthState; t:
 // Enterprise Page Header Config — icon + description per page
 // ═══════════════════════════════════════════════════════════════
 const PAGE_HEADER_CONFIG: Partial<Record<DashPage, {
-  icon: any; color: string; description: string;
+  icon: LucideIcon; color: string; description: string;
   badge?: { label: string; color?: string; pulse?: boolean };
 }>> = {
   emergencyHub: { icon: Siren, color: "#FF2D55", description: "Unified incident management — live alerts, SAR protocol & response playbook" },
@@ -3695,7 +3696,7 @@ const NAV_ITEM_COLORS: Record<string, string> = {
 };
 
 function SidebarNavItem({ item, active, onClick, badge }: {
-  item: { id: string; icon: any; label: string };
+  item: { id: string; icon: LucideIcon; label: string };
   active: boolean;
   onClick: () => void;
   badge?: number;
