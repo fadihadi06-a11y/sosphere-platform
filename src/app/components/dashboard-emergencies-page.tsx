@@ -30,7 +30,7 @@ import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-life
 import {
   detectClusters, type ZoneCluster, CLUSTER_LEVEL_CONFIG, activateClusterSAR,
 } from "./zone-cluster-engine";
-import { getActiveEvacuation } from "./shared-store";
+import { getActiveEvacuation, triggerEvacuation, sendBroadcast, emitSyncEvent, type ActiveEvacuation } from "./shared-store";
 import { toast } from "sonner";
 import { SEVERITY_CONFIG, SLA_THRESHOLD, fmtElapsed, timerColor } from "./dashboard-pages";
 
