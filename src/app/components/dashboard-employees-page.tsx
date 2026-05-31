@@ -12,13 +12,14 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, Clock, Hash, HeartPulse,
-  MapPin, MessageSquare, Phone, Search, ShieldCheck, User, UserCheck,
+  MapPin, MessageSquare, Phone, Search, ShieldCheck, User, UserCheck, Users,
 } from "lucide-react";
 import { Card as DSCard, Badge, TOKENS } from "./design-system";
 import type { Employee } from "./dashboard-types";
 import { calculateRiskScore, getRiskColor, getRiskLabel } from "./risk-scoring-engine";
 import { toast } from "sonner";
 import { hapticLight } from "./haptic-feedback";
+import { getLastEmployeeSync } from "./shared-store";
 import { STATUS_CONFIG, SEVERITY_CONFIG } from "./dashboard-pages";
 
 // ═══════════════════════════════════════════════════════════════
