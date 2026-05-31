@@ -15,12 +15,13 @@
 //   That's the end-state of the original 247 KB monolith.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  AlertTriangle, ArrowRight, ArrowUpRight, Bell, ChevronDown, ChevronLeft,
-  ChevronRight, Download, HeartPulse, Megaphone, Navigation, Phone, Plus,
-  Search, Send, Shield, Siren, User, UserCheck, Users, XCircle, Zap,
+  AlertTriangle, ArrowRight, ArrowUpRight, Bell, CheckCircle2, ChevronDown,
+  ChevronLeft, ChevronRight, ClipboardList, Download, HeartPulse, Megaphone,
+  Navigation, Phone, Plus, Radar, Search, Send, Shield, Siren, Skull, User,
+  UserCheck, Users, XCircle, Zap,
 } from "lucide-react";
 import { Card as DSCard, Badge, Button as DSButton, Divider, TOKENS } from "./design-system";
 import type { Employee, EmergencyItem } from "./dashboard-types";
@@ -29,6 +30,7 @@ import { buildReportData, generateEmergencyLifecyclePDF } from "./emergency-life
 import {
   detectClusters, type ZoneCluster, CLUSTER_LEVEL_CONFIG, activateClusterSAR,
 } from "./zone-cluster-engine";
+import { getActiveEvacuation } from "./shared-store";
 import { toast } from "sonner";
 import { SEVERITY_CONFIG, SLA_THRESHOLD, fmtElapsed, timerColor } from "./dashboard-pages";
 
