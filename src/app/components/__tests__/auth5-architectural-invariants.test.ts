@@ -56,7 +56,7 @@ let employeeDetail   = "";
 let batchEmail       = "";
 let offlinePage      = "";
 let dashNotif        = "";
-let dashPages        = "";
+let dashOverviewPage = "";
 let incidentInv      = "";
 
 beforeAll(() => {
@@ -79,7 +79,11 @@ beforeAll(() => {
   batchEmail       = READ(`${C}/batch-email-scheduler.tsx`);
   offlinePage      = READ(`${C}/dashboard-offline-page.tsx`);
   dashNotif        = READ(`${C}/dashboard-notifications-panel.tsx`);
-  dashPages        = READ(`${C}/dashboard-pages.tsx`);
+  // 2026-05-31 Tier A refactor: MOCK_TIMELINE + MOCK_SYSTEM_HEALTH
+  // moved from dashboard-pages.tsx to dashboard-overview-page.tsx.
+  // Test now targets the new file so the DEV-gate invariant continues
+  // to cover them.
+  dashOverviewPage = READ(`${C}/dashboard-overview-page.tsx`);
   incidentInv      = READ(`${C}/dashboard-incident-investigation.tsx`);
 });
 
@@ -190,7 +194,7 @@ describe("CRIT #164: every MOCK_* fallback is DEV-gated in production-bound surf
   // MOCK_ array.
   const surfaces: { file: string; src: () => string }[] = [
     { file: "dashboard-notifications-panel.tsx", src: () => dashNotif },
-    { file: "dashboard-pages.tsx",               src: () => dashPages },
+    { file: "dashboard-overview-page.tsx",       src: () => dashOverviewPage },
     { file: "dashboard-incident-investigation.tsx", src: () => incidentInv },
     { file: "buddy-system.tsx",                  src: () => buddySys },
     { file: "dashboard-employee-detail.tsx",     src: () => employeeDetail },
