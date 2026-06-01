@@ -6,19 +6,59 @@
 // parent — no circular dependency risk).
 // ═══════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, ChevronLeft, ChevronRight, MapPin, User, Users } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, MapPin, User, Users, LogIn, LogOut } from "lucide-react";
 import { Card as DSCard, Badge, TOKENS } from "./design-system";
 import type { ZoneData } from "./dashboard-types";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { STATUS_CONFIG } from "./dashboard-pages";
+import { onSyncEvent } from "./shared-store";
+
+// Phase 2 CRIT-3 (2026-06-01): rolling buffer of geofence transitions
+// surfaced from the mobile devices via the event bus. Each ZONE_ENTRY /
+// ZONE_EXIT SyncEvent originates in offline-gps-tracker.ts:processPosition
+// after geofence-service confirms a hysteresis-debounced boundary crossing.
+// We keep the most recent N in component state so admins can see live
+// zone activity without manually loading the geofence_events table.
+interface ZoneTransition {
+  ts: number;
+  type: "ZONE_ENTRY" | "ZONE_EXIT";
+  employeeId: string;
+  employeeName: string;
+  zoneId?: string;
+  zoneName?: string;
+}
+const RECENT_TRANSITIONS_MAX = 25;
 
 export function ZonesPage({ zones, t, webMode = false }: { zones: ZoneData[]; t: (k: string) => string; webMode?: boolean }) {
   const [selectedZone, setSelectedZone] = useState<ZoneData | null>(null);
+  const [recentTransitions, setRecentTransitions] = useState<ZoneTransition[]>([]);
   const storeEmployees = useDashboardStore(s => s.employees);
   const totalEmps = zones.reduce((s, z) => s + z.employees, 0);
   const totalAlerts = zones.reduce((s, z) => s + z.activeAlerts, 0);
+
+  // Phase 2 CRIT-3: subscribe to live ZONE_ENTRY/ZONE_EXIT events.
+  // Mounted once per dashboard session — onSyncEvent returns the
+  // unsubscribe function so the cleanup is exact (no listener leak).
+  useEffect(() => {
+    const off = onSyncEvent((e) => {
+      if (e.type !== "ZONE_ENTRY" && e.type !== "ZONE_EXIT") return;
+      const d = (e.data ?? {}) as { zoneId?: string; zoneName?: string };
+      setRecentTransitions(prev => {
+        const next: ZoneTransition[] = [{
+          ts:           e.timestamp,
+          type:         e.type,
+          employeeId:   e.employeeId,
+          employeeName: e.employeeName,
+          zoneId:       d.zoneId,
+          zoneName:     d.zoneName,
+        }, ...prev];
+        return next.slice(0, RECENT_TRANSITIONS_MAX);
+      });
+    });
+    return () => { off(); };
+  }, []);
 
   if (selectedZone) {
     const riskColor = selectedZone.risk === "high" ? "#FF2D55" : selectedZone.risk === "medium" ? "#FF9500" : "#00C853";
@@ -108,6 +148,49 @@ export function ZonesPage({ zones, t, webMode = false }: { zones: ZoneData[]; t:
             </motion.div>
           ))}
         </div>
+        {/* Phase 2 CRIT-3 (2026-06-01): live ZONE_ENTRY/ZONE_EXIT feed.
+            Populated by onSyncEvent subscription above - events originate
+            on mobile via offline-gps-tracker -> geofence-service after
+            hysteresis-confirmed boundary crossing. */}
+        {recentTransitions.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+            className="p-5 rounded-2xl" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.12)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="size-4" style={{ color: TOKENS.accent.primary }} />
+                <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Live Zone Activity</p>
+              </div>
+              <Badge color={TOKENS.accent.primary}>{recentTransitions.length}</Badge>
+            </div>
+            <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+              {recentTransitions.map((tr, idx) => {
+                const isEntry = tr.type === "ZONE_ENTRY";
+                const c = isEntry ? "#00C853" : "#FF9500";
+                const Icon = isEntry ? LogIn : LogOut;
+                const ago = Math.round((Date.now() - tr.ts) / 1000);
+                const agoLabel = ago < 60 ? `${ago}s ago` : ago < 3600 ? `${Math.round(ago / 60)}m ago` : `${Math.round(ago / 3600)}h ago`;
+                return (
+                  <div key={`${tr.ts}-${tr.employeeId}-${idx}`} className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${c}18` }}>
+                    <div className="size-7 rounded-md flex items-center justify-center shrink-0"
+                      style={{ background: `${c}14`, border: `1px solid ${c}30` }}>
+                      <Icon className="size-3.5" style={{ color: c }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white truncate" style={{ fontSize: 12, fontWeight: 600 }}>
+                        {tr.employeeName || tr.employeeId}
+                      </p>
+                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>
+                        {isEntry ? "entered" : "exited"} {tr.zoneName || tr.zoneId || "unknown zone"}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", whiteSpace: "nowrap" }}>{agoLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {zones.map((zone, i) => {
             const rc = zone.risk === "high" ? "#FF2D55" : zone.risk === "medium" ? "#FF9500" : "#00C853";

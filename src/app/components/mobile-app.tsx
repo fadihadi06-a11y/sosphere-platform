@@ -285,6 +285,11 @@ export function MobileApp() {
   // Falls back to the EMP-${name} placeholder when no session exists
   // (offline / pre-auth path) — see authUserIdOrPlaceholder() below.
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  // Phase 2 CRIT-3 (2026-06-01): companyId surfaced as state so the
+  // GPS-tracking useEffect can pass it to initGeofenceService(). Without
+  // this the geofence-service stays uninitialized and the mobile
+  // detection hook in offline-gps-tracker.ts:processPosition is a no-op.
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
 
   // -- Profile restore loading state ---------------------------
   // Only show spinner if user completed ALL steps (session + consent + profile)
@@ -722,6 +727,12 @@ export function MobileApp() {
               setSelectedPath("employee");
               setUserPlan("employee");
               setAuthUserId(session.user.id);
+              // Phase 2 CRIT-3: capture companyId so GPS-tracking effect
+              // can wire initGeofenceService and the geofencing hook in
+              // offline-gps-tracker becomes functional.
+              if (typeof companyId === "string" && companyId) {
+                setActiveCompanyId(companyId);
+              }
               screenHistoryRef.current = [];
 
               setIsRestoring(false);
@@ -1287,9 +1298,7 @@ export function MobileApp() {
       if (typeof window !== "undefined") window.removeEventListener("online", onlineHandler);
       clearInterval(periodic);
     };
-  }, []);
-
-  // -- Auto-start GPS tracking + offline sync when logged in --
+  }, []);  // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
     const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
     if (loggedInScreens.includes(screen)) {
@@ -1298,11 +1307,22 @@ export function MobileApp() {
       startGPSTracking({ employeeId: _realGpsId, ...ZONE_PRESETS.high });
       // Enable auto-sync on reconnect
       enableAutoSync();
+      // Phase 2 CRIT-3 (2026-06-01): load this company's zones into the
+      // geofence-service so the per-sample hook in offline-gps-tracker
+      // has something to evaluate against. Without this call the GPS
+      // hook stays a no-op (zones list = null -> returns early).
+      // Lazy import so individual (non-employee) users who never get a
+      // companyId don't pay the cost.
+      if (activeCompanyId) {
+        void import("./geofence-service").then(svc => {
+          void svc.initGeofenceService(activeCompanyId);
+        }).catch(() => { /* best effort - never block GPS startup */ });
+      }
     }
     return () => {
-      // Don't stop GPS on screen change � only stop when logging out
+      // Don't stop GPS on screen change - only stop when logging out
     };
-  }, [screen]);
+  }, [screen, activeCompanyId]);
 
   useEffect(() => {
     if (screen === "sos-emergency") {
