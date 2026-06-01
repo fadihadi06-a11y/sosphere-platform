@@ -53,3 +53,7 @@ scripts/lint-guard/dist/
 *.env
 .env.*
 !.env.example
+
+# CRIT-3 (2026-06-01): stray CodeQL SARIF artifacts from local scans
+work/
+*.sarif
