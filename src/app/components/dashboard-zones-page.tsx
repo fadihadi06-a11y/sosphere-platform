@@ -44,11 +44,18 @@ export function ZonesPage({ zones, t, webMode = false }: { zones: ZoneData[]; t:
   useEffect(() => {
     const off = onSyncEvent((e) => {
       if (e.type !== "ZONE_ENTRY" && e.type !== "ZONE_EXIT") return;
+      // TS narrowing via the early-return guard above works in this
+      // scope but does NOT propagate into the setRecentTransitions
+      // callback closure (TS conservatively widens captured vars).
+      // Pin the narrowed type to a fresh const so the closure sees
+      // the precise "ZONE_ENTRY" | "ZONE_EXIT" union, not the full
+      // SyncEvent.type union.
+      const narrowedType: "ZONE_ENTRY" | "ZONE_EXIT" = e.type;
       const d = (e.data ?? {}) as { zoneId?: string; zoneName?: string };
       setRecentTransitions(prev => {
         const next: ZoneTransition[] = [{
           ts:           e.timestamp,
-          type:         e.type,
+          type:         narrowedType,
           employeeId:   e.employeeId,
           employeeName: e.employeeName,
           zoneId:       d.zoneId,

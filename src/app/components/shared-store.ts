@@ -763,6 +763,10 @@ function formatEventType(type: SyncEvent["type"]): string {
     EVACUATION_COMPLETED: "Zone Evacuation Completed",
     EVACUATION_CANCELLED: "Zone Evacuation Cancelled",
     EVACUATION_ACK: "Worker Acknowledged Evacuation",
+    // Phase 2 CRIT-3 (2026-06-01): geofencing transitions
+    ZONE_ENTRY: "Entered Geofenced Zone",
+    ZONE_EXIT:  "Exited Geofenced Zone",
+    ZONE_DWELL: "Dwelling in Zone (alert)",
   };
   return map[type];
 }
@@ -810,6 +814,10 @@ function getIconKey(type: SyncEvent["type"]): string {
     EVACUATION_COMPLETED: "CheckCircle2",
     EVACUATION_CANCELLED: "XCircle",
     EVACUATION_ACK: "CheckCircle",
+    // Phase 2 CRIT-3 (2026-06-01): geofencing transitions
+    ZONE_ENTRY: "LogIn",
+    ZONE_EXIT:  "LogOut",
+    ZONE_DWELL: "Hourglass",
   };
   return map[type];
 }
