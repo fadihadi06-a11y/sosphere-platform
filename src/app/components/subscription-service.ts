@@ -137,11 +137,83 @@ export const TIER_SOS_RATE_LIMITS: Record<SubscriptionTier, { perHour: number; p
 
 const STORAGE_KEY = "sosphere_subscription";
 
+// ═══════════════════════════════════════════════════════════════
+// 2026-05-31 CRIT-2 WORLD-CLASS REFACTOR — Server-state architecture
+// ─────────────────────────────────────────────────────────────
+// CONTRACT (read this before editing):
+//
+//   The AUTHORITATIVE source of truth for the user's tier is the
+//   server (`subscriptions` table, fetched via get_my_subscription_tier
+//   RPC). The client mirrors that into _serverTier (in-memory) on
+//   every successful server fetch. localStorage is a BOOTSTRAP CACHE
+//   ONLY — it gives the next session instant-paint while the server
+//   refresh races to confirm.
+//
+//   Priority order in getSubscription():
+//     1. Active trial → trial tier (overrides everything)
+//     2. _serverTier in memory → that
+//     3. localStorage bootstrap cache → that
+//     4. "free" (fail-secure default)
+//
+//   Anti-pattern this replaces (pre-2026-05-31):
+//     getSubscription() read localStorage as truth. Webhook updated DB.
+//     Listener fired but localStorage was never updated (CRIT-2). User
+//     paid, server knew, client showed free forever.
+//
+//   The previous CRIT-2 fix (2026-05-31 first pass) patched the
+//   symptom by adding setSubscription() inside refreshTier. This
+//   refactor makes the architecture itself correct: the in-memory
+//   state IS the source of truth during a session; localStorage is
+//   now explicitly named as a cache.
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * Read the tier the user explicitly chose/paid for (never upgraded
- * by a trial). Used by the subscription UI to show what the user is
- * reverting to after a trial ends. Also used internally by
- * getSubscription() as a fallback when no trial is active.
+ * In-memory authoritative tier. Set by setServerTier() whenever
+ * mobile-app's refreshTier() completes a successful server fetch.
+ * NULL means "we have not yet fetched from server in this session"
+ * → getSubscription() will fall back to localStorage bootstrap cache.
+ */
+let _serverTier: SubscriptionTier | null = null;
+
+/**
+ * Called by refreshTier() in mobile-app.tsx on every successful
+ * server fetch (realtime, post-checkout, capacitor-resume, focus,
+ * periodic-5min, explicit-event). Becomes the in-memory truth and
+ * also writes to localStorage for next-session bootstrap.
+ *
+ * Idempotent — repeated calls with the same tier are no-ops at the
+ * observable level; localStorage timestamp does update each call,
+ * which is fine (cheap, no readers care about the timestamp).
+ */
+export function setServerTier(tier: SubscriptionTier): void {
+  _serverTier = tier;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      tier,
+      updatedAt: Date.now(),
+    }));
+  } catch { /* localStorage may be unavailable in SSR / private browsing */ }
+}
+
+/**
+ * Called on logout. Clears the in-memory tier so the NEXT user's
+ * session does not inherit the previous user's bootstrap cache.
+ * Also clears the localStorage bootstrap so a stale tier doesn't
+ * leak between accounts on a shared device.
+ */
+export function clearServerTier(): void {
+  _serverTier = null;
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
+/**
+ * Read the tier from the localStorage BOOTSTRAP CACHE.
+ *
+ * Distinct from getSubscription() — this skips the in-memory server
+ * state and goes straight to disk. Used by:
+ *   (a) getSubscription() as fallback when _serverTier not yet set
+ *   (b) the UI to display "what tier does the user revert to after
+ *       trial ends" — i.e. the persisted/paid baseline.
  */
 export function getStoredTier(): SubscriptionTier {
   try {
@@ -157,18 +229,15 @@ export function getStoredTier(): SubscriptionTier {
 }
 
 /**
- * Get current EFFECTIVE subscription tier. If an Elite trial is
- * active, returns Elite regardless of the stored tier. When the
- * trial expires, this automatically reverts — no mutation of the
- * stored tier ever occurs. (Phase 10.)
+ * Get current EFFECTIVE subscription tier with the priority order
+ * documented at the top of this section: trial > in-memory server
+ * tier > localStorage bootstrap > free.
  */
 export function getSubscription(): SubscriptionInfo {
-  // Circular-import-safe: resolve lazily via require-style dynamic eval.
-  // trial-service has no dependency on this module, so this is a one-way
-  // read and cannot loop.
+  // (1) Trial check — overrides everything if active. Inline lookup
+  // of the trial state key avoids importing trial-service (keeps this
+  // module dependency-free for legacy callers).
   try {
-    // Inline lookup of the trial state key to avoid importing
-    // trial-service (keeps this module dependency-free for legacy callers).
     const raw = localStorage.getItem("sosphere_trial_state");
     if (raw) {
       const t = JSON.parse(raw);
@@ -183,6 +252,11 @@ export function getSubscription(): SubscriptionInfo {
       }
     }
   } catch {}
+
+  // (2) Server state, if set this session
+  if (_serverTier) return TIER_CONFIG[_serverTier];
+
+  // (3) Bootstrap cache from previous session (4) fails to "free"
   return TIER_CONFIG[getStoredTier()];
 }
 
@@ -191,14 +265,17 @@ export function getTier(): SubscriptionTier {
   return getSubscription().tier;
 }
 
-/** Set subscription tier */
+/**
+ * @deprecated Use setServerTier() instead — clearer contract.
+ *
+ * Old callers (pre-2026-05-31 refactor) wrote directly to localStorage
+ * via setSubscription(). The new architecture makes the in-memory
+ * server tier authoritative; setSubscription is now a thin alias that
+ * also updates _serverTier so legacy callers don't accidentally bypass
+ * the in-memory state.
+ */
 export function setSubscription(tier: SubscriptionTier): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      tier,
-      updatedAt: Date.now(),
-    }));
-  } catch {}
+  setServerTier(tier);
 }
 
 /** Check if a specific feature is available */

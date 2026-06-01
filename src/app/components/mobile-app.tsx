@@ -1075,26 +1075,34 @@ export function MobileApp() {
           userPlan,
         );
 
-        // CRIT-2 (2026-05-31): mirror the rawTier into localStorage so
-        // feature gates (hasFeature, getSubscription) actually unlock.
-        // Without this, civilian users could pay Stripe → webhook writes
-        // subscriptions table → realtime listener fires → React userPlan
-        // updates, but `getSubscription()` still reads stale localStorage
-        // and `hasFeature("aiVoiceCalls")` returns false forever.
+        // CRIT-2 WORLD-CLASS REFACTOR (2026-05-31): server-state contract.
+        // The subscription-service module's in-memory `_serverTier` is
+        // the authoritative source of truth during a session.
+        // `setServerTier()` updates it AND writes localStorage for the
+        // next-session bootstrap. After this call, `hasFeature(...)`
+        // and `getSubscription()` immediately reflect the server tier
+        // — no stale-cache window, no localStorage races.
+        //
+        // Pre-refactor (first CRIT-2 pass): we called `setSubscription()`
+        // which only updated localStorage. `getSubscription()` still
+        // had to re-read localStorage on every call. Now in-memory
+        // is the hot path and localStorage is the cold-start cache.
+        //
         // The CivilianUserPlan domain ('free'|'pro'|'employee') is too
         // coarse for feature gates; rawTier preserves the basic|elite
         // distinction that TIER_CONFIG needs.
         try {
-          const { setSubscription, getStoredTier } = await import("./subscription-service");
+          const { setServerTier, getTier } = await import("./subscription-service");
           const raw = tierRes.rawTier?.toLowerCase().trim();
           if (raw === "free" || raw === "basic" || raw === "elite") {
-            if (raw !== getStoredTier()) {
-              setSubscription(raw);
-              dlog(`[Tier] localStorage mirror (${reason}) ${getStoredTier()} -> ${raw}`);
+            const prev = getTier();
+            if (raw !== prev) {
+              setServerTier(raw);
+              dlog(`[Tier] server-tier set (${reason}) ${prev} -> ${raw}`);
             }
           }
         } catch (e) {
-          console.warn("[Tier] localStorage mirror failed:", e);
+          console.warn("[Tier] setServerTier failed:", e);
         }
 
         if (tierRes.plan !== userPlan) {
