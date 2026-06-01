@@ -78,10 +78,10 @@ This is **NOT implemented yet** — defer until a concrete need is identified.
 
 ---
 
-## 2026-05-31 — Marked Custom TOTP Engine as Dead Code (CRIT-6)
+## 2026-05-31 — Removed Custom TOTP Engine (CRIT-6) ✅ COMPLETED
 
 ### Status
-Not yet removed. Tracked for follow-up.
+Removed in same-day cleanup. DB + file + migration record all gone.
 
 ### What it is
 `src/app/components/api/totp-engine.ts` plus the RPCs
@@ -104,10 +104,27 @@ Supabase's is wired to UI.
 - Removing also requires dropping `user_2fa` table + 3 RPCs + 1
   migration; merits its own ticket.
 
-### What to do
-Either:
-(a) Remove in a single cleanup PR once we confirm no plans for it, OR
-(b) Wire the existing MFA UI to ALSO record into `user_2fa` so the
-    custom system stays in sync as a redundancy.
+### What was done (2026-05-31, same day as decision)
+Removed entirely:
+- File `src/app/components/api/totp-engine.ts` deleted (was 220 lines).
+- DB objects dropped via migration `20260531_crit6_drop_user_2fa_orphan.sql`:
+  - `public.user_2fa` table (0 rows — never populated)
+  - `save_totp_secret(text)` RPC
+  - `verify_user_2fa(text)` RPC
+  - `get_totp_secret_for_verify()` RPC
+  - `_base32_decode(text)` helper
+  - `_app_secrets` row keyed `'totp_master_key'`
+- Historical migrations `20260530_p2_followup_encrypt_totp_secret.sql`
+  + `20260530_p2_followup_c_server_side_totp_verify.sql` kept in git
+  as the build-then-deprecate record.
+- `_app_secrets` table itself **retained** — useful for future server-side
+  secrets; drop separately if a future audit confirms it's unused.
 
-Decision deferred to product owner.
+### Risk assessment
+Zero. Pre-removal scan confirmed:
+- 0 files in `src/` imported `totp-engine.ts`
+- 0 edge functions called the RPCs
+- 0 tests referenced any of the symbols
+- The DB table was empty (never had a single row in production)
+
+Live MFA continues to work via Supabase native `auth.mfa.*`.

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T13:26:28.083Z",
-  "total_migrations": 144,
-  "manifest_sha256": "aabb5c10f106f170fa3909fb64c1cb48036c8f99bea600328bc60b7474939674",
+  "generated_at": "2026-06-01T13:39:05.144Z",
+  "total_migrations": 145,
+  "manifest_sha256": "b1c34ef43f5cec585ea72adae2840cbb9ef5113d0dee49c22935c81077dba667",
   "migrations": [
     {
       "version": "20260415",
@@ -1010,6 +1010,13 @@
       "file": "20260531_crit1_drop_user_pins.sql",
       "sha256": "b50a4ef738a7a980bf329ca11d7d0e6734c5d58a2641c93c5cf2ea3db343ba5b",
       "bytes": 1425
+    },
+    {
+      "version": "20260531",
+      "name": "crit6_drop_user_2fa_orphan",
+      "file": "20260531_crit6_drop_user_2fa_orphan.sql",
+      "sha256": "f6849a304112182078e43536cfeb3ccd099cbe5240e7d2a5e3f9e081bcb5a6b7",
+      "bytes": 1947
     }
   ]
 }
