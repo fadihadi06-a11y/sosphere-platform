@@ -1255,8 +1255,12 @@ export function UnifiedEmployeesPage({
                 employees={inviteEmployees}
                 companyName="Aramco Industries"
                 inviteCode="AX7K9P"
+                companyId={companyIdForInvites ?? undefined}
                 onInvitesSent={(method, count) => {
                   toast.success(`Sent ${count} invites via ${method}`);
+                  // CRIT-3: refresh the pending-invites list so the admin
+                  // sees the new rows in the inviter modal.
+                  void loadPendingInvites();
                 }}
                 onClose={() => setShowInviteManager(false)}
               />

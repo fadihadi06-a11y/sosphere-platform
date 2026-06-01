@@ -29,6 +29,10 @@ interface EmployeeInviteManagerProps {
   employees: Employee[];
   companyName: string;
   inviteCode: string;
+  /** Required for the bulk-invite RPC.  When omitted the component
+   *  falls back to the legacy local-only "marked as sent" UI so existing
+   *  preview screens (no company context) keep working. */
+  companyId?: string;
   companyEmail?: string; // الإيميل الرسمي للشركة
   autoSend?: boolean;
   onInvitesSent?: (method: string, count: number) => void;
@@ -45,6 +49,7 @@ export function EmployeeInviteManager({
   employees,
   companyName,
   inviteCode,
+  companyId,
   companyEmail = "admin@company.com",
   onInvitesSent,
   onClose,
@@ -56,6 +61,12 @@ export function EmployeeInviteManager({
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [markedAsSent, setMarkedAsSent] = useState<Set<string>>(new Set());
   const [confirmSent, setConfirmSent] = useState(false);
+  // CRIT-3 (2026-06-01): real DB write state — replaces the old console.log stub.
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendSummary, setSendSummary] = useState<{
+    created: number; refreshed: number; invalid: number;
+  } | null>(null);
 
   const joinLink = `https://sosphere.app/join/${inviteCode}`;
 
@@ -131,26 +142,73 @@ Your phone number must match your company record for auto-approval.`;
     return `mailto:${email}?subject=${subject}&body=${body}`;
   };
 
-  /*
-    SUPABASE_MIGRATION_POINT: invite_status
-    Replace with:
-    await supabase
-      .from('employee_invites')
-      .upsert(employees.map(e => ({
-        employee_id: e.id,
-        company_id: companyId,
-        status: 'sent',
-        method: 'company-channel',
-        sent_at: new Date().toISOString(),
-      })))
-  */
-  const handleConfirmSent = () => {
-    const allIds = new Set(employees.map(e => e.id));
-    setMarkedAsSent(allIds);
-    setConfirmSent(true);
-    console.log("[SUPABASE_READY] invite_status: marked " + employees.length + " employees as invited");
-    onInvitesSent?.("company-channel", employees.length);
-    setActiveTab("status");
+  // CRIT-3 (2026-06-01) — world-class fix.  Was: console.log stub.
+  // Now: bulk-RPC create_employee_invitations_bulk via invitation-service.
+  // The RPC is idempotent (re-clicking does not create duplicates), is
+  // authorized server-side (owner/admin only), and returns per-row
+  // status so we can show the admin "5 sent, 1 invalid email".
+  //
+  // Fallback: when companyId is not supplied (e.g. preview/mock contexts)
+  // we keep the legacy local-only behavior so existing screens don't break.
+  const handleConfirmSent = async () => {
+    if (sending) return;
+    setSendError(null);
+    setSendSummary(null);
+
+    if (!companyId) {
+      // Preview / no-context path — purely local UX, no DB write.
+      const allIds = new Set(employees.map(e => e.id));
+      setMarkedAsSent(allIds);
+      setConfirmSent(true);
+      onInvitesSent?.("company-channel", employees.length);
+      setActiveTab("status");
+      return;
+    }
+
+    setSending(true);
+    try {
+      const { sendInvitations } = await import("./invitation-service");
+      const summary = await sendInvitations(
+        companyId,
+        employees.map(e => ({
+          email: e.email,
+          name: e.name,
+          phone: e.phone,
+          role: e.role,
+          zone_name: e.zone,
+        })),
+      );
+
+      if (!summary.ok) {
+        setSendError(summary.error ?? "Failed to send invites");
+        setSending(false);
+        return;
+      }
+
+      const sentEmails = new Set(
+        summary.rows
+          .filter(r => r.status !== "invalid_email" && r.invite_id)
+          .map(r => r.email.toLowerCase()),
+      );
+      const sentIds = new Set(
+        employees
+          .filter(e => e.email && sentEmails.has(e.email.toLowerCase()))
+          .map(e => e.id),
+      );
+      setMarkedAsSent(sentIds);
+      setConfirmSent(true);
+      setSendSummary({
+        created: summary.created,
+        refreshed: summary.refreshed,
+        invalid: summary.invalid,
+      });
+      onInvitesSent?.("company-channel", summary.created + summary.refreshed);
+      setActiveTab("status");
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setSending(false);
+    }
   };
 
   const sentCount = markedAsSent.size;
@@ -293,22 +351,50 @@ Your phone number must match your company record for auto-approval.`;
 
             {/* ══ Confirm Button ══ */}
             <motion.button whileTap={{ scale: 0.98 }} onClick={handleConfirmSent}
+              disabled={sending}
               className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl"
               style={{
                 background: confirmSent
                   ? "rgba(0,200,83,0.08)"
-                  : "linear-gradient(135deg, #00C8E0, #00A5C0)",
+                  : sending
+                    ? "rgba(0,200,224,0.4)"
+                    : "linear-gradient(135deg, #00C8E0, #00A5C0)",
                 border: confirmSent ? "1px solid rgba(0,200,83,0.2)" : "none",
                 color: confirmSent ? "#00C853" : "#fff",
                 fontSize: 14, fontWeight: 700,
+                opacity: sending ? 0.7 : 1,
+                cursor: sending ? "wait" : "pointer",
                 boxShadow: confirmSent ? "none" : "0 6px 24px rgba(0,200,224,0.2)",
               }}>
-              {confirmSent ? (
-                <><CheckCircle2 className="size-5" /> Invitations Marked as Sent</>
+              {sending ? (
+                <>Sending…</>
+              ) : confirmSent ? (
+                <><CheckCircle2 className="size-5" /> Invitations Recorded</>
               ) : (
                 <><Send className="size-5" /> I've Sent the Invitations</>
               )}
             </motion.button>
+
+            {/* CRIT-3: surface RPC errors so admins don't think they sent
+                invites silently. Was: console.log only. */}
+            {sendError && (
+              <div className="p-3 rounded-lg" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.18)" }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55", marginBottom: 2 }}>Could not record invitations</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>{sendError}</p>
+              </div>
+            )}
+            {sendSummary && !sendError && (sendSummary.created + sendSummary.refreshed + sendSummary.invalid) > 0 && (
+              <div className="p-3 rounded-lg" style={{ background: "rgba(0,200,83,0.05)", border: "1px solid rgba(0,200,83,0.15)" }}>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
+                  <span style={{ color: "#00C853", fontWeight: 700 }}>{sendSummary.created}</span> new ·{" "}
+                  <span style={{ color: "#00C8E0", fontWeight: 700 }}>{sendSummary.refreshed}</span> refreshed
+                  {sendSummary.invalid > 0 && <>
+                    {" "}·{" "}
+                    <span style={{ color: "#FF9500", fontWeight: 700 }}>{sendSummary.invalid}</span> invalid email
+                  </>}
+                </p>
+              </div>
+            )}
 
             {/* Info */}
             <div className="flex items-start gap-2 p-2.5 rounded-lg" style={{ background: "rgba(0,200,83,0.03)", border: "1px solid rgba(0,200,83,0.08)" }}>
