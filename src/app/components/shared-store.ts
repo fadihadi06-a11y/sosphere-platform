@@ -2549,7 +2549,29 @@ export function getLastEmployeeSync(employeeId: string): EmployeeSyncData | null
 
 // ═══════════════════════════════════════════════════════════════
 // Buddy System — Cross-feature buddy lookup
-// Reads persisted pairs from localStorage (written by buddy-system.tsx)
+// ─────────────────────────────────────────────────────────────
+// 2026-05-31 CRIT-4 part A WORLD-CLASS REFACTOR:
+//
+// CONTRACT (same as CRIT-2 subscription-service refactor):
+//   The AUTHORITATIVE source of truth is the server `buddy_pairs`
+//   table. The client mirrors that into _serverBuddyPairs (in-memory)
+//   on every successful fetch. localStorage is a BOOTSTRAP CACHE
+//   ONLY — gives next session instant-paint while server refresh
+//   races to confirm.
+//
+//   Priority order in loadBuddyPairs():
+//     1. _serverBuddyPairs in memory → that
+//     2. localStorage bootstrap cache → that
+//     3. [] (fail-secure empty array)
+//
+//   Writes go through SECDEF RPCs (upsert_buddy_pair /
+//   delete_buddy_pair). Direct INSERT/UPDATE/DELETE on the table is
+//   denied by RLS — clients cannot bypass authorization.
+//
+//   Pre-refactor (CRIT-4): pairs were localStorage-only.
+//   Buddy A on Device 1 paired with B → wrote to device 1
+//   localStorage. Device 2 (buddy B's phone) never learned about it.
+//   Cross-device buddy alerts impossible.
 // ═══════════════════════════════════════════════════════════════
 
 const BUDDY_PAIRS_KEY = "sosphere_buddy_pairs";
@@ -2563,32 +2585,158 @@ export interface StoredBuddyPair {
   isActive: boolean;
 }
 
+/**
+ * In-memory authoritative pairs. Set by setServerBuddyPairs() when
+ * initBuddyPairs() completes a successful RPC fetch. NULL means
+ * "we have not yet fetched in this session" → loadBuddyPairs() falls
+ * back to the localStorage bootstrap cache.
+ */
+let _serverBuddyPairs: StoredBuddyPair[] | null = null;
+
+/**
+ * Set by initBuddyPairs() (or any buddy-system mutation that wants
+ * to lock in the latest server snapshot). Becomes the in-memory
+ * truth and also writes to localStorage for next-session bootstrap.
+ */
+export function setServerBuddyPairs(pairs: StoredBuddyPair[]): void {
+  _serverBuddyPairs = pairs;
+  safeSetItem(BUDDY_PAIRS_KEY, JSON.stringify(pairs));
+}
+
+/**
+ * Clear on logout. Same reasoning as clearServerTier — prevents the
+ * next user on a shared device from inheriting the previous user's
+ * paired buddy.
+ */
+export function clearServerBuddyPairs(): void {
+  _serverBuddyPairs = null;
+  try { localStorage.removeItem(BUDDY_PAIRS_KEY); } catch {}
+}
+
+/**
+ * Initialize from the server. Call once on app boot or after sign-in.
+ * Returns the pairs (also stored in _serverBuddyPairs). Fail-secure:
+ * if the RPC fails, returns whatever the bootstrap cache had.
+ */
+export async function initBuddyPairs(companyId: string): Promise<StoredBuddyPair[]> {
+  if (!companyId) return loadBuddyPairs();
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { data, error } = await supabase.rpc("get_buddy_pairs", { p_company_id: companyId });
+    if (error || !Array.isArray(data)) {
+      return loadBuddyPairs(); // bootstrap cache fallback
+    }
+    const pairs: StoredBuddyPair[] = data.map((r: {
+      id: string;
+      employee_a_id: string;
+      employee_a_name: string;
+      employee_b_id: string;
+      employee_b_name: string;
+      is_active: boolean;
+    }) => ({
+      id: r.id,
+      employee1Id: r.employee_a_id,
+      employee1Name: r.employee_a_name,
+      employee2Id: r.employee_b_id,
+      employee2Name: r.employee_b_name,
+      isActive: !!r.is_active,
+    }));
+    setServerBuddyPairs(pairs);
+    return pairs;
+  } catch {
+    return loadBuddyPairs();
+  }
+}
+
 /** Get the buddy partner for a given employee ID. Returns null if no active buddy. */
 export function getBuddyFor(employeeId: string): { buddyId: string; buddyName: string } | null {
-  try {
-    const raw = localStorage.getItem(BUDDY_PAIRS_KEY);
-    if (!raw) return null;
-    const pairs: StoredBuddyPair[] = JSON.parse(raw);
-    for (const p of pairs) {
-      if (!p.isActive) continue;
-      if (p.employee1Id === employeeId) return { buddyId: p.employee2Id, buddyName: p.employee2Name };
-      if (p.employee2Id === employeeId) return { buddyId: p.employee1Id, buddyName: p.employee1Name };
-    }
-  } catch {}
+  const pairs = loadBuddyPairs();
+  for (const p of pairs) {
+    if (!p.isActive) continue;
+    if (p.employee1Id === employeeId) return { buddyId: p.employee2Id, buddyName: p.employee2Name };
+    if (p.employee2Id === employeeId) return { buddyId: p.employee1Id, buddyName: p.employee1Name };
+  }
   return null;
 }
 
-/** Save buddy pairs (called by buddy-system.tsx) */
-export function saveBuddyPairs(pairs: StoredBuddyPair[]) {
-  safeSetItem(BUDDY_PAIRS_KEY, JSON.stringify(pairs));
-  console.log("[SUPABASE_READY] buddy_pairs:", JSON.stringify(pairs));
+/**
+ * Upsert a buddy pair via SECDEF RPC (admin/owner only).
+ * Updates the in-memory + localStorage cache on success.
+ * Returns true on success, false on failure (logged).
+ */
+export async function upsertBuddyPair(
+  companyId: string,
+  pair: Omit<StoredBuddyPair, "id"> & { id?: string },
+): Promise<boolean> {
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { data, error } = await supabase.rpc("upsert_buddy_pair", {
+      p_company_id:      companyId,
+      p_employee_a_id:   pair.employee1Id,
+      p_employee_a_name: pair.employee1Name,
+      p_employee_b_id:   pair.employee2Id,
+      p_employee_b_name: pair.employee2Name,
+      p_is_active:       pair.isActive,
+    });
+    if (error || !data) {
+      console.warn("[buddy] upsert RPC failed:", error?.message);
+      return false;
+    }
+    // Re-fetch the canonical list so cache stays in sync (single
+    // round-trip vs guessing the merged shape locally).
+    await initBuddyPairs(companyId);
+    return true;
+  } catch (e) {
+    console.warn("[buddy] upsert threw:", e);
+    return false;
+  }
 }
 
-/** Load buddy pairs */
-export function loadBuddyPairs(): StoredBuddyPair[] {
+/**
+ * Delete a buddy pair via SECDEF RPC. Same caching contract as upsert.
+ */
+export async function deleteBuddyPair(companyId: string, pairId: string): Promise<boolean> {
   try {
-    const pairs: StoredBuddyPair[] = JSON.parse(localStorage.getItem(BUDDY_PAIRS_KEY) || "[]");
-    console.log("[SUPABASE_READY] loading buddy_pairs, count:" + pairs.length);
-    return pairs;
-  } catch { return []; }
+    const { supabase } = await import("./api/supabase-client");
+    const { data, error } = await supabase.rpc("delete_buddy_pair", { p_id: pairId });
+    if (error || data !== true) {
+      console.warn("[buddy] delete RPC failed:", error?.message);
+      return false;
+    }
+    await initBuddyPairs(companyId);
+    return true;
+  } catch (e) {
+    console.warn("[buddy] delete threw:", e);
+    return false;
+  }
+}
+
+/**
+ * Load buddy pairs with priority: in-memory truth → localStorage
+ * bootstrap → empty array. Always synchronous — for the hot paths
+ * (getBuddyFor, SOS dispatch) that can't await an RPC.
+ */
+export function loadBuddyPairs(): StoredBuddyPair[] {
+  if (_serverBuddyPairs) return _serverBuddyPairs;
+  try {
+    const raw = localStorage.getItem(BUDDY_PAIRS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as StoredBuddyPair[];
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * @deprecated Use upsertBuddyPair / deleteBuddyPair / setServerBuddyPairs
+ * instead. This bulk-write function bypasses the SECDEF RPC path and
+ * cannot reach other devices. Kept as alias only for the existing
+ * buddy-system.tsx caller until its mutation logic is migrated.
+ *
+ * Pre-refactor behavior preserved: writes localStorage. ALSO writes
+ * in-memory cache now so getSubscription-style sync semantics work.
+ */
+export function saveBuddyPairs(pairs: StoredBuddyPair[]) {
+  setServerBuddyPairs(pairs);
 }

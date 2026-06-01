@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T13:39:05.144Z",
-  "total_migrations": 145,
-  "manifest_sha256": "b1c34ef43f5cec585ea72adae2840cbb9ef5113d0dee49c22935c81077dba667",
+  "generated_at": "2026-06-01T13:59:47.119Z",
+  "total_migrations": 146,
+  "manifest_sha256": "fbe062dfa57664ffcc32420ede64bf20706d009bd3c64336a7dcbfda0a7931f0",
   "migrations": [
     {
       "version": "20260415",
@@ -1010,6 +1010,13 @@
       "file": "20260531_crit1_drop_user_pins.sql",
       "sha256": "b50a4ef738a7a980bf329ca11d7d0e6734c5d58a2641c93c5cf2ea3db343ba5b",
       "bytes": 1425
+    },
+    {
+      "version": "20260531",
+      "name": "crit4_buddy_pairs_proper_schema",
+      "file": "20260531_crit4_buddy_pairs_proper_schema.sql",
+      "sha256": "75509e36c096f13b683433ea53c8aa359b698bcc1f6a0990cb047f0ef957494e",
+      "bytes": 6124
     },
     {
       "version": "20260531",

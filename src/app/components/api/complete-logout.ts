@@ -17,6 +17,7 @@ import { clearCompanyIdCache } from "./data-layer";
 import { purgeAllOfflineData } from "../offline-database";
 import { clearDashboardStore } from "../stores/dashboard-store";
 import { clearServerTier } from "../subscription-service";
+import { clearServerBuddyPairs } from "../shared-store";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -52,6 +53,10 @@ export async function completeLogout(): Promise<void> {
   // _serverTier that survives logout otherwise). Also removes the
   // localStorage bootstrap cache for the same reason.
   try { clearServerTier(); } catch { /* best effort */ }
+  // 2026-05-31 CRIT-4 refactor: same reasoning — buddy pairs are
+  // company-scoped data; clearing prevents inter-user/inter-tenant
+  // leakage on a shared device.
+  try { clearServerBuddyPairs(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
