@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-30T16:47:06.701Z",
-  "total_migrations": 143,
-  "manifest_sha256": "b85cb0e41f480ea495ead5e81abcee18d7b82f4f4eadc088446ad586c2a6d6e5",
+  "generated_at": "2026-06-01T13:26:28.083Z",
+  "total_migrations": 144,
+  "manifest_sha256": "aabb5c10f106f170fa3909fb64c1cb48036c8f99bea600328bc60b7474939674",
   "migrations": [
     {
       "version": "20260415",
@@ -1003,6 +1003,13 @@
       "file": "20260530_p3_drift_baseline_88_tables.sql",
       "sha256": "70a82e83a90629bfaa541377817950a56a8a8f26a9535f09176521a9d36e0064",
       "bytes": 220281
+    },
+    {
+      "version": "20260531",
+      "name": "crit1_drop_user_pins",
+      "file": "20260531_crit1_drop_user_pins.sql",
+      "sha256": "b50a4ef738a7a980bf329ca11d7d0e6734c5d58a2641c93c5cf2ea3db343ba5b",
+      "bytes": 1425
     }
   ]
 }

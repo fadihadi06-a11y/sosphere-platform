@@ -17,7 +17,13 @@ import {
   Fingerprint, ClipboardList,
 } from "lucide-react";
 import { type Role, ROLE_CONFIG } from "./mobile-auth";
-import { PINVerifyModal } from "./pin-verify-modal";
+// 2026-05-31 CRIT-1 fix: PINVerifyModal removed.
+// PIN was security theater: same factor type as password (knowledge),
+// 6-digit entropy (10^6), and lookup key used "actorLevel-actorName"
+// instead of auth.uid() so it could never match a real user_pins row.
+// Real authorization comes from verify_permission RPC + RLS policies
+// (see api/server-permission.ts) and is enforced server-side.
+// See SECURITY_DECISIONS.md for the full rationale.
 import { saveUserPermissions, getPendingInvitations, sendInvitation } from "./api/permissions-service";
 // ── Types ─────────────────────────────────────────────────────
 type Level = "owner" | "main_admin" | "zone_admin" | "worker";
@@ -206,13 +212,10 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
   const [assigningSlot, setAssigningSlot] = useState<{ zoneId: string; slot: "lead" | "secondary" } | null>(null);
   const [savedPerms, setSavedPerms] = useState(false);
 
-  // ── 2FA/PIN State ──────────────────────────────────────────────
-  const [pinModal, setPinModal] = useState<{
-    open: boolean;
-    operationType: "change_permissions" | "change_role" | "assign_zone_admin" | "revoke_access" | "suspend_user";
-    targetName?: string;
-    onSuccess: () => void;
-  }>({ open: false, operationType: "change_permissions", onSuccess: () => {} });
+  // 2026-05-31 CRIT-1: PIN state removed alongside the modal.
+  // Sensitive ops (change_permissions, change_role, etc.) now flow
+  // directly to their handlers; authorization is the server's job via
+  // the RLS policies on profiles/employees + verify_permission RPC.
 
   // ── Audit Toast ────────────────────────────────────────────────
   const [auditToast, setAuditToast] = useState<{ msg: string; visible: boolean }>({ msg: "", visible: false });
@@ -229,16 +232,15 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     : currentActor?.level === "main_admin" ? "main_admin"
     : null;
 
+  // 2026-05-31 CRIT-1: requirePIN was a no-op gate. Replaced with direct
+  // execution. Server-side verify_permission RPC + RLS will reject any
+  // op the actor lacks permission for — fail-closed by default.
   function requirePIN(
-    operationType: "change_permissions" | "change_role" | "assign_zone_admin" | "revoke_access" | "suspend_user",
-    targetName: string,
-    onSuccess: () => void
+    _operationType: string,
+    _targetName: string,
+    onSuccess: () => void,
   ) {
-    if (actorLevel === "owner" || actorLevel === "main_admin") {
-      setPinModal({ open: true, operationType, targetName, onSuccess });
-    } else {
-      onSuccess();
-    }
+    onSuccess();
   }
 
   // Derived
@@ -371,19 +373,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
   return (
     <div className="flex flex-col h-full" style={{ background: "#05070E", minHeight: "100%" }}>
 
-      {/* ── PIN Verification Modal ──────────────────────────────── */}
-      <PINVerifyModal
-        isOpen={pinModal.open}
-        actorName={currentActor?.name || "Admin"}
-        actorLevel={actorLevel || "main_admin"}
-        operationType={pinModal.operationType}
-        targetName={pinModal.targetName}
-        onVerified={() => {
-          setPinModal(prev => ({ ...prev, open: false }));
-          pinModal.onSuccess();
-        }}
-        onCancel={() => setPinModal(prev => ({ ...prev, open: false }))}
-      />
+      {/* 2026-05-31 CRIT-1: PINVerifyModal removed (security theater). */}
 
       {/* ── Audit Toast ─────────────────────────────────────────── */}
       <AnimatePresence>
