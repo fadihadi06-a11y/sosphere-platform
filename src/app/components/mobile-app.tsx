@@ -1074,6 +1074,29 @@ export function MobileApp() {
           async () => await supabase.rpc("get_my_subscription_tier"),
           userPlan,
         );
+
+        // CRIT-2 (2026-05-31): mirror the rawTier into localStorage so
+        // feature gates (hasFeature, getSubscription) actually unlock.
+        // Without this, civilian users could pay Stripe → webhook writes
+        // subscriptions table → realtime listener fires → React userPlan
+        // updates, but `getSubscription()` still reads stale localStorage
+        // and `hasFeature("aiVoiceCalls")` returns false forever.
+        // The CivilianUserPlan domain ('free'|'pro'|'employee') is too
+        // coarse for feature gates; rawTier preserves the basic|elite
+        // distinction that TIER_CONFIG needs.
+        try {
+          const { setSubscription, getStoredTier } = await import("./subscription-service");
+          const raw = tierRes.rawTier?.toLowerCase().trim();
+          if (raw === "free" || raw === "basic" || raw === "elite") {
+            if (raw !== getStoredTier()) {
+              setSubscription(raw);
+              dlog(`[Tier] localStorage mirror (${reason}) ${getStoredTier()} -> ${raw}`);
+            }
+          }
+        } catch (e) {
+          console.warn("[Tier] localStorage mirror failed:", e);
+        }
+
         if (tierRes.plan !== userPlan) {
           dlog(`[Tier] resync (${reason}) ${userPlan} -> ${tierRes.plan} (${tierRes.reason})`);
           // W3-24 (B-20, 2026-04-26): if a tier UPGRADE happens during an
