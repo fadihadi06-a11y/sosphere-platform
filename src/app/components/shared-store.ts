@@ -242,7 +242,17 @@ export interface SyncEvent {
     // active evacuation. data carries { evacuationId, phase: "acknowledged"|"evacuating"|"arrived",
     // currentLat?, currentLng?, targetPointId? }. Admin uses this for real-time ack counts
     // in the evacuation control panel and to trigger SAR for workers who never ack.
-    | "EVACUATION_ACK";
+    | "EVACUATION_ACK"
+    // Phase 2 CRIT-3 (2026-06-01, safety): geofencing zone-membership
+    // transitions emitted from offline-gps-tracker.ts:processPosition
+    // after the geofence-service evaluates each GPS sample. data carries
+    // { zoneId, zoneName?, lat, lng, accuracy?, eventId? }.
+    // ZONE_ENTRY/ZONE_EXIT fire on confirmed boundary crossings
+    // (hysteresis-debounced). ZONE_DWELL is reserved for future use
+    // (auto-fire after N minutes inside a zone with dwell-alert configured).
+    | "ZONE_ENTRY"
+    | "ZONE_EXIT"
+    | "ZONE_DWELL";
   employeeId: string;
   employeeName: string;
   zone?: string;

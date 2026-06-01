@@ -288,6 +288,65 @@ async function checkBattery(): Promise<void> {
   }
 }
 
+// ── Geofence detection helper (Phase 2 CRIT-3) ────────────────
+// Lives here so the per-sample hook in processPosition stays tiny.
+// Imports the service lazily so the cost is only paid by users who
+// have an active geofencing setup. Errors are swallowed (warn only)
+// because GPS processing is on the safety-critical hot path.
+async function evaluateGeofencesForSample(
+  lat: number,
+  lng: number,
+  accuracy: number | undefined,
+  timestamp: number,
+): Promise<void> {
+  try {
+    const svc = await import("./geofence-service");
+    const sb  = await import("./shared-store");
+    const decision = svc.evaluateGpsSample({ lat, lng, accuracy, timestamp });
+    if (decision.entered.length === 0 && decision.exited.length === 0) return;
+
+    const zones = svc.getCachedZones();
+    const nameById = new Map(zones.map(z => [z.id, z.name ?? z.id]));
+
+    for (const zoneId of decision.entered) {
+      const eventId = await svc.recordGeofenceEvent({
+        zoneId, eventType: "enter", lat, lng,
+        accuracy: accuracy ?? null,
+        source: "gps",
+        occurredAt: new Date(timestamp).toISOString(),
+      });
+      try {
+        sb.emitSyncEvent({
+          type: "ZONE_ENTRY",
+          employeeId: config.employeeId,
+          employeeName: config.employeeId, // tracker has only the ID
+          timestamp,
+          data: { zoneId, zoneName: nameById.get(zoneId), lat, lng, accuracy, eventId },
+        });
+      } catch { /* event bus errors must never crash GPS */ }
+    }
+    for (const zoneId of decision.exited) {
+      const eventId = await svc.recordGeofenceEvent({
+        zoneId, eventType: "exit", lat, lng,
+        accuracy: accuracy ?? null,
+        source: "gps",
+        occurredAt: new Date(timestamp).toISOString(),
+      });
+      try {
+        sb.emitSyncEvent({
+          type: "ZONE_EXIT",
+          employeeId: config.employeeId,
+          employeeName: config.employeeId,
+          timestamp,
+          data: { zoneId, zoneName: nameById.get(zoneId), lat, lng, accuracy, eventId },
+        });
+      } catch { /* event bus errors must never crash GPS */ }
+    }
+  } catch (err) {
+    console.warn("[Geofence] evaluateGeofencesForSample threw:", err);
+  }
+}
+
 // ── Record Position ────────────────────────────────────────────
 
 async function processPosition(position: GeolocationPosition): Promise<void> {
@@ -350,6 +409,16 @@ async function processPosition(position: GeolocationPosition): Promise<void> {
       batteryLevel: trackerState.batteryLevel,
       source: "gps",
     });
+
+    // Phase 2 CRIT-3 (2026-06-01) — geofencing detection hook.
+    // Every GPS sample is evaluated against the cached company zones.
+    // The geofence-service applies hysteresis (default 2 consecutive
+    // agreeing samples) so single-sample GPS noise does NOT cause
+    // phantom ZONE_ENTRY/ZONE_EXIT flapping. On confirmed transitions
+    // we (1) record the event via SECDEF RPC (idempotent + RLS-safe)
+    // and (2) emit a SyncEvent so dashboard listeners can react.
+    // Fire-and-forget — never block the GPS processing loop.
+    void evaluateGeofencesForSample(lat, lng, accuracy ?? undefined, timestamp);
   } catch (err) {
     const errMsg = `Storage error: ${err}`;
     updateState({

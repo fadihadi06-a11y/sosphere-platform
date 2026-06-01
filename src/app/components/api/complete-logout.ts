@@ -18,6 +18,7 @@ import { purgeAllOfflineData } from "../offline-database";
 import { clearDashboardStore } from "../stores/dashboard-store";
 import { clearServerTier } from "../subscription-service";
 import { clearServerBuddyPairs } from "../shared-store";
+import { clearGeofenceState } from "../geofence-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -57,6 +58,11 @@ export async function completeLogout(): Promise<void> {
   // company-scoped data; clearing prevents inter-user/inter-tenant
   // leakage on a shared device.
   try { clearServerBuddyPairs(); } catch { /* best effort */ }
+  // 2026-06-01 Phase 2 CRIT-3: clear cached zones + membership +
+  // pending hysteresis buffer so the next user on this device does
+  // not inherit the previous tenant's zone definitions and does not
+  // start with a stale "inside" state that could miss an EXIT event.
+  try { clearGeofenceState(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

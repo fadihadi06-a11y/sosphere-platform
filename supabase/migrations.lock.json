@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T14:42:03.580Z",
-  "total_migrations": 147,
-  "manifest_sha256": "b620258a5e5f3cba5d0841ca1b24c54d41dce92127501af82649c68bf4f3fe6d",
+  "generated_at": "2026-06-01T15:31:12.786Z",
+  "total_migrations": 148,
+  "manifest_sha256": "7a7782be00ced0d0aa0b06fcdca2092f2f61078ef34ec90a0d1ab17df87eb0b0",
   "migrations": [
     {
       "version": "20260415",
@@ -1031,6 +1031,13 @@
       "file": "20260601_crit3_invitations_bulk_rpc.sql",
       "sha256": "b26d7e087acb6f430c431c3201df2c56d51564136c134a2a28f22fb1abf5b4ad",
       "bytes": 8391
+    },
+    {
+      "version": "20260601",
+      "name": "crit3p2_geofence_events_rpc",
+      "file": "20260601_crit3p2_geofence_events_rpc.sql",
+      "sha256": "c9b0da9c9bb86f953a0541eaa91fa92744c6b1eb7498a8507c6e0404c1a04b72",
+      "bytes": 7831
     }
   ]
 }
