@@ -200,21 +200,47 @@ async function initListenersOnce(PN: any): Promise<void> {
 }
 
 /**
- * Upsert the FCM registration token into push_tokens with
- * platform='android'. Uses the same composite unique constraint
- * (user_id, token) that fcm-push.ts uses for Web Push subscriptions,
- * so the same row is updated if the user reinstalls / reauthenticates.
+ * Upsert the native push registration token into push_tokens, tagged
+ * with the actual Capacitor runtime platform.
  *
- * R-54 will read this row and route messages via FCM HTTP v1 when
- * platform='android' (vs Web Push when token starts with '{').
+ * Phase 2 CRIT-5 Layer A (2026-06-01): replaced the hardcoded literal
+ * `platform: "android"` with `Capacitor.getPlatform()` so iOS tokens
+ * are tagged "ios" and android tokens are tagged "android". The
+ * send-push-notification edge function dispatches FCM for both today
+ * (iOS requires APNs cert uploaded to Firebase + Apple Developer
+ * setup, documented in IOS_PUSH_SETUP.md — Layer B, outside code
+ * scope). With correct tagging at least the data plane is honest;
+ * the moment Layer B is complete, no client change is needed.
+ *
+ * Uses the same composite unique constraint (user_id, token) that
+ * fcm-push.ts uses for Web Push subscriptions, so the same row is
+ * updated if the user reinstalls / reauthenticates.
  */
 async function saveTokenToSupabase(token: string, userId: string): Promise<void> {
+  // Lazy import so Capacitor isn't loaded on the Web Push path.
+  let platform: string = "android";
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    const detected = Capacitor.getPlatform();
+    // Allowed values per push_tokens CHECK constraint (extended in
+    // 20260501190929_push_tokens_allow_web_subtypes.sql): android,
+    // ios, web, desktop-web, mobile-web.
+    if (detected === "ios" || detected === "android") {
+      platform = detected;
+    } else if (detected === "web") {
+      // Should not happen here (this module is only called from native
+      // shells) but fail-safe to "android" rather than reject.
+      platform = "android";
+    }
+  } catch {
+    // Capacitor not available — keep the safe default
+  }
   try {
     const { error } = await supabase.from("push_tokens").upsert(
       {
         token,
         user_id: userId,
-        platform: "android",
+        platform,
         is_active: true,
         updated_at: new Date().toISOString(),
       },

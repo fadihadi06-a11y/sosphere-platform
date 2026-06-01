@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T15:31:12.786Z",
-  "total_migrations": 148,
-  "manifest_sha256": "7a7782be00ced0d0aa0b06fcdca2092f2f61078ef34ec90a0d1ab17df87eb0b0",
+  "generated_at": "2026-06-01T19:30:18.703Z",
+  "total_migrations": 149,
+  "manifest_sha256": "e8ee4a08c48e922145a2ec65da08cfe336e1c1feb3f9b512f6f0ee3b8de258b2",
   "migrations": [
     {
       "version": "20260415",
@@ -1038,6 +1038,13 @@
       "file": "20260601_crit3p2_geofence_events_rpc.sql",
       "sha256": "c9b0da9c9bb86f953a0541eaa91fa92744c6b1eb7498a8507c6e0404c1a04b72",
       "bytes": 7831
+    },
+    {
+      "version": "20260601",
+      "name": "crit4b_get_buddy_user_ids_rpc",
+      "file": "20260601_crit4b_get_buddy_user_ids_rpc.sql",
+      "sha256": "c9ebaec172172e6b971f650e871a2c4b034170e8132535d0ff9da94aa5342b34",
+      "bytes": 4185
     }
   ]
 }

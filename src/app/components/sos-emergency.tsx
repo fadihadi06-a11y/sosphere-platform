@@ -2610,6 +2610,32 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                   timestamp: Date.now(),
                   data: { buddyId: buddy.buddyId, buddyName: buddy.buddyName, emergencyId: errIdRef.current },
                 });
+                // Phase 2 CRIT-4-B (2026-06-01): server-side delivery to
+                // buddy B's device. Pre-fix: BUDDY_ALERT only fired on the
+                // local event bus; buddy B (offline / different tab /
+                // different device) received NOTHING. Now: buddy-push-service
+                // resolves the SECDEF chain emp_id -> user_id, fans out
+                // send-push-notification edge calls with Twilio SMS fallback
+                // when the buddy has no active push tokens.
+                // Lazy import + fire-and-forget — never block SOS path.
+                void (async () => {
+                  try {
+                    const { supabase } = await import("./api/supabase-client");
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user?.id) return;
+                    const { notifyBuddyAlert } = await import("./buddy-push-service");
+                    const pos = getLastKnownPosition();
+                    const result = await notifyBuddyAlert(user.id, {
+                      selfName:    userName,
+                      emergencyId: errIdRef.current,
+                      lat:         pos?.lat,
+                      lng:         pos?.lng,
+                    });
+                    console.info("[BuddyPush] delivery result:", result);
+                  } catch (err) {
+                    console.warn("[BuddyPush] dispatch threw:", err);
+                  }
+                })();
               }
             }
             // ── FIX 2: Individual SOS — emit PERSONAL_SOS for non-employee users ──
