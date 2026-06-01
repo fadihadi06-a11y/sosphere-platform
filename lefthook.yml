@@ -93,28 +93,17 @@ pre-push:
   commands:
 
     # Re-run lint-guard against the full range being pushed.
+    # CRIT-3 (2026-06-01): extracted bash to scripts/hooks/lint-guard-range.sh.
+    # lefthook 2.1.8 on Windows git-bash silently truncates multi-line YAML
+    # `run: |` blocks before passing them to bash, producing cryptic
+    # "syntax error: unexpected end of file" failures. Same root-cause +
+    # fix as the sibling hooks below and PR(D) 2026-05-26 lint-guard-staged.
     lint-guard-range:
-      run: |
-        REMOTE_REF="${LEFTHOOK_REMOTE_REF:-origin/main}"
-        if [ -f scripts/lint-guard/dist/index.js ]; then
-          node scripts/lint-guard/dist/index.js --staged-range "${REMOTE_REF}..HEAD"
-        else
-          echo "Lighthouse: dist/ not built. Aborting push."
-          exit 1
-        fi
+      run: 'sh scripts/hooks/lint-guard-range.sh'
 
     # Block force-push to main / release branches.
     block-force-push-main:
-      run: |
-        CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
-        if [ "$CURRENT" = "main" ] || [ "$CURRENT" = "master" ] || echo "$CURRENT" | grep -qE '^release/'; then
-          # Detect force-push by checking if any commit in the local branch is missing from the remote.
-          if git rev-list --left-right --count "@{u}..." 2>/dev/null | awk '{exit ($1 > 0 ? 0 : 1)}'; then
-            echo "🚨 Lighthouse L2: Force-push to ${CURRENT} blocked."
-            echo "   Doctrine §2 L2: protected branches accept fast-forward only."
-            exit 1
-          fi
-        fi
+      run: 'sh scripts/hooks/block-force-push-main.sh'
 
     # R-20 verify gate — full local mirror of CI (gates 1-10):
     # JSON/YAML parse, ESLint, npm ci dry-run, audit, vite build,
@@ -135,17 +124,11 @@ pre-push:
 
     # Require GPG-signed commits when pushing to protected branches.
     # Soft-fail with clear remediation if not configured.
+    # CRIT-3 (2026-06-01): extracted to scripts/hooks/require-signed-commits.sh
+    # for the same Windows multi-line-YAML truncation reason as the hooks above.
+    # The script also now downgrades to a warn when no signing key is
+    # configured at all (developers without GPG were getting blocked
+    # permanently without a clean local path forward; CI is the canonical
+    # branch-protection backstop).
     require-signed-commits:
-      run: |
-        CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
-        if [ "$CURRENT" = "main" ] || [ "$CURRENT" = "master" ] || echo "$CURRENT" | grep -qE '^release/'; then
-          UNSIGNED=$(git log --pretty=format:"%H %G?" "@{u}..HEAD" 2>/dev/null | awk '$2 != "G" { print $1 }')
-          if [ -n "$UNSIGNED" ]; then
-            echo "🚨 Lighthouse L2: Unsigned commits on ${CURRENT}:"
-            echo "$UNSIGNED"
-            echo ""
-            echo "   Enable: git config commit.gpgsign true && git config user.signingkey <KEY>"
-            echo "   Or sign existing commits: git rebase --exec 'git commit --amend --no-edit -S' origin/main"
-            exit 1
-          fi
-        fi
+      run: 'sh scripts/hooks/require-signed-commits.sh'
