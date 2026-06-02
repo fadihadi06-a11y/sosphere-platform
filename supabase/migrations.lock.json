@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T19:20:04.206Z",
-  "total_migrations": 154,
-  "manifest_sha256": "a2825d895da4a1913311223ebb1bd609f1573b1f0f4816f84cf21d02b053855f",
+  "generated_at": "2026-06-02T19:37:26.639Z",
+  "total_migrations": 155,
+  "manifest_sha256": "f03866736c2cec20b0d076096296276a95e932042b52892f8006c625a2d51b78",
   "migrations": [
     {
       "version": "20260415",
@@ -1080,6 +1080,13 @@
       "file": "20260602_attendance_company_id_and_rpcs.sql",
       "sha256": "e6563c84efed76f618668f8b2a0961d168283898dbd8e500f1b948407ecedee4",
       "bytes": 6729
+    },
+    {
+      "version": "20260602",
+      "name": "compliance_summary_aggregator",
+      "file": "20260602_compliance_summary_aggregator.sql",
+      "sha256": "6f6e9dbdf51d8305d6e9ea3dc49458916542ba3d796ced9180bcd1536250f9d1",
+      "bytes": 5898
     }
   ]
 }

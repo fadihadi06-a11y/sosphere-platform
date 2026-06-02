@@ -21,6 +21,7 @@ import { clearServerBuddyPairs } from "../shared-store";
 import { clearGeofenceState } from "../geofence-service";
 import { clearDiscreetSessionState } from "../discreet-session-service";
 import { clearAttendanceCache } from "../attendance-service";
+import { clearComplianceSummaryCache } from "../compliance-summary-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -73,6 +74,10 @@ export async function completeLogout(): Promise<void> {
   // next user on this device does NOT see the previous tenant's
   // attendance roll-up (CRIT-#4 cross-tenant leak class).
   try { clearAttendanceCache(); } catch { /* best effort */ }
+  // 2026-06-02 compliance refactor (8th pattern app): clear cached
+  // PDF summary so a shared device cannot leak the previous tenant's
+  // KPIs into the next user's session.
+  try { clearComplianceSummaryCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
