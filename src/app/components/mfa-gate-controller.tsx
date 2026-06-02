@@ -84,10 +84,10 @@ export function MfaGateController() {
         // Need to mount a modal — figure out which one.
         if (decision.action === "open_challenge_modal") {
           const { mfaListFactorsLockFree } = await import("./api/mfa-client");
-          const factors = await mfaListFactorsLockFree();
-          // mfa-client returns shape {totp: [{id, status}, ...], ...}
-          const list = (factors as { totp?: Array<{ id: string; status: string }> } | null)?.totp ?? [];
-          const verified = list.find(f => f.status === "verified");
+          const result = await mfaListFactorsLockFree();
+          // mfa-client returns MfaResult<{factors:[{id,type,status}], hasTotp:boolean}>
+          const list = (result?.data?.factors ?? []) as Array<{ id: string; type: string; status: string }>;
+          const verified = list.find(f => f.type === "totp" && f.status === "verified");
           if (!verified) {
             // Decision said challenge but factors say none — fall through to enroll
             await mountChallengeOrEnroll(request, "enroll", null);
@@ -161,9 +161,9 @@ export function MfaGateController() {
       // doesn't auto-elevate session. So fetch the new factorId and pivot
       // into the challenge modal.
       const { mfaListFactorsLockFree } = await import("./api/mfa-client");
-      const factors = await mfaListFactorsLockFree();
-      const list = (factors as { totp?: Array<{ id: string; status: string }> } | null)?.totp ?? [];
-      const verified = list.find(f => f.status === "verified");
+      const result = await mfaListFactorsLockFree();
+      const list = (result?.data?.factors ?? []) as Array<{ id: string; type: string; status: string }>;
+      const verified = list.find(f => f.type === "totp" && f.status === "verified");
       if (!verified) {
         p.resolve(false);
         setPending(null);

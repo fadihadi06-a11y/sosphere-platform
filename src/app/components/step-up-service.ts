@@ -159,16 +159,12 @@ export async function readSessionAal(): Promise<string | null> {
 export async function hasVerifiedFactor(): Promise<boolean> {
   try {
     const { mfaListFactorsLockFree } = await import("./api/mfa-client");
-    const factors = await mfaListFactorsLockFree();
-    if (!factors || typeof factors !== "object") return false;
-    // Shape varies across mfa-client versions — try both totp.length
-    // and a flat list.
-    const list = Array.isArray((factors as { totp?: unknown[] }).totp)
-      ? ((factors as { totp: Array<{ status?: string }> }).totp)
-      : Array.isArray((factors as { all?: unknown[] }).all)
-        ? ((factors as { all: Array<{ status?: string }> }).all)
-        : [];
-    return list.some(f => f && (f as { status?: string }).status === "verified");
+    const result = await mfaListFactorsLockFree();
+    // Real shape per mfa-client.ts:292:
+    //   MfaResult<{ factors: {id, type, status}[]; hasTotp: boolean }>
+    if (result?.error || !result?.data) return false;
+    const list = Array.isArray(result.data.factors) ? result.data.factors : [];
+    return list.some(f => f?.type === "totp" && f?.status === "verified");
   } catch {
     return false;
   }
