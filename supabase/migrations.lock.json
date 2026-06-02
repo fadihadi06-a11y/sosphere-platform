@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T13:48:13.652Z",
-  "total_migrations": 153,
-  "manifest_sha256": "4498ee67fadf3a9c857b55956cafbda311612d7c8640cc5aba74958aee359bea",
+  "generated_at": "2026-06-02T19:20:04.206Z",
+  "total_migrations": 154,
+  "manifest_sha256": "a2825d895da4a1913311223ebb1bd609f1573b1f0f4816f84cf21d02b053855f",
   "migrations": [
     {
       "version": "20260415",
@@ -1073,6 +1073,13 @@
       "file": "20260601_crit9_discreet_sessions_phase_a.sql",
       "sha256": "6318b67a69e180358ce39a61b91d1ac93464be0c1e5a22c991ffdc4168bcebc2",
       "bytes": 12559
+    },
+    {
+      "version": "20260602",
+      "name": "attendance_company_id_and_rpcs",
+      "file": "20260602_attendance_company_id_and_rpcs.sql",
+      "sha256": "e6563c84efed76f618668f8b2a0961d168283898dbd8e500f1b948407ecedee4",
+      "bytes": 6729
     }
   ]
 }

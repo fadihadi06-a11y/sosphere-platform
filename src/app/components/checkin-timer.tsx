@@ -19,10 +19,28 @@ const CHECKIN_TOTAL_KEY = "sosphere_checkin_total";
 const CHECKIN_WARN_CYCLE_KEY = "sosphere_checkin_warn_cycle";
 
 // ── Supabase background sync for check-in events ────────────────────────────
+// 2026-06-02 attendance refactor (7th pattern application):
+// Maps local UI event types to the canonical RPC enum.
+//   start/safe → "checkin"
+//   warning    → "warning"
+//   triggered  → "missed"
+//   cancel/extend → "resumed"
+function _mapCheckinType(t: "start" | "cancel" | "safe" | "extend" | "triggered" | "warning"): "checkin" | "warning" | "missed" | "resumed" {
+  switch (t) {
+    case "warning":   return "warning";
+    case "triggered": return "missed";
+    case "cancel":
+    case "extend":    return "resumed";
+    case "start":
+    case "safe":
+    default:          return "checkin";
+  }
+}
+
 function syncCheckinEvent(event: {
   type: "start" | "cancel" | "safe" | "extend" | "triggered" | "warning";
-  employeeId: string;
-  employeeName: string;
+  employeeId: string;   // kept for retry-queue payload only — server resolves real identity
+  employeeName: string; // kept for retry-queue payload only
   zone: string;
   durationMin?: number;
   remainingSec?: number;
@@ -30,60 +48,74 @@ function syncCheckinEvent(event: {
   if (!SUPABASE_CONFIG.isConfigured) return;
   // ──────────────────────────────────────────────────────────────────
   // G-40 (B-20, 2026-04-26): silent failure was a safety blind spot.
-  // Pre-fix: a failed Supabase INSERT just emitted console.warn(). The
-  // worker's device showed "Checked in" while the dispatcher dashboard
-  // showed "Missed Check-in" — the dispatcher could escalate to a
-  // false SOS, OR ignore a real missed check-in thinking the device
-  // was just offline.
-  // Now: failed inserts are queued in localStorage and re-flushed on
-  // next successful insert (similar to the audit-log retry pattern).
-  // The user also sees a persistent toast confirming the queue state.
+  // 2026-06-02 attendance refactor: switched from direct INSERT (which
+  // failed silently under RLS because employee_id was hardcoded
+  // "EMP-APP" — a non-matching id) to the SECDEF record_checkin_event
+  // RPC which resolves real employee_id + company_id from auth.uid()
+  // server-side. The retry queue is preserved for offline scenarios:
+  // failed RPC calls are queued + replayed via the same RPC on next
+  // successful write.
   // ──────────────────────────────────────────────────────────────────
-  const row = {
-    employee_id: event.employeeId,
+  const rpcEventType = _mapCheckinType(event.type);
+  const queueRow = {
+    employee_id:   event.employeeId,
     employee_name: event.employeeName,
-    zone: event.zone,
-    event_type: event.type,
-    duration_min: event.durationMin || null,
-    remaining_sec: event.remainingSec || null,
-    created_at: new Date().toISOString(),
+    zone:          event.zone,
+    event_type:    rpcEventType,
+    duration_min:  event.durationMin   || null,
+    remaining_sec: event.remainingSec  || null,
+    created_at:    new Date().toISOString(),
   };
   const queueKey = "sosphere_checkin_retry_queue";
   const enqueue = () => {
     try {
       const q = JSON.parse(localStorage.getItem(queueKey) || "[]");
-      q.push(row);
-      // Cap at 100 to avoid unbounded growth.
+      q.push(queueRow);
       localStorage.setItem(queueKey, JSON.stringify(q.slice(-100)));
     } catch (e) { console.error("[CheckIn] retry-queue persist failed:", e); }
   };
 
-  // Try to drain the retry queue along with this insert.
-  let pending: any[] = [];
-  try { pending = JSON.parse(localStorage.getItem(queueKey) || "[]"); } catch { /* malformed queue */ }
-  const batch = pending.length > 0 ? [...pending, row] : [row];
-
-  supabase.from("checkin_events").insert(batch)
-    .then(({ error }) => {
-      if (error) {
-        console.warn("[CheckIn] Supabase sync failed, queued:", error.message);
-        enqueue();
-        try {
-          // Visible — dispatchers should know if our local cache differs.
-          if (typeof window !== "undefined" && (window as any).__sosphereToast) {
-            (window as any).__sosphereToast("Check-in queued — will retry when online");
-          }
-        } catch { /* toast bridge unavailable */ }
-        return;
-      }
-      // Success — clear queue (we just upserted everything in pending+row).
-      try { localStorage.removeItem(queueKey); } catch { /* localStorage unavailable */ }
-    }, (e: unknown) => {
-      // P0-ci-cleanup-strict-2 (2026-05-24): supabase PostgrestFilterBuilder
-      // returns PromiseLike, not Promise — collapsed .catch into 2-arg .then.
-      console.warn("[CheckIn] Supabase sync exception, queued:", e);
+  // Fire the RPC. On success, drain the retry queue by replaying each
+  // queued event through the RPC (each gets its own server-resolved
+  // identity + timestamp). On failure, enqueue and surface a toast.
+  supabase.rpc("record_checkin_event", {
+    p_event_type:    rpcEventType,
+    p_zone:          event.zone,
+    p_duration_min:  event.durationMin   ?? null,
+    p_remaining_sec: event.remainingSec  ?? null,
+  }).then(({ error }) => {
+    if (error) {
+      console.warn("[CheckIn] record_checkin_event failed, queued:", error.message);
       enqueue();
-    });
+      try {
+        if (typeof window !== "undefined" && (window as any).__sosphereToast) {
+          (window as any).__sosphereToast("Check-in queued — will retry when online");
+        }
+      } catch { /* toast bridge unavailable */ }
+      return;
+    }
+    // Success — drain any pending retry rows via the same RPC, then clear queue
+    let pending: any[] = [];
+    try { pending = JSON.parse(localStorage.getItem(queueKey) || "[]"); } catch { /* malformed queue */ }
+    if (pending.length > 0) {
+      // Fire-and-forget replay; the server timestamps each as `now()`
+      // (the original queueRow.created_at is observational only, lost
+      // on replay — acceptable trade-off for the RLS-safe identity).
+      void Promise.all(pending.map((p) =>
+        supabase.rpc("record_checkin_event", {
+          p_event_type:    p.event_type,
+          p_zone:          p.zone,
+          p_duration_min:  p.duration_min,
+          p_remaining_sec: p.remaining_sec,
+        }),
+      )).then(() => {
+        try { localStorage.removeItem(queueKey); } catch { /* unavailable */ }
+      }).catch(() => { /* leave queue for next attempt */ });
+    }
+  }, (e: unknown) => {
+    console.warn("[CheckIn] record_checkin_event exception, queued:", e);
+    enqueue();
+  });
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -441,8 +473,8 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
 
     if (onTimerStateChange) onTimerStateChange(true);
     // Emit check-in event to dashboard + sync to Supabase
-    emitSyncEvent({ type: "CHECKIN", employeeId: "EMP-APP", employeeName: userName, zone: userZone, timestamp: Date.now(), data: { duration: totalMinutes } });
-    syncCheckinEvent({ type: "start", employeeId: "EMP-APP", employeeName: userName, zone: userZone, durationMin: totalMinutes });
+    emitSyncEvent({ type: "CHECKIN", employeeId: "self", employeeName: userName, zone: userZone, timestamp: Date.now(), data: { duration: totalMinutes } });
+    syncCheckinEvent({ type: "start", employeeId: "self", employeeName: userName, zone: userZone, durationMin: totalMinutes });
   }, [totalMinutes, minutesToDemoSeconds, warningThresholdSec, onSOSTrigger, onTimerStateChange, userName, userZone]);
 
   const cancelTimer = useCallback(() => {
@@ -458,7 +490,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     setRemaining(0);
     warningShownRef.current = false;
     if (onTimerStateChange) onTimerStateChange(false);
-    syncCheckinEvent({ type: "cancel", employeeId: "EMP-APP", employeeName: userName, zone: userZone });
+    syncCheckinEvent({ type: "cancel", employeeId: "self", employeeName: userName, zone: userZone });
   }, [onTimerStateChange, userName, userZone]);
 
   const handleImSafe = useCallback(() => {
@@ -473,7 +505,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     setRemaining(0);
     warningShownRef.current = false;
     if (onTimerStateChange) onTimerStateChange(false);
-    syncCheckinEvent({ type: "safe", employeeId: "EMP-APP", employeeName: userName, zone: userZone });
+    syncCheckinEvent({ type: "safe", employeeId: "self", employeeName: userName, zone: userZone });
   }, [onTimerStateChange, userName, userZone]);
 
   const handleExtend = useCallback(() => {
@@ -490,7 +522,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     phaseRef.current = "active";
     setPhase("active");
     localStorage.setItem(CHECKIN_DEADLINE_KEY, String(newDeadline));
-    syncCheckinEvent({ type: "extend", employeeId: "EMP-APP", employeeName: userName, zone: userZone, remainingSec: extendSec });
+    syncCheckinEvent({ type: "extend", employeeId: "self", employeeName: userName, zone: userZone, remainingSec: extendSec });
   }, [extendSec, userName, userZone]);
 
   useEffect(() => {

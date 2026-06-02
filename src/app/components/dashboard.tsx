@@ -128,7 +128,7 @@ export function EmployeeDashboard({
 
   useEffect(() => {
     const checkMonitoring = () => {
-      const data = localStorage.getItem("monitoring_EMP-APP");
+      const data = localStorage.getItem("monitoring_self");
       if (data) { const p = JSON.parse(data); setMonitoringMode(true); setMonitoringData({checkInInterval:p.checkInInterval,nextCheckIn:p.nextCheckIn,monitorUntil:p.monitorUntil}); }
       else { setMonitoringMode(false); setMonitoringData(null); }
     };
@@ -139,12 +139,12 @@ export function EmployeeDashboard({
   }, []);
 
   const handleMonitoringCheckIn = () => {
-    const data = localStorage.getItem("monitoring_EMP-APP");
+    const data = localStorage.getItem("monitoring_self");
     if (data) {
       const p = JSON.parse(data);
       const next = Date.now()+(p.checkInInterval*60*1000);
-      localStorage.setItem("monitoring_EMP-APP", JSON.stringify({...p,nextCheckIn:next}));
-      emitSyncEvent({type:"MONITORING_CHECKIN",employeeId:"EMP-APP",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{nextCheckIn:next}});
+      localStorage.setItem("monitoring_self", JSON.stringify({...p,nextCheckIn:next}));
+      emitSyncEvent({type:"MONITORING_CHECKIN",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{nextCheckIn:next}});
       setMonitoringData(prev=>prev?{...prev,nextCheckIn:next}:null);
       toast.success(isAr ? "تم تسجيل الحضور" : "Check-in confirmed", {description: isAr ? `التسجيل التالي خلال ${p.checkInInterval} دقائق` : `Next check-in in ${p.checkInInterval} minutes`});
     }
@@ -157,7 +157,7 @@ export function EmployeeDashboard({
   },[hybridMode,onDuty]);
 
   const handleAttend = () => {
-    recordAttendance({employeeId:"EMP-APP",employeeName:userName,zoneId:"GZ-1",zoneName:userZone,timestamp:Date.now(),type:"enter"});
+    recordAttendance({employeeId:"self",employeeName:userName,zoneId:"GZ-1",zoneName:userZone,timestamp:Date.now(),type:"enter"});
     setAttended(true); setShowAttendConfirm(true);
     setTimeout(()=>setShowAttendConfirm(false),3000);
   };
@@ -170,9 +170,9 @@ export function EmployeeDashboard({
   ];
 
   const quickActions = [
-    { icon:Shield, labelAr: isAr ? "الحالة" : "Status", color:"#00C8E0", action:()=>{ emitSyncEvent({type:"STATUS_UPDATE",employeeId:"EMP-APP",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{status:"safe"}}); toast.success(isAr ? "تم إرسال تحديث الحالة" : "Status updated"); }},
-    { icon:AlertTriangle, labelAr: isAr ? "خطر" : "Hazard", color:"#FF9500", action:()=>{ emitSyncEvent({type:"HAZARD_REPORT",employeeId:"EMP-APP",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{hazardType:"Environmental"}}); autoBroadcastHazard(userName,userZone,"Environmental"); toast.warning(isAr ? "تم الإبلاغ عن الخطر" : "Hazard reported"); }},
-    { icon:MapPin, labelAr: isAr ? "منطقتي" : "My Zone", color:"#00C853", action:()=>{ emitSyncEvent({type:"LOCATION_UPDATE",employeeId:"EMP-APP",employeeName:userName,zone:userZone,timestamp:Date.now()}); }},
+    { icon:Shield, labelAr: isAr ? "الحالة" : "Status", color:"#00C8E0", action:()=>{ emitSyncEvent({type:"STATUS_UPDATE",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{status:"safe"}}); toast.success(isAr ? "تم إرسال تحديث الحالة" : "Status updated"); }},
+    { icon:AlertTriangle, labelAr: isAr ? "خطر" : "Hazard", color:"#FF9500", action:()=>{ emitSyncEvent({type:"HAZARD_REPORT",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{hazardType:"Environmental"}}); autoBroadcastHazard(userName,userZone,"Environmental"); toast.warning(isAr ? "تم الإبلاغ عن الخطر" : "Hazard reported"); }},
+    { icon:MapPin, labelAr: isAr ? "منطقتي" : "My Zone", color:"#00C853", action:()=>{ emitSyncEvent({type:"LOCATION_UPDATE",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now()}); }},
     { icon:Phone, labelAr: isAr ? "اتصال" : "Call", color:"#AF52DE", action:onEmergencyContacts },
   ];
   const visibleActions = hybridMode ? quickActions : quickActions.filter(a=>a.labelAr!=="منطقتي");
@@ -224,7 +224,7 @@ export function EmployeeDashboard({
                       </p>
                     </div>
                   </div>
-                  <motion.button whileTap={{scale:.95}} onClick={()=>{ setOnDuty(!onDuty); emitSyncEvent({type:"STATUS_CHANGE",employeeId:"EMP-APP",employeeName:userName,timestamp:Date.now(),data:{status:!onDuty?"on-duty":"off-duty"}}); }} style={{display:"flex",alignItems:"center",gap:6,paddingInline:12,height:32,borderRadius:12,background:onDuty?"rgba(0,200,83,.12)":"rgba(255,255,255,.04)",border:onDuty?"1px solid rgba(0,200,83,.2)":"1px solid rgba(255,255,255,.07)",fontSize:12,fontWeight:700,color:onDuty?"#00C853":"rgba(255,255,255,.3)",transition:"all .4s"}}>
+                  <motion.button whileTap={{scale:.95}} onClick={()=>{ setOnDuty(!onDuty); emitSyncEvent({type:"STATUS_CHANGE",employeeId:"self",employeeName:userName,timestamp:Date.now(),data:{status:!onDuty?"on-duty":"off-duty"}}); }} style={{display:"flex",alignItems:"center",gap:6,paddingInline:12,height:32,borderRadius:12,background:onDuty?"rgba(0,200,83,.12)":"rgba(255,255,255,.04)",border:onDuty?"1px solid rgba(0,200,83,.2)":"1px solid rgba(255,255,255,.07)",fontSize:12,fontWeight:700,color:onDuty?"#00C853":"rgba(255,255,255,.3)",transition:"all .4s"}}>
                     <span style={{width:6,height:6,borderRadius:"50%",background:onDuty?"#00C853":"rgba(255,255,255,.2)",boxShadow:onDuty?"0 0 8px rgba(0,200,83,.6)":"none",transition:"all .4s"}}/>
                     {isAr ? (onDuty ? "في الخدمة" : "خارج الخدمة") : (onDuty ? "On Duty" : "Off Duty")}
                   </motion.button>

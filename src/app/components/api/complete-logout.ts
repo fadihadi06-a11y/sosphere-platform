@@ -20,6 +20,7 @@ import { clearServerTier } from "../subscription-service";
 import { clearServerBuddyPairs } from "../shared-store";
 import { clearGeofenceState } from "../geofence-service";
 import { clearDiscreetSessionState } from "../discreet-session-service";
+import { clearAttendanceCache } from "../attendance-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -68,6 +69,10 @@ export async function completeLogout(): Promise<void> {
   // localStorage bootstrap so a shared device cannot resume the previous
   // user's discreet session after logout.
   try { clearDiscreetSessionState(); } catch { /* best effort */ }
+  // 2026-06-02 attendance refactor: clear cached checkin feed so the
+  // next user on this device does NOT see the previous tenant's
+  // attendance roll-up (CRIT-#4 cross-tenant leak class).
+  try { clearAttendanceCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

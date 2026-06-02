@@ -73,7 +73,7 @@ function broadcastToNotification(b: BroadcastMessage): Notification {
     title: b.title,
     message: b.body,
     time: timeAgo(b.timestamp),
-    read: b.readBy.includes("EMP-APP"),
+    read: b.readBy.includes("self"),
     urgent: priorityUrgent,
     broadcastPriority: b.priority,
     broadcastSource: b.source,
@@ -126,7 +126,7 @@ export function NotificationsCenter({ onBack }: NotificationsCenterProps) {
   const markRead = (id: string) => {
     if (id.startsWith("bc-")) {
       const bcId = id.replace("bc-", "");
-      markBroadcastRead(bcId, "EMP-APP");
+      markBroadcastRead(bcId, "self");
       setBroadcastNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     } else {
       setBaseNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
