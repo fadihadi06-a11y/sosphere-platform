@@ -1290,9 +1290,17 @@ export function DashboardWebPage() {
               onComplete={async (companyName, regResult) => {
                 const name = loginName || "Admin";
                 const company = companyName || "New Company";
-                if (regResult) {
-                  try { localStorage.setItem("sos_reg_result", JSON.stringify(regResult)); } catch {}
-                }
+                // 2026-06-01 CRIT-8 lint-guard fix: removed
+                //   localStorage.setItem("sos_reg_result", JSON.stringify(regResult))
+                // The write violated no-localStorage-auth (R-985/R-970): localStorage
+                // is user-mutable and not an auth source. dashboard-store re-seeds
+                // companyState from this key on init — which was the very cross-
+                // tenant leak that CRIT-#4 (complete-logout.ts) added cleanup for.
+                // The real plan/employeeCount arrives via subscription-realtime
+                // (CRIT-2 server-state architecture) within seconds of mount; the
+                // brief default-render is acceptable for a one-shot post-register
+                // hand-off and removes the security-doctrine violation entirely.
+                void regResult; // intentionally not persisted
                 // Init Realtime after registration
                 try {
                   // FOUNDATION-1 / Phase 5d (#180 follow-up): ditto. Right
