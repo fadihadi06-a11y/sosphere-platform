@@ -395,6 +395,28 @@ export function MobileApp() {
     sosSafetyTimerRef.current = setTimeout(() => { sosInProgressRef.current = false; try { localStorage.removeItem("sosphere_active_sos"); } catch {} }, MAX_SOS_DURATION_MS);
     const src = customSource || (screen === "employee-dashboard" || screen === "mission-tracker" ? "employee-dashboard" : "individual-home");
     setSourceScreen(src as "individual-home" | "employee-dashboard");
+    // Phase 2 CRIT-10 (2026-06-01): emit FALL_DETECTED SyncEvent when the
+    // SOS source is auto-fall (was declared in shared-store.ts:194 but
+    // never emitted, so dashboards could not distinguish fall-SOS from
+    // button-SOS). Lazy-imported to avoid circular import + zero cost
+    // on the hot path for non-fall triggers (the dominant case).
+    if (source === "fall") {
+      void (async () => {
+        try {
+          const sb = await import("./shared-store");
+          const _realGpsId = loginName.replace(/\s+/g, "") ? `EMP-${loginName.replace(/\s+/g, "")}` : "EMP-UNKNOWN";
+          sb.emitSyncEvent({
+            type:         "FALL_DETECTED",
+            employeeId:   authUserId ?? _realGpsId,
+            employeeName: loginName || "Worker",
+            timestamp:    now,
+            data: { source: "auto", followedBy: "SOS_TRIGGERED" },
+          });
+        } catch (e) {
+          console.warn("[FallDetect] emit failed:", e);
+        }
+      })();
+    }
     // Persist SOS state — app will resume here if killed/restarted
     try { localStorage.setItem("sosphere_active_sos", JSON.stringify({ active: true, source: src, timestamp: now })); } catch {}
     navigate("sos-emergency");
