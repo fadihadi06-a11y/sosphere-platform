@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T19:37:26.639Z",
-  "total_migrations": 155,
-  "manifest_sha256": "f03866736c2cec20b0d076096296276a95e932042b52892f8006c625a2d51b78",
+  "generated_at": "2026-06-02T19:53:02.622Z",
+  "total_migrations": 156,
+  "manifest_sha256": "44d148de92fd5a0c8e7deeddc6148218c0e8c92e4196033ee343b16b1012c01d",
   "migrations": [
     {
       "version": "20260415",
@@ -1087,6 +1087,13 @@
       "file": "20260602_compliance_summary_aggregator.sql",
       "sha256": "6f6e9dbdf51d8305d6e9ea3dc49458916542ba3d796ced9180bcd1536250f9d1",
       "bytes": 5898
+    },
+    {
+      "version": "20260602",
+      "name": "crit7_search_company_rpc",
+      "file": "20260602_crit7_search_company_rpc.sql",
+      "sha256": "ce941ee101ba6cf2b2fdc2c1bb26fcfd91f49735d7476d0dcf1cf48d22034abb",
+      "bytes": 6856
     }
   ]
 }
