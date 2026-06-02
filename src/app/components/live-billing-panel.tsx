@@ -126,6 +126,20 @@ export function LiveBillingPanel({ companyId, onStateChange }: LiveBillingPanelP
   const handleUpgrade = async () => {
     if (!companyId) return;
     setActioning("upgrade"); setErrorMsg(null);
+    // Phase 2 CRIT-8 v2: inline MFA gate
+    try {
+      const { gateWithMfa } = await import("./mfa-gate");
+      const allowed = await gateWithMfa("billing:upgrade");
+      if (!allowed) {
+        setActioning(null);
+        setErrorMsg("MFA verification required for billing changes.");
+        return;
+      }
+    } catch {
+      setActioning(null);
+      setErrorMsg("Could not verify MFA. Try again.");
+      return;
+    }
     try {
       await startCheckout({
         planId: (state.plan || "starter") as StripePlanId,
@@ -142,6 +156,20 @@ export function LiveBillingPanel({ companyId, onStateChange }: LiveBillingPanelP
     if (!companyId) return;
     if (!confirm(`Cancel your trial? You'll keep access until ${formatDate(periodEnd)}, then drop to free tier.`)) return;
     setActioning("cancel"); setErrorMsg(null);
+    // Phase 2 CRIT-8 v2: inline MFA gate
+    try {
+      const { gateWithMfa } = await import("./mfa-gate");
+      const allowed = await gateWithMfa("billing:cancel_trial");
+      if (!allowed) {
+        setActioning(null);
+        setErrorMsg("MFA verification required to cancel.");
+        return;
+      }
+    } catch {
+      setActioning(null);
+      setErrorMsg("Could not verify MFA. Try again.");
+      return;
+    }
     const r = await cancelCompanyTrial(companyId);
     setActioning(null);
     if (r.error) { setErrorMsg(r.error.message); return; }
@@ -151,6 +179,20 @@ export function LiveBillingPanel({ companyId, onStateChange }: LiveBillingPanelP
   const handlePortal = async () => {
     if (!companyId) return;
     setActioning("portal"); setErrorMsg(null);
+    // Phase 2 CRIT-8 v2: inline MFA gate
+    try {
+      const { gateWithMfa } = await import("./mfa-gate");
+      const allowed = await gateWithMfa("billing:portal");
+      if (!allowed) {
+        setActioning(null);
+        setErrorMsg("MFA verification required to manage payment.");
+        return;
+      }
+    } catch {
+      setActioning(null);
+      setErrorMsg("Could not verify MFA. Try again.");
+      return;
+    }
     try {
       await openBillingPortal(undefined, companyId);
     } catch (e) {

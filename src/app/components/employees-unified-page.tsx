@@ -727,6 +727,22 @@ export function UnifiedEmployeesPage({
 
   const handleRevokeInvite = async (id: string, email: string) => {
     if (!confirm(`Revoke invitation for ${email}?`)) return;
+    // Phase 2 CRIT-8 v2: inline MFA gate. The MfaGateController
+    // (mounted at the dashboard root) handles mounting the modal
+    // and auto-retrying the server gate on verify. Server-side
+    // verify_sensitive_op RPC remains the canonical guard.
+    try {
+      const { gateWithMfa } = await import("./mfa-gate");
+      const allowed = await gateWithMfa("users:revoke_invite");
+      if (!allowed) {
+        toast.error("MFA verification required to revoke invitations.");
+        return;
+      }
+    } catch (e) {
+      console.warn("[handleRevokeInvite] mfa-gate threw:", e);
+      toast.error("Could not verify permission. Try again.");
+      return;
+    }
     try {
       const { error } = await supabase
         .from("invitations")

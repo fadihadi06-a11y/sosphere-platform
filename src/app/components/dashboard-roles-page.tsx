@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import {
   Crown, Shield, ShieldCheck, Users, UserCheck, UserPlus, UserX,
   ChevronRight, Lock, Unlock, Check, X, Search, Filter,
@@ -232,15 +233,44 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     : currentActor?.level === "main_admin" ? "main_admin"
     : null;
 
-  // 2026-05-31 CRIT-1: requirePIN was a no-op gate. Replaced with direct
-  // execution. Server-side verify_permission RPC + RLS will reject any
-  // op the actor lacks permission for — fail-closed by default.
-  function requirePIN(
-    _operationType: string,
-    _targetName: string,
+  // 2026-05-31 CRIT-1: requirePIN was a no-op gate (placebo theater).
+  // 2026-06-01 CRIT-8 v2: now uses the inline MFA gate controller —
+  // gateWithMfa() dispatches a CustomEvent which the singleton
+  // MfaGateController (mounted at the dashboard root) handles by
+  // mounting MFAChallengeModal / MFAEnrollmentModal inline and
+  // auto-retrying the server gate on verify. No more "go to Settings,
+  // verify, then come back and click again" — the original action
+  // resumes automatically on successful verification.
+  //
+  // The server-side verify_sensitive_op RPC remains the canonical
+  // guard (defense-in-depth); this client gate is UX only.
+  async function requirePIN(
+    operationType: string,
+    targetName: string,
     onSuccess: () => void,
   ) {
-    onSuccess();
+    const opMap: Record<string, string> = {
+      change_role:        "admin:change_role",
+      change_permissions: "admin:change_permissions",
+      assign_zone_admin:  "admin:assign_zone_admin",
+      revoke_access:      "users:revoke_access",
+      suspend_user:       "users:suspend",
+      transfer_ownership: "owner:transfer",
+    };
+    const op = opMap[operationType] ?? `admin:${operationType}`;
+    try {
+      const { gateWithMfa } = await import("./mfa-gate");
+      const allowed = await gateWithMfa(op);
+      if (allowed) {
+        onSuccess();
+      } else {
+        const targetMsg = targetName ? ` (${targetName})` : "";
+        toast.error(`MFA verification required for ${operationType}${targetMsg}.`);
+      }
+    } catch (err) {
+      console.warn("[requirePIN] mfa-gate threw:", err);
+      toast.error("Could not verify permission. Try again.");
+    }
   }
 
   // Derived
@@ -352,14 +382,135 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     showAudit(`Zone ${slot} admin removed from ${zoneId} — logged`);
   }
 
+  // Phase 2 CRIT-8 v2 Phase B (2026-06-01): real backend write via
+  // update_employee_role SECDEF RPC + AAL2 gate. Optimistic local
+  // update; reverts on RPC failure with explanatory toast.
   function handleChangeRole(member: TeamMember, newRole: Role) {
-    requirePIN("change_role", member.name, () => {
-      setMembers(prev => prev.map(m => m.id === member.id
+    requirePIN("change_role", member.name, async () => {
+      const prev = members;
+      // Optimistic update
+      setMembers(p => p.map(m => m.id === member.id
         ? { ...m, role: newRole, level: ROLE_LEVEL[newRole], hasCustomPermissions: false, customPermissions: undefined }
         : m
       ));
       setShowRoleEditor(null);
-      showAudit(`✓ ${member.name} role → ${newRole} — logged to Audit`);
+      try {
+        const { supabase } = await import("./api/supabase-client");
+        const { error } = await supabase.rpc("update_employee_role", {
+          p_employee_id: member.id,
+          p_new_role:    newRole,
+        });
+        if (error) {
+          setMembers(prev); // revert
+          toast.error(`Could not change role: ${error.message}`);
+          return;
+        }
+        showAudit(`✓ ${member.name} role → ${newRole} — logged to Audit`);
+      } catch (e) {
+        setMembers(prev);
+        toast.error(`Role change failed: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  // Phase 2 CRIT-8 v2 Phase B: NEW gated remove-employee handler.
+  // The previous inline <button onClick={() => setMembers(filter)}> at
+  // line 643 had NO gate at all — anyone clicking the X button could
+  // remove a teammate locally with zero authorization check (and the
+  // change vanished on refresh, hiding the security bug). Now: passes
+  // through the MFA gate AND writes the real DELETE via remove_employee
+  // SECDEF RPC. Idempotent: removing a non-existent row succeeds silently.
+  // Phase 2 CRIT-8 v2 Phase C (2026-06-01): owner-transfer UI.
+  // The single highest-risk admin operation in the entire system —
+  // the previous owner is permanently demoted to super_admin and the
+  // new owner gets full control. Server-side transfer_ownership RPC
+  // also requires AAL2 (Phase C migration enforces this); even if
+  // this client gate is bypassed, the RPC refuses.
+  //
+  // UX: Owner picks an existing admin from the team (typed email
+  // match), confirms via native dialog, then the MFA gate fires.
+  // On success, the page reloads so the owner-only Danger Zone
+  // panel disappears (they are now super_admin).
+  async function handleTransferOwnership() {
+    const ownerMember = members.find(m => m.isOwner);
+    if (!ownerMember) {
+      toast.error("No current owner found.");
+      return;
+    }
+    const eligible = members.filter(m =>
+      !m.isOwner && (m.level === "main_admin" || m.level === "zone_admin"),
+    );
+    if (eligible.length === 0) {
+      toast.error("No eligible admin to transfer to. Promote a teammate first.");
+      return;
+    }
+    const emailList = eligible.map(m => `${m.email} (${m.name})`).join("\n  - ");
+    const target = window.prompt(
+      `Transfer company ownership.\n\nThis is PERMANENT — you will be demoted to super_admin.\n\nEligible recipients:\n  - ${emailList}\n\nType the EMAIL of the new owner:`,
+      "",
+    );
+    if (!target) return;
+    const trimmed = target.trim().toLowerCase();
+    const newOwner = eligible.find(m => m.email.toLowerCase() === trimmed);
+    if (!newOwner) {
+      toast.error(`No eligible admin with email "${target}".`);
+      return;
+    }
+    if (!confirm(`Transfer ownership to ${newOwner.name} (${newOwner.email})?\n\nThis cannot be reversed by you.`)) return;
+    requirePIN("transfer_ownership", newOwner.name, async () => {
+      try {
+        const { supabase } = await import("./api/supabase-client");
+        // Resolve new owner's user_id via the employees row lookup.
+        // TeamMember.id is the employee uuid; we need the user_id field.
+        const { data: emp, error: empErr } = await supabase
+          .from("employees")
+          .select("user_id, company_id")
+          .eq("id", newOwner.id)
+          .single();
+        if (empErr || !emp?.user_id || !emp?.company_id) {
+          toast.error("Could not resolve new owner's account.");
+          return;
+        }
+        const { error } = await supabase.rpc("transfer_ownership", {
+          p_company_id: emp.company_id,
+          p_new_owner:  emp.user_id,
+        });
+        if (error) {
+          toast.error(`Transfer failed: ${error.message}`);
+          return;
+        }
+        showAudit(`✓ Ownership transferred to ${newOwner.name} — refreshing...`);
+        setTimeout(() => { if (typeof window !== "undefined") window.location.reload(); }, 1500);
+      } catch (e) {
+        toast.error(`Transfer failed: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  function handleRemoveMember(member: TeamMember) {
+    if (member.isOwner) {
+      toast.error("Cannot remove the company owner. Transfer ownership first.");
+      return;
+    }
+    if (!confirm(`Remove ${member.name} from the team? This cannot be undone.`)) return;
+    requirePIN("revoke_access", member.name, async () => {
+      const prev = members;
+      setMembers(p => p.filter(m => m.id !== member.id)); // optimistic
+      try {
+        const { supabase } = await import("./api/supabase-client");
+        const { error } = await supabase.rpc("remove_employee", {
+          p_employee_id: member.id,
+        });
+        if (error) {
+          setMembers(prev);
+          toast.error(`Could not remove: ${error.message}`);
+          return;
+        }
+        showAudit(`✓ ${member.name} removed — logged to Audit`);
+      } catch (e) {
+        setMembers(prev);
+        toast.error(`Remove failed: ${(e as Error).message}`);
+      }
     });
   }
 
@@ -610,7 +761,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             <Edit2 style={{ width: 13, height: 13, color: "#00C8E0" }} />
                           </button>
                           <button
-                            onClick={() => setMembers(prev => prev.filter(m => m.id !== member.id))}
+                            onClick={() => handleRemoveMember(member)}
                             className="size-7 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/10"
                             title="Remove Member"
                           >
@@ -626,6 +777,34 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                 })}
                 {filteredMembers.length === 0 && (
                   <div className="text-center py-12" style={{ color: "rgba(255,255,255,0.25)", fontSize: 13 }}>No members found</div>
+                )}
+                {/* Phase 2 CRIT-8 v2 Phase C: Danger Zone — owner-only ownership transfer */}
+                {actorLevel === "owner" && (
+                  <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}
+                    className="mt-8 p-4 rounded-2xl"
+                    style={{background:"rgba(255,45,85,0.04)", border:"1px solid rgba(255,45,85,0.2)"}}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <AlertTriangle style={{width:18,height:18,color:"#FF2D55"}} />
+                        <div>
+                          <p style={{fontSize:13,fontWeight:700,color:"#FF2D55"}}>Danger Zone</p>
+                          <p style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:2}}>
+                            Transfer company ownership to another admin. This is permanent — you will be demoted to super_admin. Requires MFA verification.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleTransferOwnership}
+                        className="px-3.5 py-2 rounded-lg whitespace-nowrap"
+                        style={{
+                          background:"rgba(255,45,85,0.12)",
+                          border:"1px solid rgba(255,45,85,0.3)",
+                          color:"#FF2D55", fontSize:12, fontWeight:700,
+                        }}>
+                        Transfer Ownership
+                      </button>
+                    </div>
+                  </motion.div>
                 )}
               </div>
             </motion.div>

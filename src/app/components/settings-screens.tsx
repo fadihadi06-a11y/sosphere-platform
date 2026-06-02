@@ -262,8 +262,20 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                         : false;
                       if (!confirmed) return;
                       hapticWarning();
+                      // Phase 2 CRIT-8 v2: inline MFA gate
                       try {
-                        // E1.6-PHASE3: lock-free token read.
+                        const { gateWithMfa } = await import("./mfa-gate");
+                        const allowed = await gateWithMfa("users:delete_account");
+                        if (!allowed) {
+                          toast.error("MFA verification required", { description: "Account deletion is a sensitive action and requires multi-factor verification." });
+                          return;
+                        }
+                      } catch (gateErr) {
+                        console.warn("[delete-account] mfa-gate threw:", gateErr);
+                        toast.error("Could not verify MFA", { description: "Try again." });
+                        return;
+                      }
+                      try {
                         const { getStoredBearerToken } = await import("./api/safe-rpc");
                         const token = getStoredBearerToken();
                         if (!token) {

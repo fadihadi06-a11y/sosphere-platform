@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T19:30:18.703Z",
-  "total_migrations": 149,
-  "manifest_sha256": "e8ee4a08c48e922145a2ec65da08cfe336e1c1feb3f9b512f6f0ee3b8de258b2",
+  "generated_at": "2026-06-01T20:35:33.564Z",
+  "total_migrations": 152,
+  "manifest_sha256": "4e0c0a5cdf7dfd3047c89cd49bd85c4b75289e20e6c36a90e811f08167cb1b9b",
   "migrations": [
     {
       "version": "20260415",
@@ -1045,6 +1045,27 @@
       "file": "20260601_crit4b_get_buddy_user_ids_rpc.sql",
       "sha256": "c9ebaec172172e6b971f650e871a2c4b034170e8132535d0ff9da94aa5342b34",
       "bytes": 4185
+    },
+    {
+      "version": "20260601",
+      "name": "crit8_phase_b_employee_rpcs",
+      "file": "20260601_crit8_phase_b_employee_rpcs.sql",
+      "sha256": "d2880d870bf26653da92c27a621b2a31968d8b6f4f065199b1dd2f2016d2614d",
+      "bytes": 10049
+    },
+    {
+      "version": "20260601",
+      "name": "crit8_phase_c_transfer_ownership_aal2",
+      "file": "20260601_crit8_phase_c_transfer_ownership_aal2.sql",
+      "sha256": "b4abbc24e0123cb7d6cb6f2267c24c425979fc88b7127e68d960d9abad929614",
+      "bytes": 3253
+    },
+    {
+      "version": "20260601",
+      "name": "crit8_verify_sensitive_op_aal_rpc",
+      "file": "20260601_crit8_verify_sensitive_op_aal_rpc.sql",
+      "sha256": "9eaaaa536dd591feb01ff7e529c25e2367b5587b976d24cf41fb08079f2627c5",
+      "bytes": 6638
     }
   ]
 }

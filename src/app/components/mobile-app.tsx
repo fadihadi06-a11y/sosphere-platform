@@ -69,6 +69,7 @@ const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ d
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
 import { Toaster, toast } from "sonner";
+import { MfaGateController } from "./mfa-gate-controller";
 import { loadJSONSync } from "./api/storage-adapter";
 // FIX AUDIT-7.1 + 7.3: Consent screens
 import { TermsConsentScreen, GpsConsentScreen, hasCompletedConsent, hasCompletedGpsConsent } from "./consent-screens";
@@ -2514,6 +2515,13 @@ export function MobileApp() {
             </Suspense>
           </div>
         </div>
+
+      {/* Phase 2 CRIT-8 v2 (2026-06-01): inline MFA gate singleton.
+          Listens for sosphere:mfa-gate-show events dispatched by
+          gateWithMfa() and mounts MFAChallengeModal / MFAEnrollmentModal
+          inline with auto-retry on verify success. Server-side
+          verify_sensitive_op RPC remains the canonical guard. */}
+      <MfaGateController />
 
       {/* Toast notifications for mobile screens */}
       <Toaster

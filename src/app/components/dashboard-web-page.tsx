@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { MfaGateController } from "./mfa-gate-controller";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { CompanyDashboard } from "./company-dashboard";
@@ -1680,6 +1681,9 @@ export function DashboardWebPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Phase 2 CRIT-8 v2 (2026-06-01): inline MFA gate singleton.
+          See mobile-app.tsx for the rationale. */}
+      <MfaGateController />
     </div>
   );
 }
