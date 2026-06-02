@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T19:53:02.622Z",
-  "total_migrations": 156,
-  "manifest_sha256": "44d148de92fd5a0c8e7deeddc6148218c0e8c92e4196033ee343b16b1012c01d",
+  "generated_at": "2026-06-02T20:06:19.306Z",
+  "total_migrations": 157,
+  "manifest_sha256": "a90419f0d7e7a275b39d8a80edd163ba4400bd62be8ec8b4fe5a8bdfa0811a3f",
   "migrations": [
     {
       "version": "20260415",
@@ -1094,6 +1094,13 @@
       "file": "20260602_crit7_search_company_rpc.sql",
       "sha256": "ce941ee101ba6cf2b2fdc2c1bb26fcfd91f49735d7476d0dcf1cf48d22034abb",
       "bytes": 6856
+    },
+    {
+      "version": "20260602",
+      "name": "evacuation_durability_phase_a",
+      "file": "20260602_evacuation_durability_phase_a.sql",
+      "sha256": "8212491c7e19a59098569cf4775f49099a5c1e5639defef54fff6ddc2e7d9794",
+      "bytes": 11515
     }
   ]
 }

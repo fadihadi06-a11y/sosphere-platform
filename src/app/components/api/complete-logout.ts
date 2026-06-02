@@ -22,6 +22,7 @@ import { clearGeofenceState } from "../geofence-service";
 import { clearDiscreetSessionState } from "../discreet-session-service";
 import { clearAttendanceCache } from "../attendance-service";
 import { clearComplianceSummaryCache } from "../compliance-summary-service";
+import { clearEvacuationCache } from "../evacuation-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -78,6 +79,10 @@ export async function completeLogout(): Promise<void> {
   // PDF summary so a shared device cannot leak the previous tenant's
   // KPIs into the next user's session.
   try { clearComplianceSummaryCache(); } catch { /* best effort */ }
+  // 2026-06-02 evacuation durability (10th pattern app): clear cached
+  // active-evacuation roll-up so a shared device cannot leak the
+  // previous tenant's open evacuations into the next user's session.
+  try { clearEvacuationCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
