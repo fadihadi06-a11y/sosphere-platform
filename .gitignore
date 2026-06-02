@@ -57,3 +57,10 @@ scripts/lint-guard/dist/
 # CRIT-3 (2026-06-01): stray CodeQL SARIF artifacts from local scans
 work/
 *.sarif
+
+# 2026-06-02: one-off PowerShell bridge scripts used to bypass the
+# Windows mount index.lock issue. Never meant for the repo.
+commit-*.ps1
+push-result.txt
+commit-result.txt
+commit-msg.txt

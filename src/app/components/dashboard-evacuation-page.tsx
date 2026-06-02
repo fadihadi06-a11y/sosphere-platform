@@ -20,6 +20,7 @@ import {
   onEvacuationChange,
   sendBroadcast,
   emitSyncEvent,
+  getCompanyId,
   type ZoneGPSData,
   type EvacuationPoint,
   type ActiveEvacuation,
@@ -30,6 +31,15 @@ import {
 // for every zone-evacuation lifecycle event (trigger / complete / cancel). Required by
 // ISO 27001 §12.4 + ISO 45001 emergency-preparedness record-keeping.
 import { logAuditEvent } from "./audit-log-store";
+// 2026-06-02 Evacuation durability Phase B (10th pattern application end-to-end):
+// every lifecycle event ALSO writes to the server-side evacuations table via SECDEF RPC.
+// Without this, a worker who came online AFTER the broadcast missed the evacuation
+// forever (the audit gap that motivated this 10th pattern application).
+import {
+  startEvacuation as startEvacuationRpc,
+  endEvacuation as endEvacuationRpc,
+  loadActiveEvacuations,
+} from "./evacuation-service";
 
 interface DashboardEvacuationPageProps {
   t: (k: string) => string;
@@ -74,6 +84,18 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   useEffect(() => {
     loadData();
     const unsubscribe = onEvacuationChange(loadData);
+    // 2026-06-02 Evacuation durability Phase B: hydrate server-side active
+    // evacuations on mount so a cross-device admin (or admin on a new tab)
+    // sees evacuations triggered from another device. This is the read half
+    // of the "durable evacuations" world-class fix — without it the admin
+    // would still only see what's in localStorage on this device.
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        await loadActiveEvacuations(companyId);
+      } catch { /* best effort — local state still drives UI */ }
+    })();
     return unsubscribe;
   }, []);
 
@@ -112,6 +134,26 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
       reason: evacuationReason, status: "active",
     };
     triggerEvacuation(evacuation);
+    // 2026-06-02 Evacuation durability Phase B: ALSO persist to server via SECDEF RPC.
+    // Local triggerEvacuation handles the live Realtime broadcast + audit; this RPC
+    // adds the durable row so workers who come online AFTER the broadcast can
+    // recover the active evacuation by polling get_active_evacuations.
+    // Fire-and-forget — local state already drives the UI, server row is for late joiners.
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        await startEvacuationRpc({
+          companyId,
+          zoneId:               null,  // local zone IDs are string codes (Z-A etc), not UUIDs
+          zoneName:             zone.name,
+          reason:               evacuationReason,
+          assemblyPointId:      selectedEvacPoint || null,
+          assemblyPointName:    evacPoints.find(p => p.id === selectedEvacPoint)?.name ?? null,
+          metadata:             { local_evac_id: evacId },
+        });
+      } catch { /* server-write best-effort — local broadcast already fired */ }
+    })();
     sendBroadcast({
       title: `🚨 EVACUATION ORDER — ${zone.name}`,
       body: `IMMEDIATE EVACUATION REQUIRED. Reason: ${evacuationReason}. Proceed to your nearest assembly point immediately. This is NOT a drill.`,
@@ -158,6 +200,20 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   const handleComplete = () => {
     if (!activeEvacuation) return;
     completeEvacuation(activeEvacuation.id);
+    // 2026-06-02 Evacuation durability Phase B: also mark the server-side row
+    // completed. We match by company_id; if multiple actives existed (shouldn't
+    // happen but possible cross-device) end the most-recent active in the
+    // company. Best-effort — local complete already drove the all-clear path.
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        const { rows } = await loadActiveEvacuations(companyId);
+        for (const r of rows) {
+          await endEvacuationRpc({ evacuationId: r.id, action: "completed" });
+        }
+      } catch { /* best effort */ }
+    })();
     sendBroadcast({
       title: `✅ ALL CLEAR — ${activeEvacuation.zoneName}`,
       body: `Evacuation has been completed. All-clear signal issued. Thank you for your swift response. You may now return to normal operations.`,
@@ -195,6 +251,19 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   const handleCancel = () => {
     if (!activeEvacuation) return;
     cancelEvacuation(activeEvacuation.id);
+    // 2026-06-02 Evacuation durability Phase B: also mark the server-side row
+    // cancelled so a worker who pulls get_active_evacuations a few seconds late
+    // does not see a phantom "active" evacuation that the admin already killed.
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        const { rows } = await loadActiveEvacuations(companyId);
+        for (const r of rows) {
+          await endEvacuationRpc({ evacuationId: r.id, action: "cancelled" });
+        }
+      } catch { /* best effort */ }
+    })();
     sendBroadcast({
       title: `❌ Evacuation Cancelled — ${activeEvacuation.zoneName}`,
       body: `The evacuation order has been cancelled. Please resume normal operations.`,
