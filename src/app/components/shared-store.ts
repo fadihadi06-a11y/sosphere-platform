@@ -252,7 +252,15 @@ export interface SyncEvent {
     // (auto-fire after N minutes inside a zone with dwell-alert configured).
     | "ZONE_ENTRY"
     | "ZONE_EXIT"
-    | "ZONE_DWELL";
+    | "ZONE_DWELL"
+    // Phase 2 CRIT-9 (2026-06-01, safety): discreet-SOS lifecycle events.
+    // Pre-fix these were cast `as any` (declared in code but not in the
+    // union) so dashboard listeners couldn't even subscribe. data carries
+    // { sessionId, mode?, lat?, lng?, accuracy?, battery?, minutesRemaining? }.
+    | "DISCREET_SOS_STARTED"
+    | "DISCREET_SOS_HEARTBEAT"
+    | "DISCREET_SOS_WARNING"
+    | "DISCREET_SOS_ENDED";
   employeeId: string;
   employeeName: string;
   zone?: string;
@@ -767,6 +775,11 @@ function formatEventType(type: SyncEvent["type"]): string {
     ZONE_ENTRY: "Entered Geofenced Zone",
     ZONE_EXIT:  "Exited Geofenced Zone",
     ZONE_DWELL: "Dwelling in Zone (alert)",
+    // Phase 2 CRIT-9 (2026-06-01)
+    DISCREET_SOS_STARTED:   "Discreet SOS Activated",
+    DISCREET_SOS_HEARTBEAT: "Discreet SOS Heartbeat",
+    DISCREET_SOS_WARNING:   "Discreet SOS Auto-Timeout Warning",
+    DISCREET_SOS_ENDED:     "Discreet SOS Ended",
   };
   return map[type];
 }
@@ -818,6 +831,11 @@ function getIconKey(type: SyncEvent["type"]): string {
     ZONE_ENTRY: "LogIn",
     ZONE_EXIT:  "LogOut",
     ZONE_DWELL: "Hourglass",
+    // Phase 2 CRIT-9 (2026-06-01)
+    DISCREET_SOS_STARTED:   "EyeOff",
+    DISCREET_SOS_HEARTBEAT: "Heart",
+    DISCREET_SOS_WARNING:   "AlertTriangle",
+    DISCREET_SOS_ENDED:     "CheckCircle",
   };
   return map[type];
 }

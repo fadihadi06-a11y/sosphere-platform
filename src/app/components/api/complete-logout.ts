@@ -19,6 +19,7 @@ import { clearDashboardStore } from "../stores/dashboard-store";
 import { clearServerTier } from "../subscription-service";
 import { clearServerBuddyPairs } from "../shared-store";
 import { clearGeofenceState } from "../geofence-service";
+import { clearDiscreetSessionState } from "../discreet-session-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -63,6 +64,10 @@ export async function completeLogout(): Promise<void> {
   // not inherit the previous tenant's zone definitions and does not
   // start with a stale "inside" state that could miss an EXIT event.
   try { clearGeofenceState(); } catch { /* best effort */ }
+  // 2026-06-01 Phase 2 CRIT-9: clear cached discreet-session pointer +
+  // localStorage bootstrap so a shared device cannot resume the previous
+  // user's discreet session after logout.
+  try { clearDiscreetSessionState(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

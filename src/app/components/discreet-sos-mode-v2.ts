@@ -320,25 +320,58 @@ async function suppressNotifications(): Promise<void> {
   }
 }
 
+// ─── Phase 2 CRIT-9 (2026-06-01) — session id from server RPC ─
+// Replaces the hardcoded "discreet-sos-user" placeholder with real
+// auth.uid() identity (resolved server-side inside start_discreet_session
+// SECDEF RPC). _sessionId is the DB row id; null when no active session.
+let _sessionId: string | null = null;
+
+async function _resolveIdentity(): Promise<{ userId: string; userName: string }> {
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { data } = await supabase.auth.getUser();
+    const u = data?.user;
+    if (u?.id) {
+      const name = (u.user_metadata?.full_name as string)
+        || (u.user_metadata?.name as string)
+        || (u.email ? String(u.email).split("@")[0] : "Worker");
+      return { userId: u.id, userName: name };
+    }
+  } catch { /* fall through */ }
+  return { userId: "discreet-sos-user", userName: "Discreet SOS" };
+}
+
 // ── Emit Discreet SOS Event ────────────────────────────────────
 // Notify the system that discreet SOS has been activated
 
 async function emitDiscreetSosEvent(): Promise<void> {
   try {
     const position = getLastKnownPosition();
+    const ident = await _resolveIdentity();
     await emitSyncEvent({
       type: "SOS_TRIGGERED",
-      employeeId: "discreet-sos-user",
-      employeeName: "Discreet SOS Activated",
-      zone: "Unknown",
+      employeeId: ident.userId,
+      employeeName: ident.userName,
+      zone: "Discreet Mode",
       timestamp: Date.now(),
       data: {
         discreetMode: true,
         mode: discreetState.mode,
+        sessionId: _sessionId,
         lat: position?.lat,
         lng: position?.lng,
         accuracy: position?.accuracy,
       },
+    });
+    // Also emit the typed DISCREET_SOS_STARTED so dashboard listeners
+    // can filter without needing to inspect data.discreetMode
+    await emitSyncEvent({
+      type: "DISCREET_SOS_STARTED",
+      employeeId: ident.userId,
+      employeeName: ident.userName,
+      zone: "Discreet Mode",
+      timestamp: Date.now(),
+      data: { sessionId: _sessionId, mode: discreetState.mode, lat: position?.lat, lng: position?.lng },
     });
     devLog("Discreet SOS event emitted");
   } catch (err) {
@@ -369,10 +402,32 @@ export async function activateDiscreetSos(mode: "blackout" | "low-battery"): Pro
   }
 
   // Start standard GPS first, then activate emergency tracking
+  // Phase 2 CRIT-9 (2026-06-01): create a server-side discreet_sessions
+  // row FIRST so the dashboard panel can display the session immediately.
+  // The id flows into emit/heartbeat below. Best-effort: a network error
+  // does NOT block local activation (the engine still works offline; the
+  // session syncs on next heartbeat).
+  try {
+    const startPos = getLastKnownPosition();
+    const { startDiscreetSession } = await import("./discreet-session-service");
+    const dbMode: "blackout" | "low_battery" = mode === "low-battery" ? "low_battery" : "blackout";
+    _sessionId = await startDiscreetSession({
+      mode:     dbMode,
+      lat:      startPos?.lat,
+      lng:      startPos?.lng,
+      accuracy: startPos?.accuracy,
+      timeoutMin: 60,
+    });
+  } catch (e) {
+    devWarn("Phase 2 CRIT-9: start_discreet_session failed (engine still active locally):", e);
+    _sessionId = null;
+  }
+
+  const _ident = await _resolveIdentity();
   startGPSTracking({
     intervalMs: 5000, // 5 seconds for discreet mode
     highAccuracy: true,
-    employeeId: "discreet-sos-user",
+    employeeId: _ident.userId,
   });
 
   // Activate emergency tracking (overrides motion-aware)
@@ -400,31 +455,52 @@ export async function activateDiscreetSos(mode: "blackout" | "low-battery"): Pro
   }, DISCREET_TIMEOUT_MS);
 
   // E-H3: warn responders 5 minutes before timeout
+  // Phase 2 CRIT-9: typed event (was cast as any) + real identity
   _discreetWarnTimer = setTimeout(() => {
-    try {
-      emitSyncEvent({
-        type: "DISCREET_SOS_WARNING",
-        employeeId: "discreet-sos-user",
-        employeeName: "Discreet SOS Warning",
-        zone: "Unknown",
-        timestamp: Date.now(),
-        data: { minutesRemaining: 5 },
-      } as any);
-    } catch {}
+    void (async () => {
+      try {
+        const ident = await _resolveIdentity();
+        emitSyncEvent({
+          type: "DISCREET_SOS_WARNING",
+          employeeId: ident.userId,
+          employeeName: ident.userName,
+          zone: "Discreet Mode",
+          timestamp: Date.now(),
+          data: { sessionId: _sessionId, minutesRemaining: 5 },
+        });
+      } catch { /* hot path */ }
+    })();
   }, DISCREET_TIMEOUT_MS - WARN_BEFORE_MS);
 
-  // E-H3: emit a heartbeat every 2 min so responders can tell the session is still alive
+  // E-H3: emit a heartbeat every 2 min so responders can tell the session is still alive.
+  // Phase 2 CRIT-9 (2026-06-01): heartbeat now ALSO writes to the
+  // discreet_sessions row via SECDEF RPC. Server enforces auto-timeout —
+  // a heartbeat after the deadline returns false and the server flips
+  // the session to status='timed_out'. Lazy import + fire-and-forget.
   _discreetHbInterval = setInterval(() => {
-    try {
-      emitSyncEvent({
-        type: "DISCREET_SOS_HEARTBEAT",
-        employeeId: "discreet-sos-user",
-        employeeName: "Discreet SOS Heartbeat",
-        zone: "Unknown",
-        timestamp: Date.now(),
-        data: { at: Date.now() },
-      } as any);
-    } catch {}
+    void (async () => {
+      try {
+        const pos = getLastKnownPosition();
+        const ident = await _resolveIdentity();
+        emitSyncEvent({
+          type: "DISCREET_SOS_HEARTBEAT",
+          employeeId: ident.userId,
+          employeeName: ident.userName,
+          zone: "Discreet Mode",
+          timestamp: Date.now(),
+          data: { sessionId: _sessionId, at: Date.now(), lat: pos?.lat, lng: pos?.lng },
+        });
+        if (_sessionId) {
+          const { heartbeatDiscreetSession } = await import("./discreet-session-service");
+          await heartbeatDiscreetSession({
+            sessionId: _sessionId,
+            lat:       pos?.lat,
+            lng:       pos?.lng,
+            accuracy:  pos?.accuracy,
+          });
+        }
+      } catch { /* hot path */ }
+    })();
   }, HEARTBEAT_MS);
 
   // Update state
@@ -478,6 +554,29 @@ export async function deactivateDiscreetSos(): Promise<void> {
   // E-H3: clear warn + heartbeat timers
   if (_discreetWarnTimer) { clearTimeout(_discreetWarnTimer); _discreetWarnTimer = null; }
   if (_discreetHbInterval) { clearInterval(_discreetHbInterval); _discreetHbInterval = null; }
+
+  // Phase 2 CRIT-9: end the server session row + emit typed ENDED event.
+  // Fire-and-forget — local deactivation always succeeds even if the
+  // network call fails (the server auto-timeout will eventually catch it).
+  if (_sessionId) {
+    const endedId = _sessionId;
+    void (async () => {
+      try {
+        const { endDiscreetSession } = await import("./discreet-session-service");
+        await endDiscreetSession({ sessionId: endedId, reason: "exited" });
+        const ident = await _resolveIdentity();
+        emitSyncEvent({
+          type: "DISCREET_SOS_ENDED",
+          employeeId: ident.userId,
+          employeeName: ident.userName,
+          zone: "Discreet Mode",
+          timestamp: Date.now(),
+          data: { sessionId: endedId, reason: "exited" },
+        });
+      } catch (e) { devWarn("end_discreet_session failed:", e); }
+    })();
+    _sessionId = null;
+  }
 
   // Update state
   updateState({
