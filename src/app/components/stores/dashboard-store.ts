@@ -337,14 +337,25 @@ const DEFAULT_HUB_TABS: Record<string, string> = {
 // =================================================================
 
 function buildInitialCompanyState(): CompanyState {
-
-  try {
-    const regStr = typeof window !== "undefined" ? localStorage.getItem("sos_reg_result") : null;
-    if (regStr) {
-      const reg = JSON.parse(regStr);
-      return createCompanyState(reg.plan as PlanTier, "trial", reg.employeeCount ?? 12);
-    }
-  } catch {}
+  // 2026-06-03 P1 R-985 fix: removed the localStorage.getItem("sos_reg_result")
+  // bootstrap path. Three reasons:
+  //   1. Lint-guard rule no-localStorage-auth flags any read of that key
+  //      as an R-985 violation (CRIT-#4 cross-tenant leak class — a
+  //      forged `sos_reg_result` blob would seed the initial state with
+  //      a foreign plan tier / employee count until subscription-service
+  //      reconciled).
+  //   2. completeLogout already removes `sos_reg_result` from the
+  //      LEGACY_TENANT_KEYS list (since the CRIT-#4 sweep), so on a
+  //      logged-out -> fresh-login flow the key is gone by the time
+  //      this function runs.
+  //   3. The authoritative plan/tier path is now subscription-service
+  //      (1st pattern app): it fetches the server-truth plan + civilian
+  //      role within ~500ms of mount and overrides the defaults via
+  //      the Zustand store. No on-disk seed needed.
+  // Result: brand-new users see "starter/trial/12" briefly until the
+  // subscription RPC completes, then the real plan paints. Returning
+  // users have already had their actual tier loaded into memory, so
+  // reset() drops to safe defaults rather than rehydrating stale forged data.
   return createCompanyState(); // defaults: starter, trial, 12
 }
 
