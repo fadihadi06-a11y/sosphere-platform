@@ -123,17 +123,9 @@ function _stopStalenessWatchdog() {
 
 // ── Haversine Distance (meters) ────────────────────────────────
 
-function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000; // Earth radius in meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// 2026-06-03 haversine consolidation: imports from geofence-service
+// (single source of truth for great-circle distance; replaces local copy).
+import { haversineMeters as haversineDistance } from "./geofence-service";
 
 // ── State Management ───────────────────────────────────────────
 

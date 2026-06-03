@@ -82,9 +82,12 @@ const EARTH_RADIUS_M = 6371000;
 function toRad(deg: number): number { return (deg * Math.PI) / 180; }
 
 /** Great-circle distance between two lat/lng pairs, in meters.
- *  Identical algorithm to shared-store.ts:haversineDistance and
- *  offline-gps-tracker.ts:haversineDistance (four copies in the repo
- *  today; future refactor candidate to consolidate). */
+ *  2026-06-03 consolidation: 5 prior duplicate implementations
+ *  (shared-store, offline-gps-tracker, sar-engine, evacuation-screen,
+ *  neighbor-alert-service:haversineKm) now import from here under
+ *  their original local names — single source of truth. Smoke:
+ *  Riyadh -> Jeddah = 843 km (Vincenty reference 845, ±5 tolerance
+ *  locked by geofence-service-state.test.ts). */
 export function haversineMeters(
   lat1: number, lng1: number, lat2: number, lng2: number,
 ): number {

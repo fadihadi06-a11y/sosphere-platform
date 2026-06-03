@@ -257,16 +257,14 @@ export function neighborhoodCells(lat: number, lng: number, precision: 4 | 5 | 6
 // ─────────────────────────────────────────────────────────────
 // Distance (Haversine, km)
 // ─────────────────────────────────────────────────────────────
-const EARTH_R_KM = 6371;
+// 2026-06-03 haversine consolidation: reuses geofence-service's
+// haversineMeters under the hood. haversineKm keeps the same export
+// shape (distance in km) — callers in this file are coarse listener
+// distance checks where km is the natural unit.
+import { haversineMeters } from "./geofence-service";
 
 export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const lat1 = toRad(aLat);
-  const lat2 = toRad(bLat);
-  const h = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * EARTH_R_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+  return haversineMeters(aLat, aLng, bLat, bLng) / 1000;
 }
 
 // ─────────────────────────────────────────────────────────────

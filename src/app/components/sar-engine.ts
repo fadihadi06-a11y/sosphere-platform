@@ -245,14 +245,9 @@ const SPREAD_BY_QUALITY: Record<string, number> = {
 
 // ── Haversine ──────────────────────────────────────────────────
 
-function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return EARTH_RADIUS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// 2026-06-03 haversine consolidation: imports from geofence-service
+// (single source of truth for great-circle distance; replaces local copy).
+import { haversineMeters as haversine } from "./geofence-service";
 
 function bearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
