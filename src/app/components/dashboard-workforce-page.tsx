@@ -3,12 +3,23 @@
 // Merges: Attendance Tracking + Shift Scheduling + Check-in Monitor
 // FIX FATAL-3: Added Check-in Status tab so admin sees overdue workers
 // ===================================================================
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { CalendarDays, Clock, UserCheck, Timer, AlertTriangle, MapPin, CheckCircle2 } from "lucide-react";
 import { AttendancePage } from "./dashboard-pages";
 import { ShiftSchedulingPage } from "./dashboard-shift-scheduling-page";
 import { useDashboardStore } from "./stores/dashboard-store";
+// 2026-06-02 Attendance Phase C (5th pattern app, complete-the-loop):
+// CheckinMonitorPanel was fabricating lastCheckin / nextDue with Math.random()
+// — a real bug that showed admins fake "last seen" timestamps. Switch to the
+// real checkin_events table via loadCheckinFeed (the same RPC the attendance
+// page already uses). Without this, the admin's check-in monitor was lying.
+import { loadCheckinFeed, type CheckinFeedRow } from "./attendance-service";
+import { getCompanyId } from "./shared-store";
+
+// Check-in cycle: how long after a check-in before the next one is "due"
+// (matches the mobile checkin-timer default, 90 minutes).
+const CHECKIN_CYCLE_MS = 90 * 60_000;
 
 // ── Check-in Warning Type ─────────────────────────────────────────
 export interface CheckinWarningData {
@@ -119,15 +130,51 @@ function ContextBanner({ tabId, warningCount }: { tabId: string; warningCount: n
 // Before this fix, admin had a 30+ minute blind spot
 
 function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings: CheckinWarningData[]; employees: Array<{ id: string; name: string; zone?: string; status?: string }> }) {
-  // Build check-in employee list from real store employees + overlay with warnings
-  const baseEmployees = storeEmployees.map(emp => ({
-    id: emp.id,
-    name: emp.name,
-    zone: emp.zone || "Unknown Zone",
-    status: "ok" as const,
-    lastCheckin: Date.now() - Math.floor(Math.random() * 90) * 60000,
-    nextDue: Date.now() + Math.floor(60 + Math.random() * 120) * 60000,
-  }));
+  // 2026-06-02 Attendance Phase C: load REAL check-in feed instead of
+  // Math.random-fabricating lastCheckin / nextDue. The previous code was
+  // a real production bug — admins saw fake "last seen" timestamps that
+  // had nothing to do with the worker's actual GPS / heartbeat activity.
+  const [checkinFeed, setCheckinFeed] = useState<CheckinFeedRow[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        const env = await loadCheckinFeed({ companyId, limit: 500 });
+        if (!cancelled && env.ok) setCheckinFeed(env.rows);
+      } catch { /* feed best-effort; empty array still drives a safe UI */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Build a per-employee map of the most-recent checkin/resumed event.
+  // Warnings (missed events) are intentionally excluded — we want the most
+  // recent CONFIRMED activity, not the alert about missing one.
+  const latestByEmployee = new Map<string, CheckinFeedRow>();
+  for (const row of checkinFeed) {
+    if (row.event_type !== "checkin" && row.event_type !== "resumed") continue;
+    const prev = latestByEmployee.get(row.employee_id);
+    if (!prev || new Date(row.created_at).getTime() > new Date(prev.created_at).getTime()) {
+      latestByEmployee.set(row.employee_id, row);
+    }
+  }
+
+  // Build check-in employee list from real store employees + overlay with warnings.
+  // lastCheckin = ms timestamp of latest checkin event, or 0 (rendered as "Never").
+  // nextDue     = lastCheckin + CHECKIN_CYCLE_MS, or 0 if no prior check-in.
+  const baseEmployees = storeEmployees.map(emp => {
+    const last = latestByEmployee.get(emp.id);
+    const lastMs = last ? new Date(last.created_at).getTime() : 0;
+    return {
+      id: emp.id,
+      name: emp.name,
+      zone: emp.zone || "Unknown Zone",
+      status: "ok" as const,
+      lastCheckin: lastMs,
+      nextDue: lastMs > 0 ? lastMs + CHECKIN_CYCLE_MS : 0,
+    };
+  });
 
   const allEmployees = baseEmployees.map(emp => {
     const warning = warnings.find(w => w.employeeId === emp.id);
@@ -185,6 +232,9 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
   };
 
   function fmtAgo(ms: number): string {
+    // 2026-06-02 Attendance Phase C: explicit "Never" state when no real
+    // check-in exists (replaces silent garbage time from Math.random).
+    if (!ms || ms <= 0) return "Never";
     const mins = Math.floor((Date.now() - ms) / 60000);
     if (mins < 1) return "Just now";
     if (mins < 60) return `${mins}m ago`;
