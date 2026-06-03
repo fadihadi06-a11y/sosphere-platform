@@ -5,6 +5,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef, useCallback } from "react";
+// 2026-06-03 #2 fix: real GPS distance tracking via navigator.geolocation +
+// haversineMeters (replaces Math.random fabrication that shipped fake meters
+// to the Safe Walk UI). Same module already used by geofence + evacuation
+// flows — single source of truth for great-circle distance.
+import { haversineMeters } from "./geofence-service";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft, Footprints, Shield, MapPin, Clock,
@@ -137,9 +142,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
     if (phase === "active") {
       walkTimerRef.current = setInterval(() => {
         setWalkTimer(t => t + 1);
-        if (isMoving) {
-          setDistanceWalked(d => d + Math.random() * 3 + 1); // mock movement
-        }
+        // 2026-06-03 #2 fix: distanceWalked is now driven by the real GPS
+        // watchPosition useEffect below — no more Math.random fabrication.
+        // The walk timer just ticks seconds; distance updates come from GPS.
       }, 1000);
     } else {
       if (walkTimerRef.current) clearInterval(walkTimerRef.current);
@@ -215,17 +220,58 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
     return () => { if (escalationRef.current) clearInterval(escalationRef.current); };
   }, [escalationCountdown > 0]);
 
-  // ── Simulate random stops (for demo) ───────────────────────
+  // ── Real GPS Tracking (replaces Math.random distance + random stop sim) ──
+  // 2026-06-03 #2 fix. The previous code had TWO production bugs:
+  //   1. distanceWalked was Math.random()*3+1 per second — fake meters
+  //      shown to the user as "real walking distance".
+  //   2. isMoving was randomly toggled every 8s by Math.random()>0.7 —
+  //      this caused false-positive guardian alerts (a moving worker
+  //      flagged as stopped) AND missed real stops (a stationary worker
+  //      flagged as moving, so the stop-detection timer never fired).
+  // Both are now driven by navigator.geolocation.watchPosition + haversine
+  // deltas. GPS unavailable / permission denied → distance stays at 0 and
+  // isMoving stays at its initial true state (so the guardian-alert path
+  // still works on hard stops detected by the stop-timer fallback).
+
+  const lastPositionRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (phase !== "active") return;
-    const simStop = setInterval(() => {
-      // Every ~40 seconds, simulate a random stop/move
-      if (Math.random() > 0.7) {
-        setIsMoving(prev => !prev);
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    lastPositionRef.current = null;
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const now = Date.now();
+        const prev = lastPositionRef.current;
+        if (prev) {
+          const delta = haversineMeters(prev.lat, prev.lng, latitude, longitude);
+          const dtSec = (now - prev.t) / 1000;
+          // Filter GPS jumps: >100m delta in <2s is physically impossible
+          // for a walker — discard as GPS noise / cell-tower reposition.
+          if (delta > 0 && delta < 100 && dtSec > 0) {
+            setDistanceWalked(d => d + delta);
+          }
+          // Real stop detection: <2m delta over 5+ seconds = stationary
+          // (2m matches typical GPS accuracy floor). >=2m = moving.
+          if (delta < 2 && dtSec > 5) {
+            setIsMoving(false);
+          } else if (delta >= 2) {
+            setIsMoving(true);
+          }
+        }
+        lastPositionRef.current = { lat: latitude, lng: longitude, t: now };
+      },
+      () => { /* permission denied / unavailable — distance & isMoving stay at last value */ },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+    );
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
-    }, 8000);
-    return () => clearInterval(simStop);
+    };
   }, [phase]);
 
   // ── Helper Functions ────────────────────────────────────────
