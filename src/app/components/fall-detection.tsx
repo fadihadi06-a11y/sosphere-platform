@@ -91,6 +91,15 @@ export function useFallDetection({
   const [countdown, setCountdown] = useState(countdownSeconds);
   const [accelerationHistory, setAccelerationHistory] = useState<number[]>([]);
   const [isSupported, setIsSupported] = useState(false);
+  // 2026-06-03 #7 fix: explicit sensor-availability flag so consumers
+  // can render "Sensor unavailable" instead of misinterpreting an
+  // empty history as "stationary worker, all-clear". Previously the
+  // hook FABRICATED 9.8±jitter samples to "keep visual chart running"
+  // — admin saw fake normal-gravity readings indistinguishable from
+  // a real sensor reporting a stationary worker. Catastrophic for a
+  // fall-detection feature whose entire purpose is detecting deviations
+  // from stable gravity.
+  const [sensorAvailable, setSensorAvailable] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFallRef = useRef<number>(0);
 
@@ -203,22 +212,33 @@ export function useFallDetection({
     const DM = window.DeviceMotionEvent as any;
     if (typeof DM?.requestPermission === "function") {
       DM.requestPermission()
-        .then((result: string) => { if (result === "granted") attachMotion(); })
+        .then((result: string) => {
+          if (result === "granted") {
+            setSensorAvailable(true);
+            attachMotion();
+          } else {
+            // 2026-06-03 #7 fix: permission denied — sensorAvailable stays
+            // false. NO synthetic 9.8 jitter (that was the bug — fake
+            // readings masked as real sensor data). Consumers must
+            // render "Sensor unavailable" instead.
+            setSensorAvailable(false);
+            setAccelerationHistory([]);
+          }
+        })
         .catch(() => {
-          // Fallback: show live chart with random data if permission denied
-          const iv = setInterval(() => {
-            setAccelerationHistory(prev => [...prev, 9.8 + (Math.random() - 0.5) * 1.5].slice(-30));
-          }, 200);
-          removeListener = () => clearInterval(iv);
+          setSensorAvailable(false);
+          setAccelerationHistory([]);
         });
     } else if ("DeviceMotionEvent" in window) {
+      setSensorAvailable(true);
       attachMotion();
     } else {
-      // Desktop / unsupported — keep visual chart running with simulated normal gravity
-      const iv = setInterval(() => {
-        setAccelerationHistory(prev => [...prev, 9.8 + (Math.random() - 0.5) * 1].slice(-30));
-      }, 200);
-      removeListener = () => clearInterval(iv);
+      // 2026-06-03 #7 fix: desktop / unsupported — sensorAvailable false.
+      // NO synthetic data. Previous "simulated normal gravity" path
+      // shipped fake readings to the chart that the admin could not
+      // distinguish from a real sensor.
+      setSensorAvailable(false);
+      setAccelerationHistory([]);
     }
 
     return () => { removeListener?.(); };
@@ -228,6 +248,7 @@ export function useFallDetection({
     state,
     countdown,
     isSupported,
+    sensorAvailable,
     accelerationHistory,
     simulateFall,
     cancelFall,
