@@ -24,6 +24,7 @@ import { clearAttendanceCache } from "../attendance-service";
 import { clearComplianceSummaryCache } from "../compliance-summary-service";
 import { clearEvacuationCache } from "../evacuation-service";
 import { clearInvestigationsCache } from "../investigations-service";
+import { clearRisksCache } from "../risk-register-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -88,6 +89,9 @@ export async function completeLogout(): Promise<void> {
   // so a shared device cannot leak the previous tenant's incident
   // investigations into the next user's session.
   try { clearInvestigationsCache(); } catch { /* best effort */ }
+  // 2026-06-03 #3 fix (14th pattern app): clear risks cache so a shared
+  // device cannot leak the previous tenant's risk register entries.
+  try { clearRisksCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

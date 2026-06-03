@@ -110,6 +110,59 @@ function riskToRow(r: RiskEntry, companyId: string): Record<string, any> {
  * no rows, or on error — the caller decides whether to fall back to
  * a local cache or demo data.
  */
+// ───────── IN-MEMORY CACHE (14th pattern app, 2026-06-03) ─────────
+// Replaces the localStorage bootstrap that lived in
+// dashboard-risk-register.tsx (CRIT-#4 cross-tenant leak class — same
+// bug as investigations #4, fixed in commit 6b55c79). The legacy
+// `sosphere_risks` key is killed inside getCachedRisks as a one-shot
+// migration; the new cache lives under `sosphere_risks_cache`.
+
+const RISKS_CACHE_KEY = "sosphere_risks_cache";
+const LEGACY_RISKS_KEY = "sosphere_risks";
+let _serverRisks: RiskEntry[] | null = null;
+
+function serializeRisk(r: RiskEntry): Record<string, unknown> {
+  return { ...r, reviewDate: r.reviewDate instanceof Date ? r.reviewDate.toISOString() : r.reviewDate };
+}
+function rehydrateRisk(raw: Record<string, unknown>): RiskEntry {
+  const r = raw as unknown as RiskEntry;
+  return { ...r, reviewDate: new Date(r.reviewDate as unknown as string) };
+}
+
+export function setCachedRisks(rows: RiskEntry[]): void {
+  _serverRisks = rows.slice();
+  try {
+    localStorage.setItem(RISKS_CACHE_KEY, JSON.stringify(rows.map(serializeRisk)));
+  } catch { /* unavailable */ }
+}
+
+export function getCachedRisks(): RiskEntry[] {
+  if (_serverRisks) return _serverRisks.slice();
+  try {
+    // One-shot legacy migration: kill the unscoped `sosphere_risks`
+    // key (CRIT-#4 cross-tenant leak class). removeItem is idempotent.
+    localStorage.removeItem(LEGACY_RISKS_KEY);
+    const raw = localStorage.getItem(RISKS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+      if (Array.isArray(parsed)) {
+        const rehydrated = parsed.map(rehydrateRisk);
+        _serverRisks = rehydrated;
+        return rehydrated.slice();
+      }
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function clearRisksCache(): void {
+  _serverRisks = null;
+  try {
+    localStorage.removeItem(RISKS_CACHE_KEY);
+    localStorage.removeItem(LEGACY_RISKS_KEY);
+  } catch { /* unavailable */ }
+}
+
 export async function fetchRiskRegister(): Promise<RiskEntry[]> {
   const companyId = getCompanyId();
   if (!companyId) return [];
@@ -120,7 +173,9 @@ export async function fetchRiskRegister(): Promise<RiskEntry[]> {
       .eq("company_id", companyId)
       .order("risk_score", { ascending: false });
     if (error || !data) return [];
-    return data.map(rowToRisk);
+    const rows = data.map(rowToRisk);
+    setCachedRisks(rows);
+    return rows;
   } catch (err) {
     console.warn("[risk-service] fetchRiskRegister:", err);
     return [];

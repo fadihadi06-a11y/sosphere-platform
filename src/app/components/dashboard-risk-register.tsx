@@ -24,8 +24,7 @@ import {
   upsertRisk,
   upsertRiskBatch,
   fetchTrainingRecords,
-  upsertTrainingRecord,
-} from "./risk-register-service";
+  upsertTrainingRecord, getCachedRisks, setCachedRisks} from "./risk-register-service";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -361,13 +360,12 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
   // we seed the server with the mock so the first real edit persists
   // somewhere durable. (P3-#11b)
   const [risks, setRisks] = useState<RiskEntry[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("sosphere_risks") || "[]") as RiskEntry[];
-      if (saved.length > 0) {
-        return saved.map(r => ({ ...r, reviewDate: new Date(r.reviewDate) }));
-      }
-    } catch {}
-    return MOCK_RISKS;
+    // 2026-06-03 14th pattern app: bootstrap from the service cache
+    // (which keeps an in-memory copy + writes to a NON-legacy localStorage
+    // key). The legacy `sosphere_risks` key is killed inside getCachedRisks
+    // as a one-shot migration — eliminates the CRIT-#4 cross-tenant leak.
+    const cached = getCachedRisks();
+    return cached.length > 0 ? cached : MOCK_RISKS;
   });
   const [training, setTraining] = useState<TrainingRecord[]>(MOCK_TRAINING);
   const [activeTab, setActiveTab] = useState<TabType>("risks");
@@ -413,7 +411,12 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
   // (durable source of truth). We skip the Supabase write until the
   // server boot has finished so we don't trample freshly-loaded data.
   useEffect(() => {
-    localStorage.setItem("sosphere_risks", JSON.stringify(risks));
+    // 2026-06-03 14th pattern app: stop writing the legacy
+    // `sosphere_risks` key. Server is authoritative; the service cache
+    // is updated on the next fetchRiskRegister (which the page does
+    // on mount + we explicitly call setCachedRisks here so the local
+    // bootstrap matches the freshly-edited state without a re-fetch).
+    setCachedRisks(risks);
     if (!serverBootComplete) return;
     void upsertRiskBatch(risks);
   }, [risks, serverBootComplete]);
