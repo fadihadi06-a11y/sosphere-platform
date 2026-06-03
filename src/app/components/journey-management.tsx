@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 import { emitAdminSignal, emitSyncEvent } from "./shared-store";
-import { fetchJourneys, upsertJourneyBatch } from "./journeys-service";
+import { fetchJourneys, upsertJourneyBatch, getCachedJourneys, setCachedJourneys} from "./journeys-service";
 
 // ── Types ────────────────────��───────────────────────────────
 interface Waypoint {
@@ -114,24 +114,12 @@ const STATUS_CONFIG = {
 export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { t: (k: string) => string; webMode?: boolean; onGuideMe?: (journeyId: string, employeeName: string) => void; onLaunchSAR?: (employeeId: string, employeeName: string, zone: string) => void }) {
   // REAL: Load persisted journeys, fall back to MOCK_JOURNEYS as demo seed
   const [journeys, setJourneys] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("sosphere_journeys") || "[]");
-      if (saved.length > 0) {
-        // Revive Date objects
-        return saved.map((j: any) => ({
-          ...j,
-          startTime: new Date(j.startTime),
-          estimatedEnd: new Date(j.estimatedEnd),
-          actualEnd: j.actualEnd ? new Date(j.actualEnd) : undefined,
-          waypoints: (j.waypoints || []).map((w: any) => ({
-            ...w,
-            eta: w.eta ? new Date(w.eta) : new Date(),
-            arrivedAt: w.arrivedAt ? new Date(w.arrivedAt) : undefined,
-          })),
-        }));
-      }
-    } catch {}
-    return MOCK_JOURNEYS;
+    // 2026-06-03 15th pattern app: bootstrap from the service cache
+    // (in-memory + non-legacy localStorage key). The legacy
+    // `sosphere_journeys` key is killed by getCachedJourneys as a
+    // one-shot migration — closes the CRIT-#4 cross-tenant leak class.
+    const cached = getCachedJourneys();
+    return cached.length > 0 ? cached : MOCK_JOURNEYS;
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "issues">("all");
@@ -169,7 +157,11 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
   // UI) and Supabase (durable). Supabase write is gated on boot-complete
   // so we don't overwrite a reconcile that's still in flight.
   useEffect(() => {
-    try { localStorage.setItem("sosphere_journeys", JSON.stringify(journeys)); } catch {}
+    // 2026-06-03 15th pattern app: stop writing the legacy
+    // `sosphere_journeys` key. Server is authoritative; service cache
+    // is updated here so the local bootstrap matches the just-edited
+    // state without a re-fetch.
+    setCachedJourneys(journeys as any);
     if (serverBootComplete) void upsertJourneyBatch(journeys as any);
   }, [journeys, serverBootComplete]);
 

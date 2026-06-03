@@ -120,6 +120,79 @@ function journeyToRow(j: Journey, companyId: string): Record<string, any> {
 // ── Public API ────────────────────────────────────────────────
 
 /** Fetch all journeys for the current company, newest first. */
+// ───────── IN-MEMORY CACHE (15th pattern app, 2026-06-03) ─────────
+// Replaces the localStorage bootstrap that lived in
+// journey-management.tsx (CRIT-#4 cross-tenant leak class — same bug
+// as investigations #4 + risk-register #3). The legacy `sosphere_journeys`
+// key is killed inside getCachedJourneys as a one-shot migration; the
+// new cache lives under `sosphere_journeys_cache`.
+
+const JOURNEYS_CACHE_KEY = "sosphere_journeys_cache";
+const LEGACY_JOURNEYS_KEY = "sosphere_journeys";
+let _serverJourneys: Journey[] | null = null;
+
+function serializeJourney(j: Journey): Record<string, unknown> {
+  return {
+    ...j,
+    startTime: j.startTime instanceof Date ? j.startTime.toISOString() : j.startTime,
+    estimatedEnd: j.estimatedEnd instanceof Date ? j.estimatedEnd.toISOString() : j.estimatedEnd,
+    actualEnd: j.actualEnd instanceof Date ? j.actualEnd.toISOString() : j.actualEnd,
+    waypoints: (j.waypoints || []).map((w) => ({
+      ...w,
+      eta: w.eta instanceof Date ? w.eta.toISOString() : w.eta,
+      arrivedAt: w.arrivedAt instanceof Date ? w.arrivedAt.toISOString() : w.arrivedAt,
+    })),
+  };
+}
+function rehydrateJourney(raw: Record<string, unknown>): Journey {
+  const j = raw as unknown as Journey;
+  return {
+    ...j,
+    startTime: new Date(j.startTime as unknown as string),
+    estimatedEnd: new Date(j.estimatedEnd as unknown as string),
+    actualEnd: j.actualEnd ? new Date(j.actualEnd as unknown as string) : undefined,
+    waypoints: (j.waypoints || []).map((w) => ({
+      ...w,
+      eta: w.eta ? new Date(w.eta as unknown as string) : new Date(),
+      arrivedAt: w.arrivedAt ? new Date(w.arrivedAt as unknown as string) : undefined,
+    })),
+  };
+}
+
+export function setCachedJourneys(rows: Journey[]): void {
+  _serverJourneys = rows.slice();
+  try {
+    localStorage.setItem(JOURNEYS_CACHE_KEY, JSON.stringify(rows.map(serializeJourney)));
+  } catch { /* unavailable */ }
+}
+
+export function getCachedJourneys(): Journey[] {
+  if (_serverJourneys) return _serverJourneys.slice();
+  try {
+    // One-shot legacy migration: kill the unscoped `sosphere_journeys`
+    // key (CRIT-#4 cross-tenant leak class). removeItem is idempotent.
+    localStorage.removeItem(LEGACY_JOURNEYS_KEY);
+    const raw = localStorage.getItem(JOURNEYS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+      if (Array.isArray(parsed)) {
+        const rehydrated = parsed.map(rehydrateJourney);
+        _serverJourneys = rehydrated;
+        return rehydrated.slice();
+      }
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function clearJourneysCache(): void {
+  _serverJourneys = null;
+  try {
+    localStorage.removeItem(JOURNEYS_CACHE_KEY);
+    localStorage.removeItem(LEGACY_JOURNEYS_KEY);
+  } catch { /* unavailable */ }
+}
+
 export async function fetchJourneys(): Promise<Journey[]> {
   const companyId = getCompanyId();
   if (!companyId) return [];
@@ -131,7 +204,9 @@ export async function fetchJourneys(): Promise<Journey[]> {
       .order("start_time", { ascending: false })
       .limit(200);
     if (error || !data) return [];
-    return data.map(rowToJourney);
+    const rows = data.map(rowToJourney);
+    setCachedJourneys(rows);
+    return rows;
   } catch (err) {
     console.warn("[journeys-service] fetch:", err);
     return [];
