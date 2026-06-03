@@ -16,6 +16,10 @@ import { getMissedCalls, getUnseenMissedCalls, type MissedCall } from "../shared
 import { fetchEmployees, fetchEmergencies, fetchZones, fetchKPIs, resolveEmergency, dispatchTeam, type KPIData } from "../api/data-layer";
 import { auditEmergency, auditEmergencyResolved } from "../audit-log-store";
 import { recordRRPSession } from "../rrp-analytics-store";
+// 2026-06-03 P1 PII fix: route [SUPABASE_READY] debug logs through
+// dev-logger so the employee-name + admin-name fields they carry are
+// stripped in production builds (Sentry breadcrumbs no longer see them).
+import { dlog } from "../utils/dev-logger";
 
 // =================================================================
 // Trial Helpers
@@ -541,7 +545,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       // SOS is never blocked by trial status â€” safety first
       // SUPABASE_MIGRATION_POINT: this guarantee must be
       // enforced server-side via RLS â€” SOS table always writable
-      console.log("[SUPABASE_READY] addEmergency:", emergency.id, emergency.type);
+      dlog("[SUPABASE_READY] addEmergency:", emergency.id, emergency.type);
       auditEmergency(`Emergency created: ${emergency.type}`, `${emergency.employeeName} triggered ${emergency.type} in ${emergency.zone}`, emergency.zone);
       set(s => {
         const emergencies = [emergency, ...s.emergencies];
@@ -553,7 +557,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     },
 
     updateEmergency: (id, updates) => set(s => {
-      console.log("[SUPABASE_READY] updateEmergency:", id, Object.keys(updates));
+      dlog("[SUPABASE_READY] updateEmergency:", id, Object.keys(updates));
       const emergencies = s.emergencies.map(e =>
         e.id === id ? { ...e, ...updates } : e
       );
@@ -561,7 +565,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     }),
 
     resolveEmergency: (id) => set(s => {
-      console.log("[SUPABASE_READY] resolveEmergency:", id);
+      dlog("[SUPABASE_READY] resolveEmergency:", id);
       const resolved = s.emergencies.find(e => e.id === id);
       if (resolved) {
         auditEmergencyResolved(id, resolved.employeeName, resolved.zone);
@@ -628,7 +632,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
 
     // FIX AUDIT-2.2: ID-based cancel â€” prevents resolving wrong emergency on name collision
     cancelEmergencyById: (emergencyId, fallbackName) => set(s => {
-      console.log("[SUPABASE_READY] cancelEmergencyById:", emergencyId, "fallback:", fallbackName);
+      dlog("[SUPABASE_READY] cancelEmergencyById:", emergencyId, "fallback:", fallbackName);
       let matched = false;
       const emergencies = s.emergencies.map(e => {
         // Primary: match by sourceEmergencyId (linked from mobile SOS)
@@ -701,7 +705,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
 
     // â”€â”€ Priority System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     takeOwnership: (id, adminName = "Admin") => set(s => {
-      console.log("[SUPABASE_READY] takeOwnership:", id, "by:", adminName);
+      dlog("[SUPABASE_READY] takeOwnership:", id, "by:", adminName);
       const owned = markAsOwned(s.emergencies, id, adminName);
       const emergencies = owned.map(e => e.id === id ? { ...e, status: "responding" as const } : e);
       return { emergencies, ...recompute(emergencies) };
@@ -790,7 +794,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       const s = get();
       const fields = computeTrialFields(s.companyState);
       set(fields);
-      console.log("[SUPABASE_READY] trial_refreshed: " + JSON.stringify({
+      dlog("[SUPABASE_READY] trial_refreshed: " + JSON.stringify({
         daysLeft: fields.trialDaysLeft,
         isActive: fields.isTrialActive,
       }));
@@ -814,7 +818,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
           generic: "Your trial has ended. Upgrade your plan to continue.",
         };
         set({ trialBlockedModal: { show: true, type, message: messages[type] } });
-        console.log("[SUPABASE_READY] trial_guard_blocked: " + JSON.stringify({ type }));
+        dlog("[SUPABASE_READY] trial_guard_blocked: " + JSON.stringify({ type }));
         return true;
       }
       return false;
@@ -836,7 +840,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       const currentCount = type === "zone" ? s.zones.length : s.employees.length;
       if (max !== -1 && currentCount >= max) {
         set({ planLimitModal: { show: true, type } });
-        console.log("[SUPABASE_READY] plan_limit_guard_blocked: " + JSON.stringify({
+        dlog("[SUPABASE_READY] plan_limit_guard_blocked: " + JSON.stringify({
           type, current: currentCount, max, plan: s.companyState.company.plan,
         }));
         return true;
@@ -864,7 +868,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
           lastRefreshedAt: new Date(),
           isRefreshing: false,
         });
-        console.log("[Dashboard] Loaded: emp=" + employees.length + " emg=" + emergencies.length + " zones=" + zones.length);
+        dlog("[Dashboard] Loaded: emp=" + employees.length + " emg=" + emergencies.length + " zones=" + zones.length);
       } catch (e) {
         console.warn("[Dashboard] initDashboard failed, keeping mock:", e);
         set({ isRefreshing: false });
