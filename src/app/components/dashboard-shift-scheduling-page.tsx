@@ -17,6 +17,9 @@ import {
   Divider, TOKENS,
 } from "./design-system";
 import { useDashboardStore } from "./stores/dashboard-store";
+// 2026-06-03 16th pattern app: shifts now live in the shifts table
+// (was localStorage-only — CRIT-#4 cross-tenant leak class).
+import { fetchShifts, upsertShiftsBatch, getCachedShifts, setCachedShifts, type Shift as ServerShift } from "./shifts-service";
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 
@@ -120,15 +123,42 @@ function detectConflicts(shifts: Shift[]): Set<string> {
 export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => string; webMode?: boolean }) {
   const storeEmployees = useDashboardStore(s => s.employees);
   const [shifts, setShifts] = useState<Shift[]>(() => {
-    try {
-      const saved = localStorage.getItem("sosphere_shifts");
-      if (saved) {
-        const parsed = JSON.parse(saved) as Shift[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch { /* fallback */ }
+    // 2026-06-03 16th pattern app: bootstrap from the service cache
+    // (in-memory + non-legacy localStorage). The legacy `sosphere_shifts`
+    // key is killed by getCachedShifts as a one-shot migration —
+    // closes the CRIT-#4 cross-tenant leak.
+    const cached = getCachedShifts();
+    if (cached.length > 0) return cached as Shift[];
     return DEV_DEMO ? INITIAL_SHIFTS : [];
   });
+  const [serverBootComplete, setServerBootComplete] = useState(false);
+
+  // Reconcile with server on mount. Non-blocking — local data paints
+  // first, then server-truth overlays once the RPC resolves.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await fetchShifts();
+        if (cancelled) return;
+        if (remote.length > 0) {
+          setShifts(remote as Shift[]);
+        } else {
+          // Server empty — if we have a non-trivial local set, seed it
+          // so the next admin sees the same starting point.
+          const looksLikeUserData = shifts.length > 0
+            && !(DEV_DEMO && shifts.every(s => s.id.startsWith("S") && Number(s.id.slice(1)) <= INITIAL_SHIFTS.length));
+          if (looksLikeUserData) {
+            void upsertShiftsBatch(shifts as ServerShift[]);
+          }
+        }
+      } finally {
+        if (!cancelled) setServerBootComplete(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // intentional: useEffect dep array deliberately partial
+  }, []);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState<ShiftTemplate>(SHIFT_TEMPLATES[0]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -140,12 +170,14 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
 
-  // Auto-save shifts to localStorage on every change
+  // 2026-06-03 16th pattern app: persist via service cache + server RPC.
+  // The legacy `sosphere_shifts` write is gone. Server is authoritative;
+  // the cache lets the next mount paint instantly without a re-fetch.
   useEffect(() => {
-    try {
-      localStorage.setItem("sosphere_shifts", JSON.stringify(shifts));
-    } catch { /* ignore storage errors */ }
-  }, [shifts]);
+    setCachedShifts(shifts as ServerShift[]);
+    if (!serverBootComplete) return;
+    void upsertShiftsBatch(shifts as ServerShift[]);
+  }, [shifts, serverBootComplete]);
   const conflicts = useMemo(() => detectConflicts(shifts), [shifts]);
 
   // Filtered employees

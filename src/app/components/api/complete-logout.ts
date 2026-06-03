@@ -26,6 +26,7 @@ import { clearEvacuationCache } from "../evacuation-service";
 import { clearInvestigationsCache } from "../investigations-service";
 import { clearRisksCache } from "../risk-register-service";
 import { clearJourneysCache } from "../journeys-service";
+import { clearShiftsCache } from "../shifts-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -96,6 +97,9 @@ export async function completeLogout(): Promise<void> {
   // 2026-06-03 #5 fix (15th pattern app): clear journeys cache so a
   // shared device cannot leak the previous tenant's journey history.
   try { clearJourneysCache(); } catch { /* best effort */ }
+  // 2026-06-03 #5b fix (16th pattern app): clear shifts cache so a
+  // shared device cannot leak the previous tenant's shift schedule.
+  try { clearShiftsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T20:06:19.306Z",
-  "total_migrations": 157,
-  "manifest_sha256": "a90419f0d7e7a275b39d8a80edd163ba4400bd62be8ec8b4fe5a8bdfa0811a3f",
+  "generated_at": "2026-06-03T14:40:42.523Z",
+  "total_migrations": 158,
+  "manifest_sha256": "7151c349eefd7661e5c728cdf0c7fbf5785387cd48d7f3e69f1d7d1a97fc620b",
   "migrations": [
     {
       "version": "20260415",
@@ -1101,6 +1101,13 @@
       "file": "20260602_evacuation_durability_phase_a.sql",
       "sha256": "8212491c7e19a59098569cf4775f49099a5c1e5639defef54fff6ddc2e7d9794",
       "bytes": 11515
+    },
+    {
+      "version": "20260603",
+      "name": "shifts_table_16th_pattern_app",
+      "file": "20260603_shifts_table_16th_pattern_app.sql",
+      "sha256": "94c13ceab66fa8a987ce027cbd16478410fbcb1cbb6a9d451b62c2fe4f531be8",
+      "bytes": 5789
     }
   ]
 }
