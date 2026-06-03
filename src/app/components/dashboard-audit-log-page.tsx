@@ -43,7 +43,12 @@ type AuditCategory =
   | "data_modify"
   | "data_delete"
   | "report_export"
-  | "investigation";
+  | "investigation"
+  // 2026-06-03: must mirror audit-log-store's AuditCategory union.
+  // Both copies will be consolidated in a follow-up — for now any
+  // new category MUST be added in BOTH places. "auth" was added to
+  // the store's union for the MFA dual-channel audit (commit 1f22d9b).
+  | "auth";
 
 interface AuditEntry {
   id: string;
@@ -91,6 +96,10 @@ const CATEGORY_CONFIG: Record<AuditCategory, {
   data_delete:       { label: "Data Deleted",      icon: Trash2,    color: "#FF2D55", bg: "rgba(255,45,85,0.08)" },
   report_export:     { label: "Report Exported",   icon: Download,  color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
   investigation:     { label: "Investigation",     icon: Activity,  color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  // 2026-06-03: "auth" covers MFA enroll/disable/fail + SSO + recovery-code
+  // events. Same icon as login (LogIn) — both represent identity/access
+  // operations, easier visual scan in the dashboard list.
+  auth:              { label: "Authentication",    icon: LogIn,     color: "#4A90D9", bg: "rgba(74,144,217,0.08)" },
 };
 
 const LEVEL_CONFIG: Record<AuditLevel, { label: string; color: string; icon: React.ElementType }> = {
