@@ -125,8 +125,15 @@ export async function safeTelCall(
     action: {
       label: "Copy",
       onClick: () => {
-        navigator.clipboard.writeText(cleaned).catch(() => {});
-        toast.success("Number copied to clipboard");
+        // 2026-06-03 P2 polish: previously the success toast fired
+        // unconditionally even when the clipboard write failed (R-605
+        // UX bug — user thinks the number copied but it didn't). Now
+        // we wait for the promise and only show success on resolve;
+        // failures show an error toast with the number so the user
+        // can still copy by hand.
+        navigator.clipboard.writeText(cleaned)
+          .then(() => toast.success("Number copied to clipboard"))
+          .catch(() => toast.error("Copy failed — number: " + cleaned, { duration: 8000 }));
       },
     },
   });

@@ -419,12 +419,19 @@ let lastBatteryCriticalEmit = 0;
 const BATTERY_CRITICAL_COOLDOWN_MS = 300000; // 5 minutes
 
 /**
- * Emergency contacts are loaded from localStorage (set during employee onboarding).
- * If no contacts are saved, we show a setup prompt instead of fake numbers.
+ * Emergency contacts source-of-truth note (2026-06-03 cleanup):
+ *   * Server: `emergency_contacts` table is the durable store (per-employee,
+ *     priority-ordered). Reads land via getCachedContacts() in the contacts
+ *     service when a logged-in employee opens this screen.
+ *   * Local: localStorage `sosphere_emergency_contacts` is the offline-first
+ *     bootstrap mirror so the dial flow works without network. completeLogout
+ *     wipes it on session end.
+ *   * Default when neither source has data: empty array → setup prompt
+ *     instead of fake numbers (the prior fake-numbers UX shipped phantom
+ *     contacts that didn't dial anyone).
  *
- * TODO: Migrate to Supabase:
- *   const { data } = await supabase.from('emergency_contacts')
- *     .select('*').eq('employee_id', userId).order('priority', { ascending: true })
+ * Previous header said "TODO: Migrate to Supabase" — that migration shipped;
+ * the comment was stale.
  */
 const EMPTY_CONTACTS: ERContact[] = [];
 
