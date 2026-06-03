@@ -5,10 +5,21 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, User, MapPin, AlertTriangle, ArrowRight, Command } from "lucide-react";
+// 2026-06-02 CRIT-7 Phase B (9th pattern app end-to-end):
+// switches from client-side filter (which only sees what the parent passed
+// in props) to a server-side SECDEF RPC that searches across employees,
+// zones, invitations, and sos_queue — including rows the dashboard hasn't
+// fetched yet. Falls back to client-side filter on RPC failure so the
+// component still works during initial load / offline.
+import { searchCompany, MIN_QUERY_LENGTH, makeDebouncer, type SearchType } from "./search-service";
+import { getCompanyId } from "./shared-store";
 
 interface SearchResult {
   id: string;
-  type: "employee" | "zone" | "incident";
+  // 2026-06-02 CRIT-7 Phase B: server RPC also returns "invitation".
+  // Kept "incident" for backwards compat — server "emergency" maps to "incident"
+  // so existing onSelect handlers continue to work.
+  type: "employee" | "zone" | "incident" | "invitation";
   title: string;
   subtitle: string;
   status?: string;
@@ -41,58 +52,90 @@ export function GlobalSearch({ isOpen, onClose, onSelect, employees, zones, inci
     }
   }, [isOpen]);
 
-  // Search logic
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-
-    const q = query.toLowerCase();
-    const searchResults: SearchResult[] = [];
-
-    // Employees
+  // 2026-06-02 CRIT-7 Phase B: server-side debounced search via SECDEF RPC.
+  // Client-side filter on (employees, zones, incidents) is the fallback when
+  // RPC fails or returns empty (offline / initial load / query too short).
+  // The RPC sees more rows than the props: invitations + sos_queue rows that
+  // the dashboard hasn't fetched yet.
+  const clientSideFilter = (q: string): SearchResult[] => {
+    const out: SearchResult[] = [];
+    const ql = q.toLowerCase();
     employees.forEach((emp) => {
-      if (emp.name.toLowerCase().includes(q) || emp.zone.toLowerCase().includes(q)) {
-        searchResults.push({
-          id: emp.id,
-          type: "employee",
-          title: emp.name,
-          subtitle: emp.zone,
-          status: emp.status,
+      if (emp.name.toLowerCase().includes(ql) || emp.zone.toLowerCase().includes(ql)) {
+        out.push({
+          id: emp.id, type: "employee", title: emp.name, subtitle: emp.zone, status: emp.status,
           color: emp.status === "sos" ? "#FF2D55" : emp.status === "on-shift" ? "#00C853" : "#6E7681",
         });
       }
     });
-
-    // Zones
     zones.forEach((zone) => {
-      if (zone.name.toLowerCase().includes(q)) {
-        searchResults.push({
-          id: zone.id,
-          type: "zone",
-          title: zone.name,
-          subtitle: `Risk: ${zone.risk}`,
+      if (zone.name.toLowerCase().includes(ql)) {
+        out.push({
+          id: zone.id, type: "zone", title: zone.name, subtitle: `Risk: ${zone.risk}`,
           color: zone.risk === "high" ? "#FF2D55" : zone.risk === "medium" ? "#FF9500" : "#00C853",
         });
       }
     });
-
-    // Incidents
     incidents.forEach((inc) => {
-      if (inc.employeeName.toLowerCase().includes(q) || inc.zone.toLowerCase().includes(q)) {
-        searchResults.push({
-          id: inc.id,
-          type: "incident",
-          title: `Incident: ${inc.employeeName}`,
-          subtitle: inc.zone,
+      if (inc.employeeName.toLowerCase().includes(ql) || inc.zone.toLowerCase().includes(ql)) {
+        out.push({
+          id: inc.id, type: "incident", title: `Incident: ${inc.employeeName}`, subtitle: inc.zone,
           color: "#FF9500",
         });
       }
     });
+    return out;
+  };
 
-    setResults(searchResults.slice(0, 6));
+  // Debouncer for server RPC — fires 200ms after last keystroke.
+  const debouncerRef = useRef<ReturnType<typeof makeDebouncer<[string]>> | null>(null);
+  if (!debouncerRef.current) {
+    debouncerRef.current = makeDebouncer<[string]>(async (q: string) => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) { setResults(clientSideFilter(q).slice(0, 6)); return; }
+        const env = await searchCompany({
+          companyId, query: q,
+          types: ["employee", "zone", "invitation", "emergency"] as SearchType[],
+          limit: 12,
+        });
+        if (!env.ok || env.rows.length === 0) {
+          setResults(clientSideFilter(q).slice(0, 6));
+          return;
+        }
+        const mapped: SearchResult[] = env.rows.map(r => {
+          // emergency -> incident (legacy onSelect contract)
+          const t = r.type === "emergency" ? "incident" : (r.type as SearchResult["type"]);
+          return {
+            id: r.id,
+            type: t,
+            title: r.title,
+            subtitle: r.subtitle ?? "",
+            color: t === "incident" ? "#FF9500"
+                 : t === "zone"     ? "#00C8E0"
+                 : t === "invitation" ? "#FFD60A"
+                 :                    "#6E7681",
+          };
+        });
+        setResults(mapped.slice(0, 6));
+      } catch {
+        setResults(clientSideFilter(q).slice(0, 6));
+      }
+    }, 200);
+  }
+
+  // Search logic — dual mode
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return; }
+    if (query.trim().length < MIN_QUERY_LENGTH) {
+      // Too short for server RPC. Show nothing rather than client-side
+      // false positives (the server-side rule requires >= 2 chars).
+      setResults([]);
+      return;
+    }
+    debouncerRef.current?.trigger(query.trim());
     setSelectedIndex(0);
+    return () => debouncerRef.current?.cancel();
   }, [query, employees, zones, incidents]);
 
   // Keyboard navigation
@@ -127,6 +170,7 @@ export function GlobalSearch({ isOpen, onClose, onSelect, employees, zones, inci
       case "employee": return User;
       case "zone": return MapPin;
       case "incident": return AlertTriangle;
+      case "invitation": return User;  // 2026-06-02 CRIT-7 Phase B
     }
   };
 
