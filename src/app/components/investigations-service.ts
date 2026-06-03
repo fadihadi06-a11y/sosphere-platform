@@ -59,7 +59,11 @@ export interface Investigation {
   status: InvestigationStatus;
   rootCauses: RootCause[];
   actions: CorrectiveAction[];
-  timeline: { date: Date; event: string; by: string }[];
+  // F-E (2026-04-25): `signed` propagates from the smart-timeline-tracker
+  // — true / undefined means a real SHA-256 signature, false means the
+  // entry was recorded in fallback mode without crypto.subtle. The
+  // dashboard page renders an "Unsigned" badge for signed === false.
+  timeline: { date: Date; event: string; by: string; signed?: boolean }[];
   affectedWorkers: string[];
   isoReference: string;
   finalReportDate?: Date;

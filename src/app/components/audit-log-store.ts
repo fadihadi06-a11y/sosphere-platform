@@ -43,7 +43,11 @@ export type AuditCategory =
   | "data_modify"
   | "data_delete"
   | "report_export"
-  | "investigation";
+  | "investigation"
+  // 2026-06-03 #8 / R-855 fix: "auth" category covers MFA / SSO / recovery-code
+  // events written by api/mfa-client.ts:fireAudit through the durable
+  // audit_log channel (was a fire-and-forget safeRpc with silent .catch).
+  | "auth";
 
 export type AuditLevel = "owner" | "main_admin" | "zone_admin" | "worker" | "system";
 export type AuditSeverity = "info" | "warning" | "critical" | "success";
