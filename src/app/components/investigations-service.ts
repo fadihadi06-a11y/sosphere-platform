@@ -152,6 +152,81 @@ function investigationToRow(inv: Investigation, companyId: string): Record<strin
 
 // ── Public API ────────────────────────────────────────────────
 
+// ───────── IN-MEMORY CACHE (13th pattern app, 2026-06-03) ─────────
+// Replaces the localStorage bootstrap that lived in
+// dashboard-incident-investigation.tsx (CRIT-#4 cross-tenant leak class:
+// the page used `localStorage.getItem("sosphere_investigations")` as
+// its initial state, so a tenant switch on a shared device showed the
+// previous tenant's investigations until the server reconciliation
+// completed). The cache key is moved here under sosphere_investigations_cache
+// (separate from the legacy key) and is cleared by completeLogout.
+
+const INVESTIGATIONS_CACHE_KEY = "sosphere_investigations_cache";
+const LEGACY_KEY = "sosphere_investigations";
+let _serverInvestigations: Investigation[] | null = null;
+
+function serializeInvestigation(inv: Investigation): Record<string, unknown> {
+  return {
+    ...inv,
+    incidentDate: inv.incidentDate instanceof Date ? inv.incidentDate.toISOString() : inv.incidentDate,
+    finalReportDate: inv.finalReportDate instanceof Date ? inv.finalReportDate.toISOString() : inv.finalReportDate,
+    timeline: inv.timeline.map(t => ({ ...t, date: t.date instanceof Date ? t.date.toISOString() : t.date })),
+    actions: inv.actions.map(a => ({
+      ...a,
+      dueDate: a.dueDate instanceof Date ? a.dueDate.toISOString() : a.dueDate,
+      completedDate: a.completedDate instanceof Date ? a.completedDate.toISOString() : a.completedDate,
+    })),
+  };
+}
+function rehydrateInvestigation(raw: Record<string, unknown>): Investigation {
+  const i = raw as unknown as Investigation;
+  return {
+    ...i,
+    incidentDate: new Date(i.incidentDate as unknown as string),
+    finalReportDate: i.finalReportDate ? new Date(i.finalReportDate as unknown as string) : undefined,
+    timeline: i.timeline.map(t => ({ ...t, date: new Date(t.date as unknown as string) })),
+    actions: i.actions.map(a => ({
+      ...a,
+      dueDate: new Date(a.dueDate as unknown as string),
+      completedDate: a.completedDate ? new Date(a.completedDate as unknown as string) : undefined,
+    })),
+  };
+}
+
+export function setCachedInvestigations(rows: Investigation[]): void {
+  _serverInvestigations = rows.slice();
+  try {
+    localStorage.setItem(INVESTIGATIONS_CACHE_KEY, JSON.stringify(rows.map(serializeInvestigation)));
+  } catch { /* unavailable */ }
+}
+
+export function getCachedInvestigations(): Investigation[] {
+  if (_serverInvestigations) return _serverInvestigations.slice();
+  try {
+    // One-shot legacy migration: kill the unscoped sosphere_investigations
+    // key (CRIT-#4 cross-tenant leak class). removeItem is idempotent.
+    localStorage.removeItem(LEGACY_KEY);
+    const raw = localStorage.getItem(INVESTIGATIONS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+      if (Array.isArray(parsed)) {
+        const rehydrated = parsed.map(rehydrateInvestigation);
+        _serverInvestigations = rehydrated;
+        return rehydrated.slice();
+      }
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function clearInvestigationsCache(): void {
+  _serverInvestigations = null;
+  try {
+    localStorage.removeItem(INVESTIGATIONS_CACHE_KEY);
+    localStorage.removeItem(LEGACY_KEY);
+  } catch { /* unavailable */ }
+}
+
 /** Fetch all investigations for the current company, newest first. */
 export async function fetchInvestigations(): Promise<Investigation[]> {
   const companyId = getCompanyId();
@@ -163,7 +238,11 @@ export async function fetchInvestigations(): Promise<Investigation[]> {
       .eq("company_id", companyId)
       .order("incident_date", { ascending: false });
     if (error || !data) return [];
-    return data.map(rowToInvestigation);
+    const rows = data.map(rowToInvestigation);
+    // 2026-06-03 13th pattern app: populate the bootstrap cache so the
+    // page can paint instantly on next mount instead of re-fetching.
+    setCachedInvestigations(rows);
+    return rows;
   } catch (err) {
     console.warn("[investigations-service] fetch:", err);
     return [];

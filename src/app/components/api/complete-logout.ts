@@ -23,6 +23,7 @@ import { clearDiscreetSessionState } from "../discreet-session-service";
 import { clearAttendanceCache } from "../attendance-service";
 import { clearComplianceSummaryCache } from "../compliance-summary-service";
 import { clearEvacuationCache } from "../evacuation-service";
+import { clearInvestigationsCache } from "../investigations-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -83,6 +84,10 @@ export async function completeLogout(): Promise<void> {
   // active-evacuation roll-up so a shared device cannot leak the
   // previous tenant's open evacuations into the next user's session.
   try { clearEvacuationCache(); } catch { /* best effort */ }
+  // 2026-06-03 #4 fix (13th pattern app): clear investigations cache
+  // so a shared device cannot leak the previous tenant's incident
+  // investigations into the next user's session.
+  try { clearInvestigationsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

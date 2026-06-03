@@ -33,6 +33,7 @@ import { getTimelineEntries, getTimelineForReport, type TimelineEntry } from "./
 import {
   fetchInvestigations,
   upsertInvestigationBatch,
+  getCachedInvestigations,
 } from "./investigations-service";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -613,30 +614,18 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
 
 export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pendingInvestigations = [], onRiskUpdate }: { t: (k: string) => string; webMode?: boolean; initialSourceFilter?: string; pendingInvestigations?: any[]; onRiskUpdate?: (riskId: string, update: Record<string, any>) => void }) {
   const [investigations, setInvestigations] = useState(() => {
-    // Load any real investigations saved from resolved emergencies
-    try {
-      const saved = JSON.parse(localStorage.getItem("sosphere_investigations") || "[]") as Investigation[];
-      // Restore Date objects (JSON serialization loses them)
-      const restored = saved.map(inv => ({
-        ...inv,
-        incidentDate: new Date(inv.incidentDate),
-        finalReportDate: inv.finalReportDate ? new Date(inv.finalReportDate) : undefined,
-        timeline: inv.timeline.map(t => ({ ...t, date: new Date(t.date) })),
-        actions: inv.actions.map(a => ({ ...a, dueDate: new Date(a.dueDate), completedDate: a.completedDate ? new Date(a.completedDate) : undefined })),
-      }));
-      // CRIT #164: previously merged MOCK_INVESTIGATIONS into the
-      // initial state so a brand-new owner saw fake 3-month incident
-      // history. Now we only include mocks in DEV so demos / storybook
-      // still render rich content; production owners see only their
-      // real data plus the EmptyState rendered downstream.
-      const realIds = new Set(restored.map(r => r.id));
-      const mockFiltered = import.meta.env.DEV
-        ? MOCK_INVESTIGATIONS.filter(m => !realIds.has(m.id))
-        : [];
-      return [...restored, ...mockFiltered];
-    } catch {
-      return import.meta.env.DEV ? MOCK_INVESTIGATIONS : [];
-    }
+    // 2026-06-03 13th pattern app: bootstrap from the service cache
+    // (which keeps a per-mount in-memory copy + writes to a NON-legacy
+    // localStorage key). The legacy `sosphere_investigations` key is
+    // killed inside getCachedInvestigations as a one-shot migration
+    // — eliminates the CRIT-#4 cross-tenant leak where a tenant switch
+    // on a shared device showed the previous tenant's investigations.
+    const restored = getCachedInvestigations();
+    const realIds = new Set(restored.map(r => r.id));
+    const mockFiltered = import.meta.env.DEV
+      ? MOCK_INVESTIGATIONS.filter(m => !realIds.has(m.id))
+      : [];
+    return [...restored, ...mockFiltered];
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | InvestigationStatus>("all");
@@ -698,9 +687,10 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
       return !mock || mock.status !== inv.status;
     });
     if (realOrModified.length > 0) {
-      try {
-        localStorage.setItem("sosphere_investigations", JSON.stringify(realOrModified));
-      } catch { /* storage full */ }
+      // 2026-06-03 13th pattern app: stop writing to the legacy
+      // sosphere_investigations key. Server is authoritative; the
+      // service cache is updated on the next fetchInvestigations
+      // (which the page does on mount).
       if (serverBootComplete) {
         void upsertInvestigationBatch(realOrModified);
       }
