@@ -35,6 +35,30 @@ import {
 import { parseRateLimit, waitForRetry, logRateLimit } from "./rate-limit-client";
 import { setSentryTraceId } from "./sentry-client";
 
+
+// 2026-06-03 #9 / R-855 follow-up: structured throttled-warn helper.
+// The SOS server-trigger path has many fire-and-forget writes (retry
+// counter bumps, forensic markers, fan-out beacons). Previously each
+// site was `.catch(() => {})` — silent loss. Now they route through
+// reportSosForensicFailure which:
+//   * never throws (preserves fire-and-forget semantics)
+//   * console.warns with a structured tag for SOC ingestion
+//   * throttles per-key so sustained outages don't spam telemetry
+//   * one log per minute per (site, error) key
+const _sosForensicThrottle: Map<string, number> = new Map();
+const SOS_FORENSIC_WARN_THROTTLE_MS = 60_000;
+
+function reportSosForensicFailure(site: string, err: unknown, ctx?: Record<string, unknown>): void {
+  const now = Date.now();
+  const msg = err instanceof Error ? err.message : String(err);
+  const key = site + ":" + msg;
+  const last = _sosForensicThrottle.get(key) ?? 0;
+  if (now - last > SOS_FORENSIC_WARN_THROTTLE_MS) {
+    _sosForensicThrottle.set(key, now);
+    const extra = ctx ? " " + JSON.stringify(ctx) : "";
+    console.warn("[sos-forensic] " + site + " failed:", msg + extra);
+  }
+}
 // ── Config ───────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -390,7 +414,7 @@ async function firePrewarm(opts: {
       headers,
       body: payload,
       keepalive: true,
-    }).catch(() => {});
+    }).catch((err) => reportSosForensicFailure("fanout_fetch", err));
   }
 }
 
@@ -581,7 +605,7 @@ export async function triggerServerSOS(opts: {
       severity: "high",
       location: { lat: gps.lat, lng: gps.lng },
       precision: broadcastPrecision,
-    }).catch(() => { /* silent */ });
+    }).catch((err) => reportSosForensicFailure("emit_sync_event", err));
   }
 
   // STEP 2 — Start heartbeat IMMEDIATELY (don't wait for main fetch)
@@ -651,7 +675,7 @@ export async function triggerServerSOS(opts: {
       // Record stays unsynced in the queue — replay will retry it on
       // reconnect. Bump the attempt counter for backoff accounting.
       if (queuedRecordId) {
-        incrementSOSRetry(queuedRecordId, `HTTP ${res.status}`).catch(() => {});
+        incrementSOSRetry(queuedRecordId, `HTTP ${res.status}`).catch((err) => reportSosForensicFailure("retry_counter_http", err, { id: queuedRecordId, status: res.status }));
       }
       serverTriggerResult = {
         success: false,
@@ -676,7 +700,7 @@ export async function triggerServerSOS(opts: {
     // We don't await this and swallow errors: the DB write is a
     // forensic breadcrumb, not part of the success contract.
     if (queuedRecordId) {
-      markSOSSynced(queuedRecordId).catch(() => { /* forensic best-effort */ });
+      markSOSSynced(queuedRecordId).catch((err) => reportSosForensicFailure("mark_synced", err, { id: queuedRecordId }));
     }
 
     console.log(`[SOS-Server] Path B SUCCESS: tier=${data.tier} contacts=${data.results?.length}`);
@@ -690,7 +714,7 @@ export async function triggerServerSOS(opts: {
       incrementSOSRetry(
         queuedRecordId,
         err instanceof Error ? err.message : "network_error"
-      ).catch(() => {});
+      ).catch((retryErr) => reportSosForensicFailure("retry_counter_network", retryErr, { id: queuedRecordId }));
     }
     serverTriggerResult = {
       success: false,
@@ -1126,17 +1150,17 @@ export async function replayPendingSOS(): Promise<{
         );
         summary.failed++;
         retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
-        await incrementSOSRetry(rec.id, "replay_429").catch(() => {});
+        await incrementSOSRetry(rec.id, "replay_429").catch((err) => reportSosForensicFailure("retry_counter_replay_429", err, { id: rec.id }));
         break; // stop processing further records this round
       }
       if (result.ok) {
         summary.succeeded++;
         retryNotBeforeMs.delete(rec.id);
-        await markSOSSynced(rec.id).catch(() => {});
+        await markSOSSynced(rec.id).catch((err) => reportSosForensicFailure("mark_synced_replay", err, { id: rec.id }));
       } else {
         summary.failed++;
         retryNotBeforeMs.set(rec.id, Date.now() + nextBackoffMs(rec.syncAttempts + 1));
-        await incrementSOSRetry(rec.id, "replay_failed").catch(() => {});
+        await incrementSOSRetry(rec.id, "replay_failed").catch((err) => reportSosForensicFailure("retry_counter_replay_failed", err, { id: rec.id }));
       }
       // E-C5: inter-request gap. Small pause so we never machine-gun
       // the Edge Function even if the queue is deep.
