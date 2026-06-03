@@ -300,6 +300,32 @@ step("Gate 10: npx vite build (matches CI + APK build)", () => {
     : ("vite build exit " + r.status).slice(0, 200);
 });
 
+// Gate 11 (2026-06-03): tsc --noEmit — matches CI's "TypeScript + ESLint +
+// Tests + Audit" job. Catches type-level errors that vite build silently
+// accepts (esbuild's transpiler strips types without checking them) and
+// that ESLint doesn't enforce. Two real CI failures today (investigations
+// Investigation.timeline lacking `signed`, mfa-client passing "auth" to
+// AuditCategory) made it through every other local gate and only surfaced
+// on the round-trip CI typecheck. Closing the gap here.
+step("Gate 11: tsc --noEmit (full project typecheck, matches CI)", () => {
+  const r = spawnSync("npx", ["tsc", "--noEmit", "--skipLibCheck"], {
+    encoding: "utf8",
+    maxBuffer: 30 * 1024 * 1024,
+    timeout: 4 * 60 * 1000,
+    shell: process.platform === "win32",
+  });
+  if (r.status === 0) return true;
+  const out = (r.stdout || "") + "\n" + (r.stderr || "");
+  // Surface up to 5 distinct TS error lines (TSxxxx: ...).
+  const errLines = out
+    .split("\n")
+    .filter((l) => /\berror TS\d{4}:/i.test(l) || /Cannot find module/i.test(l))
+    .slice(0, 5);
+  return errLines.length > 0
+    ? errLines.join(" | ").slice(0, 800)
+    : ("tsc exit " + r.status).slice(0, 200);
+});
+
 console.log("\n[verify] === summary ===");
 console.log("         passed: " + (stepsRun - failures.length) + "/" + stepsRun);
 console.log("         warnings: " + warnings.length);
