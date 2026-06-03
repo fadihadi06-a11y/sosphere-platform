@@ -11,6 +11,8 @@
 // FIX 6: "Based on available data" disclaimer under key metrics
 // ═══════════════════════════════════════════════════════════════
 
+import { getCachedRisks } from "./risk-register-service";
+import { getAuditEntries } from "./audit-log-store";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -362,8 +364,12 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
   // Build dynamic alerts from real audit log + risk data
   const dynamicAlerts = useMemo<ProactiveAlert[]>(() => {
     try {
-      const auditLogs: any[] = JSON.parse(localStorage.getItem("sosphere_audit_log") || "[]");
-      const risks: any[] = JSON.parse(localStorage.getItem("sosphere_risks") || "[]");
+      // 2026-06-03 #6 fix: route audit + risk reads through their
+      // service modules instead of raw localStorage. Without this, AI
+      // scoring kept producing recommendations from the previous
+      // tenant's data after a tenant switch on a shared device.
+      const auditLogs: any[] = getAuditEntries();
+      const risks: any[] = getCachedRisks();
       const realAlerts: ProactiveAlert[] = [];
       const latestCheckins: Record<string, number> = {};
       for (const e of auditLogs) {

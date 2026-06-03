@@ -124,6 +124,17 @@ function loadAuditLog(): AuditEntry[] {
   }
 }
 
+/**
+ * 2026-06-03 #6 fix: public reader so other modules (notably
+ * safety-intelligence AI scoring) don't read the audit-log
+ * localStorage key directly. Centralising access through this
+ * function also gives a single hook-point when audit-log-store
+ * gets its own server-state pattern application.
+ */
+export function getAuditEntries(): AuditEntry[] {
+  return loadAuditLog();
+}
+
 function saveAuditLog(entries: AuditEntry[]): void {
   localStorage.setItem(AUDIT_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
 }
