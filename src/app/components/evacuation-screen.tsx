@@ -27,11 +27,21 @@ import {
   // to admin so the control panel shows real-time acknowledgement counts.
   emitSyncEvent,
   onSyncEvent,
+  getCompanyId,
   type ActiveEvacuation,
   type EvacuationPoint,
 } from "./shared-store";
 // Mobile audit fix (2026-05-27): evacuation lifecycle MUST be audit-logged.
 import { logAuditEvent } from "./audit-log-store";
+// 2026-06-02 Evacuation durability Phase C (10th pattern app end-to-end):
+// every ack ALSO writes to the server-side evacuation_acks table via SECDEF RPC.
+// loadActiveEvacuations + late-join synthesis lets a worker who opens the app
+// AFTER the broadcast still see the evacuation (closes the audit gap).
+import {
+  loadActiveEvacuations,
+  ackEvacuation as ackEvacuationRpc,
+  type AckPhase,
+} from "./evacuation-service";
 
 // Haversine distance
 function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -76,6 +86,10 @@ export function EvacuationScreen({
   const [status, setStatus] = useState<EvacStatus>("notified");
   const [elapsed, setElapsed] = useState(0);
   const [step, setStep] = useState(0); // animated instruction step
+  // 2026-06-02 Phase C: server-side evacuation UUID (for ack RPCs). null until
+  // loadActiveEvacuations hydrates from the server. Mobile keeps local string IDs
+  // (EVAC-{ts}) for its own UI, but ack RPC needs the real server UUID.
+  const serverEvacuationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadEvacuation();
@@ -96,8 +110,40 @@ export function EvacuationScreen({
     return () => clearInterval(i);
   }, [status]);
 
-  const loadEvacuation = () => {
-    const active = getActiveEvacuation();
+  const loadEvacuation = async () => {
+    let active = getActiveEvacuation();
+
+    // 2026-06-02 Phase C: late-join recovery + server UUID resolution.
+    // (1) If local has nothing, fetch server actives and synthesise a local
+    //     evacuation so a worker who opens the app AFTER the broadcast still
+    //     sees the screen. This is the read half of the durability fix.
+    // (2) Either way, capture the server UUID so subsequent acks call the RPC.
+    try {
+      const companyId = getCompanyId();
+      if (companyId) {
+        const { rows } = await loadActiveEvacuations(companyId);
+        if (rows.length > 0) {
+          const serverRow = rows[0]; // most recent active
+          serverEvacuationIdRef.current = serverRow.id;
+          if (!active || active.status !== "active") {
+            // Late-join: synthesize a local ActiveEvacuation from the server row
+            // so the rest of this function can drive the UI as if it had been local.
+            active = {
+              id:           serverRow.id,
+              zoneId:       serverRow.zone_id ?? currentZoneId,
+              zoneName:     serverRow.zone_name ?? "Active Zone",
+              triggeredAt:  new Date(serverRow.triggered_at).getTime(),
+              triggeredBy:  "Admin",
+              reason:       serverRow.reason ?? "Evacuation in progress",
+              status:       "active",
+            };
+          }
+        } else {
+          serverEvacuationIdRef.current = null;
+        }
+      }
+    } catch { /* server-fetch best effort */ }
+
     setEvacuation(active);
     if (!active || active.status !== "active") return;
 
@@ -131,6 +177,8 @@ export function EvacuationScreen({
       timestamp: Date.now(),
       data: { evacuationId: active.id, phase: "acknowledged", currentLat, currentLng },
     });
+    // 2026-06-02 Phase C: dual-write to evacuation_acks table.
+    void ackServerEvacuation("acknowledged");
     try {
       logAuditEvent("emergency", "Evacuation acknowledged", {
         detail: `${employeeName} acknowledged evacuation ${active.id} in ${active.zoneName}`,
@@ -162,6 +210,8 @@ export function EvacuationScreen({
         currentLat, currentLng, targetPointId: nearestPoint?.id,
       },
     });
+    // 2026-06-02 Phase C: dual-write to evacuation_acks table.
+    void ackServerEvacuation("evacuating");
     try {
       logAuditEvent("emergency", "Evacuation started", {
         detail: `${employeeName} started evacuating from ${evacuation.zoneName} toward ${nearestPoint?.name || "assembly point"}`,
@@ -198,6 +248,26 @@ export function EvacuationScreen({
         currentLat, currentLng, targetPointId: nearestPoint?.id,
       },
     });
+    // 2026-06-02 Phase C: dual-write to evacuation_acks table.
+    void ackServerEvacuation("arrived");
+  };
+
+  // 2026-06-02 Phase C: helper for the 3 ack callsites. Calls the SECDEF
+  // ack_evacuation RPC if we have a server UUID. Falls back silently if
+  // the evacuation was triggered without a server row (legacy / RPC failure
+  // during trigger). Best-effort — the local emitSyncEvent path always fires.
+  const ackServerEvacuation = async (phase: AckPhase) => {
+    const serverId = serverEvacuationIdRef.current;
+    if (!serverId) return;
+    try {
+      await ackEvacuationRpc({
+        evacuationId: serverId,
+        phase,
+        lat:      currentLat || undefined,
+        lng:      currentLng || undefined,
+        accuracy: undefined,
+      });
+    } catch { /* server ack best-effort */ }
   };
 
   // ── No active evacuation ────────────────────────────────────
