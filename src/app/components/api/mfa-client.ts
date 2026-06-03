@@ -33,14 +33,45 @@ import { safeRpc } from "./safe-rpc";
  * Whitelisted action names match the log_auth_event server contract:
  *   mfa_enrolled | mfa_disabled | mfa_failed
  */
+// 2026-06-03 #8 / R-855 fix: in-memory failure throttle so persistent
+// auth_events RPC failures don't spam the console (one warn per minute
+// per action).
+const _auditWarnThrottle: Map<string, number> = new Map();
+const AUDIT_WARN_THROTTLE_MS = 60_000;
+
 function fireAudit(
   action: "mfa_enrolled" | "mfa_disabled" | "mfa_failed",
   outcome: "success" | "failure",
   reason?: string,
   metadata?: Record<string, unknown>,
 ): void {
-  // Don't await — audit must never block the UX path. Errors are silently
-  // swallowed (the server-side trigger captures most events anyway).
+  // 2026-06-03 #8 / R-855 fix: dual-channel audit so a single-channel
+  // failure does not blind the SOC.
+  //   1. auth_events fast path (specialised SOC table — what we had).
+  //   2. audit_log comprehensive store via audit-log-store (which has
+  //      its own retry queue + localStorage persistence so a transient
+  //      network failure still lands the event durably).
+  // Previously the .catch was a no-op that swallowed ALL failures
+  // silently; now the audit_log channel runs unconditionally AND the
+  // auth_events RPC failure is throttled-warned to telemetry instead
+  // of vanishing.
+
+  // Channel 1: durable audit_log via the store's retry queue.
+  void import("../audit-log-store").then(({ logAuditEvent }) => {
+    try {
+      logAuditEvent("auth", action, {
+        detail: reason ?? (outcome === "success" ? "MFA event" : "MFA failure"),
+        severity: outcome === "success" ? "info" : "warning",
+      });
+    } catch (err) {
+      console.warn("[mfa-client] logAuditEvent threw:", err);
+    }
+  }).catch((err) => {
+    console.warn("[mfa-client] audit-log-store load failed:", err);
+  });
+
+  // Channel 2: auth_events specialised SOC table — now throttled-warned
+  // on failure instead of silently swallowed.
   void safeRpc(
     "log_auth_event",
     {
@@ -51,7 +82,15 @@ function fireAudit(
       p_metadata: metadata ?? {},
     },
     { timeoutMs: 4000 },
-  ).catch(() => { /* swallow — best effort */ });
+  ).catch((err: unknown) => {
+    const now = Date.now();
+    const last = _auditWarnThrottle.get(action) ?? 0;
+    if (now - last > AUDIT_WARN_THROTTLE_MS) {
+      _auditWarnThrottle.set(action, now);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[mfa-client] auth_events RPC failed for " + action + " (audit_log channel still recorded):", msg);
+    }
+  });
 }
 
 export interface MfaEnrollData {
