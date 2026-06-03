@@ -44,7 +44,11 @@ export type Permission =
   | "reports:export";
 
 // ── Role → Permission Matrix ──
-const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+// 2026-06-03 CRIT-AUTH (12th pattern app): exported so dashboard-auth-guard
+// can derive permissions from a server-resolved role WITHOUT trusting
+// localStorage (the previous design stored permissions in localStorage,
+// which let a forged blob show wrong sidebar tabs — UI integrity bug).
+export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: [
     "emergency:create", "emergency:view", "emergency:resolve", "emergency:escalate",
     "emergency:assign", "emergency:broadcast", "emergency:delete",
