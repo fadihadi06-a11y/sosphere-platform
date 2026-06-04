@@ -19,6 +19,16 @@ import { getRealAuditLog } from "./audit-log-store";
 import { getCachedEmergencies } from "./emergencies-service";
 import { getCachedInvestigations } from "./investigations-service";
 import { getCachedEvacuations } from "./evacuation-service";
+// 2026-06-03 23rd pattern app: live admin perf + safety score history
+// for the last 2 PDF placeholders that were fabricated.
+import {
+  getCachedAdminPerformance,
+  getCachedSafetyScoreHistory,
+  scoreTier,
+  loadAdminPerformance,
+  loadSafetyScoreHistory,
+  type SafetyScoreMonthRow,
+} from "./analytics-rollups-service";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
 import { ZONE_NAMES } from "./shared-store";
@@ -825,7 +835,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
     const history = getCachedSafetyScoreHistory();
     if (history.length > 0) {
       checkPageBreak(70);
-      const bars = history.map(h => ({
+      const bars = history.map((h: SafetyScoreMonthRow) => ({
         label: h.month_label,
         value: h.safety_score,
         color: (h.safety_score >= 80 ? [0, 200, 83] : h.safety_score >= 50 ? [255, 214, 10] : [255, 45, 85]) as [number, number, number],
