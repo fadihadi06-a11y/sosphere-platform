@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T11:24:47.480Z",
-  "total_migrations": 161,
-  "manifest_sha256": "adf953e74ef27fd851c4a4a990fce1ccb3c87b10ed9822209dcb49af7e04a113",
+  "generated_at": "2026-06-04T12:14:49.857Z",
+  "total_migrations": 162,
+  "manifest_sha256": "2836b7da4e1a1b69b661830a055977a1f444dd1c656a35e9b4d26ad272441f69",
   "migrations": [
     {
       "version": "20260415",
@@ -1122,6 +1122,13 @@
       "file": "20260603_emergency_resolve_dispatch_secdef.sql",
       "sha256": "941b9c0f34fdeec09e0f68a1e2d3ed069283a68b4294b3fb1429d5ade9c8a842",
       "bytes": 4333
+    },
+    {
+      "version": "20260603",
+      "name": "pricing_config_20th_pattern_app",
+      "file": "20260603_pricing_config_20th_pattern_app.sql",
+      "sha256": "95a21770cddc13391ca0fd69f8c631646d1bcb71be08bbb2247acf9c06f8e116",
+      "bytes": 7000
     },
     {
       "version": "20260603",
