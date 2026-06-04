@@ -32,6 +32,7 @@ import { clearAuditLogCache } from "../audit-log-store";
 import { clearCompanySettingsCache } from "../company-settings-service";
 import { clearEmailSchedulesCache } from "../email-schedules-service";
 import { clearGeneratedReportsCache } from "../generated-reports-service";
+import { clearAnalyticsRollupsCache } from "../analytics-rollups-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -124,6 +125,12 @@ export async function completeLogout(): Promise<void> {
   // 2026-06-03 22nd pattern app: clear cached generated-reports list
   // so a shared device cannot leak the previous tenant's PDF history.
   try { clearGeneratedReportsCache(); } catch { /* best effort */ }
+  // 2026-06-04 fresh-audit #3 fix (18 cache cleanups now): analytics
+  // rollups cache holds admin display names + role + response times
+  // (tenant-scoped). Without clearing, a shared device leaks tenant-A's
+  // admin leaderboard to tenant-B until the next PDF generation
+  // re-fetches. Closes the last cross-tenant leak surface.
+  try { clearAnalyticsRollupsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
