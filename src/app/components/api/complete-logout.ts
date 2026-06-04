@@ -28,6 +28,7 @@ import { clearRisksCache } from "../risk-register-service";
 import { clearJourneysCache } from "../journeys-service";
 import { clearShiftsCache } from "../shifts-service";
 import { clearEmergenciesCache } from "../emergencies-service";
+import { clearAuditLogCache } from "../audit-log-store";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -105,6 +106,10 @@ export async function completeLogout(): Promise<void> {
   // shared device cannot leak the previous tenant's active emergency
   // roster (employee names + zones + GPS) into the next user's session.
   try { clearEmergenciesCache(); } catch { /* best effort */ }
+  // 2026-06-03 #18 (18th pattern app): clear audit-log cache + retry
+  // queue so a shared device cannot leak the previous tenant's PII-rich
+  // audit entries (names, actions, IPs) into the next user's session.
+  try { clearAuditLogCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

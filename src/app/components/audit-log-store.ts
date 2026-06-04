@@ -143,6 +143,39 @@ function saveAuditLog(entries: AuditEntry[]): void {
   localStorage.setItem(AUDIT_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
 }
 
+// ───────── PATTERN APP: server cache + cross-tenant clear (18th) ────
+// 2026-06-03 P1 fix: the AUDIT_KEY (`sosphere_audit_log`) and the retry
+// queue (RETRY_QUEUE_KEY) both persist between user sessions on a
+// shared device. Without explicit clearing, user B logging in saw
+// user A's last 500 audit entries — names, actions, IPs, severity.
+// completeLogout now invokes clearAuditLogCache() to drop both keys
+// atomically, matching the 17 prior pattern apps.
+
+let _serverAuditEntries: AuditEntry[] | null = null;
+
+/** Drop all locally-cached audit state. Called by completeLogout to
+ *  prevent cross-tenant PII leak on shared devices. Idempotent. */
+export function clearAuditLogCache(): void {
+  _serverAuditEntries = null;
+  try {
+    localStorage.removeItem(AUDIT_KEY);
+    localStorage.removeItem(RETRY_QUEUE_KEY);
+  } catch { /* unavailable */ }
+}
+
+/** Hydrate the in-memory cache from a server fetch. Called by the
+ *  audit-log page after fetchAuditLog resolves. */
+export function setCachedAuditEntries(rows: AuditEntry[]): void {
+  _serverAuditEntries = rows.slice();
+}
+
+/** Read cached server entries if hydrated, else fall back to the
+ *  localStorage live UI source. Server cache is reset on logout. */
+export function getCachedAuditEntries(): AuditEntry[] {
+  if (_serverAuditEntries) return _serverAuditEntries.slice();
+  return loadAuditLog();
+}
+
 // ── Get current admin info ────────────────────────────────────────
 // Task #73 fix: admin profile may be AES-GCM encrypted in localStorage.
 // We keep a sync-readable cache populated by initAuditStore() (async).
