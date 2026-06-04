@@ -14,6 +14,11 @@ import QRCode from "qrcode";
 // printed on compliance PDFs must be unpredictable (RPT-x-x).
 import { secureRandomId } from "./utils/secure-random";
 import { getRealAuditLog } from "./audit-log-store";
+// 2026-06-03 C-4 final: wire PDF blocks to live service caches (no more
+// placeholders for sections backed by a service shipped earlier today).
+import { getCachedEmergencies } from "./emergencies-service";
+import { getCachedInvestigations } from "./investigations-service";
+import { getCachedEvacuations } from "./evacuation-service";
 import { PdfPasswordModal, type PdfEncryptionConfig, getEncryptionOptions } from "./pdf-password-modal";
 import { PdfEmailModal } from "./pdf-email-modal";
 import { ZONE_NAMES } from "./shared-store";
@@ -1011,26 +1016,50 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
 
   // ── Remaining simple sections ───────────────────────────────
   const simpleMap: Record<string, { title: string; color: [number,number,number]; content: string }> = {
-    // 2026-06-03 C-4 follow-up: incident_timeline had 5 hardcoded named
-    // incidents (Ahmed Khalil, Mohammed Ali, etc.) with fake dates under
-    // the user's real company name. False document. Real incident timeline
-    // is available via emergencies-service.getCachedEmergencies() (17th
-    // pattern app) — a follow-up can render the company's recent N
-    // emergencies as the timeline content.
-    incident_timeline: { title: "Incident Timeline", color: [255,150,0], content: "Incident timeline draws from the sos_queue table. Open the Emergency Hub for the full chronological view. This PDF section will render the company's most recent incidents once the wire-up to emergencies-service ships (follow-up)." },
-    // 2026-06-03 C-4 follow-up: root_cause had 3 fabricated EMG-### entries
-    // with fake equipment/process narratives under the user's real company
-    // name. False document. Real root causes live in the investigations
-    // table (rootCauses jsonb field, populated through the Incident
-    // Investigation page). A future commit can pull the most recent
-    // investigations + render their root_causes here.
-    root_cause: { title: "Root Cause Analysis", color: [255,45,85], content: "Root-cause analysis is recorded against each investigation in the Incident Investigation module. Open an investigation to view its full root-cause chain.\nThis section will summarise the company's recent root causes once the wire-up to investigations-service ships (follow-up)." },
-    // 2026-06-03 C-4 follow-up: evacuation_report had a fabricated "March 1
-    // drill / 4m 22s / 7/7 points / Zone D stairwell B" entry. The real
-    // evacuations table now exists (10th pattern app, commit 7ca45da) so a
-    // follow-up can pull get_active_evacuations + recent history. For now,
-    // report honestly without fake compliance claims.
-    evacuation_report: { title: "Evacuation Readiness", color: [255,45,85], content: "Evacuation readiness data is recorded against each drill in the Evacuation Management module. Live evacuations and ack counts are tracked by the evacuations table; historical drill summary will populate here once the dedicated read-RPC ships (follow-up)." },
+    // 2026-06-03 C-4 final: wired to emergencies-service cache (17th
+    // pattern app). Renders up to 8 most-recent rows from sos_queue.
+    // Empty company shows an honest "No incidents" message instead of
+    // a fabricated narrative.
+    incident_timeline: { title: "Incident Timeline", color: [255,150,0], content: (() => {
+      const rows = getCachedEmergencies().slice(0, 8);
+      if (rows.length === 0) return "No incidents recorded in this period.";
+      return rows.map(e => {
+        const ts = new Date(e.recorded_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const name = e.employee_name ?? "Worker";
+        const zone = e.zone ?? "Unknown zone";
+        const type = e.type ?? "SOS";
+        const status = e.status === "resolved" ? "Resolved" : e.status === "cancelled" ? "Cancelled" : "Active";
+        return ts + " -- " + name + " (" + zone + "): " + type + ". " + status + ".";
+      }).join("\n");
+    })() },
+    // 2026-06-03 C-4 final: wired to investigations-service cache (13th
+    // pattern app). Renders root causes from up to 5 most-recent
+    // investigations. Empty company gets an honest message — no more
+    // fabricated EMG-### narratives.
+    root_cause: { title: "Root Cause Analysis", color: [255,45,85], content: (() => {
+      const invs = getCachedInvestigations().slice(0, 5);
+      if (invs.length === 0) return "No investigations recorded yet. Open an incident in the Incident Investigation module to record root causes.";
+      return invs.map(inv => {
+        const causes = (inv.rootCauses ?? []).filter(rc => !rc.contributing);
+        const rcText = causes.length > 0
+          ? causes.map(rc => rc.description).join("; ")
+          : "Root cause not yet identified";
+        return inv.id + " (" + inv.title + "): " + rcText + ".";
+      }).join("\n");
+    })() },
+    // 2026-06-03 C-4 final: wired to evacuation-service cache (10th
+    // pattern app). Renders the most-recent active evacuations with
+    // ack + arrived counts. Empty company gets an honest message.
+    evacuation_report: { title: "Evacuation Readiness", color: [255,45,85], content: (() => {
+      const evacs = getCachedEvacuations().slice(0, 5);
+      if (evacs.length === 0) return "No evacuations recorded. Trigger a drill from the Evacuation Management page to populate readiness statistics.";
+      return evacs.map(ev => {
+        const ts = new Date(ev.triggered_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const zone = ev.zone_name ?? "Unknown zone";
+        const reason = ev.reason ?? "unspecified";
+        return ts + " -- " + zone + ": " + reason + ". Acks: " + ev.ack_count + ", Arrived: " + ev.arrived_count + ".";
+      }).join("\n");
+    })() },
     emergency_procedures: { title: "Emergency Procedures", color: [0,200,83], content: "1. SOS Response: Call employee > Dispatch help > Notify admin chain\n2. Evacuation: Trigger alarm > Account for all workers > Report to assembly point\n3. Medical: Call ambulance > Share Medical ID > Secure scene\n4. Security: Silent alert > Lock zone > Contact police\n5. Environmental: Evacuate zone > Call hazmat > Isolate area" },
     // 2026-06-03 C-4 follow-up: weather_alerts table doesn't exist yet.
     // Previous hardcoded "March 2 Sandstorm / March 7 Extreme heat 48C" was a
