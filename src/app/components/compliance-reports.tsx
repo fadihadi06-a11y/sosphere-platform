@@ -380,6 +380,14 @@ interface PdfReportData {
 }
 
 // ── Auto-Schedule config ──────────────────────────────────────
+// 2026-06-03 (C-4 cleanup): DEFAULT_SCHEDULES is the cold-start seed
+// shown to a brand-new admin who hasn't created any schedules yet.
+// Live schedules now come from email-schedules-service (21st pattern
+// app, commit 2b13ae4) which reads the email_schedules table via
+// SECDEF get_email_schedules. The page can hydrate this state at
+// mount by calling loadEmailSchedules() and mapping the row shape.
+// The toggleSchedule handler still mutates local state for instant
+// UX feedback; durable persistence flows through saveEmailSchedule.
 
 const DEFAULT_SCHEDULES = [
   { id: "sched-1", name: "Weekly Safety Report", frequency: "Every Monday 8:00 AM", active: true, reportTypes: ["safety_kpi", "checkin_compliance"] },
@@ -494,7 +502,11 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // for an empty tenant. Pre-fix, an empty company generated a PDF
   // listing fabricated incidents under their REAL company name —
   // false-document liability. Mocks remain available only in DEV.
-  const useMockFallback = !!import.meta.env.DEV;
+  // 2026-06-03 (C-4 cleanup): hard-coded false. The DEV path is dead
+  // now that compliance-data-service consistently returns
+  // properly-shaped empty arrays / EMPTY_* stubs on missing tenants.
+  // V8 dead-code-eliminates the MOCK_* fallback branches at build.
+  const useMockFallback = false;
   // P0-doctrine-completion (2026-05-25): fallbacks must be PROPERLY-SHAPED empty
   // stubs (not bare `[]`) so the rest of the function can access .tableRows /
   // .chartBars / .incidentChart / .workersChart without union narrowing failures.
@@ -1570,16 +1582,13 @@ interface RecentReport {
   autoScheduled: boolean;
 }
 
-/* SUPABASE_MIGRATION_POINT: compliance_reports
-   SELECT * FROM generated_reports
-   WHERE company_id = :id ORDER BY created_at DESC */
-const RECENT_REPORTS: RecentReport[] = [
-  { id: "RPT-001", title: "Monthly Safety Report — February 2026", type: "monthly", period: "Feb 1-28, 2026", generatedAt: new Date(Date.now() - 86400000), status: "ready", pageCount: 24, size: "2.4 MB", sections: ["KPI Dashboard", "Check-in Compliance", "Incident Count"], autoScheduled: true },
-  { id: "RPT-002", title: "Incident Report — Zone A Fall Detection", type: "incident", period: "March 8, 2026", generatedAt: new Date(Date.now() - 172800000), status: "ready", pageCount: 8, size: "1.1 MB", sections: ["Incident Timeline", "Response Actions", "Photos & Evidence"], autoScheduled: false },
-  { id: "RPT-003", title: "Q1 2026 Safety Audit Report", type: "quarterly", period: "Jan 1 - Mar 31, 2026", generatedAt: new Date(Date.now() - 7200000), status: "ready", pageCount: 36, size: "4.8 MB", sections: ["Full Audit"], autoScheduled: true },
-  { id: "RPT-004", title: "Insurance Claim — Incident #EMG-0A", type: "custom", period: "March 5, 2026", generatedAt: new Date(Date.now() - 432000000), status: "ready", pageCount: 12, size: "3.2 MB", sections: ["Incident Details", "Medical Reports", "Response Timeline"], autoScheduled: false },
-  { id: "RPT-005", title: "Admin Performance Report — March 2026", type: "performance", period: "Mar 1-11, 2026", generatedAt: new Date(Date.now() - 3600000), status: "ready", pageCount: 6, size: "1.8 MB", sections: ["Response Scores", "Tier Rankings", "Drill Completion", "AI Insights"], autoScheduled: true },
-];
+// 2026-06-03 (C-4 cleanup): RECENT_REPORTS used to be 5 hardcoded
+// fixture rows that rendered under the user's real company name —
+// false-document liability class. The proper fix needs a
+// generated_reports table + insert-on-PDF-save hook + new service.
+// Until that lands, the list is empty; the UI already handles the
+// empty case via an "No reports yet" placeholder.
+const RECENT_REPORTS: RecentReport[] = [];
 
 const TYPE_CONFIG: Record<string, { color: string; label: string }> = {
   incident: { color: "#FF9500", label: "Incident" },
