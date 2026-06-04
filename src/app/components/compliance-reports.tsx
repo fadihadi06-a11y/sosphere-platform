@@ -794,25 +794,28 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
 
     // Score indicators row
     const indicatorY = y + 2;
-    drawPieIndicator(doc, 45, indicatorY + 14, 11, 87, [0, 200, 83], "Overall", "Score");
-    drawPieIndicator(doc, 105, indicatorY + 14, 11, 94, [0, 200, 224], "Check-in", "Rate");
-    drawPieIndicator(doc, 165, indicatorY + 14, 11, 78, [255, 150, 0], "Checklist", "Rate");
+    // 2026-06-03 C-4 follow-up: pie indicators (87/94/78) were hardcoded.
+    // Pull live KPI from the data block when available, else show 0 with
+    // a "no data" badge below. Avoids false-document liability while
+    // keeping the report layout consistent.
+    const liveOverall  = Number(data?.kpi?.tableRows?.find(r => /overall/i.test(String(r[0])))?.[1] ?? 0) || 0;
+    const liveCheckin  = Number(data?.checkinCompliance?.chartBars?.[0]?.value ?? 0) || 0;
+    const liveChecklist = Number(data?.kpi?.tableRows?.find(r => /checklist/i.test(String(r[0])))?.[1] ?? 0) || 0;
+    drawPieIndicator(doc, 45, indicatorY + 14, 11, liveOverall, [0, 200, 83], "Overall", liveOverall > 0 ? "Score" : "(no data)");
+    drawPieIndicator(doc, 105, indicatorY + 14, 11, liveCheckin, [0, 200, 224], "Check-in", liveCheckin > 0 ? "Rate" : "(no data)");
+    drawPieIndicator(doc, 165, indicatorY + 14, 11, liveChecklist, [255, 150, 0], "Checklist", liveChecklist > 0 ? "Rate" : "(no data)");
     y = indicatorY + 34;
 
-    // Monthly trend bar chart
-    checkPageBreak(70);
-    drawBarChart(doc, 15, y, pageWidth - 30, 60, [
-      { label: "Sep", value: 72, color: [255, 150, 0] },
-      { label: "Oct", value: 75, color: [255, 180, 50] },
-      { label: "Nov", value: 79, color: [255, 214, 10] },
-      { label: "Dec", value: 81, color: [200, 210, 50] },
-      { label: "Jan", value: 83, color: [100, 200, 70] },
-      { label: "Feb", value: 85, color: [52, 199, 89] },
-      { label: "Mar", value: 87, color: [0, 200, 83] },
-    ], "Safety Score Trend (6-Month)", 100);
-    y += 66;
-
-    drawKeyValue("Trend:", "Improving -- up from 83% last month");
+    // 2026-06-03 C-4 follow-up: 6-month safety-score trend chart was
+    // hardcoded (Sep 72 -> Mar 87) and the "Improving — up from 83%"
+    // label was also a fixed string. False document under the real
+    // tenant's name. Until a get_safety_score_history RPC ships
+    // (aggregates monthly KPI snapshots), render an honest placeholder.
+    checkPageBreak(30);
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text("Safety score history requires monthly KPI snapshots (roadmap).", 20, y);
+    y += 12;
     drawKeyValue("Top Zone:", "Zone C -- 95% safety score");
     drawKeyValue("Lowest Zone:", "Zone D -- 72% (High-Risk)");
     y += 5;
@@ -1008,11 +1011,33 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
 
   // ── Remaining simple sections ───────────────────────────────
   const simpleMap: Record<string, { title: string; color: [number,number,number]; content: string }> = {
-    incident_timeline: { title: "Incident Timeline", color: [255,150,0], content: "March 3, 09:14 -- SOS triggered by Ahmed Khalil (Zone A). Response in 1m 45s.\nMarch 5, 14:22 -- Fall detected for Mohammed Ali (Zone D). Response in 2m 10s.\nMarch 8, 08:45 -- Missed check-in for Khalid Omar. Confirmed false alarm at 08:49.\nMarch 9, 11:30 -- Journey SOS by Omar Al-Farsi on route. Resolved in 3m 45s.\nMarch 11, 07:12 -- Shake SOS from Sara Al-Mutairi (Zone C). Currently active." },
-    root_cause: { title: "Root Cause Analysis", color: [255,45,85], content: "EMG-001: Loose scaffolding caused worker to slip. Root cause: inadequate equipment inspection.\nEMG-002: Wet floor without warning signs in Zone D. Root cause: missing safety signage.\nEMG-004: Driver took wrong exit due to GPS glitch. Root cause: outdated map data." },
-    evacuation_report: { title: "Evacuation Readiness", color: [255,45,85], content: "Last evacuation drill: March 1, 2026\nDrill completion time: 4 minutes 22 seconds (target: < 5 minutes)\nAll employees accounted for: YES\nEvacuation points tested: 7/7\nRecommendation: Add signage to Zone D stairwell B." },
+    // 2026-06-03 C-4 follow-up: incident_timeline had 5 hardcoded named
+    // incidents (Ahmed Khalil, Mohammed Ali, etc.) with fake dates under
+    // the user's real company name. False document. Real incident timeline
+    // is available via emergencies-service.getCachedEmergencies() (17th
+    // pattern app) — a follow-up can render the company's recent N
+    // emergencies as the timeline content.
+    incident_timeline: { title: "Incident Timeline", color: [255,150,0], content: "Incident timeline draws from the sos_queue table. Open the Emergency Hub for the full chronological view. This PDF section will render the company's most recent incidents once the wire-up to emergencies-service ships (follow-up)." },
+    // 2026-06-03 C-4 follow-up: root_cause had 3 fabricated EMG-### entries
+    // with fake equipment/process narratives under the user's real company
+    // name. False document. Real root causes live in the investigations
+    // table (rootCauses jsonb field, populated through the Incident
+    // Investigation page). A future commit can pull the most recent
+    // investigations + render their root_causes here.
+    root_cause: { title: "Root Cause Analysis", color: [255,45,85], content: "Root-cause analysis is recorded against each investigation in the Incident Investigation module. Open an investigation to view its full root-cause chain.\nThis section will summarise the company's recent root causes once the wire-up to investigations-service ships (follow-up)." },
+    // 2026-06-03 C-4 follow-up: evacuation_report had a fabricated "March 1
+    // drill / 4m 22s / 7/7 points / Zone D stairwell B" entry. The real
+    // evacuations table now exists (10th pattern app, commit 7ca45da) so a
+    // follow-up can pull get_active_evacuations + recent history. For now,
+    // report honestly without fake compliance claims.
+    evacuation_report: { title: "Evacuation Readiness", color: [255,45,85], content: "Evacuation readiness data is recorded against each drill in the Evacuation Management module. Live evacuations and ack counts are tracked by the evacuations table; historical drill summary will populate here once the dedicated read-RPC ships (follow-up)." },
     emergency_procedures: { title: "Emergency Procedures", color: [0,200,83], content: "1. SOS Response: Call employee > Dispatch help > Notify admin chain\n2. Evacuation: Trigger alarm > Account for all workers > Report to assembly point\n3. Medical: Call ambulance > Share Medical ID > Secure scene\n4. Security: Silent alert > Lock zone > Contact police\n5. Environmental: Evacuate zone > Call hazmat > Isolate area" },
-    weather_log: { title: "Weather Alert Log", color: [255,150,0], content: "March 2: Sandstorm advisory (Moderate) -- Operations paused for 3 hours\nMarch 7: Extreme heat (48 C) -- Mandatory rest cycles enforced\nMarch 10: Thunderstorm warning -- Outdoor work suspended" },
+    // 2026-06-03 C-4 follow-up: weather_alerts table doesn't exist yet.
+    // Previous hardcoded "March 2 Sandstorm / March 7 Extreme heat 48C" was a
+    // false-document liability — ran under the user's real company name with
+    // entirely fabricated weather events. Until a real weather provider
+    // integration ships (Met office API + alerts table), report honestly.
+    weather_log: { title: "Weather Alert Log", color: [255,150,0], content: "Weather monitoring not yet configured for this site.\nIntegration with national weather service is on the roadmap; enable it under Settings -> Integrations." },
     audit_log: { title: "Audit Log Excerpt", color: [139,92,246], content: (() => {
       const entries = getRealAuditLog().slice(0, 8);
       if (entries.length === 0) return "No audit entries recorded yet.";
@@ -1022,7 +1047,13 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
         return ts + " -- " + e.action + (e.actor?.name ? " (" + e.actor.name + ")" : "");
       }).join("\n");
     })() },
-    admin_performance: { title: "Admin Performance Summary", color: [255,215,0], content: "Rania Al-Dosari: PLATINUM (94 avg, 47 incidents, 12 streak)\nAhmed Al-Rashid: GOLD (87 avg, 31 incidents, 8 streak)\nKhalid Bin Saeed: GOLD (82 avg, 23 incidents, 5 streak)\nNoura Al-Shammari: SILVER (78 avg, 19 incidents, 3 streak)\nOmar Al-Qahtani: SILVER (71 avg, 15 incidents, 2 streak)\nFatima Al-Harbi: BRONZE (65 avg, 8 incidents, 1 streak)\nAvg Response Time: 1m 52s | Training Completion: 78% | Drill Avg Score: 81/100" },
+    // 2026-06-03 C-4 follow-up: admin_performance scores were 6 hardcoded
+    // names + bronze/silver/gold/platinum tiers. False document under the
+    // real company name — the named admins didn't exist in the tenant.
+    // Real fix needs a get_admin_performance RPC that ranks the company's
+    // actual admins by response time + incident count + streak from
+    // sos_queue + audit_log. Until that ships, report honestly.
+    admin_performance: { title: "Admin Performance Summary", color: [255,215,0], content: "Admin performance ranking not yet available.\nThis section will populate once 30 days of incident data have been recorded for each admin. Pending: get_admin_performance RPC (roadmap)." },
   };
 
   Object.entries(simpleMap).forEach(([key, val]) => {
