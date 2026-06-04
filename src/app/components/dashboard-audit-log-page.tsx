@@ -4,7 +4,17 @@
 // Filters: Action Type · Actor Level · Date Range · Zone
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useMemo, useEffect } from "react";
-import { getRealAuditLog, onAuditEvent, type AuditEntry as RealAuditEntry } from "./audit-log-store";
+import {
+  getRealAuditLog,
+  onAuditEvent,
+  type AuditEntry as RealAuditEntry,
+  // 2026-06-03 consolidation: share the canonical AuditCategory + AuditLevel
+  // unions instead of redeclaring them. Eliminates the drift class of bug
+  // that caused the recent CI failure when "auth" was added to one copy
+  // but not the other.
+  type AuditCategory,
+  type AuditLevel,
+} from "./audit-log-store";
 import { fetchAuditLog } from "./api/data-layer";
 // PR (E) 2026-05-26 — global Math.random sweep.
 import { secureRandomId } from "./utils/secure-random";
@@ -25,30 +35,17 @@ import {
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────
-type AuditLevel = "owner" | "main_admin" | "zone_admin" | "worker" | "system";
-type AuditCategory =
-  | "permission_change"
-  | "role_change"
-  | "zone_assignment"
-  | "user_added"
-  | "user_removed"
-  | "user_suspended"
-  | "2fa_event"
-  | "login"
-  | "logout"
-  | "emergency"
-  | "settings"
-  | "csv_import"
-  | "file_access"
-  | "data_modify"
-  | "data_delete"
-  | "report_export"
-  | "investigation"
-  // 2026-06-03: must mirror audit-log-store's AuditCategory union.
-  // Both copies will be consolidated in a follow-up — for now any
-  // new category MUST be added in BOTH places. "auth" was added to
-  // the store's union for the MFA dual-channel audit (commit 1f22d9b).
-  | "auth";
+// 2026-06-03 consolidation: AuditCategory and AuditLevel are now
+// imported from audit-log-store (the canonical source). The local
+// AuditEntry below is intentionally kept because it diverges from
+// the store in three ways the page depends on:
+//   * `detail: string` is REQUIRED here (used in many `.detail`
+//     accesses without `?? ""`); store treats it as optional.
+//   * `ip` is the field name here; store uses `ipAddress`.
+//   * `actor` carries an optional `zone` field that the store
+//     doesn't track (zone-admin scoping for the audit-log filter).
+// Future refactor: rename `ip` -> `ipAddress` and align defaults to
+// drop the local interface entirely.
 
 interface AuditEntry {
   id: string;
