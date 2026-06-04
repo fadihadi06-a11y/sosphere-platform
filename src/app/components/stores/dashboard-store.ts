@@ -143,16 +143,7 @@ export interface DashboardState {
   sessionTimeout: string;
 
   // â”€â”€ Free Trial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  /*
-    SUPABASE_MIGRATION_POINT: trial_state
-    Replace with:
-    const { data } = await supabase
-      .from('companies')
-      .select('trial_ends_at')
-      .eq('id', companyId)
-      .single()
-    Then compute daysLeft/isActive from data.trial_ends_at
-  */
+
   trialEndsAt: string | null;     // ISO date string
   trialDaysLeft: number;          // calculated from trialEndsAt
   isTrialActive: boolean;         // true while trial is running (daysLeft > 0)

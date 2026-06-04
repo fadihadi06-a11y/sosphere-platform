@@ -38,10 +38,6 @@ export interface EmployeeForRiskScoring {
   openInvestigations?: number;   // count of open investigations
 }
 
-/* SUPABASE_MIGRATION_POINT: employee_risk_scores
-   INSERT INTO employee_risk_scores (employee_id, score, level, factors, calculated_at)
-   VALUES (:employeeId, :score, :level, :factors, NOW())
-   ON CONFLICT (employee_id) DO UPDATE SET score=EXCLUDED.score */
 export function calculateRiskScore(employee: EmployeeForRiskScoring): EmployeeRiskScore {
   const factors: RiskFactor[] = [];
   let totalScore = 0;

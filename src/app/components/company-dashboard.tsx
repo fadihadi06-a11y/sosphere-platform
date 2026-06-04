@@ -2259,7 +2259,6 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
 
       {/* Smart Response floating button removed — redundant with Guide Me in sidebar */}
 
-
       {/* ═══ UNIFIED EMERGENCY RESPONSE ENGINE ═══
            Replaces 3 separate overlays (GuidedResponse, IRE, AICoAdmin)
            with one smart router that auto-selects the right engine.

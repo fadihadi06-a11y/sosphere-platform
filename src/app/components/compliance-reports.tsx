@@ -257,7 +257,6 @@ import { hapticSuccess } from "./haptic-feedback";
 // When migrating, replace these with fetched data and pass via the `data` param.
 // ═══════════════════════════════════════════════════════════════
 
-/* SUPABASE_MIGRATION_POINT: kpi_data — FROM analytics_summary */
 const MOCK_KPI_DATA = {
   tableRows: [
     ["Overall Safety Score", "87%", ">= 85%", "[OK] ON TARGET"],
@@ -279,7 +278,6 @@ const MOCK_KPI_DATA = {
   ],
 };
 
-/* SUPABASE_MIGRATION_POINT: incident_table — FROM incidents JOIN zones */
 const MOCK_INCIDENT_TABLE = [
   ["EMG-001", "Mar 3", "SOS Button", "Ahmed Khalil", "Zone A", "Critical", "Resolved", "1m 45s"],
   ["EMG-002", "Mar 5", "Fall Detected", "Mohammed Ali", "Zone D", "High", "Resolved", "2m 10s"],
@@ -288,7 +286,6 @@ const MOCK_INCIDENT_TABLE = [
   ["EMG-005", "Mar 11", "Shake SOS", "Sara Al-Mutairi", "Zone C", "High", "Active", "--"],
 ];
 
-/* SUPABASE_MIGRATION_POINT: corrective_actions — FROM capa_actions */
 const MOCK_CORRECTIVE_ACTIONS = [
   ["EMG-001", "Zone A risk level raised to High", "Zone Admin", "Mar 3", "Complete"],
   ["EMG-001", "Safety briefing scheduled for Zone A team", "Main Admin", "Mar 4", "Complete"],
@@ -297,7 +294,6 @@ const MOCK_CORRECTIVE_ACTIONS = [
   ["EMG-004", "Journey check-in frequency increased to every 30min", "Main Admin", "Mar 10", "Complete"],
 ];
 
-/* SUPABASE_MIGRATION_POINT: zone_risk — FROM risk_register */
 const MOCK_ZONE_RISK = {
   tableRows: [
     [ZONE_NAMES.A, "High", "8", "2", "Mar 3", "2", "Ahmed (Lead)"],
@@ -322,7 +318,6 @@ const MOCK_ZONE_RISK = {
   ],
 };
 
-/* SUPABASE_MIGRATION_POINT: employee_roster — FROM employees */
 const MOCK_EMPLOYEE_ROSTER = [
   ["Sara Al-Mutairi", "HSE Coordinator", "Zone C", "98%", "100%", "Lina Chen", "[OK] Complete"],
   ["Omar Al-Farsi", "Site Manager", "Zone A", "95%", "100%", "Ahmed Khalil", "[OK] Complete"],
@@ -334,7 +329,6 @@ const MOCK_EMPLOYEE_ROSTER = [
   ["Ali Mansour", "Welder", "Zone A", "75%", "82%", "Khalid Omar", "[!] Incomplete"],
 ];
 
-/* SUPABASE_MIGRATION_POINT: checkin_compliance — FROM checkin_logs */
 const MOCK_CHECKIN_COMPLIANCE = {
   tableRows: [
     ["Sara Al-Mutairi", "22", "22", "0", "0", "100%"],
@@ -358,7 +352,6 @@ const MOCK_CHECKIN_COMPLIANCE = {
   ],
 };
 
-/* SUPABASE_MIGRATION_POINT: journey_log — FROM journey_management */
 const MOCK_JOURNEY_LOG = [
   ["JRN-001", "Ahmed Khalil", "HQ Gate A", "Remote Station Delta", "Pickup", "Active", "42/78 km", "0"],
   ["JRN-002", "Omar Al-Farsi", "Zone C Lab", "Warehouse 7", "Van", "Delayed", "15/22 km", "0"],
@@ -366,7 +359,6 @@ const MOCK_JOURNEY_LOG = [
   ["JRN-004", "Mohammed Ali", "Zone D Gate", "Repair Site", "Service Truck", "Deviated", "8/45 km", "1"],
 ];
 
-/* SUPABASE_MIGRATION_POINT: playbook_data — FROM emergency_playbooks */
 const MOCK_PLAYBOOK_DATA = [
   ["SOS Button Response", "SOS Button", "8", "Yes", "12", "1m 45s"],
   ["Fall Detection Response", "Fall Detected", "6", "Yes", "3", "2m 10s"],
@@ -388,7 +380,7 @@ interface PdfReportData {
 }
 
 // ── Auto-Schedule config ──────────────────────────────────────
-/* SUPABASE_MIGRATION_POINT: auto_schedules — FROM report_schedules WHERE company_id = :id */
+
 const DEFAULT_SCHEDULES = [
   { id: "sched-1", name: "Weekly Safety Report", frequency: "Every Monday 8:00 AM", active: true, reportTypes: ["safety_kpi", "checkin_compliance"] },
   { id: "sched-2", name: "Monthly Compliance Report", frequency: "1st of every month", active: true, reportTypes: ["full_compliance"] },
@@ -491,7 +483,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 // PDF GENERATOR ENGINE
 // ═══════════════════════════════════════════════════════════════
 
-// SUPABASE_MIGRATION_POINT: generatePDF — ALL table data below is hardcoded inline.
 // When migrating, this function must accept a `data: ComplianceReportData` param
 // containing: kpiData, incidentTable, correctiveActions, zoneRisks, employeeRoster,
 // checkinCompliance, journeyLog, playbookData — all fetched from Supabase.
@@ -757,7 +748,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // ── KPI Dashboard ──────────────────────────────────────────
   if (selectedSections.includes("kpi_dashboard")) {
     drawSectionHeader("Key Performance Indicators", [0, 200, 83]);
-    // SUPABASE_MIGRATION_POINT: kpi_data — FROM analytics_summary
+
     addTable(doc, {
       startY: y,
       head: [["Metric", "Current", "Target", "Status"]],
@@ -851,7 +842,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("incident_summary")) {
     checkPageBreak(30);
     drawSectionHeader("Incident Summary", [255, 45, 85]);
-    // SUPABASE_MIGRATION_POINT: incident_table — FROM incidents JOIN zones
+
     addTable(doc, {
       startY: y,
       head: [["ID", "Date", "Type", "Employee", "Zone", "Severity", "Status", "Response Time"]],
@@ -884,7 +875,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("corrective_actions")) {
     checkPageBreak(30);
     drawSectionHeader("Corrective Actions Taken", [0, 200, 83]);
-    // SUPABASE_MIGRATION_POINT: corrective_actions — FROM capa_actions
+
     addTable(doc, {
       startY: y,
       head: [["Incident", "Action Taken", "Responsible", "Date", "Status"]],
@@ -901,7 +892,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("zone_risk_matrix")) {
     checkPageBreak(30);
     drawSectionHeader("Zone Risk Assessment", [255, 150, 0]);
-    // SUPABASE_MIGRATION_POINT: zone_risk — FROM risk_register
+
     addTable(doc, {
       startY: y,
       head: [["Zone", "Risk Level", "Workers", "Incidents (MTD)", "Last Incident", "Evacuation Points", "Zone Admin"]],
@@ -926,7 +917,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("employee_list")) {
     checkPageBreak(30);
     drawSectionHeader("Employee Safety Roster", [0, 200, 224]);
-    // SUPABASE_MIGRATION_POINT: employee_roster — FROM employees
+
     addTable(doc, {
       startY: y,
       head: [["Name", "Role", "Zone", "Safety Score", "Check-in Rate", "Buddy Pair", "Medical ID"]],
@@ -951,7 +942,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("checkin_compliance")) {
     checkPageBreak(25);
     drawSectionHeader("Check-in Compliance", [255, 150, 0]);
-    // SUPABASE_MIGRATION_POINT: checkin_compliance — FROM checkin_logs
+
     addTable(doc, {
       startY: y,
       head: [["Employee", "Total Check-ins", "On Time", "Late", "Missed", "Compliance %"]],
@@ -973,7 +964,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("journey_log")) {
     checkPageBreak(25);
     drawSectionHeader("Journey Management Log", [139, 92, 246]);
-    // SUPABASE_MIGRATION_POINT: journey_log — FROM journey_management
+
     addTable(doc, {
       startY: y,
       head: [["Journey ID", "Employee", "Origin", "Destination", "Vehicle", "Status", "Distance", "Incidents"]],
@@ -990,7 +981,7 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   if (selectedSections.includes("playbook_summary")) {
     checkPageBreak(25);
     drawSectionHeader("Response Playbook Summary", [139, 92, 246]);
-    // SUPABASE_MIGRATION_POINT: playbook_data — FROM emergency_playbooks
+
     addTable(doc, {
       startY: y,
       head: [["Playbook", "Trigger Type", "Steps", "Auto-Trigger", "Used Count", "Avg Time"]],
@@ -1844,7 +1835,7 @@ export function ComplianceReportsPage({ t, webMode, companyName: companyNameProp
         <div className="space-y-3">
           <div className="rounded-xl p-4" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.06)" }}>
             <p className="text-white mb-3" style={{ fontSize: 14, fontWeight: 700 }}>Auto-Scheduled Reports</p>
-            {/* SUPABASE_MIGRATION_POINT: auto_schedules — FROM report_schedules WHERE company_id = :id */}
+
             <div className="space-y-2">
               {schedules.map(schedule => (
                 <div key={schedule.id} className="flex items-center gap-3 p-3 rounded-xl"

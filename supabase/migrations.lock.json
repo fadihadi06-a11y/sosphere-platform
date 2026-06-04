@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T12:14:49.857Z",
-  "total_migrations": 162,
-  "manifest_sha256": "2836b7da4e1a1b69b661830a055977a1f444dd1c656a35e9b4d26ad272441f69",
+  "generated_at": "2026-06-04T12:24:18.285Z",
+  "total_migrations": 163,
+  "manifest_sha256": "302f24634ba254cbf69ef006094964629cbeb4fd4e8132e3a6535d9458a1e3fe",
   "migrations": [
     {
       "version": "20260415",
@@ -1108,6 +1108,13 @@
       "file": "20260603_company_settings_19th_pattern_app.sql",
       "sha256": "870f34a8ee54e14513e41d77698109e9d7b22cc864c2a519084d507960e43d2d",
       "bytes": 4654
+    },
+    {
+      "version": "20260603",
+      "name": "email_schedules_21st_pattern_app",
+      "file": "20260603_email_schedules_21st_pattern_app.sql",
+      "sha256": "20d97b1f72c4681de7c4de9f3c10a2c88b67f84eacafa2c17c71377595e4ec0d",
+      "bytes": 6838
     },
     {
       "version": "20260603",

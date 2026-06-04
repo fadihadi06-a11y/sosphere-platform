@@ -33,9 +33,7 @@ interface AnalyticsPageProps {
 const DEV_DEMO = (import.meta as any).env?.DEV === true;
 
 // ── Mock Data (DEV fallback only) ─────���───────────────────────────────────────────
-/* SUPABASE_MIGRATION_POINT: analytics_monthly_incidents
-   SELECT month, sos_count, hazard_count, geofence_count, checkin_count
-   FROM analytics_data WHERE company_id = :id AND time_range = :timeRange */
+
 const MONTHLY_INCIDENTS = [
   { month: "Sep", sos: 12, hazard: 8, geofence: 5, checkin: 15 },
   { month: "Oct", sos: 9, hazard: 11, geofence: 3, checkin: 12 },
@@ -46,9 +44,6 @@ const MONTHLY_INCIDENTS = [
   { month: "Mar", sos: 2, hazard: 3, geofence: 1, checkin: 4 },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_response_times
-   SELECT month, avg_response_sec, target_response_sec
-   FROM analytics_data WHERE company_id = :id AND time_range = :timeRange */
 const RESPONSE_TIMES = [
   { month: "Sep", avg: 180, target: 120 },
   { month: "Oct", avg: 156, target: 120 },
@@ -59,9 +54,6 @@ const RESPONSE_TIMES = [
   { month: "Mar", avg: 87, target: 120 },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_safety_trend
-   SELECT week, safety_score FROM analytics_data
-   WHERE company_id = :id AND time_range = :timeRange */
 const SAFETY_TREND = [
   { week: "W1", score: 78 },
   { week: "W2", score: 81 },
@@ -87,10 +79,6 @@ const INCIDENT_BY_TYPE = [
   { name: "Hazard Report", value: 22, color: "#7B5EFF" },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_zone_safety
-   SELECT z.name, z.safety_score, count(i.id) as incidents, z.compliance_score
-   FROM analytics_data z LEFT JOIN incidents i ON z.id = i.zone_id
-   WHERE z.company_id = :id AND time_range = :timeRange GROUP BY z.id */
 const ZONE_SAFETY = [
   { zone: ZONE_NAMES.A, safety: 85, incidents: 12, compliance: 92 },
   { zone: ZONE_NAMES.B, safety: 94, incidents: 4, compliance: 98 },
@@ -99,9 +87,6 @@ const ZONE_SAFETY = [
   { zone: ZONE_NAMES.E, safety: 96, incidents: 2, compliance: 99 },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_radar_data
-   SELECT metric_name, score FROM analytics_data
-   WHERE company_id = :id AND time_range = :timeRange */
 const RADAR_DATA = [
   { metric: "Response Time", A: 92, fullMark: 100 },
   { metric: "Check-in Rate", A: 88, fullMark: 100 },
@@ -111,10 +96,6 @@ const RADAR_DATA = [
   { metric: "Drill Participation", A: 95, fullMark: 100 },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_dept_performance
-   SELECT d.name, d.safety_score, count(i.id) as incidents
-   FROM analytics_data d LEFT JOIN incidents i ON d.id = i.dept_id
-   WHERE d.company_id = :id AND time_range = :timeRange GROUP BY d.id */
 const DEPT_PERFORMANCE = [
   { dept: "Engineering", score: 92, incidents: 3, color: "#00C8E0" },
   { dept: "Safety", score: 98, incidents: 1, color: "#00C853" },
@@ -125,9 +106,6 @@ const DEPT_PERFORMANCE = [
   { dept: "Medical", score: 96, incidents: 1, color: "#00C853" },
 ];
 
-/* SUPABASE_MIGRATION_POINT: analytics_kpi_summary
-   SELECT metric, value, delta_pct, direction FROM analytics_data
-   WHERE company_id = :id AND period = :timeRange */
 const KPI_SUMMARY = [
   { label: "Total Incidents", value: "127", delta: "-23%", up: false, color: "#00C853", icon: AlertTriangle, desc: "vs last quarter" },
   { label: "Avg Response Time", value: "87s", delta: "-52%", up: false, color: "#00C8E0", icon: Clock, desc: "vs 180s target" },
@@ -681,7 +659,6 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
       .filter(w => w.sent > 0 || w.read > 0);
   })();
 
-  // SUPABASE_MIGRATION_POINT: cost_comparison — static config, no migration needed
   const COST_COMPARISON = [
     { method: "SMS (Twilio)", cost: 1440, color: "#FF2D55" },
     { method: "WhatsApp API", cost: 960, color: "#FF9500" },

@@ -76,7 +76,7 @@ const getWeekDates = (offset: number) => {
 };
 
 // ── Initial mock shifts ────────────────────────────────────────
-// SUPABASE_MIGRATION_POINT: shifts → supabase.from('shifts').select('*').eq('company_id', companyId)
+
 const DEV_DEMO = (import.meta as any).env?.DEV === true;
 const INITIAL_SHIFTS: Shift[] = [
   { id: "S1", employeeId: "EMP-001", day: 0, type: "morning",   startHour: 6,  endHour: 14, zone: "Zone A" },

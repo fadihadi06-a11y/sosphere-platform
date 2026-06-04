@@ -410,11 +410,11 @@ function generateErrId(): string {
 }
 
 // ── Session-based SOS rate history (not persisted across restarts) ──
-// SUPABASE_MIGRATION_POINT: sos_rate_history → supabase.from('sos_events').select().eq('employee_id', userId).gte('created_at', oneHourAgo)
+
 let sosRateHistory: number[] = [];
 
 // ── Battery critical emit throttle (5min between emits to prevent Supabase/Twilio spam) ──
-// SUPABASE_MIGRATION_POINT: battery_critical_throttle → server-side debounce on notification triggers
+
 let lastBatteryCriticalEmit = 0;
 const BATTERY_CRITICAL_COOLDOWN_MS = 300000; // 5 minutes
 
@@ -1320,7 +1320,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const t = useT(lang);
   // ══════════════════════════════════════════════════════════════
   // SOS is never blocked by trial status — safety first
-  // SUPABASE_MIGRATION_POINT: this guarantee must be
+
   // enforced server-side via RLS — SOS table always writable
   // ══════════════════════════════════════════════════════════════
 
@@ -1344,7 +1344,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
   // Check rate limit on mount — session-based (module-level array, not localStorage)
   useEffect(() => {
-    // [SUPABASE_READY] sos_rate_limit: migrate to supabase.from('sos_events').select().eq('employee_id', userId).gte('created_at', oneHourAgo)
+
     const oneHourAgo = Date.now() - 3600000;
     // Prune expired entries
     sosRateHistory = sosRateHistory.filter(t => t > oneHourAgo);
@@ -2196,7 +2196,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
     // ── GAP FIX: Emit SOS_CANCELLED so dashboard resolves the emergency ──
     // This allows the cluster engine to re-evaluate when a worker cancels SOS
-    // [SUPABASE_READY] sos_cancel: update sos_events set status='cancelled' + realtime
+
     emitSyncEvent({
       type: "SOS_CANCELLED",
       employeeId: userId,
@@ -2559,7 +2559,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             }
             // ── CRITICAL FIX 1: Real user data in SOS event ──
             // FIX AUDIT-2.2: Include errIdRef so dashboard can match cancel→create by ID
-            // [SUPABASE_READY] sos_trigger: insert into sos_events + realtime broadcast
+
             // Read device signal synchronously; battery is async so fire-and-forget
             const signalType = typeof navigator !== "undefined" && "connection" in navigator
               ? (navigator as any).connection?.effectiveType ?? "unknown"
@@ -2971,7 +2971,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     addEvent({ type: "recording_end", title: "Incident documented", detail: `${docPhotos.length} photo(s) · ${docComment ? "Comment added" : "No comment"}`, color: "#00C853" });
 
     // [FIX] Store evidence in the Evidence Intelligence Pipeline
-    // [SUPABASE_READY] evidence_upload: insert into evidence_vault + supabase.storage.upload(photos)
+
     try {
       const evidenceEntry = storeEvidence({
         emergencyId: errIdRef.current,

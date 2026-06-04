@@ -391,7 +391,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
         setWarningCountdown(remainSec);
         // FIX FATAL-3: Emit CHECKIN_WARNING so admin dashboard sees overdue check-ins
         // Without this, admin had a 30+ minute blind spot before SOS triggered
-        // [SUPABASE_READY] checkin_warning: insert into checkin_events { type: 'warning', cycle }
+
         emitSyncEvent({
           type: "CHECKIN_WARNING",
           employeeId: `EMP-${userName.replace(/\s+/g, "")}`,
@@ -824,7 +824,7 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
                     <MapPin style={{ width: 11, height: 11, color: "rgba(0,200,224,0.5)" }} />
                     <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{tr("Location", "الموقع")}</span>
                   </div>
-                  {/* SUPABASE_MIGRATION_POINT: replace with real GPS */}
+
                   {/* from employee_locations table */}
                   <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,200,224,0.5)" }}>{userZone || "Locating..."}</span>
                 </div>

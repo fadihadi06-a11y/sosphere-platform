@@ -462,7 +462,7 @@ export function MobileApp() {
     dlog("[SUPABASE_READY] shake_sos_confirmed");
     // FIX 3: Guarded � shake SOS goes through dedup
     if (!guardedSOSTrigger("shake")) return;
-    // [SUPABASE_READY] shake_sos: insert into sos_events with trigger_method='shake'
+
     emitSyncEvent({
       type: "SHAKE_SOS",
       // Audit #5 / R2 (2026-04-29): prefer real authUserId over the
@@ -1808,7 +1808,7 @@ export function MobileApp() {
               tier={userPlan === "employee" ? "paid" : userPlan === "pro" ? "paid" : "free"}
               onSubmitReport={(data: IncidentReportData) => {
                 // -- CRITICAL: Emit sync event so dashboard receives the report --
-                // [SUPABASE_READY] incident_report: insert into incident_reports + storage.upload(photos)
+
                 emitSyncEvent({
                   type: "INCIDENT_REPORT_RECEIVED",
                   // Audit #5 / R2: real authUserId for dashboard correlation.

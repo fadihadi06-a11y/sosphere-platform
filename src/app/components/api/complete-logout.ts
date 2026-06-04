@@ -30,6 +30,7 @@ import { clearShiftsCache } from "../shifts-service";
 import { clearEmergenciesCache } from "../emergencies-service";
 import { clearAuditLogCache } from "../audit-log-store";
 import { clearCompanySettingsCache } from "../company-settings-service";
+import { clearEmailSchedulesCache } from "../email-schedules-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -115,6 +116,10 @@ export async function completeLogout(): Promise<void> {
   // a shared device cannot leak the previous tenant's toggles + language
   // + checkin interval into the next user's session.
   try { clearCompanySettingsCache(); } catch { /* best effort */ }
+  // 2026-06-03 #21 (21st pattern app): clear cached email schedules so a
+  // shared device cannot leak the previous tenant's scheduled-report
+  // recipients (PII via email addresses) into the next user's session.
+  try { clearEmailSchedulesCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

@@ -2,7 +2,7 @@
 // Plan Gate — Feature-locked upgrade prompts + Limit enforcement
 // Trial Expired Overlay — Blocks access after trial ends
 // Zone/Employee limit modals — Real enforcement from companyState
-// [SUPABASE_READY] All gate checks logged for migration
+
 // ═══════════════════════════════════════════════════════════════
 
 import React from "react";

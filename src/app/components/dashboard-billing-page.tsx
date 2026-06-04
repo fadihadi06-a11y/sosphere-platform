@@ -17,7 +17,7 @@ import { startCheckout, openBillingPortal, isPaidPlan } from "./stripe-service";
 
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
-// [SUPABASE_READY] — All mock data marked, handlers ready for async migration
+
 // ═══════════════════════════════════════════════════════════════
 
 const PLAN_ICON_MAP: Record<string, any> = { starter: Shield, growth: Zap, business: Rocket, enterprise: Crown };
@@ -308,7 +308,6 @@ export function BillingPage({ companyState, webMode = false }: {
   const invoiceBasePrice = billingCycle === "annual" ? currentPlanAnnualMonthly : currentPlanMonthly;
   const invoiceTotalPrice = (invoiceBasePrice > 0 ? invoiceBasePrice : 0) + baseExtraCost + addonsTotal;
 
-  // SUPABASE_MIGRATION_POINT: INVOICES → supabase.from('invoices').select('*').eq('company_id', companyId).order('date', { ascending: false })
   const BASE_INVOICES = [
     { id: "INV-2026-003", date: "Mar 1, 2026", period: "March 2026", planName: currentPlanName, baseCost: invoiceBasePrice > 0 ? invoiceBasePrice : 0, extraCount: baseExtraCount, extraCost: baseExtraCost, addonsCost: addonsTotal, amount: invoiceTotalPrice, seats: empCount },
     { id: "INV-2026-002", date: "Feb 1, 2026", period: "February 2026", planName: currentPlanName, baseCost: invoiceBasePrice > 0 ? invoiceBasePrice : 0, extraCount: baseExtraCount, extraCost: baseExtraCost, addonsCost: 0, amount: (invoiceBasePrice > 0 ? invoiceBasePrice : 0) + baseExtraCost, seats: empCount },

@@ -36,7 +36,6 @@ interface ScheduledReport {
   format: "pdf" | "csv" | "both";
 }
 
-// SUPABASE_MIGRATION_POINT: email_schedules
 // table: email_schedules(id, company_id, name, report_types,
 // frequency, recipients, enabled, next_run, created_at)
 // Replace storeJSONSync/loadJSONSync with Supabase table operations
@@ -66,7 +65,6 @@ const FREQUENCY_OPTIONS = [
   { id: "quarterly" as const, label: "Quarterly", desc: "Every 3 months", color: "#8B5CF6" },
 ];
 
-// SUPABASE_MIGRATION_POINT: email_recipients
 // SELECT id, name, email, role FROM employees
 // WHERE company_id = :id AND role IN ('admin', 'zone_admin')
 const MOCK_RECIPIENTS = [
@@ -443,7 +441,7 @@ export function BatchEmailScheduler({ t: _t, webMode: _webMode, onGenerateReport
     if (onGenerateReport) {
       onGenerateReport(schedule.reportTypes);
     }
-    // SUPABASE_MIGRATION_POINT: run_now — when migrating, send via Supabase Edge Function to schedule.recipients
+
     toast.success(`Sending ${schedule.name} to ${schedule.recipients.length} recipients...`);
     const updated = schedules.map(s => s.id === schedule.id ? { ...s, lastRun: new Date().toISOString() } : s);
     setSchedules(updated);

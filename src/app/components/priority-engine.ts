@@ -20,8 +20,6 @@ export interface Emergency {
   [key: string]: any;
 }
 
-/* SUPABASE_MIGRATION_POINT: priority_override_logs
-   INSERT INTO priority_override_logs (emergency_id, old_priority, new_priority, reason, overridden_by, created_at) */
 export interface PriorityOverrideLog {
   emergencyId: string;
   action: 'pin_as_active' | 'move_to_top' | 'manual_reorder';
