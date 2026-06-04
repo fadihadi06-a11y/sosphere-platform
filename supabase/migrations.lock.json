@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T10:34:21.764Z",
-  "total_migrations": 159,
-  "manifest_sha256": "3f3c5c2cf6191f9a0bdeb0a954d94c9e8c22f13e174225aa342d532d5de19e25",
+  "generated_at": "2026-06-04T11:11:03.201Z",
+  "total_migrations": 160,
+  "manifest_sha256": "d8981bd82bd44bd5e43bb3ca5864e2e251684d512f80cef29da66549e3640a22",
   "migrations": [
     {
       "version": "20260415",
@@ -1108,6 +1108,13 @@
       "file": "20260603_emergency_crud_17th_pattern_app.sql",
       "sha256": "676ec5defb93875e7fc5ce058e3d8284c6847421926f29215fa51861022e5fa8",
       "bytes": 9646
+    },
+    {
+      "version": "20260603",
+      "name": "emergency_resolve_dispatch_secdef",
+      "file": "20260603_emergency_resolve_dispatch_secdef.sql",
+      "sha256": "941b9c0f34fdeec09e0f68a1e2d3ed069283a68b4294b3fb1429d5ade9c8a842",
+      "bytes": 4333
     },
     {
       "version": "20260603",

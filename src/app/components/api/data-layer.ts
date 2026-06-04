@@ -458,10 +458,16 @@ export async function fetchIncidentReports(limit = 50): Promise<IncidentReport[]
 export async function resolveEmergency(emergencyId: string, resolvedBy?: string): Promise<boolean> {
   if (currentMode === "supabase") {
     try {
-      const { error } = await supabase
-        .from("sos_queue")
-        .update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_by: resolvedBy })
-        .eq("id", emergencyId);
+      // 2026-06-03 17th pattern app follow-up: route through SECDEF
+      // resolve_emergency RPC. The RPC uses auth.uid() for resolved_by
+      // (more reliable than client-supplied string) and the optional
+      // p_resolved_by_name carries the display label into resolution_note.
+      // Skips already-resolved/cancelled rows server-side.
+      const { error } = await supabase.rpc("resolve_emergency", {
+        p_id: emergencyId,
+        p_resolved_by_name: resolvedBy ?? null,
+        p_resolution_note: null,
+      });
       return !error;
     } catch { return false; }
   }
@@ -471,15 +477,15 @@ export async function resolveEmergency(emergencyId: string, resolvedBy?: string)
 export async function dispatchTeam(emergencyId: string, responders: string[], note?: string): Promise<boolean> {
   if (currentMode === "supabase") {
     try {
-      const { error } = await supabase
-        .from("sos_queue")
-        .update({
-          status: "investigating",
-          assigned_to: responders,
-          dispatch_note: note,
-          dispatched_at: new Date().toISOString(),
-        })
-        .eq("id", emergencyId);
+      // 2026-06-03 17th pattern app follow-up: route through SECDEF
+      // dispatch_team RPC. assigned_by is set from auth.uid() server-side.
+      // RPC stores responders as comma-separated string (sos_queue.assigned_to
+      // is text, not text[]) — clients that need the array shape can split.
+      const { error } = await supabase.rpc("dispatch_team", {
+        p_id: emergencyId,
+        p_responders: responders,
+        p_dispatch_note: note ?? null,
+      });
       return !error;
     } catch { return false; }
   }
