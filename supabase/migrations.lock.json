@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T15:59:38.226Z",
-  "total_migrations": 164,
-  "manifest_sha256": "70805963696a38d3be4299afafb90e424410109b006dd0065d9e81dd62659969",
+  "generated_at": "2026-06-04T16:27:58.533Z",
+  "total_migrations": 165,
+  "manifest_sha256": "19412a48b111415e0eb22adf87c948fe8411c9d153a229cfd9be8d5659f09b02",
   "migrations": [
     {
       "version": "20260415",
@@ -1101,6 +1101,13 @@
       "file": "20260602_evacuation_durability_phase_a.sql",
       "sha256": "8212491c7e19a59098569cf4775f49099a5c1e5639defef54fff6ddc2e7d9794",
       "bytes": 11515
+    },
+    {
+      "version": "20260603",
+      "name": "analytics_rollups_23rd_pattern_app",
+      "file": "20260603_analytics_rollups_23rd_pattern_app.sql",
+      "sha256": "796c107d47163b28073ba655d57ec351c5d77321bf9f8643ddf00b50102dbc6e",
+      "bytes": 5789
     },
     {
       "version": "20260603",

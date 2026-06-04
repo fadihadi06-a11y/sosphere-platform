@@ -501,6 +501,16 @@ const CATEGORY_COLORS: Record<string, string> = {
 // checkinCompliance, journeyLog, playbookData — all fetched from Supabase.
 async function generatePDF(selectedSections: string[], companyName: string, preparedFor?: string, reportFormat?: ReportFormat, recipients?: ExportRecipient[], encryptionConfig?: PdfEncryptionConfig | null, data?: PdfReportData) {
   console.log("[SUPABASE_READY] pdf_generated: " + JSON.stringify({sections: selectedSections, timestamp: new Date().toISOString()}));
+  // 2026-06-03 23rd pattern app: pre-warm analytics rollup caches
+  // so admin_performance + safety_score sections have live data ready.
+  // Fire-and-forget if they fail — the section renderers fall back to
+  // honest "no data" messages.
+  try {
+    await Promise.all([
+      loadAdminPerformance(30),
+      loadSafetyScoreHistory(6),
+    ]);
+  } catch { /* offline / RLS — sections render their honest empty state */ }
   await ensureAutoTable();
 
   // G-22 (B-20, 2026-04-26): in production NEVER fall back to MOCK_*
@@ -811,16 +821,32 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
     drawPieIndicator(doc, 165, indicatorY + 14, 11, liveChecklist, [255, 150, 0], "Checklist", liveChecklist > 0 ? "Rate" : "(no data)");
     y = indicatorY + 34;
 
-    // 2026-06-03 C-4 follow-up: 6-month safety-score trend chart was
-    // hardcoded (Sep 72 -> Mar 87) and the "Improving — up from 83%"
-    // label was also a fixed string. False document under the real
-    // tenant's name. Until a get_safety_score_history RPC ships
-    // (aggregates monthly KPI snapshots), render an honest placeholder.
-    checkPageBreak(30);
-    doc.setFontSize(9);
-    doc.setTextColor(120);
-    doc.text("Safety score history requires monthly KPI snapshots (roadmap).", 20, y);
-    y += 12;
+    // 2026-06-03 23rd pattern app: wired to get_safety_score_history RPC.
+    const history = getCachedSafetyScoreHistory();
+    if (history.length > 0) {
+      checkPageBreak(70);
+      const bars = history.map(h => ({
+        label: h.month_label,
+        value: h.safety_score,
+        color: (h.safety_score >= 80 ? [0, 200, 83] : h.safety_score >= 50 ? [255, 214, 10] : [255, 45, 85]) as [number, number, number],
+      }));
+      drawBarChart(doc, 15, y, pageWidth - 30, 60, bars, "Safety Score Trend (" + history.length + "-Month, live)", 100);
+      y += 66;
+      const latest = history[history.length - 1];
+      const prev = history.length >= 2 ? history[history.length - 2] : null;
+      const trend = prev && latest.safety_score > prev.safety_score
+        ? "Improving (+" + (latest.safety_score - prev.safety_score) + " vs " + prev.month_label + ")"
+        : prev && latest.safety_score < prev.safety_score
+        ? "Declining (-" + (prev.safety_score - latest.safety_score) + " vs " + prev.month_label + ")"
+        : "Stable";
+      drawKeyValue("Trend:", trend);
+    } else {
+      checkPageBreak(20);
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text("Safety score history loads after admin opens this page (RPC call).", 20, y);
+      y += 12;
+    }
     drawKeyValue("Top Zone:", "Zone C -- 95% safety score");
     drawKeyValue("Lowest Zone:", "Zone D -- 72% (High-Risk)");
     y += 5;
@@ -1076,13 +1102,19 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
         return ts + " -- " + e.action + (e.actor?.name ? " (" + e.actor.name + ")" : "");
       }).join("\n");
     })() },
-    // 2026-06-03 C-4 follow-up: admin_performance scores were 6 hardcoded
-    // names + bronze/silver/gold/platinum tiers. False document under the
-    // real company name — the named admins didn't exist in the tenant.
-    // Real fix needs a get_admin_performance RPC that ranks the company's
-    // actual admins by response time + incident count + streak from
-    // sos_queue + audit_log. Until that ships, report honestly.
-    admin_performance: { title: "Admin Performance Summary", color: [255,215,0], content: "Admin performance ranking not yet available.\nThis section will populate once 30 days of incident data have been recorded for each admin. Pending: get_admin_performance RPC (roadmap)." },
+    // 2026-06-03 23rd pattern app: wired to get_admin_performance RPC.
+    admin_performance: { title: "Admin Performance Summary", color: [255,215,0], content: (() => {
+      const rows = getCachedAdminPerformance();
+      if (rows.length === 0) return "No admin activity recorded in the last 30 days. Performance ranking populates after admins assign, dispatch, or resolve incidents.";
+      const lines = rows.map(r => {
+        const tier = scoreTier(Math.min(100, r.incidents_handled * 5 + Math.max(0, 100 - Math.floor((r.avg_response_sec ?? 0) / 60))));
+        const respLabel = r.avg_response_sec > 0
+          ? Math.floor(r.avg_response_sec / 60) + "m " + (r.avg_response_sec % 60) + "s"
+          : "—";
+        return r.display_name + " (" + r.role + "): " + tier + " — " + r.incidents_handled + " incidents, " + respLabel + " avg, " + r.current_streak + " day streak";
+      });
+      return lines.join("\n");
+    })() },
   };
 
   Object.entries(simpleMap).forEach(([key, val]) => {
