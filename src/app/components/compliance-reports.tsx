@@ -1175,6 +1175,28 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
   // Save
   const filename = `SOSphere_Safety_Report_${companyName.replace(/\s/g, "_")}_${today.toISOString().split("T")[0]}.pdf`;
   doc.save(filename);
+  // 2026-06-03 22nd pattern app: persist this report to the
+  // generated_reports table so it shows up in the dashboard's
+  // "Recent Reports" list across devices. Fire-and-forget — the
+  // local PDF is already saved; the DB row is a forensic audit
+  // trail. ID is derived from verificationId so re-saves don't
+  // duplicate rows (RPC has on conflict do nothing).
+  try {
+    const { recordGeneratedReport } = await import("./generated-reports-service");
+    void recordGeneratedReport({
+      id:              "RPT-" + verificationId,
+      title:           "Compliance Report — " + new Date().toISOString().slice(0, 10),
+      type:            "custom",
+      period:          new Date().toISOString().slice(0, 7),
+      sections:        selectedSections,
+      pageCount:       totalPages,
+      filename,
+      verificationId,
+      format:          reportFormat ?? "detailed",
+      wasEncrypted,
+      autoScheduled:   false,
+    });
+  } catch { /* recording is best-effort */ }
   console.log("[SUPABASE_READY] compliance_pdf_generated", { verificationId, totalPages, wasEncrypted, sectionCount: selectedSections.length });
   return { verificationId, verificationURL, generatedAt: today.toISOString(), totalPages, companyName, wasEncrypted };
 }

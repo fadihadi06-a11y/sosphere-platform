@@ -31,6 +31,7 @@ import { clearEmergenciesCache } from "../emergencies-service";
 import { clearAuditLogCache } from "../audit-log-store";
 import { clearCompanySettingsCache } from "../company-settings-service";
 import { clearEmailSchedulesCache } from "../email-schedules-service";
+import { clearGeneratedReportsCache } from "../generated-reports-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -120,6 +121,9 @@ export async function completeLogout(): Promise<void> {
   // shared device cannot leak the previous tenant's scheduled-report
   // recipients (PII via email addresses) into the next user's session.
   try { clearEmailSchedulesCache(); } catch { /* best effort */ }
+  // 2026-06-03 22nd pattern app: clear cached generated-reports list
+  // so a shared device cannot leak the previous tenant's PDF history.
+  try { clearGeneratedReportsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

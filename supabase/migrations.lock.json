@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T12:24:18.285Z",
-  "total_migrations": 163,
-  "manifest_sha256": "302f24634ba254cbf69ef006094964629cbeb4fd4e8132e3a6535d9458a1e3fe",
+  "generated_at": "2026-06-04T15:59:38.226Z",
+  "total_migrations": 164,
+  "manifest_sha256": "70805963696a38d3be4299afafb90e424410109b006dd0065d9e81dd62659969",
   "migrations": [
     {
       "version": "20260415",
@@ -1129,6 +1129,13 @@
       "file": "20260603_emergency_resolve_dispatch_secdef.sql",
       "sha256": "941b9c0f34fdeec09e0f68a1e2d3ed069283a68b4294b3fb1429d5ade9c8a842",
       "bytes": 4333
+    },
+    {
+      "version": "20260603",
+      "name": "generated_reports_22nd_pattern_app",
+      "file": "20260603_generated_reports_22nd_pattern_app.sql",
+      "sha256": "e25fa304ec0388b075593f0c719bef62c89f734f8f3748f76e2bf19183586fd1",
+      "bytes": 5901
     },
     {
       "version": "20260603",
