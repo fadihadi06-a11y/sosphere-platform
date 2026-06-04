@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T11:11:03.201Z",
-  "total_migrations": 160,
-  "manifest_sha256": "d8981bd82bd44bd5e43bb3ca5864e2e251684d512f80cef29da66549e3640a22",
+  "generated_at": "2026-06-04T11:24:47.480Z",
+  "total_migrations": 161,
+  "manifest_sha256": "adf953e74ef27fd851c4a4a990fce1ccb3c87b10ed9822209dcb49af7e04a113",
   "migrations": [
     {
       "version": "20260415",
@@ -1101,6 +1101,13 @@
       "file": "20260602_evacuation_durability_phase_a.sql",
       "sha256": "8212491c7e19a59098569cf4775f49099a5c1e5639defef54fff6ddc2e7d9794",
       "bytes": 11515
+    },
+    {
+      "version": "20260603",
+      "name": "company_settings_19th_pattern_app",
+      "file": "20260603_company_settings_19th_pattern_app.sql",
+      "sha256": "870f34a8ee54e14513e41d77698109e9d7b22cc864c2a519084d507960e43d2d",
+      "bytes": 4654
     },
     {
       "version": "20260603",

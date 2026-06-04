@@ -29,6 +29,7 @@ import { clearJourneysCache } from "../journeys-service";
 import { clearShiftsCache } from "../shifts-service";
 import { clearEmergenciesCache } from "../emergencies-service";
 import { clearAuditLogCache } from "../audit-log-store";
+import { clearCompanySettingsCache } from "../company-settings-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -110,6 +111,10 @@ export async function completeLogout(): Promise<void> {
   // queue so a shared device cannot leak the previous tenant's PII-rich
   // audit entries (names, actions, IPs) into the next user's session.
   try { clearAuditLogCache(); } catch { /* best effort */ }
+  // 2026-06-03 #19 (19th pattern app): clear cached company settings so
+  // a shared device cannot leak the previous tenant's toggles + language
+  // + checkin interval into the next user's session.
+  try { clearCompanySettingsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

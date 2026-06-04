@@ -186,27 +186,22 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       localStorage.setItem("sosphere_admin_profile", JSON.stringify(adminProfile));
       localStorage.setItem("sosphere_admin_phone", adminPhone.replace(/\s/g, ""));
     }
-    // Sync to Supabase (background)
+    // 2026-06-03 19th pattern app: route through SECDEF RPC instead
+    // of the prior direct .upsert() call that silently failed (the
+    // table existed but lacked the `settings` jsonb column the upsert
+    // tried to write). saveCompanySettings uses getCompanyId() to
+    // resolve the real UUID — was passing the company name as id+
+    // company_id which also broke the upsert.
     try {
-      const { SUPABASE_CONFIG } = await import("./api/supabase-client");
-      if (SUPABASE_CONFIG.isConfigured) {
-        const { supabase } = await import("./api/supabase-client");
-        supabase.from("company_settings").upsert({
-          id: companyName || "default",
-          company_id: companyName || "default",
-          settings: {
-            company_name: companyName,
-            language: lang || "en",
-            checkin_interval: checkinInterval,
-            session_timeout: useDashboardStore.getState().sessionTimeout,
-            toggles,
-          },
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "id" }).then(() => {
-          console.log("[Settings] Synced to Supabase");
-        }, (e: unknown) => console.warn("[Settings] Supabase sync failed:", e)); // P0-doctrine-completion (2026-05-25): PromiseLike has no .catch.
-      }
-    } catch { /* Supabase not available */ }
+      const { saveCompanySettings } = await import("./company-settings-service");
+      void saveCompanySettings({
+        company_name:     companyName,
+        language:         lang || "en",
+        checkin_interval: checkinInterval,
+        session_timeout:  useDashboardStore.getState().sessionTimeout,
+        toggles,
+      });
+    } catch { /* service unavailable — localStorage mirror above still drives UI */ }
 
     logAuditEvent("settings", "Company settings saved", {
       detail: `Toggles: ${Object.entries(toggles).filter(([,v]) => v).map(([k]) => k).join(", ")} | Interval: ${checkinInterval}`,
