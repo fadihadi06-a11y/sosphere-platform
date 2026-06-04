@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-03T14:40:42.523Z",
-  "total_migrations": 158,
-  "manifest_sha256": "7151c349eefd7661e5c728cdf0c7fbf5785387cd48d7f3e69f1d7d1a97fc620b",
+  "generated_at": "2026-06-04T10:34:21.764Z",
+  "total_migrations": 159,
+  "manifest_sha256": "3f3c5c2cf6191f9a0bdeb0a954d94c9e8c22f13e174225aa342d532d5de19e25",
   "migrations": [
     {
       "version": "20260415",
@@ -1101,6 +1101,13 @@
       "file": "20260602_evacuation_durability_phase_a.sql",
       "sha256": "8212491c7e19a59098569cf4775f49099a5c1e5639defef54fff6ddc2e7d9794",
       "bytes": 11515
+    },
+    {
+      "version": "20260603",
+      "name": "emergency_crud_17th_pattern_app",
+      "file": "20260603_emergency_crud_17th_pattern_app.sql",
+      "sha256": "676ec5defb93875e7fc5ce058e3d8284c6847421926f29215fa51861022e5fa8",
+      "bytes": 9646
     },
     {
       "version": "20260603",

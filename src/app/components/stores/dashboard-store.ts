@@ -15,6 +15,16 @@ import type { Lang } from "../dashboard-i18n";
 import { getMissedCalls, getUnseenMissedCalls, type MissedCall } from "../shared-store";
 import { fetchEmployees, fetchEmergencies, fetchZones, fetchKPIs, resolveEmergency, dispatchTeam, type KPIData } from "../api/data-layer";
 import { auditEmergency, auditEmergencyResolved } from "../audit-log-store";
+// 2026-06-03 17th pattern app: emergency mutations now dual-write to the
+// sos_queue table via SECDEF RPCs (was: pure in-memory Zustand mutation
+// that vanished on tab reload). Fire-and-forget — local state still
+// drives the UI; the RPC adds durability + cross-device visibility.
+import {
+  createEmergency as createEmergencyRpc,
+  takeEmergencyOwnership as takeOwnershipRpc,
+  cancelEmergency as cancelEmergencyRpc,
+  updateEmergencyRpc,
+} from "../emergencies-service";
 import { recordRRPSession } from "../rrp-analytics-store";
 // 2026-06-03 P1 PII fix: route [SUPABASE_READY] debug logs through
 // dev-logger so the employee-name + admin-name fields they carry are
@@ -553,27 +563,65 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
       will write to 'emergency_audit_log' table.
     */
     addEmergency: (emergency) => {
-      // SOS is never blocked by trial status â€” safety first
-      // SUPABASE_MIGRATION_POINT: this guarantee must be
-      // enforced server-side via RLS â€” SOS table always writable
+      // SOS is never blocked by trial status — safety first.
+      // RLS enforces "SOS table always writable" at the database layer.
       dlog("[SUPABASE_READY] addEmergency:", emergency.id, emergency.type);
       auditEmergency(`Emergency created: ${emergency.type}`, `${emergency.employeeName} triggered ${emergency.type} in ${emergency.zone}`, emergency.zone);
       set(s => {
         const emergencies = [emergency, ...s.emergencies];
         return { emergencies, ...recompute(emergencies) };
       });
+      // 2026-06-03 17th pattern app: persist via SECDEF RPC.
+      // create_emergency_admin is an idempotent UPSERT on id — handles
+      // the case where this mobile-SyncEvent handler fires AFTER the
+      // server-side project_sos_session_to_queue trigger already
+      // inserted the row. Fire-and-forget; local state already drives UI.
+      void createEmergencyRpc({
+        id:            emergency.id,
+        type:          emergency.type,
+        severity:      emergency.severity,
+        employeeId:    emergency.employeeId,
+        employeeName:  emergency.employeeName,
+        zone:          emergency.zone,
+        lat:           emergency.location?.lat ?? null,
+        lng:           emergency.location?.lng ?? null,
+        metadata:      {
+          phone:           emergency.phone,
+          batteryLevel:    emergency.batteryLevel,
+          signalStrength:  emergency.signalStrength,
+          sourceEmergencyId: emergency.sourceEmergencyId,
+        },
+      }).catch(() => { /* RPC failure already logged inside service */ });
       // P0-doctrine-completion (2026-05-25, life-safety): return the ID so
       // the SOS ingress handler can chain trackEventSync + AICoAdmin context.
       return emergency.id;
     },
 
-    updateEmergency: (id, updates) => set(s => {
+    updateEmergency: (id, updates) => {
       dlog("[SUPABASE_READY] updateEmergency:", id, Object.keys(updates));
-      const emergencies = s.emergencies.map(e =>
-        e.id === id ? { ...e, ...updates } : e
-      );
-      return { emergencies, ...recompute(emergencies) };
-    }),
+      // 2026-06-03 17th pattern app: persist non-destructive field
+      // updates via SECDEF update_emergency RPC. The RPC ignores
+      // resolved/cancelled rows server-side so a stale UI update
+      // can't accidentally re-open a closed emergency.
+      const upd = updates as Partial<{ type: string; severity: string; zone: string; notes: string; manualPriority: number }>;
+      if (upd.type !== undefined || upd.severity !== undefined || upd.zone !== undefined
+          || upd.notes !== undefined || upd.manualPriority !== undefined) {
+        void updateEmergencyRpc({
+          id,
+          type:           upd.type ?? null,
+          severity:       (upd.severity ?? null) as "critical"|"high"|"medium"|"low"|null,
+          zone:           upd.zone ?? null,
+          notes:          upd.notes ?? null,
+          manualPriority: upd.manualPriority ?? null,
+        }).catch(() => { /* RPC failure already logged inside service */ });
+      }
+      set(s => {
+        const emergencies = s.emergencies.map(e =>
+          e.id === id ? { ...e, ...updates } : e
+        );
+        return { emergencies, ...recompute(emergencies) };
+      });
+    },
 
     resolveEmergency: (id) => set(s => {
       dlog("[SUPABASE_READY] resolveEmergency:", id);
@@ -642,36 +690,61 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     }),
 
     // FIX AUDIT-2.2: ID-based cancel â€” prevents resolving wrong emergency on name collision
-    cancelEmergencyById: (emergencyId, fallbackName) => set(s => {
+    cancelEmergencyById: (emergencyId, fallbackName) => {
       dlog("[SUPABASE_READY] cancelEmergencyById:", emergencyId, "fallback:", fallbackName);
-      let matched = false;
-      const emergencies = s.emergencies.map(e => {
-        // Primary: match by sourceEmergencyId (linked from mobile SOS)
-        if (!matched && e.sourceEmergencyId === emergencyId && e.status === "active") {
-          matched = true;
-          return { ...e, status: "resolved" as const };
+      // 2026-06-03 17th pattern app: resolve which canonical id the
+      // RPC should target BEFORE mutating local state. Three lookup
+      // tiers (sourceEmergencyId, direct id, fallbackName) all map
+      // to one definitive id; the RPC is then a single cancel call.
+      const snapshot = get().emergencies;
+      let canonicalId: string | null = null;
+      for (const e of snapshot) {
+        if (e.sourceEmergencyId === emergencyId && e.status === "active") {
+          canonicalId = e.id; break;
         }
-        // Also match by direct ID
-        if (!matched && e.id === emergencyId && e.status === "active") {
-          matched = true;
-          return { ...e, status: "resolved" as const };
+      }
+      if (!canonicalId) {
+        for (const e of snapshot) {
+          if (e.id === emergencyId && e.status === "active") { canonicalId = e.id; break; }
         }
-        return e;
-      });
-      // Fallback: name-based match ONLY if no ID match found (backward compat)
-      if (!matched && fallbackName) {
-        let fallbackDone = false;
-        const fallbackEmergencies = emergencies.map(e => {
-          if (!fallbackDone && e.employeeName === fallbackName && e.status === "active") {
-            fallbackDone = true; // Only resolve ONE matching emergency
+      }
+      if (!canonicalId && fallbackName) {
+        for (const e of snapshot) {
+          if (e.employeeName === fallbackName && e.status === "active") { canonicalId = e.id; break; }
+        }
+      }
+      if (canonicalId) {
+        void cancelEmergencyRpc(canonicalId, fallbackName ? `Cancelled by admin (matched ${fallbackName})` : undefined)
+          .catch(() => { /* already logged */ });
+      }
+      // Local mutation (unchanged from before — same 3-tier match logic)
+      set(s => {
+        let matched = false;
+        const emergencies = s.emergencies.map(e => {
+          if (!matched && e.sourceEmergencyId === emergencyId && e.status === "active") {
+            matched = true;
+            return { ...e, status: "resolved" as const };
+          }
+          if (!matched && e.id === emergencyId && e.status === "active") {
+            matched = true;
             return { ...e, status: "resolved" as const };
           }
           return e;
         });
-        return { emergencies: fallbackEmergencies, ...recompute(fallbackEmergencies) };
-      }
-      return { emergencies, ...recompute(emergencies) };
-    }),
+        if (!matched && fallbackName) {
+          let fallbackDone = false;
+          const fallbackEmergencies = emergencies.map(e => {
+            if (!fallbackDone && e.employeeName === fallbackName && e.status === "active") {
+              fallbackDone = true;
+              return { ...e, status: "resolved" as const };
+            }
+            return e;
+          });
+          return { emergencies: fallbackEmergencies, ...recompute(fallbackEmergencies) };
+        }
+        return { emergencies, ...recompute(emergencies) };
+      });
+    },
 
     tickEmergencyTimers: () => set(s => ({
       emergencies: s.emergencies.map(e =>
@@ -715,12 +788,18 @@ export const useDashboardStore = create<DashboardState & DashboardActions>()(
     setShowIncidentReportPanel: (show) => set({ showIncidentReportPanel: show }),
 
     // â”€â”€ Priority System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    takeOwnership: (id, adminName = "Admin") => set(s => {
+    takeOwnership: (id, adminName = "Admin") => {
       dlog("[SUPABASE_READY] takeOwnership:", id, "by:", adminName);
-      const owned = markAsOwned(s.emergencies, id, adminName);
-      const emergencies = owned.map(e => e.id === id ? { ...e, status: "responding" as const } : e);
-      return { emergencies, ...recompute(emergencies) };
-    }),
+      // 2026-06-03 17th pattern app: persist ownership via SECDEF RPC.
+      // The RPC also sets assigned_to + assigned_at on the row so the
+      // SAR / dispatcher view sees the assignment cross-device.
+      void takeOwnershipRpc(id, adminName).catch(() => { /* already logged inside service */ });
+      set(s => {
+        const owned = markAsOwned(s.emergencies, id, adminName);
+        const emergencies = owned.map(e => e.id === id ? { ...e, status: "responding" as const } : e);
+        return { emergencies, ...recompute(emergencies) };
+      });
+    },
 
     handleResolve: (id) => {
       get().resolveEmergency(id);
