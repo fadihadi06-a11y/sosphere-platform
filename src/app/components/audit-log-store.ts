@@ -161,6 +161,10 @@ export function clearAuditLogCache(): void {
     localStorage.removeItem(AUDIT_KEY);
     localStorage.removeItem(RETRY_QUEUE_KEY);
   } catch { /* unavailable */ }
+  // 2026-06-04 fresh-audit #1: also unsubscribe the CDC listener so
+  // a shared device doesn't keep invalidating cache from the previous
+  // tenant's audit_log channel after logout. Idempotent.
+  try { stopAuditLogCdc(); } catch { /* best effort */ }
 }
 
 /** Hydrate the in-memory cache from a server fetch. Called by the
@@ -563,4 +567,38 @@ export function onAuditEvent(callback: (entry: AuditEntry) => void): () => void 
   };
   window.addEventListener("storage", handler);
   return () => window.removeEventListener("storage", handler);
+}
+
+// ───────── CDC SUBSCRIPTION (fresh-audit #1, 2026-06-04) ─────────
+// audit_log has Realtime CDC infrastructure but no consumers. Live
+// audit feed view in the dashboard misses entries written from other
+// admin sessions. This fixes that gap.
+
+let _auditCdcUnsubscribe: (() => void) | null = null;
+
+export function startAuditLogCdc(): void {
+  if (_auditCdcUnsubscribe) return;
+  void import("./shared-store").then(({ subscribeCdc }) => {
+    if (_auditCdcUnsubscribe) return;
+    _auditCdcUnsubscribe = subscribeCdc("audit_log", (row, _op) => {
+      const entry = row as Partial<AuditEntry> & { id?: string; timestamp?: string | Date };
+      if (!entry || !entry.id) return;
+      // Invalidate the server cache so the next getCachedAuditEntries
+      // call re-fetches (cheap on subsequent reads since the cache is
+      // module-level). Don't try to merge the row directly because the
+      // CDC payload is the raw DB shape (snake_case + string dates)
+      // and would need rehydration — the next fetchAuditLog handles
+      // that correctly.
+      _serverAuditEntries = null;
+    });
+  }).catch((err) => {
+    console.warn("[audit-log] CDC subscribe failed:", err);
+  });
+}
+
+export function stopAuditLogCdc(): void {
+  if (_auditCdcUnsubscribe) {
+    _auditCdcUnsubscribe();
+    _auditCdcUnsubscribe = null;
+  }
 }

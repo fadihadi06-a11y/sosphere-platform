@@ -158,6 +158,17 @@ export function initRealtimeChannels(companyId: string) {
 
   console.log(`[Realtime] Channels initialized for company: ${companyId}`);
 
+  // 2026-06-04 fresh-audit #1: bootstrap the CDC consumers now that the
+  // channel is online. Each consumer registers a subscribeCdc listener
+  // and is responsible for cleanup on logout (clearXCache -> stopXCdc).
+  // Dynamic imports avoid circular-dep risk at module-init time.
+  void import("./emergencies-service").then(({ startEmergenciesCdc }) => {
+    startEmergenciesCdc();
+  }).catch(() => { /* CDC consumer best-effort — admin still sees their own writes */ });
+  void import("./audit-log-store").then(({ startAuditLogCdc }) => {
+    startAuditLogCdc();
+  }).catch(() => { /* CDC consumer best-effort */ });
+
   // P3-#12 — tag Sentry with the current tenant so multi-company bug
   // reports can be filtered in the dashboard without leaking PII. We
   // lazy-import to keep this module free of a hard Sentry coupling:

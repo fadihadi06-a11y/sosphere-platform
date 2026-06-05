@@ -78,6 +78,10 @@ export function getCachedEmergencies(): EmergencyRow[] {
 export function clearEmergenciesCache(): void {
   _serverEmergencies = null;
   try { localStorage.removeItem(EMG_CACHE_KEY); } catch { /* unavailable */ }
+  // 2026-06-04 fresh-audit #1: also unsubscribe the CDC listener so a
+  // shared device doesn't keep pushing the previous tenant's emergencies
+  // into the in-memory cache after logout. Idempotent.
+  try { stopEmergenciesCdc(); } catch { /* best effort */ }
 }
 
 // ───────── PURE HELPERS (Vitest-testable) ─────────
@@ -223,5 +227,57 @@ export async function updateEmergencyRpc(args: UpdateEmergencyArgs): Promise<boo
   } catch (err) {
     console.warn("[emg-service] update threw:", err);
     return false;
+  }
+}
+
+// ───────── CDC SUBSCRIPTION (fresh-audit #1, 2026-06-04) ─────────
+// sos_queue has Realtime CDC infrastructure (shared-store.ts:118) but
+// no consumers — admin browser A's assign/resolve never reaches admin
+// browser B's cache. This fixes that gap.
+//
+// Listener semantics:
+//   • INSERT: a new sos_queue row landed (worker SOS via DB trigger
+//     OR admin create_emergency_admin RPC). Merge into cache, emit
+//     SyncEvent so React subscribers re-render.
+//   • UPDATE: status/owner/resolved fields changed. Same flow —
+//     mergeEmergencyRow dedups by id and replaces.
+//
+// Lifecycle: startEmergenciesCdc() is called by initRealtimeChannels
+// after the CDC channel is online. stopEmergenciesCdc() is called by
+// clearEmergenciesCache (which is itself called by complete-logout).
+// The unsubscribe is idempotent — safe to call twice.
+
+let _cdcUnsubscribe: (() => void) | null = null;
+
+export function startEmergenciesCdc(): void {
+  if (_cdcUnsubscribe) return; // already started
+  void import("./shared-store").then(({ subscribeCdc, emitSyncEvent }) => {
+    if (_cdcUnsubscribe) return; // race: a parallel startEmergenciesCdc raced us
+    _cdcUnsubscribe = subscribeCdc("sos_queue", (row, op) => {
+      const r = row as EmergencyRow;
+      if (!r || !r.id) return;
+      // Merge into the in-memory cache so subsequent getCachedEmergencies
+      // reads see the new state without a network round-trip.
+      const current = getCachedEmergencies();
+      setCachedEmergencies(mergeEmergencyRow(current, r));
+      // Notify React consumers (company-dashboard listens via onSyncEvent).
+      void emitSyncEvent({
+        type: r.status === "resolved" ? "EMERGENCY_RESOLVED" : "SOS_TRIGGERED",
+        employeeId: r.employee_id ?? "ALL",
+        employeeName: r.employee_name ?? "Worker",
+        zone: r.zone ?? "Unknown zone",
+        timestamp: Date.now(),
+        data: { emergencyId: r.id, status: r.status, op },
+      });
+    });
+  }).catch((err) => {
+    console.warn("[emg-service] CDC subscribe failed:", err);
+  });
+}
+
+export function stopEmergenciesCdc(): void {
+  if (_cdcUnsubscribe) {
+    _cdcUnsubscribe();
+    _cdcUnsubscribe = null;
   }
 }
