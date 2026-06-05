@@ -422,6 +422,12 @@ interface ReportSection {
   icon: any;
   color: string;
   defaultChecked: boolean;
+  /** 2026-06-05 roots-of-roots Tier 4: sections marked comingSoon
+   *  cannot be selected and render with a "SOON" badge. The PDF
+   *  generator still prints an honest "not yet configured" stub
+   *  for completeness if the section ever gets force-included
+   *  via a default in another build. */
+  comingSoon?: boolean;
 }
 
 const ALL_SECTIONS: ReportSection[] = [
@@ -460,7 +466,7 @@ const ALL_SECTIONS: ReportSection[] = [
   { id: "journey_incidents", label: "On-Route Incident Report",      description: "Incidents that happened during journeys",          category: "Journeys", icon: AlertTriangle, color: "#FF2D55", defaultChecked: false },
 
   // ── Weather & Environment ───────────────────────────────────
-  { id: "weather_log",       label: "Weather Alert History",         description: "All weather warnings and actions taken",           category: "Environment", icon: Activity,  color: "#FF9500", defaultChecked: false },
+  { id: "weather_log",       label: "Weather Alert History",         description: "All weather warnings and actions taken",           category: "Environment", icon: Activity,  color: "#FF9500", defaultChecked: false, comingSoon: true },
 
   // ── Compliance & Legal ──────────────────────────────────────
   { id: "emergency_procedures", label: "Emergency Procedures",       description: "Documented emergency response protocols",          category: "Compliance", icon: Shield,    color: "#00C853", defaultChecked: false },
@@ -1343,6 +1349,12 @@ function SectionPickerModal({
   const [preparedFor, setPreparedFor] = useState("");
 
   const toggle = (id: string) => {
+    // 2026-06-05 roots-of-roots Tier 4: refuse selection of
+    // sections flagged comingSoon (weather_log etc.) so an admin
+    // can't accidentally enable a stub section that would render
+    // a "not yet configured" placeholder in the PDF.
+    const section = ALL_SECTIONS.find(s => s.id === id);
+    if (section?.comingSoon) return;
     setSelected(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
     );
@@ -1354,10 +1366,11 @@ function SectionPickerModal({
     );
   };
 
-  const selectAll = () => setSelected(ALL_SECTIONS.map(s => s.id));
+  const selectAll = () => setSelected(ALL_SECTIONS.filter(s => !s.comingSoon).map(s => s.id));
   const deselectAll = () => setSelected([]);
   const selectCategory = (cat: string) => {
-    const catSections = ALL_SECTIONS.filter(s => s.category === cat).map(s => s.id);
+    // Filter out comingSoon so a "select category" doesn't try to enable stubs
+    const catSections = ALL_SECTIONS.filter(s => s.category === cat && !s.comingSoon).map(s => s.id);
     const allSelected = catSections.every(id => selected.includes(id));
     if (allSelected) {
       setSelected(prev => prev.filter(id => !catSections.includes(id)));
@@ -1594,15 +1607,20 @@ function SectionPickerModal({
                   {catSections.map(section => {
                     const SIcon = section.icon;
                     const isChecked = selected.includes(section.id);
+                    const isSoon = !!section.comingSoon;
                     return (
                       <motion.button
                         key={section.id}
-                        whileTap={{ scale: 0.98 }}
+                        whileTap={isSoon ? undefined : { scale: 0.98 }}
                         onClick={() => toggle(section.id)}
+                        disabled={isSoon}
+                        title={isSoon ? "Coming soon — needs a real weather provider integration before it can be enabled." : undefined}
                         className="w-full flex items-center gap-2.5 p-2 rounded-lg text-left"
                         style={{
                           background: isChecked ? `${section.color}04` : "transparent",
                           border: `1px solid ${isChecked ? `${section.color}10` : "transparent"}`,
+                          opacity: isSoon ? 0.45 : 1,
+                          cursor: isSoon ? "not-allowed" : "pointer",
                         }}
                       >
                         <div className="size-5 rounded flex items-center justify-center flex-shrink-0"
@@ -1613,11 +1631,22 @@ function SectionPickerModal({
                           {isChecked && <CheckCircle2 className="size-3" style={{ color: "#fff" }} />}
                         </div>
                         <SIcon className="size-3.5 flex-shrink-0" style={{ color: isChecked ? section.color : "rgba(255,255,255,0.15)" }} />
-                        <div className="flex-1 min-w-0">
-                          <p style={{ fontSize: 11, fontWeight: 600, color: isChecked ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)" }}>
-                            {section.label}
-                          </p>
-                          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{section.description}</p>
+                        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                          <div className="flex-1 min-w-0">
+                            <p style={{ fontSize: 11, fontWeight: 600, color: isChecked ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)" }}>
+                              {section.label}
+                            </p>
+                            <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{section.description}</p>
+                          </div>
+                          {isSoon && (
+                            <span style={{
+                              fontSize: 8, fontWeight: 700, letterSpacing: "0.4px",
+                              padding: "1px 5px", borderRadius: 4,
+                              background: "rgba(255,150,0,0.15)",
+                              border: "1px solid rgba(255,150,0,0.35)",
+                              color: "#FF9500", flexShrink: 0,
+                            }}>SOON</span>
+                          )}
                         </div>
                       </motion.button>
                     );
