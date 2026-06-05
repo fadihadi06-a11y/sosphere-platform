@@ -1202,9 +1202,132 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         });
         console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
       }
+
+      // ═══════════════════════════════════════════════════════════════
+      // 2026-06-05 roots-of-roots M1-#2/3/4 + M2-PERSONAL_SOS
+      // Four SyncEvents were emitted by mobile with ZERO dashboard
+      // listener — life-safety blind spots. Wired here.
+      // ═══════════════════════════════════════════════════════════════
+
+      // ── SOS_DURESS_TRIGGERED (M1-#2, life-safety BLOCKER) ────────
+      // Worker entered the duress PIN — they are under coercion. The
+      // existing emergency (if any) gets upgraded to critical + tagged
+      // as duress; if no emergency exists yet, one is created. Admin
+      // gets a persistent, distinct alert so this isn't lost in the
+      // SOS_TRIGGERED noise.
+      if (event.type === "SOS_DURESS_TRIGGERED") {
+        const data = (event.data || {}) as Record<string, unknown>;
+        const existingId = data.emergencyId as string | undefined;
+        const allEmergencies = useDashboardStore.getState().emergencies;
+        const existing = existingId ? allEmergencies.find((e) => e.id === existingId) : undefined;
+        if (existing) {
+          updateEmergency(existing.id, {
+            severity: "critical",
+            type: existing.type + " — DURESS",
+          });
+        } else {
+          addEmergency({
+            id: existingId || generateEmergencyId(),
+            severity: "critical",
+            employeeName: event.employeeName,
+            zone: event.zone || "Unknown Zone",
+            type: "Duress Code (covert)",
+            timestamp: new Date(event.timestamp),
+            status: "active",
+            elapsed: 0,
+            employeeId: event.employeeId,
+            phone: data.phone as string | undefined,
+            // bloodType is in event.data but not on EmergencyItem yet — admin
+            // sees it via the SyncEvent payload in the notif panel.
+          });
+        }
+        incrementNotifCount();
+        toast.error(`⚠ DURESS CODE — ${event.employeeName}`, {
+          description: `${event.zone || "Unknown zone"} — worker entered coercion PIN. Treat as critical, do NOT contact directly.`,
+          duration: 15000,
+        });
+        console.log("[SUPABASE_READY] duress_received: " + event.employeeName);
+      }
+
+      // ── EVACUATION_ACK (M1-#3) ───────────────────────────────────
+      // Worker acknowledged / started / arrived during an active
+      // evacuation. Toast for visibility + notif count bump. The
+      // evacuation_acks table is the source of truth (mobile dual-
+      // writes to it); this listener is the real-time UI nudge so
+      // admin sees acks without polling.
+      if (event.type === "EVACUATION_ACK") {
+        const data = (event.data || {}) as Record<string, unknown>;
+        const phase = (data.phase as string) || "acknowledged";
+        const evacId = (data.evacuationId as string) || "—";
+        const phaseLabel =
+          phase === "arrived" ? "arrived at assembly point" :
+          phase === "evacuating" ? "started evacuating" :
+          "acknowledged evacuation";
+        incrementNotifCount();
+        toast.info(`🏃 ${event.employeeName} ${phaseLabel}`, {
+          description: `Evacuation ${evacId.slice(0, 8)} — zone ${event.zone || "?"}`,
+          duration: 4000,
+        });
+        console.log("[SUPABASE_READY] evacuation_ack_received: " + event.employeeName + " phase=" + phase);
+      }
+
+      // ── GPS_LAST_GASP (M1-#4, life-safety) ───────────────────────
+      // Battery is about to die — worker phone shouted out the last
+      // known GPS. Pin it onto whatever active emergency matches the
+      // employeeId, OR create a "battery-dead" emergency if none
+      // exists (worker may have triggered SOS earlier on another
+      // device, or no SOS was triggered at all — either way admin
+      // needs the last position).
+      if (event.type === "GPS_LAST_GASP") {
+        const data = (event.data || {}) as Record<string, unknown>;
+        const pos = data.position as { lat: number; lng: number } | undefined;
+        if (pos && event.employeeId) {
+          const allEmergencies = useDashboardStore.getState().emergencies;
+          const matching = allEmergencies
+            .filter((e) => e.status === "active" && e.employeeId === event.employeeId)
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+          if (matching) {
+            updateEmergency(matching.id, { location: { lat: pos.lat, lng: pos.lng } });
+            incrementNotifCount();
+            toast.warning(`📍 Last-known GPS — ${event.employeeName}`, {
+              description: `Battery critical (${(data.level as number | undefined)?.toFixed(0) ?? "?"}%) — location pinned on emergency ${matching.id.slice(0, 8)}`,
+              duration: 8000,
+            });
+          }
+        }
+        console.log("[SUPABASE_READY] last_gasp_received: " + event.employeeName);
+      }
+
+      // ── PERSONAL_SOS (M2 promoted to M1 batch) ───────────────────
+      // Civilian / individual-mode SOS — not employee-attached. Create
+      // an emergency tagged "Personal SOS" so it surfaces in the
+      // dashboard queue even though there's no matching employee row.
+      if (event.type === "PERSONAL_SOS") {
+        const data = (event.data || {}) as Record<string, unknown>;
+        const emgId = (data.emergencyId as string) || generateEmergencyId();
+        addEmergency({
+          id: emgId,
+          severity: "critical",
+          employeeName: event.employeeName || "Personal user",
+          zone: event.zone || "Personal / off-site",
+          type: "Personal SOS",
+          timestamp: new Date(event.timestamp),
+          status: "active",
+          elapsed: 0,
+          sourceEmergencyId: emgId,
+          employeeId: event.employeeId,
+          phone: data.phone as string | undefined,
+        });
+        incrementNotifCount();
+        toast.error(`🆘 Personal SOS — ${event.employeeName || "civilian"}`, {
+          description: `${event.zone || "Off-site"} — non-employee user, treat as critical`,
+          duration: 10000,
+        });
+        console.log("[SUPABASE_READY] personal_sos_received: " + event.employeeName);
+      }
     });
     return unsub;
-  }, [addEmergency, incrementNotifCount, cancelEmergencyById, setPendingIncidentReport, setShowIncidentReportPanel]);
+  }, [addEmergency, updateEmergency, incrementNotifCount, cancelEmergencyById, setPendingIncidentReport, setShowIncidentReportPanel]);
 
   // ── Audio Alert System ────────────────────────────────────────
   const playEmergencyAlert = useCallback(() => {
