@@ -302,7 +302,15 @@ serve(async (req: Request) => {
       // but a normal-case write completes well within Twilio's 8s TwiML
       // budget so the row almost always lands before the conference.
       const fromPhone = data.From || data.Caller || null;
-      try { await auditBridgeAccept(emergencyId, fromPhone); } catch {}
+      try { await auditBridgeAccept(emergencyId, fromPhone); } catch (err) {
+        // 2026-06-05 roots-of-roots M1-#7: was silent catch. The
+        // bridge-accept audit row is the SLA-critical record of WHEN
+        // a responder accepted the SOS call (responder pressed 1 in
+        // the IVR). Losing it leaves zero forensic trail of who
+        // answered when. Warn so monitoring can spot the gap;
+        // still non-blocking on the dial itself.
+        console.warn(`[sos-bridge-twiml] auditBridgeAccept FAILED (emergencyId=${emergencyId}, from=${fromPhone ? fromPhone.slice(-4) : "none"}):`, err instanceof Error ? err.message : err);
+      }
       const dbPhone = await resolveUserPhone(emergencyId);
       if (dbPhone) {
         try {

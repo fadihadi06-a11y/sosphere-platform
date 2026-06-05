@@ -1077,7 +1077,14 @@ serve(async (req: Request) => {
           payload: { emergencyId, stage, reason, ts: Date.now() },
         });
         setTimeout(() => supabase.removeChannel(ch), 2000);
-      } catch {}
+      } catch (err) {
+        // 2026-06-05 roots-of-roots M1-#6: was silent catch. A failed
+        // Realtime broadcast means the dashboard NEVER learns the SOS
+        // escalated past stage N — admin sees a stale severity. Log
+        // so monitoring catches the drift instead of inferring it
+        // from "dashboard looks frozen".
+        console.warn(`[sos-alert] escalation broadcast failed (emergencyId=${emergencyId}, stage=${stage}):`, err instanceof Error ? err.message : err);
+      }
 
       console.log(`[sos-alert] ESCALATE stage=${stage} reason=${reason} emergencyId=${emergencyId}`);
       const body = { ok: true, stage, forceBridge: !!forceBridge };
@@ -1236,7 +1243,14 @@ serve(async (req: Request) => {
           payload: { emergencyId, reason, ts: Date.now() },
         });
         setTimeout(() => supabase.removeChannel(ch), 2000);
-      } catch {}
+      } catch (err) {
+        // 2026-06-05 roots-of-roots M1-#6: was silent catch. A failed
+        // sos_ended broadcast means the dashboard keeps the emergency
+        // in "active" forever even after worker / admin resolved it.
+        // Audit log gets the resolution; this warn surfaces the
+        // Realtime-vs-truth drift for operators.
+        console.warn(`[sos-alert] sos_ended broadcast failed (emergencyId=${emergencyId}):`, err instanceof Error ? err.message : err);
+      }
 
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...cors, ...getRateLimitHeaders(endRl), "Content-Type": "application/json" },
