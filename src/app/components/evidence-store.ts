@@ -583,8 +583,18 @@ export function onEvidenceChange(callback: (evidenceId: string, action: string) 
             if (evidenceId) callback(evidenceId, action);
           })
           .subscribe();
-      } catch {}
-    }).catch(() => {});
+      } catch (err) {
+        console.warn("[EvidenceStore] channel.subscribe threw:", err);
+      }
+    }).catch((err) => {
+      // 2026-06-05 roots-of-roots cleanup: a failure here means
+      // cross-device evidence updates won't reach this dashboard
+      // session. The localStorage 'storage' listener still handles
+      // same-browser sync, so we degrade gracefully — but the warn
+      // makes the degradation visible in the console rather than
+      // silent.
+      console.warn("[EvidenceStore] Realtime channel resolve/subscribe failed:", err);
+    });
     unsubRealtime = () => {
       if (companyChannel) {
         try { supabase.removeChannel(companyChannel); } catch {}

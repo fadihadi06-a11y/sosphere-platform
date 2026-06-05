@@ -239,8 +239,15 @@ export async function createVault(params: {
 
   console.info(`[EvidenceVault] Created: ${vaultId} | Hash: ${vault.integrityHash.slice(0, 16)}... | Photos: ${vault.photoCount} | GPS: ${vault.gpsTrail.length} points`);
 
-  // Auto-upload in background (non-blocking)
-  uploadVault(vaultId).catch(() => {});
+  // Auto-upload in background (non-blocking).
+  // 2026-06-05 roots-of-roots cleanup: uploadVault internalises all
+  // network/DB errors and returns false on failure, but we still wire
+  // an explicit warn here so a future signature change can't silently
+  // drop chain-of-custody upload failures on the floor. The retry
+  // path is syncPendingVaults() — called by the app on resume.
+  uploadVault(vaultId).catch((err) => {
+    console.warn("[EvidenceVault] background upload threw unexpectedly:", err);
+  });
 
   return vault;
 }
