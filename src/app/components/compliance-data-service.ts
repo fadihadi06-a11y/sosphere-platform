@@ -65,7 +65,10 @@ const PURPLE: RGB = [139, 92, 246];
 
 const ROTATING_COLORS: RGB[] = [GREEN, CYAN, LIME, YELLOW, ORANGE, PURPLE, RED];
 
-function pct(numerator: number, denominator: number): string {
+/** 2026-06-05 roots-of-roots Tier 4: promoted from private helper so
+ *  it can be reused outside the PDF builder + locked by contract tests.
+ *  Returns "0%" when denominator <= 0 (avoid div-by-zero in templates). */
+export function pct(numerator: number, denominator: number): string {
   if (denominator <= 0) return "0%";
   return `${Math.round((numerator / denominator) * 100)}%`;
 }
@@ -101,7 +104,12 @@ function statusLabel(status: string | null | undefined): string {
   return status ?? "—";
 }
 
-function durationLabel(startedAtIso: string | null | undefined, resolvedAtIso: string | null | undefined): string {
+/** 2026-06-05 roots-of-roots Tier 4: promoted from private helper.
+ *  Returns "Nm SSs" duration between two ISO timestamps, or "—" if
+ *  the input is missing/invalid. Caps at 0 for negative differences.
+ *  Used by the incidents block; also reusable for evacuations and
+ *  journeys reporting. */
+export function durationLabel(startedAtIso: string | null | undefined, resolvedAtIso: string | null | undefined): string {
   if (!startedAtIso) return "—";
   const start = new Date(startedAtIso).getTime();
   const end = resolvedAtIso ? new Date(resolvedAtIso).getTime() : NaN;
@@ -217,7 +225,11 @@ async function fetchZoneRiskBlock(companyId: string, incidentCountByZone: Map<st
   }
 }
 
-function rankLevel(level: string): number {
+/** 2026-06-05 roots-of-roots Tier 4: promoted from private helper.
+ *  Ordinal severity comparator for the risk-register zone-risk
+ *  aggregator. Higher number = more severe. Case-insensitive on
+ *  input; unknown levels return 0 so they sort last. */
+export function rankLevel(level: string): number {
   switch ((level || "").toLowerCase()) {
     case "extreme": return 5;
     case "high": return 4;
