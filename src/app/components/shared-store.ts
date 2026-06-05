@@ -367,6 +367,14 @@ const TENANT_SCOPED_KEYS: readonly string[] = [
   // per-employee within a company, so it MUST be wiped on tenant switch
   // to avoid showing the previous company's worker movements.
   "sosphere_gps_trail",
+  // 2026-06-05 roots-of-roots M1-#5 (24th pattern app): active check-in
+  // deadline state. Holds the worker's CURRENT check-in deadline, total
+  // duration, and warning cycle count. Must be wiped on tenant switch
+  // so a shared device doesn't show worker A's pending check-in as
+  // worker B's after re-login.
+  "sosphere_checkin_deadline",
+  "sosphere_checkin_total",
+  "sosphere_checkin_warn_cycle",
 ];
 
 /**

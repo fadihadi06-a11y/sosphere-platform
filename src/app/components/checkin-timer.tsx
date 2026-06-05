@@ -14,6 +14,12 @@ const WARNING_MINUTES = 5;
 const EXTEND_MINUTES = 30;
 
 // FIX AUDIT-3.2: localStorage key for persisting deadline across backgrounding/refresh
+// 2026-06-05 roots-of-roots M1-#5: dual-write the active deadline to the
+// server via SECDEF RPC so admin/cross-device see the same truth. The
+// localStorage keys below stay as the instant-UI source; the RPC is the
+// durable mirror. See checkin-sessions-service.ts for the cache trio.
+import { upsertCheckinSession, clearCheckinSession } from "./checkin-sessions-service";
+
 const CHECKIN_DEADLINE_KEY = "sosphere_checkin_deadline";
 const CHECKIN_TOTAL_KEY = "sosphere_checkin_total";
 const CHECKIN_WARN_CYCLE_KEY = "sosphere_checkin_warn_cycle";
@@ -362,6 +368,10 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     localStorage.removeItem(CHECKIN_DEADLINE_KEY);
     localStorage.removeItem(CHECKIN_TOTAL_KEY);
     localStorage.removeItem(CHECKIN_WARN_CYCLE_KEY);
+    // 2026-06-05 M1-#5: mirror the clear to server. Fire-and-forget.
+    void clearCheckinSession().catch((err) => {
+      console.warn("[checkin-timer] server clear failed (best-effort):", err);
+    });
   }
 
   /** Start the deadline-check loop (1s interval, but reads Date.now()) */
@@ -433,6 +443,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
           // Persist new deadline + cycle count
           localStorage.setItem(CHECKIN_DEADLINE_KEY, String(newDeadline));
           localStorage.setItem(CHECKIN_WARN_CYCLE_KEY, String(warningCycleRef.current));
+          // 2026-06-05 M1-#5: mirror new deadline + cycle to server.
+          void upsertCheckinSession({
+            deadlineMs:   newDeadline,
+            totalSec:     remainingRef.current,
+            warningCycle: warningCycleRef.current,
+            zone:         userZone || null,
+          });
           return;
         }
 
@@ -459,6 +476,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     localStorage.setItem(CHECKIN_DEADLINE_KEY, String(deadline));
     localStorage.setItem(CHECKIN_TOTAL_KEY, String(demoSec));
     localStorage.setItem(CHECKIN_WARN_CYCLE_KEY, "0");
+    // 2026-06-05 M1-#5: mirror to server (24th pattern app).
+    void upsertCheckinSession({
+      deadlineMs:   deadline,
+      totalSec:     demoSec,
+      warningCycle: 0,
+      zone:         userZone || null,
+    });
 
     setTotalSeconds(demoSec);
     setRemaining(demoSec);
@@ -522,6 +546,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     phaseRef.current = "active";
     setPhase("active");
     localStorage.setItem(CHECKIN_DEADLINE_KEY, String(newDeadline));
+    // 2026-06-05 M1-#5: mirror extended deadline to server.
+    void upsertCheckinSession({
+      deadlineMs:   newDeadline,
+      totalSec:     extendSec,
+      warningCycle: warningCycleRef.current,
+      zone:         userZone || null,
+    });
     syncCheckinEvent({ type: "extend", employeeId: "self", employeeName: userName, zone: userZone, remainingSec: extendSec });
   }, [extendSec, userName, userZone]);
 

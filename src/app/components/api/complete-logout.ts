@@ -33,6 +33,7 @@ import { clearCompanySettingsCache } from "../company-settings-service";
 import { clearEmailSchedulesCache } from "../email-schedules-service";
 import { clearGeneratedReportsCache } from "../generated-reports-service";
 import { clearAnalyticsRollupsCache } from "../analytics-rollups-service";
+import { clearCheckinSessionsCache } from "../checkin-sessions-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -131,6 +132,12 @@ export async function completeLogout(): Promise<void> {
   // admin leaderboard to tenant-B until the next PDF generation
   // re-fetches. Closes the last cross-tenant leak surface.
   try { clearAnalyticsRollupsCache(); } catch { /* best effort */ }
+  // 2026-06-05 roots-of-roots M1-#5 (24th pattern app, 19 cache cleanups now):
+  // drop the active-checkin in-memory mirror. The localStorage deadline keys
+  // are wiped by the broad sosphere_ prefix sweep + by the TENANT_SCOPED_KEYS
+  // registry entry; this clear handles the module-level cache so a partial
+  // logout / company switch doesn't surface stale deadlines.
+  try { clearCheckinSessionsCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }

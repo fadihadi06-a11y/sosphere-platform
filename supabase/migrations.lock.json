@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T14:33:36.251Z",
-  "total_migrations": 175,
-  "manifest_sha256": "46cad0d55123ff5af74637cbe7e4adb9afed906e9c3c83d81c119e9d315a6ca4",
+  "generated_at": "2026-06-05T19:28:05.125Z",
+  "total_migrations": 176,
+  "manifest_sha256": "983783ec2463db1b03256d493128d65ecb76786150c603424bc87e8573bcd009",
   "migrations": [
     {
       "version": "20260415",
@@ -1157,6 +1157,13 @@
       "file": "20260603_shifts_table_16th_pattern_app.sql",
       "sha256": "94c13ceab66fa8a987ce027cbd16478410fbcb1cbb6a9d451b62c2fe4f531be8",
       "bytes": 5789
+    },
+    {
+      "version": "20260605",
+      "name": "checkin_sessions_24th_pattern_app",
+      "file": "20260605_checkin_sessions_24th_pattern_app.sql",
+      "sha256": "1f32e6d917468326c3667d875a62af300f9f2f1c0078371fe049285260114c2e",
+      "bytes": 6745
     },
     {
       "version": "20260605",
