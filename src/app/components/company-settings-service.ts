@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 export type CompanySettings = Record<string, unknown> & {
   company_name?:     string;
@@ -127,6 +128,16 @@ export async function saveCompanySettings(settings: CompanySettings): Promise<bo
       return false;
     }
     setCachedCompanySettings(settings);
+    // fresh-audit #5 (2026-06-04): compliance trail per ISO 27001 §A.12.4.
+    // Settings updates were previously silent — no record of who changed
+    // session timeout / branding / alert policy. Logged at info severity
+    // because the diff itself lives in company_settings table history.
+    try {
+      logAuditEvent("settings", "company_settings_updated", {
+        detail: `Updated company settings for ${companyId}`,
+        severity: "info",
+      });
+    } catch { /* audit best-effort; mutation already succeeded */ }
     return true;
   } catch (err) {
     console.warn("[company-settings] save threw:", err);

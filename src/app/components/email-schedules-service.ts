@@ -15,6 +15,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "quarterly";
 export type ScheduleFormat = "pdf" | "csv" | "both";
@@ -128,6 +129,16 @@ export async function saveEmailSchedule(args: UpsertScheduleArgs): Promise<boole
       console.warn("[email-schedules] save failed:", error.message);
       return false;
     }
+    // fresh-audit #5: scheduled report changes affect data egress
+    // (who gets PDFs of incidents). Material for ISO 27001 §A.12.4.
+    try {
+      logAuditEvent("settings", "email_schedule_saved", {
+        detail: `Schedule "${args.name}" (${args.frequency}, ${args.recipients.length} recipients)`,
+        targetId: args.id,
+        targetName: args.name,
+        severity: "info",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[email-schedules] save threw:", err);
@@ -143,6 +154,15 @@ export async function deleteEmailSchedule(id: string): Promise<boolean> {
       console.warn("[email-schedules] delete failed:", error.message);
       return false;
     }
+    // fresh-audit #5: schedule deletion is irreversible from the UI;
+    // logged at warning severity so it surfaces in compliance review.
+    try {
+      logAuditEvent("data_delete", "email_schedule_deleted", {
+        detail: `Deleted email schedule ${id}`,
+        targetId: id,
+        severity: "warning",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[email-schedules] delete threw:", err);

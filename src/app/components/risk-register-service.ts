@@ -22,6 +22,7 @@
 
 import { supabase } from "./api/supabase-client";
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 // Mirror the types used by dashboard-risk-register.tsx. Importing from
 // the page would create a circular dep, so we redeclare them here.
@@ -194,6 +195,19 @@ export async function upsertRisk(risk: RiskEntry): Promise<boolean> {
       console.warn("[risk-service] upsertRisk failed:", error.message);
       return false;
     }
+    // fresh-audit #5: risk-register edits feed compliance reports +
+    // ISO 31000 risk treatment plans. Logged at warning severity for
+    // critical/high risks so they surface in the audit feed; info for
+    // medium/low changes.
+    try {
+      logAuditEvent("data_modify", "risk_upserted", {
+        detail: `${risk.hazard} in ${risk.zone} (${risk.riskLevel})`,
+        targetId: risk.id,
+        targetName: risk.hazard,
+        severity: risk.riskLevel === "extreme" || risk.riskLevel === "high"
+          ? "warning" : "info",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[risk-service] upsertRisk exception:", err);
@@ -215,6 +229,12 @@ export async function upsertRiskBatch(risks: RiskEntry[]): Promise<number> {
       console.warn("[risk-service] upsertRiskBatch failed:", error.message);
       return 0;
     }
+    try {
+      logAuditEvent("data_modify", "risks_batch_upserted", {
+        detail: `${rows.length} risk entries upserted (batch)`,
+        severity: "info",
+      });
+    } catch { /* audit best-effort */ }
     return rows.length;
   } catch (err) {
     console.warn("[risk-service] upsertRiskBatch exception:", err);
@@ -294,6 +314,16 @@ export async function upsertTrainingRecord(record: TrainingRecord): Promise<bool
       console.warn("[risk-service] upsertTrainingRecord failed:", error.message);
       return false;
     }
+    // fresh-audit #5: training records gate worker zone access.
+    // A missing cert audit trail is an ISO 45001 §7.2 finding.
+    try {
+      logAuditEvent("data_modify", "training_record_upserted", {
+        detail: `${record.certification} for ${record.employeeName} (expires ${record.expiryDate.toISOString().slice(0,10)})`,
+        targetId: record.id,
+        targetName: record.employeeName,
+        severity: record.status === "expired" ? "warning" : "info",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[risk-service] upsertTrainingRecord exception:", err);

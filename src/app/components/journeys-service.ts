@@ -17,6 +17,7 @@
 
 import { supabase } from "./api/supabase-client";
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 // Local types mirror the Journey Management page's exports. Keeping
 // them local (instead of importing from the page) avoids circular
@@ -224,6 +225,18 @@ export async function upsertJourney(j: Journey): Promise<boolean> {
       console.warn("[journeys-service] upsert failed:", error.message);
       return false;
     }
+    // fresh-audit #5: journey lifecycle (started/completed/overdue)
+    // is safety-critical — a "missing" worker depends on whether
+    // their last journey was actually closed by an admin.
+    try {
+      logAuditEvent("data_modify", `journey_${j.status}`, {
+        detail: `${j.employeeName}: ${j.origin} → ${j.destination}`,
+        targetId: j.id,
+        targetName: j.employeeName,
+        severity: (j.status === "sos" || j.status === "deviated" || j.status === "delayed")
+          ? "warning" : "info",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[journeys-service] upsert exception:", err);
@@ -244,6 +257,12 @@ export async function upsertJourneyBatch(journeys: Journey[]): Promise<number> {
       console.warn("[journeys-service] batch upsert failed:", error.message);
       return 0;
     }
+    try {
+      logAuditEvent("data_modify", "journeys_batch_upserted", {
+        detail: `${rows.length} journeys upserted (batch)`,
+        severity: "info",
+      });
+    } catch { /* audit best-effort */ }
     return rows.length;
   } catch (err) {
     console.warn("[journeys-service] batch upsert exception:", err);

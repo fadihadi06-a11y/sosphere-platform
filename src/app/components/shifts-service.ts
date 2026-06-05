@@ -16,6 +16,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 export type ShiftType = "morning" | "afternoon" | "night" | "custom";
 
@@ -144,7 +145,17 @@ export async function upsertShiftsBatch(shifts: Shift[]): Promise<number> {
       console.warn("[shifts-service] upsert failed:", error.message);
       return 0;
     }
-    return typeof data === "number" ? data : 0;
+    const written = typeof data === "number" ? data : 0;
+    // fresh-audit #5: shift edits affect attendance + overtime + payroll
+    // downstream. Logged at info severity; detail carries the count so
+    // compliance review can correlate with sosphere_shifts_history.
+    try {
+      logAuditEvent("data_modify", "shifts_batch_upserted", {
+        detail: `${written}/${shifts.length} shifts upserted`,
+        severity: "info",
+      });
+    } catch { /* audit best-effort */ }
+    return written;
   } catch (err) {
     console.warn("[shifts-service] upsert exception:", err);
     return 0;

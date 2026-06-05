@@ -16,6 +16,7 @@
 
 import { supabase } from "./api/supabase-client";
 import { getCompanyId } from "./shared-store";
+import { logAuditEvent } from "./audit-log-store";
 
 // Re-declare the shapes the page uses. Keeping them local (instead of
 // importing from the page) avoids circular dependencies — the page
@@ -264,6 +265,18 @@ export async function upsertInvestigation(inv: Investigation): Promise<boolean> 
       console.warn("[investigations-service] upsert failed:", error.message);
       return false;
     }
+    // fresh-audit #5: investigation lifecycle is core ISO 27001 §A.16
+    // territory — opening, status changes, closing must all be logged.
+    // status carries the lifecycle stage so the audit trail can be
+    // filtered by "opened" vs "closed" without parsing JSON details.
+    try {
+      logAuditEvent("investigation", `investigation_${inv.status}`, {
+        detail: inv.title || inv.id,
+        targetId: inv.id,
+        targetName: inv.title,
+        severity: inv.status === "closed" ? "info" : "warning",
+      });
+    } catch { /* audit best-effort */ }
     return true;
   } catch (err) {
     console.warn("[investigations-service] upsert exception:", err);
@@ -284,6 +297,15 @@ export async function upsertInvestigationBatch(investigations: Investigation[]):
       console.warn("[investigations-service] batch upsert failed:", error.message);
       return 0;
     }
+    // fresh-audit #5: batch path (CSV/cache-sync) gets a single
+    // aggregate audit entry rather than N rows — keeps audit_log
+    // useful instead of flooded.
+    try {
+      logAuditEvent("investigation", "investigations_batch_upserted", {
+        detail: `${rows.length} investigations upserted (batch)`,
+        severity: "info",
+      });
+    } catch { /* audit best-effort */ }
     return rows.length;
   } catch (err) {
     console.warn("[investigations-service] batch upsert exception:", err);
