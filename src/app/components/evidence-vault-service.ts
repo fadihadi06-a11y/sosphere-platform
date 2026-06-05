@@ -71,19 +71,6 @@ export interface VaultPackage {
   createdAt: number;
 }
 
-export interface VaultSummary {
-  vaultId: string;
-  emergencyId: string;
-  startTime: number;
-  durationSec: number;
-  photoCount: number;
-  hasAudio: boolean;
-  gpsPoints: number;
-  integrityHash: string;
-  synced: boolean;
-  shareUrl: string | null;
-}
-
 // ── Storage ─────────────────────────────────────────────────
 const VAULT_STORAGE_KEY = "sosphere_evidence_vaults";
 const VAULT_LOCK_HOURS  = 24;
@@ -416,25 +403,6 @@ export function getVault(vaultId: string): VaultPackage | null {
 export function getVaultForEmergency(emergencyId: string): VaultPackage | null {
   const vaults = loadVaults();
   return vaults.find(v => v.emergencyId === emergencyId) || null;
-}
-
-/**
- * Get all vaults as summaries (for listing in the app).
- */
-export function getAllVaultSummaries(): VaultSummary[] {
-  const vaults = loadVaults();
-  return vaults.map(v => ({
-    vaultId: v.vaultId,
-    emergencyId: v.emergencyId,
-    startTime: v.startTime,
-    durationSec: v.durationSec,
-    photoCount: v.photoCount,
-    hasAudio: v.audioRecording?.available ?? false,
-    gpsPoints: v.gpsTrail.length,
-    integrityHash: v.integrityHash,
-    synced: v.synced,
-    shareUrl: v.shareUrl,
-  }));
 }
 
 /**

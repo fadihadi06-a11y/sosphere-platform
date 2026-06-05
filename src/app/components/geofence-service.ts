@@ -217,12 +217,6 @@ export function decideTransitions(
 let _serverZones: Zone[] | null = null;
 let _membership: Set<string> = new Set();
 const _pending: Map<string, PendingTransition> = new Map();
-let _hysteresisThreshold = DEFAULT_HYSTERESIS_SAMPLES;
-
-export function setHysteresisThreshold(n: number): void {
-  _hysteresisThreshold = Math.max(1, Math.floor(n));
-}
-
 /** Set the canonical zone list (called by initGeofenceService after
  *  loading from Supabase). Also resets membership + pending buffer. */
 export function setServerZones(zones: Zone[]): void {
@@ -300,7 +294,7 @@ export function evaluateGpsSample(sample: GpsSample): TransitionDecision {
     return { entered: [], exited: [], insideNow: Array.from(_membership) };
   }
   const candidate = computeMembership(sample, _serverZones);
-  const decision = decideTransitions(_membership, candidate, _pending, _hysteresisThreshold);
+  const decision = decideTransitions(_membership, candidate, _pending, DEFAULT_HYSTERESIS_SAMPLES);
   _membership = new Set(decision.insideNow);
   return decision;
 }
@@ -339,33 +333,5 @@ export async function recordGeofenceEvent(args: RecordGeofenceEventArgs): Promis
   } catch (err) {
     console.warn("[Geofence] record_geofence_event threw:", err);
     return null;
-  }
-}
-
-export interface CompanyGeofenceEventRow {
-  id: string;
-  user_id: string;
-  zone_id: string;
-  event_type: "enter" | "exit" | "dwell";
-  lat: number;
-  lng: number;
-  accuracy_meters: number | null;
-  source: string;
-  occurred_at: string;
-}
-
-/** Paired reader RPC — for admin dashboards. */
-export async function loadCompanyGeofenceEvents(
-  companyId: string, limit: number = 100,
-): Promise<{ ok: boolean; rows: CompanyGeofenceEventRow[]; error?: string }> {
-  try {
-    const { supabase } = await import("./api/supabase-client");
-    const { data, error } = await supabase.rpc("get_company_geofence_events", {
-      p_company_id: companyId, p_limit: limit,
-    });
-    if (error) return { ok: false, rows: [], error: error.message };
-    return { ok: true, rows: Array.isArray(data) ? (data as CompanyGeofenceEventRow[]) : [] };
-  } catch (err) {
-    return { ok: false, rows: [], error: err instanceof Error ? err.message : "Unexpected error" };
   }
 }
