@@ -1504,7 +1504,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           name: e.employeeName,
           role: emp?.role || "Employee",
           department: emp?.department || "Unknown",
-          phone: emp?.phone || "+966 5X XXX XXXX",
+          // 2026-06-04 roots-of-roots HIGH-1 (life-safety): never fabricate a phone
+          // number. The SOSEmployee popup hides the row when undefined, but if we
+          // pass a placeholder string the responder will literally dial it.
+          phone: emp?.phone || undefined,
           zone: e.zone,
           // FIX 2: Real battery/signal from last sync event
           // P0-doctrine-completion (2026-05-25): null → undefined for SOSEmployee

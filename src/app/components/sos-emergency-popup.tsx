@@ -32,7 +32,10 @@ export interface SOSEmployee {
   nameAr?: string;
   role: string;
   department: string;
-  phone: string;
+  // 2026-06-04 roots-of-roots HIGH-1 (life-safety): optional so we
+  // never fabricate a phone number for a responder to dial. Display
+  // sites fall back to "—"; call/WhatsApp actions are guarded.
+  phone?: string;
   zone: string;
   photoUrl?: string;
   batteryLevel?: number;
@@ -776,7 +779,7 @@ export function SOSEmergencyPopup({
             >
               {/* Call Method Overlay */}
               <AnimatePresence>
-                {showCallMethod && (
+                {showCallMethod && em.phone && (
                   <CallMethodPanel
                     phone={em.phone}
                     employeeName={em.name}
@@ -855,7 +858,7 @@ export function SOSEmergencyPopup({
                         >
                           <Phone className="size-3" style={{ color: "rgba(0,200,224,0.6)" }} />
                           <span style={{ fontSize: 11, color: "rgba(0,200,224,0.8)", fontWeight: 600 }}>
-                            {em.phone}
+                            {em.phone || "—"}
                           </span>
                         </button>
                         <motion.div

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-04T16:27:58.533Z",
-  "total_migrations": 165,
-  "manifest_sha256": "19412a48b111415e0eb22adf87c948fe8411c9d153a229cfd9be8d5659f09b02",
+  "generated_at": "2026-06-05T12:33:58.844Z",
+  "total_migrations": 166,
+  "manifest_sha256": "89247eaf4f67bdbed1179e3bd9ba8a7fe8488f57bdae3fea403c68c4374ba5fb",
   "migrations": [
     {
       "version": "20260415",
@@ -1157,6 +1157,13 @@
       "file": "20260603_shifts_table_16th_pattern_app.sql",
       "sha256": "94c13ceab66fa8a987ce027cbd16478410fbcb1cbb6a9d451b62c2fe4f531be8",
       "bytes": 5789
+    },
+    {
+      "version": "20260605",
+      "name": "roots_of_roots_tier2b_advisor_fixes",
+      "file": "20260605_roots_of_roots_tier2b_advisor_fixes.sql",
+      "sha256": "235be5150ea62c1c75355750d9c7187a346278b12e90d603bfc89efe90d949f5",
+      "bytes": 2013
     }
   ]
 }

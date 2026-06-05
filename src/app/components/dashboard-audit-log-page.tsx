@@ -41,11 +41,11 @@ import { toast } from "sonner";
 // the store in three ways the page depends on:
 //   * `detail: string` is REQUIRED here (used in many `.detail`
 //     accesses without `?? ""`); store treats it as optional.
-//   * `ip` is the field name here; store uses `ipAddress`.
 //   * `actor` carries an optional `zone` field that the store
 //     doesn't track (zone-admin scoping for the audit-log filter).
-// Future refactor: rename `ip` -> `ipAddress` and align defaults to
-// drop the local interface entirely.
+// 2026-06-04 roots-of-roots HIGH-2 fix: `ip` was renamed to `ipAddress`
+// to match the canonical AuditEntry shape; the remaining divergences
+// (required detail + actor.zone) are tracked for a future consolidation.
 
 interface AuditEntry {
   id: string;
@@ -67,7 +67,7 @@ interface AuditEntry {
   before?: string;
   after?: string;
   zone?: string;
-  ip?: string;
+  ipAddress?: string; // 2026-06-04 roots-of-roots HIGH-2: was `ip` — renamed to match canonical AuditEntry in audit-log-store.ts so live CDC entries actually populate the IP column instead of rendering blank.
   severity: "info" | "warning" | "critical" | "success";
   verified2FA?: boolean;
 }
@@ -128,14 +128,14 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Modified 3 permissions for Sara Al-Mutairi in Zone C",
     before: "Role defaults (Safety Manager)",
     after: "Custom: +audit:view, -billing:view, +reports:export",
-    zone: "Zone C", ip: "192.168.1.10", verified2FA: true,
+    zone: "Zone C", ipAddress: "192.168.1.10", verified2FA: true,
   },
   {
     id: "AUD-002", timestamp: ago(5), category: "2fa_event", severity: "success",
     actor: { id: "USR-001", name: "Ahmed Al-Rashid", level: "owner" },
     action: "2FA PIN verified",
     detail: "Owner verified PIN before modifying permissions for Sara Al-Mutairi",
-    ip: "192.168.1.10", verified2FA: true,
+    ipAddress: "192.168.1.10", verified2FA: true,
   },
   {
     id: "AUD-003", timestamp: ago(18), category: "zone_assignment", severity: "info",
@@ -145,14 +145,14 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Mohammed Ali assigned as Lead Admin for Zone B — Control Room",
     before: "Unassigned",
     after: "Zone B Lead Admin",
-    zone: "Zone B", ip: "192.168.1.11",
+    zone: "Zone B", ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-004", timestamp: ago(34), category: "2fa_event", severity: "success",
     actor: { id: "USR-002", name: "Omar Al-Farsi", level: "main_admin" },
     action: "2FA PIN verified",
     detail: "Main Admin verified PIN before assigning zone admin role",
-    ip: "192.168.1.11", verified2FA: true,
+    ipAddress: "192.168.1.11", verified2FA: true,
   },
   {
     id: "AUD-005", timestamp: ago(52), category: "role_change", severity: "warning",
@@ -162,7 +162,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Khalid Omar role changed from Employee to Shift Supervisor",
     before: "employee",
     after: "shift_supervisor",
-    ip: "192.168.1.10", verified2FA: true,
+    ipAddress: "192.168.1.10", verified2FA: true,
   },
   {
     id: "AUD-006", timestamp: ago(78), category: "csv_import", severity: "success",
@@ -170,7 +170,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     action: "CSV bulk import completed",
     detail: "487 employees imported successfully (3 warnings, 2 errors skipped)",
     after: "+487 employees, distributed across Zone A, B, C, D, E",
-    ip: "192.168.1.11",
+    ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-007", timestamp: ago(112), category: "user_added", severity: "success",
@@ -179,14 +179,14 @@ const MOCK_AUDIT: AuditEntry[] = [
     action: "New member approved",
     detail: "Aisha Rahman approved from invite link and assigned to Zone B",
     after: "Field Worker · Zone B",
-    ip: "192.168.1.11",
+    ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-008", timestamp: ago(145), category: "emergency", severity: "critical",
     actor: { id: "USR-006", name: "Sara Al-Mutairi", level: "zone_admin" },
     action: "Emergency escalated",
     detail: "Zone C incident escalated to Main Admin — worker unresponsive 4+ minutes",
-    zone: "Zone C", ip: "10.0.0.45",
+    zone: "Zone C", ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-009", timestamp: ago(180), category: "permission_change", severity: "warning",
@@ -196,14 +196,14 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Removed emergency:create permission from Nasser Al-Said",
     before: "employee defaults + emergency:create",
     after: "Standard employee defaults",
-    zone: "Zone A", ip: "192.168.1.11", verified2FA: true,
+    zone: "Zone A", ipAddress: "192.168.1.11", verified2FA: true,
   },
   {
     id: "AUD-010", timestamp: ago(220), category: "login", severity: "info",
     actor: { id: "USR-001", name: "Ahmed Al-Rashid", level: "owner" },
     action: "Dashboard login",
     detail: "Owner logged into SOSphere dashboard from Chrome/macOS",
-    ip: "192.168.1.10",
+    ipAddress: "192.168.1.10",
   },
   {
     id: "AUD-011", timestamp: ago(245), category: "settings", severity: "info",
@@ -212,7 +212,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Check-in interval changed from 30min to 15min. SMS alerts enabled for late check-ins.",
     before: "30 min interval",
     after: "15 min interval + SMS",
-    ip: "192.168.1.10", verified2FA: false,
+    ipAddress: "192.168.1.10", verified2FA: false,
   },
   {
     id: "AUD-012", timestamp: ago(290), category: "zone_assignment", severity: "info",
@@ -222,7 +222,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Fatima Hassan assigned as Secondary Admin for Zone A — North Gate",
     before: "Unassigned",
     after: "Zone A Secondary Admin",
-    zone: "Zone A", ip: "192.168.1.10",
+    zone: "Zone A", ipAddress: "192.168.1.10",
   },
   {
     id: "AUD-013", timestamp: ago(360), category: "user_suspended", severity: "critical",
@@ -230,14 +230,14 @@ const MOCK_AUDIT: AuditEntry[] = [
     target: { id: "USR-009", name: "Yusuf Bakr", level: "worker" },
     action: "Account suspended",
     detail: "Yusuf Bakr account suspended — reason: 3 consecutive missed check-ins in Zone D",
-    zone: "Zone D", ip: "192.168.1.11", verified2FA: true,
+    zone: "Zone D", ipAddress: "192.168.1.11", verified2FA: true,
   },
   {
     id: "AUD-014", timestamp: ago(480), category: "2fa_event", severity: "warning",
     actor: { id: "USR-002", name: "Omar Al-Farsi", level: "main_admin" },
     action: "2FA PIN failed (attempt 1/3)",
     detail: "Incorrect PIN entered before attempting permission change. System logged attempt.",
-    ip: "192.168.1.11",
+    ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-015", timestamp: ago(720), category: "role_change", severity: "info",
@@ -254,7 +254,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Import attempted — 2 critical errors prevented completion (duplicate ID, invalid phone)",
     before: "0 employees",
     after: "Import aborted — fix errors and retry",
-    ip: "192.168.1.11",
+    ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-017", timestamp: ago(2880), category: "permission_change", severity: "critical",
@@ -264,7 +264,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "billing:manage permission removed from Main Admin",
     before: "billing:view + billing:manage",
     after: "billing:view only",
-    ip: "192.168.1.10", verified2FA: true,
+    ipAddress: "192.168.1.10", verified2FA: true,
   },
   {
     id: "AUD-018", timestamp: ago(4320), category: "user_added", severity: "success",
@@ -280,7 +280,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     actor: { id: "USR-006", name: "Sara Al-Mutairi", level: "zone_admin" as AuditLevel },
     action: "Viewed investigation report",
     detail: "Opened investigation INV-001 (Scaffolding Collapse) — full report including RCA and CAPA plan",
-    zone: "Zone D", ip: "10.0.0.45",
+    zone: "Zone D", ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-020", timestamp: ago(25), category: "data_modify" as AuditCategory, severity: "warning" as const,
@@ -289,7 +289,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "RSK-004 (Heat Stress) likelihood changed from 3 to 4 based on new weather forecast data",
     before: "Likelihood: 3, Score: 9 (Medium)",
     after: "Likelihood: 4, Score: 12 (High)",
-    zone: "Zone A", ip: "192.168.1.11", verified2FA: true,
+    zone: "Zone A", ipAddress: "192.168.1.11", verified2FA: true,
   },
   {
     id: "AUD-021", timestamp: ago(42), category: "data_delete" as AuditCategory, severity: "critical" as const,
@@ -297,35 +297,35 @@ const MOCK_AUDIT: AuditEntry[] = [
     target: { id: "USR-012", name: "Tariq Zayed", level: "worker" as AuditLevel },
     action: "Employee record archived",
     detail: "Tariq Zayed employment record moved to archive — reason: contract ended. All GPS and check-in history preserved for 7 years per policy.",
-    zone: "Zone D", ip: "192.168.1.11", verified2FA: true,
+    zone: "Zone D", ipAddress: "192.168.1.11", verified2FA: true,
   },
   {
     id: "AUD-022", timestamp: ago(55), category: "report_export" as AuditCategory, severity: "info" as const,
     actor: { id: "USR-006", name: "Sara Al-Mutairi", level: "zone_admin" as AuditLevel },
     action: "Compliance report exported",
     detail: "Monthly Safety Compliance Report (Feb 2026) exported as PDF with encryption. Sent to management@company.com",
-    ip: "10.0.0.45",
+    ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-023", timestamp: ago(88), category: "investigation" as AuditCategory, severity: "warning" as const,
     actor: { id: "USR-006", name: "Sara Al-Mutairi", level: "zone_admin" as AuditLevel },
     action: "CAPA action marked complete",
     detail: "CA-5 (Retrain lab operators on chemical transfer SOP) marked as completed — 5/5 operators retrained",
-    zone: "Zone B", ip: "10.0.0.45",
+    zone: "Zone B", ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-024", timestamp: ago(130), category: "logout" as AuditCategory, severity: "info" as const,
     actor: { id: "USR-001", name: "Ahmed Al-Rashid", level: "owner" as AuditLevel },
     action: "Dashboard logout",
     detail: "Owner logged out — session duration: 2h 15m. No pending actions.",
-    ip: "192.168.1.10",
+    ipAddress: "192.168.1.10",
   },
   {
     id: "AUD-025", timestamp: ago(160), category: "file_access" as AuditCategory, severity: "info" as const,
     actor: { id: "USR-002", name: "Omar Al-Farsi", level: "main_admin" as AuditLevel },
     action: "Viewed employee GPS trail",
     detail: "Accessed 48h GPS trail history for Ali Mansour (EMP-013) — Zone A North Gate",
-    zone: "Zone A", ip: "192.168.1.11",
+    zone: "Zone A", ipAddress: "192.168.1.11",
   },
   {
     id: "AUD-026", timestamp: ago(200), category: "data_modify" as AuditCategory, severity: "info" as const,
@@ -334,21 +334,21 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Updated certification expiry for Lina Chen — HAZMAT certification renewed to 2027-03-10",
     before: "Expiry: 2026-03-10 (Expiring Soon)",
     after: "Expiry: 2027-03-10 (Valid)",
-    zone: "Zone B", ip: "10.0.0.45",
+    zone: "Zone B", ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-027", timestamp: ago(310), category: "report_export" as AuditCategory, severity: "info" as const,
     actor: { id: "USR-001", name: "Ahmed Al-Rashid", level: "owner" as AuditLevel },
     action: "Risk Register exported",
     detail: "Full Risk Register + Training Records exported as PDF (2 pages, encrypted). Downloaded locally.",
-    ip: "192.168.1.10",
+    ipAddress: "192.168.1.10",
   },
   {
     id: "AUD-028", timestamp: ago(500), category: "investigation" as AuditCategory, severity: "critical" as const,
     actor: { id: "USR-006", name: "Sara Al-Mutairi", level: "zone_admin" as AuditLevel },
     action: "New investigation opened",
     detail: "Investigation INV-002 opened for Chemical Spill in Zone B Lab — assigned as lead investigator",
-    zone: "Zone B", ip: "10.0.0.45",
+    zone: "Zone B", ipAddress: "10.0.0.45",
   },
   {
     id: "AUD-029", timestamp: ago(600), category: "data_delete" as AuditCategory, severity: "warning" as const,
@@ -357,7 +357,7 @@ const MOCK_AUDIT: AuditEntry[] = [
     detail: "Zone F (Temporary Storage) decommissioned and archived — 0 active workers, all geofences disabled",
     before: "Zone F — Active, 0 employees",
     after: "Zone F — Archived",
-    ip: "192.168.1.11", verified2FA: true,
+    ipAddress: "192.168.1.11", verified2FA: true,
   },
 ];
 
@@ -514,7 +514,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         e.target?.name || "—",
         e.zone || "—",
         e.verified2FA ? "Yes" : "No",
-        e.ip || "—",
+        e.ipAddress || "—",
         e.severity,
       ]),
     ];
@@ -1198,11 +1198,11 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
           doc.text(e.zone, pw / 2 + 25, detailY);
         }
 
-        if (e.ip) {
+        if (e.ipAddress) {
           doc.setTextColor(130);
           doc.text("IP:", pw / 2 + 10, detailY + 6);
           doc.setTextColor(50);
-          doc.text(e.ip, pw / 2 + 25, detailY + 6);
+          doc.text(e.ipAddress, pw / 2 + 25, detailY + 6);
         }
 
         doc.setTextColor(130);
@@ -1853,7 +1853,7 @@ function AuditRow({ entry, expanded, onToggle }: {
   const CatIcon = catCfg.icon;
   const ActorIcon = actorCfg.icon;
   const hasDiff = entry.before || entry.after;
-  const hasDetails = hasDiff || entry.zone || entry.ip || entry.verified2FA !== undefined;
+  const hasDetails = hasDiff || entry.zone || entry.ipAddress || entry.verified2FA !== undefined;
 
   return (
     <motion.div
@@ -1979,10 +1979,10 @@ function AuditRow({ entry, expanded, onToggle }: {
                       <span style={{ fontSize: 10, color: "rgba(0,200,224,0.7)" }}>{entry.zone}</span>
                     </div>
                   )}
-                  {entry.ip && (
+                  {entry.ipAddress && (
                     <div className="flex items-center gap-1.5">
                       <Hash className="size-3" style={{ color: "rgba(255,255,255,0.2)" }} />
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>IP: {entry.ip}</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>IP: {entry.ipAddress}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5">
