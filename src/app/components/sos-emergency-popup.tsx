@@ -1051,10 +1051,20 @@ export function SOSEmergencyPopup({
                             zone: em.zone,
                           });
                           try {
+                            // 2026-06-05 roots-of-roots M1-#1: NEVER write a hardcoded
+                            // location into the SAR prefill. The old code defaulted to
+                            // Riyadh city center {24.7136, 46.6753} which is the worst
+                            // possible failure mode — SAR responders dispatched to the
+                            // wrong city for any non-Saudi deployment, or to a random
+                            // city center for a Saudi site away from Riyadh. lastGPS
+                            // can legitimately be null when the emergency was triggered
+                            // before any GPS lock; the SAR launch screen must handle
+                            // that path (prompt admin to drop pin / pick zone manually)
+                            // instead of inheriting a lie.
                             localStorage.setItem("sosphere_sar_prefill", JSON.stringify({
                               employeeName: em.name,
                               zone: em.zone,
-                              lastGPS: em.lastGPS || { lat: 24.7136, lng: 46.6753 },
+                              lastGPS: em.lastGPS ?? null,
                               elapsedMinutes: Math.round(elapsed / 60),
                               emergencyId: em.id,
                             }));
@@ -1080,6 +1090,11 @@ export function SOSEmergencyPopup({
                           <p style={{ fontSize: 9, color: "rgba(255,149,0,0.5)", marginTop: 1 }}>
                             {Math.round(elapsed / 60)}+ min — initiate search & rescue
                           </p>
+                          {!em.lastGPS && (
+                            <p style={{ fontSize: 9, fontWeight: 700, color: "#FF2D55", marginTop: 2 }}>
+                              ⚠ No GPS fix — search center must be set manually
+                            </p>
+                          )}
                         </div>
                         <ChevronRight className="size-4 flex-shrink-0" style={{ color: "rgba(255,149,0,0.35)" }} />
                       </motion.button>
