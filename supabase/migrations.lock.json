@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T12:33:58.844Z",
-  "total_migrations": 166,
-  "manifest_sha256": "89247eaf4f67bdbed1179e3bd9ba8a7fe8488f57bdae3fea403c68c4374ba5fb",
+  "generated_at": "2026-06-05T13:04:37.649Z",
+  "total_migrations": 167,
+  "manifest_sha256": "265575330c4b2afb14d76ed11ab0a0c5aee2c6fb62d5cd6bc4af79e564e3ab7a",
   "migrations": [
     {
       "version": "20260415",
@@ -1164,6 +1164,13 @@
       "file": "20260605_roots_of_roots_tier2b_advisor_fixes.sql",
       "sha256": "235be5150ea62c1c75355750d9c7187a346278b12e90d603bfc89efe90d949f5",
       "bytes": 2013
+    },
+    {
+      "version": "20260605",
+      "name": "tier3a_rls_auth_uid_initplan_wrap",
+      "file": "20260605_tier3a_rls_auth_uid_initplan_wrap.sql",
+      "sha256": "7c109519a854c7d6e6d28a50f5fa43bdc71dd3ead2c5e0b6740e0ce4eef7b7dd",
+      "bytes": 5604
     }
   ]
 }
