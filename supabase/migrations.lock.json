@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T13:59:30.318Z",
-  "total_migrations": 172,
-  "manifest_sha256": "77de21460830f2cd215e1e01d9062486e450a4d1fe30b88483406ce86cabaa7f",
+  "generated_at": "2026-06-05T14:06:48.745Z",
+  "total_migrations": 173,
+  "manifest_sha256": "8e5e389e8a2557a1a97e9af92a84816e0af1add16463d05295651fe3154e8397",
   "migrations": [
     {
       "version": "20260415",
@@ -1206,6 +1206,13 @@
       "file": "20260605_tier3c_phase2c_consolidate_emergencies_all.sql",
       "sha256": "9bde2559f0e93d4603914e01f8e5c9975131e1cf3babd4002758b9d1b0a50d71",
       "bytes": 2131
+    },
+    {
+      "version": "20260605",
+      "name": "tier3c_phase2d_consolidate_sos_sms_replies_select",
+      "file": "20260605_tier3c_phase2d_consolidate_sos_sms_replies_select.sql",
+      "sha256": "57de44fee9f7b3d45dd2fee2f8b6c547354adf818eb9d6c2e68fbde8c4ac9158",
+      "bytes": 2143
     }
   ]
 }
