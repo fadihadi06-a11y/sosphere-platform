@@ -156,6 +156,53 @@ export async function dashboardAuthLoader(): Promise<VerifiedDashboardSession> {
   return verified;
 }
 
+// ───────── NON-REDIRECTING LOADER (fresh-audit #2, 2026-06-04) ─────────
+// dashboardAuthLoader (above) was designed to gate the /dashboard route
+// the way most routing frameworks expect - throw redirect on no-auth.
+// That broke the existing UX where /dashboard hosts an in-component
+// PIN+MFA login form (dashboard-web-page.tsx renders it when no session
+// is present). Redirecting users away from /dashboard mid-render meant
+// they could never reach the form.
+//
+// dashboardSessionLoader is the wiring-safe variant:
+//   - Returns the verified session (or null) instead of throwing.
+//   - Performs the EXPIRED-HINT CLEANUP side effect at navigation
+//     time. This is the gap that was silently broken: getDashboardSession
+//     and isSessionExpired are imported by dashboard-web-page.tsx but
+//     NEVER called - so expired hints from a 9h-old tab never got
+//     wiped. The loader fixes that without changing the render path.
+//   - Triggers loadVerifiedDashboardSession in parallel with the
+//     lazy() chunk import, so the server role resolves while the JS
+//     bundle is downloading, saving one round-trip on initial load.
+//
+// The page's existing PIN+MFA flow still runs when verified is null,
+// so the UX contract is preserved.
+export interface DashboardLoaderData {
+  /** Server-verified session, or null when no JWT or no membership. */
+  verified: VerifiedDashboardSession | null;
+  /** True if a stale hint was present at load time and got cleared.
+   *  The page can surface a "Your session expired - please sign in
+   *  again" toast on the in-component login form. */
+  expired: boolean;
+}
+
+export async function dashboardSessionLoader(): Promise<DashboardLoaderData> {
+  let expired = false;
+  const hint = getDashboardSession();
+  if (hint && isSessionExpired(hint)) {
+    clearDashboardSession();
+    expired = true;
+  }
+  // Never throw - pass null through so the page can render its
+  // own login UI. Any error from getAuthenticatedRole (offline,
+  // expired JWT) is already swallowed inside loadVerifiedDashboardSession.
+  const verified: VerifiedDashboardSession | null = await loadVerifiedDashboardSession().catch((err) => {
+    console.warn("[dashboard-loader] verify threw:", err);
+    return null;
+  });
+  return { verified, expired };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Page-Level Role Protection
 // ═══════════════════════════════════════════════════════════════

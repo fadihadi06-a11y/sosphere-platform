@@ -171,3 +171,69 @@ describe("dashboard-auth-guard — 12th pattern contract (CRIT-AUTH)", () => {
     expect(dispatcherPages).not.toContain("settings");
   });
 });
+
+// ───────── dashboardSessionLoader (fresh-audit #2, 2026-06-04) ─────────
+
+describe("dashboardSessionLoader - fresh-audit #2 non-redirecting loader", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(lsStore)) delete lsStore[k];
+    vi.resetModules();
+  });
+
+  it("15. returns verified=null + expired=false when no session at all", async () => {
+    vi.doMock("../../api/authenticated-role", () => ({
+      getAuthenticatedRole: async () => ({ verified: false, role: null, userId: null, companyId: null }),
+    }));
+    const { dashboardSessionLoader } = await import("../dashboard-auth-guard");
+    const r = await dashboardSessionLoader();
+    expect(r.verified).toBeNull();
+    expect(r.expired).toBe(false);
+  });
+
+  it("16. clears expired hint + reports expired=true (the bug it fixes)", async () => {
+    // Place a stale hint that is past TTL
+    lsStore["sosphere_dashboard_hint"] = JSON.stringify({
+      name: "Stale", company: "Old Co",
+      loginAt: Date.now() - (9 * 60 * 60 * 1000), // 9h ago, beyond 8h TTL
+      version: 1,
+    });
+    vi.doMock("../../api/authenticated-role", () => ({
+      getAuthenticatedRole: async () => ({ verified: false, role: null, userId: null, companyId: null }),
+    }));
+    const { dashboardSessionLoader } = await import("../dashboard-auth-guard");
+    const r = await dashboardSessionLoader();
+    expect(r.expired).toBe(true);
+    // Hint must be wiped from localStorage
+    expect(lsStore["sosphere_dashboard_hint"]).toBeUndefined();
+  });
+
+  it("17. returns verified session when getAuthenticatedRole resolves", async () => {
+    lsStore["sosphere_dashboard_hint"] = JSON.stringify({
+      name: "Alice", company: "Acme", loginAt: Date.now(), version: 1,
+    });
+    vi.doMock("../../api/authenticated-role", () => ({
+      getAuthenticatedRole: async () => ({
+        verified: true, role: "company_admin", userId: "user-1", companyId: "company-1",
+      }),
+    }));
+    const { dashboardSessionLoader } = await import("../dashboard-auth-guard");
+    const r = await dashboardSessionLoader();
+    expect(r.verified).not.toBeNull();
+    expect(r.verified?.role).toBe("company_admin");
+    expect(r.verified?.userId).toBe("user-1");
+    expect(r.verified?.companyId).toBe("company-1");
+    expect(r.expired).toBe(false);
+  });
+
+  it("18. NEVER throws on getAuthenticatedRole rejection (preserves UX contract)", async () => {
+    vi.doMock("../../api/authenticated-role", () => ({
+      getAuthenticatedRole: async () => { throw new Error("network down"); },
+    }));
+    const { dashboardSessionLoader } = await import("../dashboard-auth-guard");
+    // The promise must resolve, not reject. The page renders its
+    // in-component PIN+MFA flow when verified is null.
+    const r = await dashboardSessionLoader();
+    expect(r.verified).toBeNull();
+    expect(r.expired).toBe(false);
+  });
+});

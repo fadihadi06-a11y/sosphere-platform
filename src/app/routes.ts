@@ -26,7 +26,18 @@ export const router = createBrowserRouter([
       },
       { path: "/app", lazy: () => import("./components/mobile-app").then(m => ({ Component: m.MobileApp })), HydrateFallback: RouteLoading },
       // ── PERF: Dashboard lazy-loaded (was synchronous — ~3900 lines + 70 sub-imports) ──
-      { path: "/dashboard", lazy: () => import("./components/dashboard-web-page").then(m => ({ Component: m.DashboardWebPage })), HydrateFallback: RouteLoading },
+      // 2026-06-04 fresh-audit #2: dashboardSessionLoader runs in parallel with
+      // the dynamic chunk import. It clears expired display hints (getDashboardSession
+      // + isSessionExpired were imported by the page but never called - so 9h-old
+      // hints survived forever) and resolves the server-verified session up front.
+      // Non-redirecting variant - the page still renders its in-component PIN+MFA
+      // flow when verified is null, so the UX contract is preserved.
+      {
+        path: "/dashboard",
+        loader: () => import("./components/utils/dashboard-auth-guard").then(m => m.dashboardSessionLoader()),
+        lazy: () => import("./components/dashboard-web-page").then(m => ({ Component: m.DashboardWebPage })),
+        HydrateFallback: RouteLoading,
+      },
       { path: "/welcome", lazy: () => import("./components/welcome-activation").then(m => ({ Component: m.WelcomeActivation })), HydrateFallback: RouteLoading },
       { path: "/demo", lazy: () => import("./components/wow-demo").then(m => ({ Component: m.WowDemo })), HydrateFallback: RouteLoading },
       { path: "/training", lazy: () => import("./components/training-center").then(m => ({ Component: m.TrainingCenter })), HydrateFallback: RouteLoading },
