@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T13:16:25.281Z",
-  "total_migrations": 168,
-  "manifest_sha256": "b65b38dbd6ceee3666b81f652963e490866f2b0d3a25be657ea3e4c1643d03e9",
+  "generated_at": "2026-06-05T13:27:14.088Z",
+  "total_migrations": 169,
+  "manifest_sha256": "cb4cad166f9a0487a856a3ccf7b9992e3eec3d5dcb300f43ed1240bdc69c92be",
   "migrations": [
     {
       "version": "20260415",
@@ -1178,6 +1178,13 @@
       "file": "20260605_tier3b_revoke_trigger_funcs_from_anon_authed.sql",
       "sha256": "52fa857dbd8b8e38a6eb20450683ae043a91cdc00596b60636062bcf7583dfa2",
       "bytes": 4461
+    },
+    {
+      "version": "20260605",
+      "name": "tier3c_phase1_drop_exact_duplicate_policies",
+      "file": "20260605_tier3c_phase1_drop_exact_duplicate_policies.sql",
+      "sha256": "cc1510c710e0e2764fc165b19eb856727f55f75b000ca12840dce5f5a6cbb216",
+      "bytes": 2867
     }
   ]
 }
