@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T13:36:26.811Z",
-  "total_migrations": 170,
-  "manifest_sha256": "83124ba5cf3fc70aec08b1d6bfcf7c6771b888ade9dfa2387b5ff8881bed4074",
+  "generated_at": "2026-06-05T13:47:19.271Z",
+  "total_migrations": 171,
+  "manifest_sha256": "01c879a2190b30ef38e1c35cdecfc11a919c1575a4707a89a3434ea059af6444",
   "migrations": [
     {
       "version": "20260415",
@@ -1192,6 +1192,13 @@
       "file": "20260605_tier3c_phase2a_consolidate_profiles_select_authed.sql",
       "sha256": "dcf974abe480effe2e87ed4a3f3f18fe1bc9eee8b2a9e114518b0615ac1d3f6b",
       "bytes": 2511
+    },
+    {
+      "version": "20260605",
+      "name": "tier3c_phase2b_consolidate_duty_status",
+      "file": "20260605_tier3c_phase2b_consolidate_duty_status.sql",
+      "sha256": "1cac5818e37016dc081b3f425c1bf210d3b6dec2cb3a1792fa080b3e79f31e22",
+      "bytes": 3556
     }
   ]
 }
