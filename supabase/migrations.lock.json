@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-05T13:04:37.649Z",
-  "total_migrations": 167,
-  "manifest_sha256": "265575330c4b2afb14d76ed11ab0a0c5aee2c6fb62d5cd6bc4af79e564e3ab7a",
+  "generated_at": "2026-06-05T13:16:25.281Z",
+  "total_migrations": 168,
+  "manifest_sha256": "b65b38dbd6ceee3666b81f652963e490866f2b0d3a25be657ea3e4c1643d03e9",
   "migrations": [
     {
       "version": "20260415",
@@ -1171,6 +1171,13 @@
       "file": "20260605_tier3a_rls_auth_uid_initplan_wrap.sql",
       "sha256": "7c109519a854c7d6e6d28a50f5fa43bdc71dd3ead2c5e0b6740e0ce4eef7b7dd",
       "bytes": 5604
+    },
+    {
+      "version": "20260605",
+      "name": "tier3b_revoke_trigger_funcs_from_anon_authed",
+      "file": "20260605_tier3b_revoke_trigger_funcs_from_anon_authed.sql",
+      "sha256": "52fa857dbd8b8e38a6eb20450683ae043a91cdc00596b60636062bcf7583dfa2",
+      "bytes": 4461
     }
   ]
 }
