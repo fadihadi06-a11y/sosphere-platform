@@ -375,6 +375,33 @@ const TENANT_SCOPED_KEYS: readonly string[] = [
   "sosphere_checkin_deadline",
   "sosphere_checkin_total",
   "sosphere_checkin_warn_cycle",
+  // 2026-06-06 roots-of-roots M2-#4: 17 mobile-side keys identified by
+  // the parallel-agent audit as tenant/user-scoped but missing from the
+  // explicit registry. Broad `sosphere_` prefix sweep on logout already
+  // catches them, but a PARTIAL logout / in-app company switcher only
+  // walks this list. Adding them closes the partial-logout leak path.
+  // Tenant-scoped (company data the previous worker should NOT see):
+  "sosphere_geofences",
+  "sosphere_zone_clusters",
+  "sosphere_smart_timeline",
+  "sosphere_offline_locations",
+  "sosphere_offline_queue",
+  "sosphere_missions",
+  "sosphere_ire_performance",
+  "sosphere_rrp_analytics",
+  "sosphere_files_index",
+  "sosphere_company_profile",
+  "sosphere_company_id",
+  // Admin display hints (per-user, but tenant-bound — admin@A is a
+  // different person than admin@B even with same email):
+  "sosphere_admin_profile",
+  "sosphere_admin_phone",
+  // Incident/SAR per-worker history (PII; previous worker's incident
+  // photos must not surface for the next worker on the same device):
+  "sosphere_incident_history",
+  "sosphere_incident_photos",
+  "sosphere_sar_missions",
+  "sosphere_sar_prefill",
 ];
 
 /**
