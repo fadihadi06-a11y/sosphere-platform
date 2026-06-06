@@ -133,7 +133,8 @@ serve(async (req) => {
     opts: { withDPA: boolean } = { withDPA: true },
   ): Promise<{ userId: string; companyId: string; dpaId: string | null; email: string }> {
     const email = `e2e-${runId}-${phaseName}@sosphere.internal`;
-    const password = crypto.randomUUID() + crypto.randomUUID();
+    // 2026-06-06 R-4-family hotfix: bcrypt 72-byte cap + strict policy.
+    const password = "Aa1!" + crypto.randomUUID();
     const { data: u, error: uErr } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (uErr || !u?.user) throw new Error(`createUser: ${uErr?.message}`);
     const userId = u.user.id;

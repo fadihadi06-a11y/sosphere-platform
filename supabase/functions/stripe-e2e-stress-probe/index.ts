@@ -112,7 +112,8 @@ serve(async (req) => {
   async function makeFixtures(phaseName: string, opts: { withDPA?: boolean } = {}): Promise<{ userId: string; companyId: string; dpaId: string | null; email: string }> {
     const withDPA = opts.withDPA !== false;
     const email = `e2es-${runId}-${phaseName}@sosphere.internal`;
-    const password = crypto.randomUUID() + crypto.randomUUID();
+    // 2026-06-06 R-4-family hotfix: bcrypt 72-byte cap + strict policy.
+    const password = "Aa1!" + crypto.randomUUID();
     const { data: u, error: uErr } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (uErr || !u?.user) throw new Error(`user: ${uErr?.message}`);
     const { data: c, error: cErr } = await admin.from("companies").insert({

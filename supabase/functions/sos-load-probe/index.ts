@@ -133,7 +133,10 @@ serve(async (req) => {
 
     for (let i = offset; i < chunkEnd; i++) {
       const email = `${PROBE_USER_PREFIX}${i}${PROBE_USER_DOMAIN}`;
-      const password = crypto.randomUUID() + crypto.randomUUID();
+      // 2026-06-06 R-4-family hotfix: bcrypt 72-byte cap + strict
+      // password policy. Use a single UUID + "Aa1!" stuffer for
+      // class coverage (uppercase + lowercase + digit + symbol).
+      const password = "Aa1!" + crypto.randomUUID();
       try {
         let userId = existingByEmail.get(email);
         if (userId) {
