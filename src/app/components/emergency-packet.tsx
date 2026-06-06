@@ -12,6 +12,8 @@ import { QRCodeSVG } from "qrcode.react";
 // Reading them synchronously returns ciphertext; QR payload to first responders
 // would silently be empty without this fix.
 import { secureGetItem } from "./utils/secure-storage";
+// 2026-06-06 M2-#1: GDPR Art.30 — record privacy-consent changes.
+import { logAuditEvent } from "./audit-log-store";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface PacketModule {
@@ -155,7 +157,19 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
 
   const toggleModule = (id: string) => {
     if (id === "location") return; // always on
-    setModules(prev => ({ ...prev, [id]: !prev[id] }));
+    setModules(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      // 2026-06-06 M2-#1: privacy-toggle audit per GDPR Art.30.
+      // Records WHICH module the user opted in/out of and the new
+      // state. Fire-and-forget; never block UI on audit.
+      try {
+        logAuditEvent("settings", `packet_module_${next[id] ? "enabled" : "disabled"}`, {
+          detail: `User toggled ${id} packet module to ${next[id]}`,
+          severity: "info",
+        });
+      } catch { /* best-effort */ }
+      return next;
+    });
   };
 
   const handleCopy = () => {

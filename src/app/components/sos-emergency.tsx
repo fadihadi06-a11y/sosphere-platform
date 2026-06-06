@@ -12,6 +12,12 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
 import { useT } from "./dashboard-i18n";
 import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor, onSyncEvent } from "./shared-store";
+// 2026-06-06 M2-#1: audit-log writes for life-safety mutations.
+// Mirrors the dashboard's 7-CRUD fresh-audit #5 pass; the mobile
+// SOS path is the highest-severity event in the system and must
+// land in the durable audit_log channel for ISO 27001 §A.16
+// (incident management) traceability.
+import { logAuditEvent } from "./audit-log-store";
 import { toast } from "sonner";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
 import { storeEvidence, attachEvidenceManifest } from "./evidence-store";
@@ -2107,6 +2113,19 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   const doEnd = useCallback((reason: string) => {
+    // 2026-06-06 M2-#1: every SOS end writes an audit row (reason
+    // includes "user_safe", "false_alarm", "timeout", "user_ended",
+    // "admin_resolved"). Severity 'info' because the resolution
+    // ITSELF is not an alarm — the original trigger already logged
+    // critical. Together they form the open/close pair on the chain.
+    try {
+      logAuditEvent("emergency", "sos_ended_mobile", {
+        detail: `SOS ${errIdRef.current} ended — reason: ${reason}`,
+        zone: userZone, severity: "info",
+        targetId: errIdRef.current, targetName: userName,
+        actorOverride: { id: userId, name: userName, level: "worker" },
+      });
+    } catch { /* never block cleanup on audit */ }
     if (tickRef.current)    clearInterval(tickRef.current);
     if (dmsTickRef.current) clearInterval(dmsTickRef.current);
     if (gpsTrailRef.current) clearInterval(gpsTrailRef.current);
@@ -2600,6 +2619,14 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             // FIX I: Include bypass flag if supervisor is being bypassed
             // Await SOS acknowledgment from dashboard
             (async () => {
+              try {
+                logAuditEvent("emergency", "sos_triggered_mobile", {
+                  detail: `Worker ${userName} pressed SOS in ${userZone}`,
+                  zone: userZone, severity: "critical",
+                  targetId: errIdRef.current, targetName: userName,
+                  actorOverride: { id: userId, name: userName, level: "worker" },
+                });
+              } catch { /* never block SOS dispatch on audit */ }
               const ackResult = await emitSyncEvent({
                 type: "SOS_TRIGGERED",
                 employeeId: userId,
@@ -3164,6 +3191,18 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       setShowPinEntry(false);
       setShowDMS(false);
       // Broadcast DURESS flag to dashboard/contacts BEFORE ending locally.
+      try {
+        // 2026-06-06 M2-#1: duress is the highest-severity audit row
+        // we can write; the worker is under coercion and the audit
+        // chain is the legal record. Severity 'critical' + actor
+        // overridden so the row attributes to the worker, not Admin.
+        logAuditEvent("emergency", "sos_duress_triggered", {
+          detail: `Worker ${userName} entered duress PIN in ${userZone}`,
+          zone: userZone, severity: "critical",
+          targetId: errIdRef.current, targetName: userName,
+          actorOverride: { id: userId, name: userName, level: "worker" },
+        });
+      } catch { /* never block duress broadcast on audit */ }
       try {
         emitSyncEvent({
           type: "SOS_DURESS_TRIGGERED",
