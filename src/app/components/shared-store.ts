@@ -148,6 +148,31 @@ export function initRealtimeChannels(companyId: string) {
     // user_id`) and the conditional publication. No server-side filter.
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "evidence" },
       (payload) => _cdcListeners.get("evidence")?.forEach(l => l(payload.new as any, "INSERT")))
+    // 2026-06-06 M2-#3 (25th pattern app): evacuations has a company_id column
+    // (migration 20260602_evacuations_phase_a.sql) so we use the same server-
+    // side filter as sos_queue/audit_log. Worker-late-join gap was the bug:
+    // admin triggers evacuation, worker comes online a minute later, the
+    // SyncEvent broadcast is gone — without CDC the worker sees nothing.
+    // CDC on evacuations gives the worker a second chance via the row.
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "evacuations",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("evacuations")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "evacuations",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("evacuations")?.forEach(l => l(payload.new as any, "UPDATE")))
+    // buddy_pairs has a company_id column. When admin re-pairs buddies on the
+    // dashboard, worker B's _serverBuddyPairs cache stayed stale until next
+    // initBuddyPairs (login). CDC eliminates that lag — worker hears the
+    // pair change in real time and the next SOS uses the new buddy.
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "buddy_pairs",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("buddy_pairs")?.forEach(l => l(payload.new as any, "INSERT")))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "buddy_pairs",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("buddy_pairs")?.forEach(l => l(payload.new as any, "UPDATE")))
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "buddy_pairs",
+         filter: `company_id=eq.${companyId}` },
+      (payload) => _cdcListeners.get("buddy_pairs")?.forEach(l => l(payload.old as any, "DELETE")))
     .subscribe((status) => {
       if (status === "CHANNEL_ERROR") {
         console.warn("[Realtime] CDC channel error — table events will miss until reconnect");
@@ -168,6 +193,12 @@ export function initRealtimeChannels(companyId: string) {
   void import("./audit-log-store").then(({ startAuditLogCdc }) => {
     startAuditLogCdc();
   }).catch(() => { /* CDC consumer best-effort */ });
+  // 2026-06-06 M2-#3 (25th pattern app): evacuations + buddy_pairs CDC.
+  void import("./evacuation-service").then(({ startEvacuationsCdc }) => {
+    startEvacuationsCdc();
+  }).catch(() => { /* CDC consumer best-effort */ });
+  void Promise.resolve().then(() => startBuddyPairsCdc())
+    .catch((err) => console.warn("[Realtime] startBuddyPairsCdc threw:", err));
 
   // P3-#12 — tag Sentry with the current tenant so multi-company bug
   // reports can be filtered in the dashboard without leaking PII. We
@@ -2687,6 +2718,60 @@ export function setServerBuddyPairs(pairs: StoredBuddyPair[]): void {
 export function clearServerBuddyPairs(): void {
   _serverBuddyPairs = null;
   try { localStorage.removeItem(BUDDY_PAIRS_KEY); } catch {}
+  // 2026-06-06 M2-#3 (25th pattern app): unsubscribe so a shared device
+  // doesn't keep mirroring the previous tenant's buddy_pairs into this
+  // cache after logout. Idempotent.
+  try { stopBuddyPairsCdc(); } catch { /* best effort */ }
+}
+
+// ───────── CDC SUBSCRIPTION (M2-#3, 25th pattern app, 2026-06-06) ─────────
+// buddy_pairs has CDC infrastructure (shared-store.ts:_cdcChannel above)
+// but no consumer until now. When admin re-pairs buddies on the dashboard,
+// worker B's _serverBuddyPairs cache was stale until the next login. The
+// listener below replaces the cache with the fresh row (or removes a row
+// on DELETE) so the next sos-emergency callsite resolves the up-to-date
+// buddy without polling.
+
+let _buddyPairsCdcUnsubscribe: (() => void) | null = null;
+
+export function startBuddyPairsCdc(): void {
+  if (_buddyPairsCdcUnsubscribe) return;
+  // Inline subscribeCdc call — no dynamic import needed since this lives
+  // in the same module as _cdcListeners + subscribeCdc.
+  _buddyPairsCdcUnsubscribe = subscribeCdc("buddy_pairs", (row, op) => {
+    const r = row as {
+      id: string;
+      employee_a_id: string;
+      employee_a_name: string;
+      employee_b_id: string;
+      employee_b_name: string;
+      is_active: boolean;
+    } | null;
+    if (!r || !r.id) return;
+    const current = loadBuddyPairs();
+    let next: StoredBuddyPair[];
+    if (op === "DELETE") {
+      next = current.filter((p) => p.id !== r.id);
+    } else {
+      const incoming: StoredBuddyPair = {
+        id: r.id,
+        employee1Id: r.employee_a_id,
+        employee1Name: r.employee_a_name,
+        employee2Id: r.employee_b_id,
+        employee2Name: r.employee_b_name,
+        isActive: !!r.is_active,
+      };
+      next = [incoming, ...current.filter((p) => p.id !== r.id)];
+    }
+    setServerBuddyPairs(next);
+  });
+}
+
+export function stopBuddyPairsCdc(): void {
+  if (_buddyPairsCdcUnsubscribe) {
+    _buddyPairsCdcUnsubscribe();
+    _buddyPairsCdcUnsubscribe = null;
+  }
 }
 
 /**

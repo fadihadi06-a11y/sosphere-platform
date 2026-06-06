@@ -99,7 +99,12 @@ export function getCachedEvacuations(): ActiveEvacuation[] {
 
 export function clearEvacuationCache(): void {
   _activeEvacuations = null;
-  try { localStorage.removeItem("sosphere_active_evacuations"); } catch { /* unavailable */ }
+  try { localStorage.removeItem("sosphere_active_evacuations");
+  // 2026-06-06 M2-#3 (25th pattern app): also unsubscribe the CDC
+  // listener so a shared device doesn't keep mirroring the previous
+  // tenant's evacuations into the cache after logout. Idempotent.
+  try { stopEvacuationsCdc(); } catch { /* best effort */ }
+} catch { /* unavailable */ }
 }
 
 // ───────── RPC WRAPPERS ─────────
@@ -207,3 +212,42 @@ export async function loadActiveEvacuations(
     };
   }
 }
+
+// ───────── CDC SUBSCRIPTION (M2-#3, 25th pattern app, 2026-06-06) ─────────
+// evacuations has CDC infrastructure (shared-store.ts:_cdcChannel) but no
+// consumer until now. Closes the worker-late-join gap: admin triggers
+// evacuation, worker comes online a minute after the broadcast, the
+// EVACUATION_TRIGGERED SyncEvent is already gone — without CDC the
+// worker sees nothing. The listener below replaces the matching cache
+// row (insert / update) so the next loadActiveEvacuations() reads the
+// fresh shape, AND so the evacuation-screen's render picks it up via
+// the cached state without polling.
+
+let _evacuationsCdcUnsubscribe: (() => void) | null = null;
+
+export function startEvacuationsCdc(): void {
+  if (_evacuationsCdcUnsubscribe) return;
+  void import("./shared-store").then(({ subscribeCdc }) => {
+    if (_evacuationsCdcUnsubscribe) return; // race
+    _evacuationsCdcUnsubscribe = subscribeCdc("evacuations", (row, _op) => {
+      const r = row as ActiveEvacuation;
+      if (!r || !r.id) return;
+      // Merge into the in-memory cache; dedup by id and put the most
+      // recent state up front. We don't try to surgically diff fields —
+      // the row is authoritative, replacing it preserves correctness.
+      const current = getCachedEvacuations();
+      const next = [r, ...current.filter((e) => e.id !== r.id)];
+      setCachedEvacuations(next);
+    });
+  }).catch((err) => {
+    console.warn("[evacuation-service] CDC subscribe failed:", err);
+  });
+}
+
+export function stopEvacuationsCdc(): void {
+  if (_evacuationsCdcUnsubscribe) {
+    _evacuationsCdcUnsubscribe();
+    _evacuationsCdcUnsubscribe = null;
+  }
+}
+
