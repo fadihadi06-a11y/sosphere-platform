@@ -1325,6 +1325,21 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         });
         console.log("[SUPABASE_READY] personal_sos_received: " + event.employeeName);
       }
+
+      // ── MONITORING_CHECKIN (M2-#6) ───────────────────────────────
+      // Worker confirmed they are OK during admin-activated monitoring.
+      // The dashboard's 30s tick already updates its own monitoring
+      // state from localStorage. The toast is the human-facing signal
+      // that the worker is responsive — without it, admin only sees
+      // monitoring activity in a list, never the explicit ack.
+      if (event.type === "MONITORING_CHECKIN") {
+        incrementNotifCount();
+        toast.success(`✓ ${event.employeeName} confirmed monitoring check-in`, {
+          description: `Zone: ${event.zone || "—"}`,
+          duration: 4000,
+        });
+        console.log("[SUPABASE_READY] monitoring_checkin_received: " + event.employeeName);
+      }
     });
     return unsub;
   }, [addEmergency, updateEmergency, incrementNotifCount, cancelEmergencyById, setPendingIncidentReport, setShowIncidentReportPanel]);

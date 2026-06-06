@@ -51,7 +51,7 @@ import type { IncidentRecord } from "./sos-emergency";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { BroadcastIsland } from "./broadcast-island";
 import { IncidentPhotoReport, type IncidentReportData } from "./incident-photo-report";
-import { onAdminSignal, initRealtimeChannels } from "./shared-store";
+import { onAdminSignal, onSyncEvent, initRealtimeChannels } from "./shared-store";
 import { emitSyncEvent, onStorageBanner } from "./shared-store";
 import { OfflineIndicator } from "./offline-sync";
 import { startGPSTracking, activateEmergencyTracking, deactivateEmergencyTracking, ZONE_PRESETS } from "./offline-gps-tracker";
@@ -1375,6 +1375,56 @@ export function MobileApp() {
     });
     return unsub;
   }, [screen]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // 2026-06-06 roots-of-roots M2-#6: MONITORING_* family (mobile side)
+  // ─────────────────────────────────────────────────────────────
+  // Post-incident monitoring is a 2-way circuit that was wired in
+  // ONE direction only (admin emits; worker never listened). Result:
+  // admin activated monitoring, the SyncEvent fired across the bus,
+  // worker mobile NEVER stored monitoring_self in localStorage, the
+  // dashboard.tsx page never rendered the monitoring banner, the
+  // worker never got prompted to check in, and the dashboard's 30s
+  // tick would fire MONITORING_MISSED back at admin — escalating a
+  // worker who never knew they were being monitored. This wires the
+  // 3 admin→worker events; the worker→admin MONITORING_CHECKIN is
+  // wired in company-dashboard.tsx.
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const unsub = onSyncEvent((event) => {
+      if (!event.type.startsWith("MONITORING_")) return;
+      // Only react if THIS worker is the target. Both authUserId and
+      // EMP-<name> shapes are valid keys in the upstream emit chain.
+      const isForMe =
+        (authUserId && event.employeeId === authUserId)
+        || event.employeeId === `EMP-${(loginName || "").replace(/\s+/g, "")}`;
+      if (!isForMe) return;
+
+      if (event.type === "MONITORING_ACTIVATED") {
+        // Persist so dashboard.tsx's render picks it up + activates UI.
+        try { localStorage.setItem("monitoring_self", JSON.stringify(event.data ?? {})); } catch { /* unavailable */ }
+        const intervalMin = (event.data as Record<string, unknown> | undefined)?.checkInInterval ?? 30;
+        toast.info("Post-incident monitoring activated", {
+          description: `Admin is keeping eyes on you. Check in every ${intervalMin} minutes.`,
+          duration: 8000,
+        });
+      } else if (event.type === "MONITORING_MISSED") {
+        const missedBy = (event.data as Record<string, unknown> | undefined)?.missedBy ?? 0;
+        toast.warning("Missed check-in", {
+          description: `You missed your monitoring check-in by ${missedBy} min. Tap your dashboard to confirm you're OK.`,
+          duration: 12000,
+        });
+      } else if (event.type === "MONITORING_CLEARED") {
+        try { localStorage.removeItem("monitoring_self"); } catch { /* ignore */ }
+        const reason = (event.data as Record<string, unknown> | undefined)?.reason ?? "ended";
+        toast.success("Monitoring period cleared", {
+          description: reason === "period_ended" ? "Time window completed safely." : `Reason: ${reason}`,
+          duration: 5000,
+        });
+      }
+    });
+    return unsub;
+  }, [authUserId, loginName]);
 
   // Screens where back should EXIT the app (root screens)
   const ROOT_SCREENS: Screen[] = ["welcome", "login-phone", "login-welcome", "individual-home", "employee-dashboard"];
