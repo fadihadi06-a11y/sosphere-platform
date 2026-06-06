@@ -108,6 +108,28 @@ const COUNTRY_DIAL: Record<string, string> = {
  *   • the resulting number is shorter than 8 digits (obviously invalid —
  *     prevents dialling emergency short-codes accidentally)
  */
+// 2026-06-06 roots-of-roots M2-#9: redaction helpers for PII-safe logs.
+// Twilio fanout logs previously printed full contact name + phone. With
+// Supabase/Datadog log retention measured in weeks-to-months, this was
+// a low-effort PII exposure for any contact a worker has ever listed.
+// These helpers return last-4 of the phone and an initial-only name
+// so the log line stays useful for forensic correlation without
+// leaking the underlying identity.
+function redactPhone(p: string | null | undefined): string {
+  if (!p) return "—";
+  const digits = String(p).replace(/[^0-9]/g, "");
+  if (digits.length <= 4) return "•".repeat(digits.length);
+  return "•".repeat(digits.length - 4) + digits.slice(-4);
+}
+function redactName(n: string | null | undefined): string {
+  if (!n) return "Contact";
+  const s = String(n).trim();
+  if (!s) return "Contact";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0][0].toUpperCase() + ".";
+  return parts.map((p) => p[0].toUpperCase()).join(".") + ".";
+}
+
 function normalizeE164(phone: string): string | null {
   if (!phone) return null;
 
@@ -1761,7 +1783,7 @@ serve(async (req: Request) => {
       // matches the success path below so UI can iterate uniformly.
       const cleanPhone = normalizeE164(c.phone);
       if (!cleanPhone) {
-        console.warn(`[sos-alert] invalid phone for contact '${c.name}': raw='${c.phone}' default_country=${DEFAULT_COUNTRY}`);
+        console.warn(`[sos-alert] invalid phone for contact ${redactName(c.name)}: raw=${redactPhone(c.phone)} default_country=${DEFAULT_COUNTRY}`);
         return {
           contactName: c.name,
           phone: c.phone, // echo the raw input so UI can highlight it
@@ -1919,7 +1941,7 @@ serve(async (req: Request) => {
         tier === "basic" ? "tts_call_plus_sms" :
         "bridge_call_recorded_plus_sms";
 
-      console.log(`[sos-alert] ${tier.toUpperCase()} → ${c.name}: call=${callResult?.sid || "SKIP/FAIL/TIMEOUT"} sms=${smsSid || "FAIL/TIMEOUT"}`);
+      console.log(`[sos-alert] ${tier.toUpperCase()} → ${redactName(c.name)} (${redactPhone(c.phone)}): call=${callResult?.sid || "SKIP/FAIL/TIMEOUT"} sms=${smsSid || "FAIL/TIMEOUT"}`);
 
       return {
         contactName: c.name,

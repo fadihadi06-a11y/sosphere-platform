@@ -85,7 +85,14 @@ async function authenticate(req: Request): Promise<string | null> {
     const { data: { user }, error } = await supabase.auth.getUser(jwt);
     if (error || !user) return null;
     return user.id;
-  } catch {
+  } catch (err) {
+    // 2026-06-06 roots-of-roots M2-#8: was silent catch. A Supabase Auth
+    // outage / SDK panic here would look identical to legitimate brute-
+    // force attempts (both return null = "unauthenticated"), so the
+    // breaker never trips and operators see no signal until the call
+    // queue backs up. Warn so monitoring can distinguish auth-outage
+    // from unauth abuse.
+    console.warn("[twilio-call] authenticate() failed unexpectedly:", err instanceof Error ? err.message : err);
     return null;
   }
 }
