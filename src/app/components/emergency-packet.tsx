@@ -14,6 +14,15 @@ import { QRCodeSVG } from "qrcode.react";
 import { secureGetItem } from "./utils/secure-storage";
 // 2026-06-06 M2-#1: GDPR Art.30 — record privacy-consent changes.
 import { logAuditEvent } from "./audit-log-store";
+// 2026-06-06 M2-#2 (26th pattern app): durable per-user privacy
+// consent. localStorage stays as zero-latency UI source; the RPC
+// is the cross-device source of truth.
+import {
+  loadPacketPreferences,
+  upsertPacketPreferences,
+  hydrateModules,
+  type PacketModules,
+} from "./packet-preferences-service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface PacketModule {
@@ -128,7 +137,25 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
   useEffect(() => {
     try { localStorage.setItem("sosphere_packet_modules", JSON.stringify(modules)); }
     catch { /* quota */ }
+    // 2026-06-06 M2-#2: mirror to server so the next device sees the
+    // same opt-out state. Fire-and-forget; logAuditEvent in toggleModule
+    // already records the privacy-consent change for GDPR Art.30.
+    void upsertPacketPreferences(modules as unknown as PacketModules);
   }, [modules]);
+
+  // 2026-06-06 M2-#2: hydrate from server on mount. If the server has a
+  // newer / different opt-out state (worker disabled medical on phone A,
+  // logged in on phone B), this overrides the local default. The cleanup
+  // ref guards against state updates after unmount.
+  useEffect(() => {
+    let alive = true;
+    void loadPacketPreferences().then((server) => {
+      if (!alive) return;
+      // hydrateModules also fills location:true even if server omitted it.
+      setModules(hydrateModules(server) as unknown as Record<string, boolean>);
+    });
+    return () => { alive = false; };
+  }, []);
 
   // FIX 2026-04-23: compute real data once per render from storage.
   const realLocation = readRealLocation();

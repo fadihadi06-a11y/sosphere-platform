@@ -34,6 +34,7 @@ import { clearEmailSchedulesCache } from "../email-schedules-service";
 import { clearGeneratedReportsCache } from "../generated-reports-service";
 import { clearAnalyticsRollupsCache } from "../analytics-rollups-service";
 import { clearCheckinSessionsCache } from "../checkin-sessions-service";
+import { clearPacketPreferencesCache } from "../packet-preferences-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -138,6 +139,11 @@ export async function completeLogout(): Promise<void> {
   // registry entry; this clear handles the module-level cache so a partial
   // logout / company switch doesn't surface stale deadlines.
   try { clearCheckinSessionsCache(); } catch { /* best effort */ }
+  // 2026-06-06 roots-of-roots M2-#2 (26th pattern app, 20 cache cleanups now):
+  // drop the in-memory privacy-preferences mirror. The sosphere_packet_modules
+  // key is already in TENANT_SCOPED_KEYS (the broad sweep handles localStorage);
+  // this clears the module-level cache to close the partial-logout path.
+  try { clearPacketPreferencesCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
