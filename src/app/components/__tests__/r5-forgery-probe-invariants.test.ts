@@ -52,7 +52,25 @@ describe("R-5: probe-user lifecycle (Stage 1)", () => {
 
   it("refreshes password per-run via admin.updateUserById (no stale credentials)", () => {
     expect(probeSrc).toMatch(/admin\.auth\.admin\.updateUserById/);
-    expect(probeSrc).toMatch(/probePassword\s*=\s*crypto\.randomUUID\(\)\s*\+\s*crypto\.randomUUID\(\)/);
+    // 2026-06-05 R-5 hotfix: probePassword needs to satisfy the strict
+    // Auth password policy (lowercase + uppercase + digits + symbols).
+    // The pin allows ANY infix between the two crypto.randomUUID()
+    // calls — the original `+ +`, the hotfix `+ "Aa1!" +`, or any
+    // future class-coverage tweak — so long as both UUIDs are used.
+    // 2026-06-05 hotfix-v2: bcrypt caps password length at 72 bytes,
+    // so the probe build must stay UNDER 72. The expression must
+    // include at least one crypto.randomUUID() call (for entropy),
+    // the "Aa1!" literal (for class coverage), and MUST NOT use
+    // two UUIDs concatenated (which would total 72-76 chars).
+    expect(probeSrc).toMatch(/probePassword\s*=[^;]*crypto\.randomUUID\(\)/);
+    expect(probeSrc).toMatch(/"Aa1!"|'Aa1!'/);
+    // Defense-in-depth: ensure two UUIDs aren't concatenated.
+    // (Tightens the contract so a future "fix" doesn't bring back
+    // the 72-byte boundary failure mode.)
+    const probePwLine = probeSrc.split("\n").find((l) => l.includes("probePassword"));
+    expect(probePwLine).toBeDefined();
+    const uuidCount = (probePwLine!.match(/crypto\.randomUUID\(\)/g) || []).length;
+    expect(uuidCount).toBeLessThanOrEqual(1);
   });
 
   it("creates the user via admin.createUser when missing", () => {
