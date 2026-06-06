@@ -84,6 +84,21 @@ describe("R-4: sos-dispatch-probe — cost-safety invariants", () => {
     expect(probeSrc).not.toMatch(/`probe-dispatch-\$\{/);
   });
 
+  it("probePassword satisfies strict Auth policy + bcrypt 72-byte cap (R-4 hotfix v2)", () => {
+    // 2026-06-06: same defense as r5-forgery-probe. Project Auth now
+    // requires uppercase + lowercase + digits + symbols AND bcrypt
+    // hashes max 72 bytes. The fix shape is one randomUUID + the
+    // literal "Aa1!" stuffer = 40 chars, all 4 classes covered.
+    // Pin both invariants so a future "simplify back to UUID-only"
+    // doesn't re-introduce the failure mode.
+    expect(probeSrc).toMatch(/probePassword\s*=[^;]*crypto\.randomUUID\(\)/);
+    expect(probeSrc).toMatch(/"Aa1!"|'Aa1!'/);
+    const probePwLine = probeSrc.split("\n").find((l) => l.includes("const probePassword"));
+    expect(probePwLine).toBeDefined();
+    const uuidCount = (probePwLine!.match(/crypto\.randomUUID\(\)/g) || []).length;
+    expect(uuidCount).toBeLessThanOrEqual(1);
+  });
+
   it("uses its own dedicated probe-user identity (R-10: no race with forgery-probe)", () => {
     // Pre-R-10 both probes shared forgery-probe@sosphere.internal — when run
     // in parallel via workflow_dispatch, each probe's admin.updateUserById

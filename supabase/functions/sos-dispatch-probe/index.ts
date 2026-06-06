@@ -130,7 +130,15 @@ serve(async (req) => {
   }
 
   const admin = createClient(supaUrl, serviceKey, { auth: { persistSession: false } });
-  const probePassword = crypto.randomUUID() + crypto.randomUUID(); // 72 chars, ASCII
+  // 2026-06-06 R-4 hotfix (mirrors the R-5 forgery-probe hotfix):
+  // bcrypt caps password length at 72 bytes and Supabase Auth enforces
+  // that before hashing. The previous 2x randomUUID build was exactly
+  // 72 (on the boundary) AND lacked the uppercase + symbol classes
+  // the project's new password policy requires. One UUID (36 chars)
+  // + "Aa1!" stuffer (4 chars) = 40 chars total - well under the cap,
+  // covers all four classes: uppercase (A), lowercase (UUID),
+  // digit (1 + UUID digits), symbol (! and UUID hyphens).
+  const probePassword = "Aa1!" + crypto.randomUUID();
 
   // ── Stage 1: ensure probe user exists (idempotent) ──────────────────────
   let probeUserId: string;
