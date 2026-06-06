@@ -2443,7 +2443,15 @@ export function MobileApp() {
                   // Phase 6: shadow-sync this completed incident to Supabase.
                   // Fire-and-forget — local storage remains the UI source of
                   // truth. No-op when Supabase isn't configured.
-                  syncIncidentToSupabase(record).catch(() => {});
+                  // 2026-06-06 M2-#12: was silent catch. Without server-side
+                  // mirror the next-device incident history is empty, and the
+                  // debrief save (post-emergency-debrief.tsx) would also miss
+                  // because update_incident_debrief refuses to update a row
+                  // it can't find. Warn so operators see when shadow sync is
+                  // dropping records.
+                  syncIncidentToSupabase(record).catch((err) => {
+                    console.warn("[mobile-app] syncIncidentToSupabase failed (best-effort):", err instanceof Error ? err.message : err);
+                  });
                   // Phase 3: Route to the post-emergency debrief first. The
                   // debrief screen has explicit exits to both the full report
                   // (emergency-record) and back to home, so the existing

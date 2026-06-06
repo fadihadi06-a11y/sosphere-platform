@@ -61,24 +61,45 @@ function saveDebriefToHistory(
   incidentId: string,
   answers: { feltSafe: FeltSafe; note: string }
 ) {
+  const debrief = {
+    feltSafe: answers.feltSafe,
+    note: answers.note.trim() || undefined,
+    submittedAt: new Date().toISOString(),
+  };
+  // ── Local UI write (instant) ─────────────────────────────────
   try {
     const raw = localStorage.getItem("sosphere_incident_history");
-    if (!raw) return;
-    const list: any[] = JSON.parse(raw);
-    const idx = list.findIndex((e) => e?.id === incidentId);
-    if (idx < 0) return;
-    list[idx] = {
-      ...list[idx],
-      debrief: {
-        feltSafe: answers.feltSafe,
-        note: answers.note.trim() || undefined,
-        submittedAt: new Date().toISOString(),
-      },
-    };
-    localStorage.setItem("sosphere_incident_history", JSON.stringify(list));
+    if (raw) {
+      const list: any[] = JSON.parse(raw);
+      const idx = list.findIndex((e) => e?.id === incidentId);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], debrief };
+        localStorage.setItem("sosphere_incident_history", JSON.stringify(list));
+      }
+    }
   } catch {
-    /* non-fatal */
+    /* non-fatal — server write below is the durable record */
   }
+  // ── Server mirror (27th pattern app, M2-#12, 2026-06-06) ─────
+  // The localStorage write above is the instant-UI source. This
+  // server write is the durable record so the worker's "I am OK"
+  // attestation survives device loss / fresh install / cross-device
+  // login. Fire-and-forget — UI never blocks on audit.
+  void (async () => {
+    try {
+      const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+      if (!SUPABASE_CONFIG.isConfigured) return;
+      const { error } = await supabase.rpc("update_incident_debrief", {
+        p_id: incidentId,
+        p_debrief: debrief,
+      });
+      if (error) {
+        console.warn("[post-emergency-debrief] update_incident_debrief RPC failed:", error.message);
+      }
+    } catch (err) {
+      console.warn("[post-emergency-debrief] update_incident_debrief threw:", err);
+    }
+  })();
 }
 
 export function PostEmergencyDebrief({
