@@ -25,9 +25,32 @@ import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
 import { getSubscription } from "./subscription-service";
 
 // ── Persist sensor events to Supabase ────────────────────────
+// 2026-06-06 roots-of-roots M2-#10: namespace the local cache by user id.
+// Before this, all sensor events on a shared device piled into the same
+// "sosphere_sensor_events" key — worker A's last 200 events were visible
+// to worker B after login. We now key it per-user. A one-shot migration
+// drops the legacy unscoped key on first read so stale events don't
+// follow a shared device.
+const LEGACY_SENSOR_KEY = "sosphere_sensor_events";
+
+async function getUserScopedSensorKey(): Promise<string> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id;
+    if (uid) return `sosphere_sensor_events_${uid}`;
+  } catch { /* unauth — fall through to legacy key (will get cleared on next sign-in) */ }
+  return LEGACY_SENSOR_KEY;
+}
+
 export async function saveSensorEvent(type: "fall" | "shake", acceleration: number) {
-  // Always save locally
-  const events = JSON.parse(localStorage.getItem("sosphere_sensor_events") || "[]");
+  // Always save locally — under a user-scoped key.
+  const key = await getUserScopedSensorKey();
+  // One-shot migration: drop the legacy unscoped key the first time we
+  // hit this for an authenticated user.
+  if (key !== LEGACY_SENSOR_KEY) {
+    try { localStorage.removeItem(LEGACY_SENSOR_KEY); } catch { /* ignore */ }
+  }
+  const events = JSON.parse(localStorage.getItem(key) || "[]");
   const event = {
     // PR (E) — was Math.random-based SE- ID; now crypto-backed.
     id: secureRandomId("SE", 3),
@@ -37,7 +60,7 @@ export async function saveSensorEvent(type: "fall" | "shake", acceleration: numb
     resolved: false,
   };
   events.unshift(event);
-  localStorage.setItem("sosphere_sensor_events", JSON.stringify(events.slice(0, 200)));
+  localStorage.setItem(key, JSON.stringify(events.slice(0, 200)));
 
   // Save to Supabase via the SECDEF record_sensor_event RPC. R-1
   // (2026-05-13) closes the pre-fix cross-tenant leak by pinning

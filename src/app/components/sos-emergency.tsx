@@ -11,7 +11,7 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { useLang } from "./useLang";
 import { useT } from "./dashboard-i18n";
-import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor } from "./shared-store";
+import { emitSyncEvent, autoBroadcastSOS, emitCallSignal, onCallSignal, clearCallSignal, saveEmployeeSync, getBuddyFor, onSyncEvent } from "./shared-store";
 import { toast } from "sonner";
 import { voiceCallEngine, type VoiceCallInfo } from "./voice-call-engine";
 import { storeEvidence, attachEvidenceManifest } from "./evidence-store";
@@ -2122,7 +2122,15 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       recordingSec: q.current.recordingSec,
       photos: docPhotosRef.current,
       comment: docCommentRef.current,
-    }).catch(() => {});
+    }).catch((err) => {
+      // 2026-06-06 roots-of-roots M2-#11: was silent catch. The server-side
+      // SOS-end (Path B cleanup) writes the SOS_END row that downstream
+      // dashboards rely on to mark the emergency truly closed. A silent
+      // failure here leaves the dashboard showing "active" indefinitely.
+      // Log so monitoring catches the drift instead of inferring it from
+      // ghost emergencies in the queue.
+      console.warn("[sos-emergency] endServerSOS failed (best-effort):", err instanceof Error ? err.message : err);
+    });
     q.current.phase = "ended";
     addEvent({ type: "sos_end", title: reason, detail: `Duration: ${fmt(q.current.elapsed)}`, color: "#00C8E0" });
     // FIX 2026-04-24: evidence flags for end-to-end chain.
@@ -2211,6 +2219,31 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       userName, "Employee",
       { reason, durationSec: q.current.elapsed, cyclesCompleted: q.current.cycle });
   }, [addEvent, onEnd, isPremium]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // 2026-06-06 roots-of-roots M2-#5: listen for admin-side resolve
+  // ─────────────────────────────────────────────────────────────
+  // Dashboard emits EMERGENCY_RESOLVED when admin marks the worker's
+  // emergency closed (resolve button in SOS popup / emergencies page).
+  // Without a mobile listener, the worker's SOS UI stayed open
+  // indefinitely — the worker had to manually press End on their
+  // own device. This closes the loop: on an event matching this
+  // session's errIdRef (or fallback: same employee id), call
+  // doEnd("admin_resolved") which routes through the normal
+  // cleanup chain (server-end, timers, native banner, onEnd record).
+  // Placed AFTER doEnd to avoid TDZ on the dep array.
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const unsub = onSyncEvent((event) => {
+      if (event.type !== "EMERGENCY_RESOLVED") return;
+      const matchesId =
+        event.data?.emergencyId === errIdRef.current
+        || event.employeeId === userId;
+      if (!matchesId) return;
+      try { doEnd("admin_resolved"); } catch { /* never block dismissal */ }
+    });
+    return unsub;
+  }, [userId, doEnd]);
 
   // Open DMS modal
   const openDMS = useCallback(() => {
