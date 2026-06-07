@@ -950,7 +950,11 @@ serve(async (req: Request) => {
             ts: Date.now(),
           },
         });
-        setTimeout(() => supabase.removeChannel(ch), 2000);
+        // 2026-06-06 M3-#30: was setTimeout(removeChannel, 2000) which
+        // raced Deno isolate termination — the timer often never fired
+        // and the channel leaked. await ch.send() above already confirms
+        // delivery, so immediate cleanup is safe + leak-free.
+        try { await supabase.removeChannel(ch); } catch { /* best-effort */ }
       } catch (e) {
         console.warn("[sos-alert] Heartbeat broadcast failed:", e);
       }
@@ -1098,7 +1102,11 @@ serve(async (req: Request) => {
           event: "escalation",
           payload: { emergencyId, stage, reason, ts: Date.now() },
         });
-        setTimeout(() => supabase.removeChannel(ch), 2000);
+        // 2026-06-06 M3-#30: was setTimeout(removeChannel, 2000) which
+        // raced Deno isolate termination — the timer often never fired
+        // and the channel leaked. await ch.send() above already confirms
+        // delivery, so immediate cleanup is safe + leak-free.
+        try { await supabase.removeChannel(ch); } catch { /* best-effort */ }
       } catch (err) {
         // 2026-06-05 roots-of-roots M1-#6: was silent catch. A failed
         // Realtime broadcast means the dashboard NEVER learns the SOS
@@ -1264,7 +1272,11 @@ serve(async (req: Request) => {
           event: "sos_ended",
           payload: { emergencyId, reason, ts: Date.now() },
         });
-        setTimeout(() => supabase.removeChannel(ch), 2000);
+        // 2026-06-06 M3-#30: was setTimeout(removeChannel, 2000) which
+        // raced Deno isolate termination — the timer often never fired
+        // and the channel leaked. await ch.send() above already confirms
+        // delivery, so immediate cleanup is safe + leak-free.
+        try { await supabase.removeChannel(ch); } catch { /* best-effort */ }
       } catch (err) {
         // 2026-06-05 roots-of-roots M1-#6: was silent catch. A failed
         // sos_ended broadcast means the dashboard keeps the emergency
@@ -1925,13 +1937,22 @@ serve(async (req: Request) => {
       // cap; on timeout we record null sid + a "timeout" method label
       // and let the rest of the fanout finish normally.
       const FANOUT_TIMEOUT_MS = 20000;
+      // 2026-06-06 M3-#24: previously the Promise.race collapsed both
+      // "real failure" and "timeout" to null, so the log line couldn't
+      // distinguish a Twilio outage (timeout: retry policy kicks in)
+      // from a 4xx (bad number: do not retry). The two flags below
+      // carry the timeout signal out of the race so the log + return
+      // shape can tag it. Real .catch() failures still produce null
+      // with the corresponding flag staying false → log shows FAIL.
+      let smsTimedOut = false;
+      let callTimedOut = false;
       const smsTimed: Promise<string | null> = Promise.race([
         smsPromise.then((v) => v ?? null).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), FANOUT_TIMEOUT_MS)),
+        new Promise<null>((resolve) => setTimeout(() => { smsTimedOut = true; resolve(null); }, FANOUT_TIMEOUT_MS)),
       ]);
       const callTimed: Promise<{ sid: string } | null> = Promise.race([
         callPromise.then((v) => v ?? null).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), FANOUT_TIMEOUT_MS)),
+        new Promise<null>((resolve) => setTimeout(() => { callTimedOut = true; resolve(null); }, FANOUT_TIMEOUT_MS)),
       ]);
       const [smsSid, callResult] = await Promise.all([smsTimed, callTimed]);
 
@@ -1941,7 +1962,7 @@ serve(async (req: Request) => {
         tier === "basic" ? "tts_call_plus_sms" :
         "bridge_call_recorded_plus_sms";
 
-      console.log(`[sos-alert] ${tier.toUpperCase()} → ${redactName(c.name)} (${redactPhone(c.phone)}): call=${callResult?.sid || "SKIP/FAIL/TIMEOUT"} sms=${smsSid || "FAIL/TIMEOUT"}`);
+      console.log(`[sos-alert] ${tier.toUpperCase()} → ${redactName(c.name)} (${redactPhone(c.phone)}): call=${callResult?.sid || (callTimedOut ? "TIMEOUT" : "FAIL/SKIP")} sms=${smsSid || (smsTimedOut ? "TIMEOUT" : "FAIL")}`);
 
       return {
         contactName: c.name,
@@ -2424,7 +2445,8 @@ serve(async (req: Request) => {
         },
       });
       console.log(`[sos-alert] broadcast on tenant-scoped channel: ${scopedChannel}`);
-      setTimeout(() => supabase.removeChannel(ch), 2000);
+      // 2026-06-06 M3-#30: was setTimeout(removeChannel, 2000) — same Deno-isolate race.
+      try { await supabase.removeChannel(ch); } catch { /* best-effort */ }
     } catch (e) {
       console.warn("[sos-alert] Realtime broadcast failed:", e);
     }
