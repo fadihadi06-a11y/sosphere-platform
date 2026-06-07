@@ -14,7 +14,7 @@ import { fnUrl } from "../_shared/functions-host.ts";
 
 const FETCH_TIMEOUT_MS = 8000;  // G-41: Twilio API p99 < 2s; 8s is generous.
 
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map((s) => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
   const origin = req.headers.get("origin") || "";

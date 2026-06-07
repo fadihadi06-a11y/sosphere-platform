@@ -23,7 +23,7 @@ const SUPA_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPA_ANON         = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 // G-20 (B-20): origin allowlist — same pattern as twilio-call/stripe-checkout.
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map(s => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
   const origin = req.headers.get("origin") || "";

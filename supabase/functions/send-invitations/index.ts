@@ -26,7 +26,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

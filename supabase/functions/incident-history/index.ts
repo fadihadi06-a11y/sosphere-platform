@@ -38,7 +38,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPA_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
 function getCorsOrigin(req: Request): string {

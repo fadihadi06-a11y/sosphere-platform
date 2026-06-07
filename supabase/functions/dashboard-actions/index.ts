@@ -12,13 +12,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleProbe } from "../_shared/probe-handler.ts";
 
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPA_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPA_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 // G-20: origin allowlist — same pattern as twilio-call, stripe-checkout, sos-alert.
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map(s => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
   const origin = req.headers.get("origin") || "";
@@ -49,6 +50,17 @@ type ActionPayload = {
 Deno.serve(async (req) => {
   const CORS = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "dashboard-actions",
+        cors: CORS,
+        // no authenticate gate — probe is body-shape filtered (probe: true + probeId)
+      });
+    }
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: CORS });
   }

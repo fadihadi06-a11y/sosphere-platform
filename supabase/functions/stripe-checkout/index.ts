@@ -38,10 +38,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -104,6 +105,17 @@ serve(async (req: Request) => {
   // B-M1: origin allowlist via ALLOWED_ORIGINS env
   const cors = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+
+    // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "stripe-checkout",
+        cors: cors,
+        // no authenticate gate — probe is body-shape filtered (probe: true + probeId)
+      });
+    }
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,

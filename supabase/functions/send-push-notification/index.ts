@@ -29,6 +29,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleProbe } from "../_shared/probe-handler.ts";
 
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPA_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -40,7 +41,7 @@ const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") || "mailto:ops@sosphere.app"
 
 const VAPID_CONFIGURED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
 function getCorsOrigin(req: Request): string {
@@ -428,6 +429,17 @@ function isWebPushSubscription(token: string): boolean {
 Deno.serve(async (req) => {
   const CORS = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "send-push-notification",
+        cors: CORS,
+        // no authenticate gate — probe is body-shape filtered (probe: true + probeId)
+      });
+    }
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: CORS });
 
   if (!VAPID_CONFIGURED) {

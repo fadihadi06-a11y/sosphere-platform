@@ -12,6 +12,7 @@
 //     other workers. Pre-fix the admin UI used a setTimeout simulation
 //     and never actually called Twilio.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, markSosPriority, getRateLimitHeaders } from "../_shared/rate-limiter.ts";
 import { signGatherToken } from "../_shared/gather-token.ts";
@@ -57,7 +58,7 @@ function normalizePhoneVariants(p: string | null | undefined): string[] {
   return [...v];
 }
 
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",").map(s => s.trim()).filter(Boolean);
 function getCorsOrigin(req: Request): string {
   const origin = req.headers.get("origin") || "";
@@ -168,6 +169,17 @@ async function callerIsCompanyAdmin(
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+    // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "twilio-call",
+        cors: corsHeaders,
+        authenticate: async (r) => { const id = await authenticate(r); return id ? { userId: id } : null; },
+      });
+    }
   try {
     const userId = await authenticate(req);
     if (!userId) {
@@ -256,7 +268,7 @@ serve(async (req) => {
 
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken  = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const baseUrl    = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
+    const baseUrl    = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost";
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     if (!accountSid || !authToken) {
       return new Response(

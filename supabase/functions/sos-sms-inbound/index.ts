@@ -45,7 +45,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // CORS — same pattern as twilio-status for consistency. Twilio itself
 // doesn't need CORS (it's a server-to-server POST), but allow
 // dashboard preflight in case a future support tool POSTs here.
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

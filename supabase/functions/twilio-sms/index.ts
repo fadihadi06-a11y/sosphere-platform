@@ -27,6 +27,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // L2-A: same circuit breaker as twilio-call. Both functions share the
 // 'global' breaker key — one Twilio outage trips both. When L4
@@ -42,7 +43,7 @@ import { clientIp } from "../_shared/api-guard.ts";
 import { safeErrorResponse } from "../_shared/safe-error.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -86,6 +87,17 @@ serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+
+    // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "twilio-sms",
+        cors: corsHeaders,
+        authenticate: async (r) => { const id = await authenticate(r); return id ? { userId: id } : null; },
+      });
+    }
   }
 
   try {
@@ -144,7 +156,7 @@ serve(async (req) => {
 
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app";
+    const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost";
 
     if (!accountSid || !authToken) {
       return new Response(
