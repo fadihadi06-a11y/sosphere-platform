@@ -20,6 +20,10 @@ stripe-test-setup-*.txt
 # Temp files used by automation / subagents (never tracked)
 .tmp_*
 *.tmp.cjs
+# 2026-06-06 final-audit: also exclude *.tmp siblings — Python in-place
+# rebuilds (used to dodge Windows-mount Edit truncation) leave behind
+# .tmp snapshots that age into confusing stale references in audits/greps.
+*.tmp
 
 
 .vercel
