@@ -1338,6 +1338,40 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         });
         console.log("[SUPABASE_READY] monitoring_checkin_received: " + event.employeeName);
       }
+
+      // ── SOS_ESCALATED (M3-#25, 2026-06-06) ────────────────────────
+      // 4 emit sites (mobile sos-emergency × 2, safe-walk-mode × 1,
+      // dashboard-emergencies-page × 1) and 0 listeners — admin never
+      // saw the worker's auto/manual escalation signal in real-time.
+      // Wire here to bump the matching emergency to critical + surface
+      // a persistent toast naming the reason. Self-emit from the
+      // dashboard-emergencies-page click handler also passes through
+      // here; the page already shows its own confirmation modal so
+      // the toast is additive, not duplicative.
+      if (event.type === "SOS_ESCALATED") {
+        const data = (event.data || {}) as Record<string, unknown>;
+        const reason = (data.reason as string) || (data.source as string) || "unspecified";
+        const escalatedTo = (data.escalatedTo as string) || "owner";
+        const matchEmgId = data.emergencyId as string | undefined;
+        // Bump severity on the matched emergency. Prefer the explicit
+        // emergencyId in payload (dashboard-originated) and fall back
+        // to most-recent active for this worker (mobile-originated).
+        const allEmergencies = useDashboardStore.getState().emergencies;
+        const matching = matchEmgId
+          ? allEmergencies.find((e) => e.id === matchEmgId)
+          : allEmergencies
+              .filter((e) => e.status === "active" && e.employeeId === event.employeeId)
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+        if (matching && matching.severity !== "critical") {
+          updateEmergency(matching.id, { severity: "critical" });
+        }
+        incrementNotifCount();
+        toast.error(`⬆ Escalated: ${event.employeeName}`, {
+          description: `${event.zone || "Unknown zone"} → ${escalatedTo} (reason: ${reason})`,
+          duration: 12000,
+        });
+        console.log("[SUPABASE_READY] sos_escalated_received: " + event.employeeName + " reason=" + reason);
+      }
     });
     return unsub;
   }, [addEmergency, updateEmergency, incrementNotifCount, cancelEmergencyById, setPendingIncidentReport, setShowIncidentReportPanel]);
