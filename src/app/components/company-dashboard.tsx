@@ -966,8 +966,6 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           duration: 4000,
         });
       }
-      if (event.type === "AUDIO_EVIDENCE") incrementNotifCount();
-      if (event.type === "EMERGENCY_CHAT") incrementNotifCount();
       if (event.type === "GPS_TRAIL_UPDATE") {
         // phase-1/sync-event-handlers (2026-05-25, life-safety):
         // Pre-fix: just incremented notif count. The actual GPS update was

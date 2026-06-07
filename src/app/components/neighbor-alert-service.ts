@@ -813,3 +813,18 @@ export function subscribeToNeighborResponses(
     return { stop: () => {} };
   }
 }
+
+// 2026-06-06 M3-#21: explicit cache-clear export for complete-logout.
+// Drops the in-memory settings cache (if any) so the next user on
+// a shared device doesn't inherit the previous user's broadcast/
+// receive opt-ins. localStorage key
+// "sosphere_neighbor_alert_settings" is still wiped by the broad
+// sosphere_ prefix sweep on full logout; this is a defense-in-depth
+// no-op now but the slot exists for any future in-memory state.
+export function clearNeighborAlertCache(): void {
+  // Currently no module-level cache to wipe — settings re-load from
+  // localStorage on each getNeighborAlertSettings() call. This hook
+  // exists so the logout sequencer has a uniform entrypoint and so
+  // future cache additions plug in automatically.
+}
+

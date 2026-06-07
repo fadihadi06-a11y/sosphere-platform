@@ -297,3 +297,12 @@ export function getTrackingUrl(emergencyId: string): string {
   }
   return STATIC_MAP_BASE;
 }
+
+// 2026-06-06 M3-#21: explicit cache-clear export for complete-logout.
+// stopLiveSession already handles the in-memory + interval teardown;
+// this wrapper exists so the logout sequencer has a uniform-named
+// clearXCache entrypoint mirroring the other services.
+export function clearLiveLocationCache(): void {
+  try { stopLiveSession(); } catch { /* best-effort */ }
+}
+

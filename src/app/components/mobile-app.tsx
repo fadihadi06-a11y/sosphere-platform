@@ -1426,6 +1426,27 @@ export function MobileApp() {
     return unsub;
   }, [authUserId, loginName]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // 2026-06-06 roots-of-roots M3-#26: LIVE_LOCATION_EXPIRING_SOON
+  // ─────────────────────────────────────────────────────────────
+  // Worker's live-location share has 10 minutes left. Prompt them
+  // to extend (renew). The emit comes from live-location-service.ts
+  // when the worker's session is 10 min from TTL. Self-event, no
+  // employeeId filter needed — the broadcast is local to this
+  // session via emitSyncEvent.
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const unsub = onSyncEvent((event) => {
+      if (event.type !== "LIVE_LOCATION_EXPIRING_SOON") return;
+      const minutesRemaining = (event.data as Record<string, unknown> | undefined)?.minutesRemaining ?? 10;
+      toast.warning("Live-location share expiring", {
+        description: `Your live-location share with responders ends in about ${minutesRemaining} min. Open the SOS screen to extend.`,
+        duration: 12000,
+      });
+    });
+    return unsub;
+  }, []);
+
   // Screens where back should EXIT the app (root screens)
   const ROOT_SCREENS: Screen[] = ["welcome", "login-phone", "login-welcome", "individual-home", "employee-dashboard"];
 

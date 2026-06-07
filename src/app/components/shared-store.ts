@@ -234,11 +234,10 @@ export interface SyncEvent {
     | "INCIDENT_REPORT_RECEIVED" // Employee submitted photo/comment report
     // Advanced safety features
     | "FALL_DETECTED"        // Phone accelerometer detected a fall
-    | "ESCALATION_UPDATE"    // Smart escalation level changed
+    | "ESCALATION_UPDATE"    // Smart escalation level changed (demo-emitted only — kept in union for wow-demo, no real production listener)
     // Round 1 features
     | "SHAKE_SOS"            // Shake-to-SOS triggered
-    | "EMERGENCY_CHAT"       // Emergency chat message
-    | "AUDIO_EVIDENCE"       // Audio recording evidence uploaded
+    | "EMERGENCY_CHAT"       // Emergency chat (demo-emitted only — kept in union for wow-demo, no real production listener)
     // SOS Live Intelligence
     | "GPS_TRAIL_UPDATE"     // GPS trail point recorded during active SOS
     | "SOS_RECORDING_STARTED" // Ambient recording started after call ended
@@ -265,6 +264,7 @@ export interface SyncEvent {
     | "BUDDY_LOCATE_REQUEST"  // Admin requested GPS locate of a buddy
     // P0-ci-cleanup-deep (2026-05-24): battery-critical last-gasp GPS emit
     | "GPS_LAST_GASP"
+    | "LIVE_LOCATION_EXPIRING_SOON"  // Worker's live-location share has 10 min left — prompt extension
     | "CHECKIN_WARNING"  // P0-ci-cleanup-strict-2 (2026-05-24): late check-in warning emitted from checkin-timer.tsx
     // P0-ci-cleanup-strict-4 (2026-05-25): admin-not-responding + battery-critical sync events fired from sos-emergency.tsx
     | "SOS_ESCALATED"
@@ -294,7 +294,6 @@ export interface SyncEvent {
     // (auto-fire after N minutes inside a zone with dwell-alert configured).
     | "ZONE_ENTRY"
     | "ZONE_EXIT"
-    | "ZONE_DWELL"
     // Phase 2 CRIT-9 (2026-06-01, safety): discreet-SOS lifecycle events.
     // Pre-fix these were cast `as any` (declared in code but not in the
     // union) so dashboard listeners couldn't even subscribe. data carries
@@ -821,7 +820,6 @@ function formatEventType(type: SyncEvent["type"]): string {
     ESCALATION_UPDATE: "Escalation Update",
     SHAKE_SOS: "Shake-to-SOS Triggered",
     EMERGENCY_CHAT: "Emergency Chat Message",
-    AUDIO_EVIDENCE: "Audio Recording Evidence Uploaded",
     GPS_TRAIL_UPDATE: "GPS Trail Point Recorded",
     SOS_RECORDING_STARTED: "Ambient Recording Started",
     SOS_CONTACT_ANSWERED: "Emergency Contact Answered",
@@ -840,6 +838,7 @@ function formatEventType(type: SyncEvent["type"]): string {
     SAFE_WALK_ENDED: "Safe Walk Ended",
     BUDDY_LOCATE_REQUEST: "Buddy Locate Request",
     GPS_LAST_GASP: "GPS Last-Gasp Position",
+    LIVE_LOCATION_EXPIRING_SOON: "Live Location Share Expiring",
     CHECKIN_WARNING: "Check-in Overdue Warning",
     SOS_ESCALATED: "SOS Escalated",
     BATTERY_CRITICAL: "Battery Critical",
@@ -851,7 +850,6 @@ function formatEventType(type: SyncEvent["type"]): string {
     // Phase 2 CRIT-3 (2026-06-01): geofencing transitions
     ZONE_ENTRY: "Entered Geofenced Zone",
     ZONE_EXIT:  "Exited Geofenced Zone",
-    ZONE_DWELL: "Dwelling in Zone (alert)",
     // Phase 2 CRIT-9 (2026-06-01)
     DISCREET_SOS_STARTED:   "Discreet SOS Activated",
     DISCREET_SOS_HEARTBEAT: "Discreet SOS Heartbeat",
@@ -877,7 +875,6 @@ function getIconKey(type: SyncEvent["type"]): string {
     ESCALATION_UPDATE: "AlertTriangle",
     SHAKE_SOS: "AlertTriangle",
     EMERGENCY_CHAT: "MessageCircle",
-    AUDIO_EVIDENCE: "Microphone",
     GPS_TRAIL_UPDATE: "MapPin",
     SOS_RECORDING_STARTED: "Mic",
     SOS_CONTACT_ANSWERED: "Phone",
@@ -896,6 +893,7 @@ function getIconKey(type: SyncEvent["type"]): string {
     SAFE_WALK_ENDED: "CheckCircle",
     BUDDY_LOCATE_REQUEST: "Locate",
     GPS_LAST_GASP: "BatteryWarning",
+    LIVE_LOCATION_EXPIRING_SOON: "Clock",
     CHECKIN_WARNING: "AlertCircle",
     SOS_ESCALATED: "AlertTriangle",
     BATTERY_CRITICAL: "BatteryWarning",
@@ -907,7 +905,6 @@ function getIconKey(type: SyncEvent["type"]): string {
     // Phase 2 CRIT-3 (2026-06-01): geofencing transitions
     ZONE_ENTRY: "LogIn",
     ZONE_EXIT:  "LogOut",
-    ZONE_DWELL: "Hourglass",
     // Phase 2 CRIT-9 (2026-06-01)
     DISCREET_SOS_STARTED:   "EyeOff",
     DISCREET_SOS_HEARTBEAT: "Heart",

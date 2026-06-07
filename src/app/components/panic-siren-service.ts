@@ -280,3 +280,14 @@ export function subscribeSiren(cb: (state: SirenState) => void): () => void {
   cb(_state);
   return () => _listeners.delete(cb);
 }
+
+// 2026-06-06 M3-#21: explicit cache-clear export for complete-logout.
+// Stops any active siren + drops the in-memory config so the next
+// user on a shared device doesn't inherit the previous user's
+// auto-trigger / volume preferences. localStorage key
+// "sosphere_panic_siren" is still wiped by the broad sosphere_
+// prefix sweep on full logout; this handles the in-memory state.
+export function clearPanicSirenCache(): void {
+  try { stopSiren(); } catch { /* best-effort */ }
+}
+

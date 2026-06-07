@@ -35,6 +35,9 @@ import { clearGeneratedReportsCache } from "../generated-reports-service";
 import { clearAnalyticsRollupsCache } from "../analytics-rollups-service";
 import { clearCheckinSessionsCache } from "../checkin-sessions-service";
 import { clearPacketPreferencesCache } from "../packet-preferences-service";
+import { clearLiveLocationCache } from "../live-location-service";
+import { clearPanicSirenCache } from "../panic-siren-service";
+import { clearNeighborAlertCache } from "../neighbor-alert-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
   "sosphere_pin_salt",
@@ -144,6 +147,13 @@ export async function completeLogout(): Promise<void> {
   // key is already in TENANT_SCOPED_KEYS (the broad sweep handles localStorage);
   // this clears the module-level cache to close the partial-logout path.
   try { clearPacketPreferencesCache(); } catch { /* best effort */ }
+  // 2026-06-06 M3-#21 (21+ cache cleanups): mobile services with module-
+  // level state that needs to die on logout. live-location keeps an
+  // active broadcast timer; panic-siren may be playing audio; neighbor-
+  // alert holds settings cache. complete-logout walks all three.
+  try { clearLiveLocationCache(); } catch { /* best effort */ }
+  try { clearPanicSirenCache(); } catch { /* best effort */ }
+  try { clearNeighborAlertCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }
   try { clearTenantCache(); } catch { /* best effort */ }
