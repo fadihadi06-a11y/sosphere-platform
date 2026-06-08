@@ -40,6 +40,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // CORS — same pattern as twilio-status for consistency. Twilio itself
@@ -290,6 +291,17 @@ async function broadcastSmsReply(
 serve(async (req) => {
   const cors = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+    // 2026-06-06 M3-#23 (long-tail): shared synthetic-monitoring probe.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "sos-sms-inbound",
+        cors: cors,
+        // // Twilio/webhook function — no JWT auth, probe is body-shape filtered.
+      });
+    }
 
   // Empty TwiML acknowledgement — never auto-reply. Auto-reply on an
   // SOS line would create a feedback loop and confuse the contact.

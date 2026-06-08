@@ -109,3 +109,38 @@ verify_jwt = false
 # OUT_OF_ORDER, PAYMENT_FAIL. Bearer via PROBE_SECRET, manual only.
 [functions.stripe-e2e-stress-probe]
 verify_jwt = false
+
+
+# ═══════════════════════════════════════════════════════════════
+# 2026-06-06 M3-#23 final: 6 more functions wired with the shared
+# probe handler (_shared/probe-handler.ts). The probe path is
+# body-shape filtered (probe: true + probeId) so disabling JWT
+# at the platform layer is safe — non-probe calls still hit the
+# function's own auth logic (per-function bearer / RLS / Stripe
+# signature / Twilio signature) unchanged. Without verify_jwt=false,
+# Supabase Edge gateway rejects probes at 401 before our code runs.
+# ═══════════════════════════════════════════════════════════════
+
+# Dashboard admin actions (own JWT bearer auth in body path).
+[functions.dashboard-actions]
+verify_jwt = false
+
+# Web Push fan-out (own JWT bearer auth in body path).
+[functions.send-push-notification]
+verify_jwt = false
+
+# Stripe Checkout session creator (own JWT bearer + is_company_owner RPC).
+[functions.stripe-checkout]
+verify_jwt = false
+
+# Incident history read (own per-call user-JWT in handler).
+[functions.incident-history]
+verify_jwt = false
+
+# Incident report data (own per-call user-JWT in handler).
+[functions.incident-report-data]
+verify_jwt = false
+
+# Bulk-invite (own admin-bearer auth in handler).
+[functions.invite-employees]
+verify_jwt = false

@@ -11,6 +11,7 @@
 //    `{deduped: true}` and skip processing.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // R-22: shared plan catalog — single source of truth across edge functions.
 import { lookupPlanByPriceEnv as sharedLookupPlan } from "../_shared/plan-catalog.ts";
@@ -333,6 +334,19 @@ class DbHandlerError extends Error {
 
 serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+  // 2026-06-06 M3-#23: shared synthetic-monitoring probe handler.
+  // Probe uses URL ?action=probe — body remains untouched for Stripe
+  // signature verification below. Body-shape filter (probe:true + probeId).
+  const probeUrl = new URL(req.url);
+  if (probeUrl.searchParams.get("action") === "probe") {
+    return await handleProbe(req, {
+      functionName: "stripe-webhook",
+      cors: {},  // stripe-webhook has no browser CORS — webhook-only
+      // Stripe-signed function; probe is body-shape filtered (no JWT auth path).
+    });
+  }
+
   if (!WEBHOOK_SECRET) {
     console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET not configured");
     return new Response("Webhook secret not configured", { status: 500 });

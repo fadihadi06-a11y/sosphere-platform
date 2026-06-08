@@ -43,6 +43,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleProbe } from "../_shared/probe-handler.ts";
 
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPA_ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -73,6 +74,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 Deno.serve(async (req) => {
   const CORS = buildCors(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // 2026-06-06 M3-#23 (long-tail): shared synthetic-monitoring probe.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "incident-report-data",
+        cors: CORS,
+        // // no authenticate gate — probe is body-shape filtered (probe: true + probeId)
+      });
+    }
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: CORS });
   }

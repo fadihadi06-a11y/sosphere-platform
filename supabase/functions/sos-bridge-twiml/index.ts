@@ -8,6 +8,7 @@
 //    Under load this exhausts worker pool and DoSes the emergency path.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { handleProbe } from "../_shared/probe-handler.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { signGatherToken, verifyGatherToken } from "../_shared/gather-token.ts";
 import { fnUrl } from "../_shared/functions-host.ts";
@@ -241,6 +242,17 @@ function buildConferenceTwiml(confName: string, emergencyId: string, baseUrl: st
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+    // 2026-06-06 M3-#23 (long-tail): shared synthetic-monitoring probe.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "sos-bridge-twiml",
+        cors: corsHeaders,
+        // // Twilio/webhook function — no JWT auth, probe is body-shape filtered.
+      });
+    }
 
   const url = new URL(req.url);
   const baseUrl = getBaseUrl(req);

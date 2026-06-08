@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleProbe } from "../_shared/probe-handler.ts";
 
 // B-M1: origin allowlist via ALLOWED_ORIGINS env
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "https://sosphere-platform.vercel.app,capacitor://localhost,https://localhost")
@@ -53,6 +54,17 @@ Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+
+    // 2026-06-06 M3-#23 (long-tail): shared synthetic-monitoring probe.
+    // Caller sends POST ?action=probe with body { probe: true, probeId }.
+    const probeUrl = new URL(req.url);
+    if (probeUrl.searchParams.get("action") === "probe") {
+      return await handleProbe(req, {
+        functionName: "invite-employees",
+        cors: corsHeaders,
+        // // no authenticate gate — probe is body-shape filtered (probe: true + probeId)
+      });
+    }
   }
 
   try {
