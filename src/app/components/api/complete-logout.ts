@@ -37,6 +37,7 @@ import { clearCheckinSessionsCache } from "../checkin-sessions-service";
 import { clearPacketPreferencesCache } from "../packet-preferences-service";
 import { clearLiveLocationCache } from "../live-location-service";
 import { clearPanicSirenCache } from "../panic-siren-service";
+import { clearWeatherCache } from "../weather-service";
 import { clearNeighborAlertCache } from "../neighbor-alert-service";
 
 const SOSPHERE_KEEP_KEYS: Set<string> = new Set([
@@ -153,6 +154,7 @@ export async function completeLogout(): Promise<void> {
   // alert holds settings cache. complete-logout walks all three.
   try { clearLiveLocationCache(); } catch { /* best effort */ }
   try { clearPanicSirenCache(); } catch { /* best effort */ }
+  try { clearWeatherCache(); } catch { /* best effort */ }
   try { clearNeighborAlertCache(); } catch { /* best effort */ }
   try { clearPermissionCache(); } catch { /* best effort */ }
   try { clearRoleCache(); } catch { /* best effort */ }

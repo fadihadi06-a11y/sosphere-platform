@@ -20,7 +20,7 @@ import {
   Navigation, Download, Layers, Target,
   Cpu, Signal, FileWarning, CalendarDays,
   Megaphone, Route, Trophy, ScrollText,
-  UserCog, Wallet, Radar, ListChecks, BookOpen,
+  UserCog, Wallet, Radar, ListChecks, BookOpen, DollarSign,
   CloudLightning, Award, Mail,
   Brain, Sparkles, Camera, PhoneMissed, Phone, Clock,
   Lock, Crown, RefreshCw, Activity,
@@ -42,6 +42,7 @@ import { ManualPriorityModal } from "./manual-priority-modal";
 const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({ default: m.SettingsPage })));
 const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
 const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
+const PricingAdminPage = lazy(() => import("./dashboard-pricing-admin-page").then(m => ({ default: m.PricingAdminPage })));
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
@@ -1988,6 +1989,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                 {currentPage === "riskMap" && <PlanGate feature="risk_map" companyState={companyState} onUpgrade={() => navigateTo("billing")}><div><EnterprisePageHeader page="riskMap" /><RiskMapLivePage t={t} /></div></PlanGate>}
                 {/* Billing header removed — accessed via Settings sub-tab; breadcrumb provides context */}
                 {currentPage === "billing" && <div><BillingPage companyState={companyState} webMode={webMode} /><PricingPage webMode={webMode} currentStatus={toAccountStatus(companyState.company.billingStatus, trialDaysRemaining(companyState))} trialDays={trialDaysRemaining(companyState)} /></div>}
+                {currentPage === "pricingAdmin" && <PricingAdminPage userRole={authState.user.role} />}
                 {currentPage === "settings" && <div><SettingsPage companyName={companyName} t={t} lang={lang} onLangChange={setLang} activeRole={activeRole} onRoleChange={setActiveRole} authState={authState} companyState={companyState} onNavigate={navigateTo} webMode={webMode} /></div>}
                 {/* geofencing & gpsCompliance now redirect to "location" via PAGE_ALIASES */}
                 {/* ══ HUB: Emergency Hub — Active | SAR | Playbook ���═ */}
@@ -3724,6 +3726,16 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
           active={currentPage === "settings"}
           onClick={() => { onNavigate("settings" as DashPage); if (!webMode) onToggle(); }}
         />
+        {/* Pricing Admin — visible to super_admin only. The page itself
+            also gates render-side, but hiding the link avoids surfacing
+            a "Locked" page to non-super-admins who'd be confused by it. */}
+        {authState?.user?.role === "super_admin" && (
+          <SidebarNavItem
+            item={{ id: "pricingAdmin" as DashPage, icon: DollarSign, label: "Pricing Admin" }}
+            active={currentPage === "pricingAdmin"}
+            onClick={() => { onNavigate("pricingAdmin" as DashPage); if (!webMode) onToggle(); }}
+          />
+        )}
         {/* Billing removed from sidebar — accessible as sub-tab inside Settings */}
         <div style={{ height: 8 }} />
       </div>

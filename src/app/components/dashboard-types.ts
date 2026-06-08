@@ -15,7 +15,7 @@ export type DashPage =
   | "employees" | "journeyMgmt" | "workforce" | "comms"
   | "incidentInvestigation" | "riskRegister" | "complianceReports" | "analytics"
   | "roles" | "auditLog" | "sarProtocol"
-  | "billing" | "csvGuide" | "leaderboard" | "emailScheduler" | "rrpAnalytics"
+  | "billing" | "pricingAdmin" | "csvGuide" | "leaderboard" | "emailScheduler" | "rrpAnalytics"
   | "buddySystem" | "checklist" | "playbook" | "weatherAlerts" | "safetyScore"
   | "offlineMonitor" | "location"
   // ── Legacy aliases (redirect via PAGE_ALIASES / PAGE_TO_HUB) ──

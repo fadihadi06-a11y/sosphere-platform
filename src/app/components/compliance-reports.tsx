@@ -14,6 +14,7 @@ import QRCode from "qrcode";
 // printed on compliance PDFs must be unpredictable (RPT-x-x).
 import { secureRandomId } from "./utils/secure-random";
 import { getRealAuditLog } from "./audit-log-store";
+import { getCachedLatest as getRealWeatherEntries } from "./weather-service";
 // 2026-06-03 C-4 final: wire PDF blocks to live service caches (no more
 // placeholders for sections backed by a service shipped earlier today).
 import { getCachedEmergencies } from "./emergencies-service";
@@ -466,7 +467,10 @@ const ALL_SECTIONS: ReportSection[] = [
   { id: "journey_incidents", label: "On-Route Incident Report",      description: "Incidents that happened during journeys",          category: "Journeys", icon: AlertTriangle, color: "#FF2D55", defaultChecked: false },
 
   // ── Weather & Environment ───────────────────────────────────
-  { id: "weather_log",       label: "Weather Alert History",         description: "All weather warnings and actions taken",           category: "Environment", icon: Activity,  color: "#FF9500", defaultChecked: false, comingSoon: true },
+  // 2026-06-08 (29th pattern app): weather_log table + OpenWeather
+  // integration shipped — comingSoon flag dropped. Real observations
+  // surface via getRealWeatherEntries() below.
+  { id: "weather_log",       label: "Weather Alert History",         description: "All weather warnings and actions taken",           category: "Environment", icon: Activity,  color: "#FF9500", defaultChecked: false },
 
   // ── Compliance & Legal ──────────────────────────────────────
   { id: "emergency_procedures", label: "Emergency Procedures",       description: "Documented emergency response protocols",          category: "Compliance", icon: Shield,    color: "#00C853", defaultChecked: false },
@@ -1103,12 +1107,24 @@ async function generatePDF(selectedSections: string[], companyName: string, prep
       }).join("\n");
     })() },
     emergency_procedures: { title: "Emergency Procedures", color: [0,200,83], content: "1. SOS Response: Call employee > Dispatch help > Notify admin chain\n2. Evacuation: Trigger alarm > Account for all workers > Report to assembly point\n3. Medical: Call ambulance > Share Medical ID > Secure scene\n4. Security: Silent alert > Lock zone > Contact police\n5. Environmental: Evacuate zone > Call hazmat > Isolate area" },
-    // 2026-06-03 C-4 follow-up: weather_alerts table doesn't exist yet.
-    // Previous hardcoded "March 2 Sandstorm / March 7 Extreme heat 48C" was a
-    // false-document liability — ran under the user's real company name with
-    // entirely fabricated weather events. Until a real weather provider
-    // integration ships (Met office API + alerts table), report honestly.
-    weather_log: { title: "Weather Alert Log", color: [255,150,0], content: "Weather monitoring not yet configured for this site.\nIntegration with national weather service is on the roadmap; enable it under Settings -> Integrations." },
+    // 2026-06-08 (29th pattern app): real weather observations from the
+    // weather_log table via list_weather_observations RPC. If the company
+    // hasn't run weather-fetch yet (no rows), report honestly that data
+    // collection hasn't started rather than fabricating events.
+    weather_log: { title: "Weather Alert Log", color: [255,150,0], content: (() => {
+      const rows = getRealWeatherEntries();
+      if (rows.length === 0) {
+        return "No weather observations recorded yet.\nEnable a scheduled weather-fetch job under Settings → Integrations to start collecting data.";
+      }
+      return rows.map(r => {
+        const ts = new Date(r.observed_at).toLocaleString();
+        const sev = r.severity === "severe" ? "SEVERE" : r.severity === "warning" ? "WARNING" : "info";
+        const temp = r.temp_c == null ? "—" : `${Math.round(r.temp_c)}°C`;
+        const wind = r.wind_gust_ms == null ? "" : ` gust ${r.wind_gust_ms.toFixed(1)} m/s`;
+        const zone = r.zone_id ?? "site";
+        return `${ts} [${sev}] ${zone}: ${r.condition} ${temp}${wind}`;
+      }).join("\n");
+    })() },
     audit_log: { title: "Audit Log Excerpt", color: [139,92,246], content: (() => {
       const entries = getRealAuditLog().slice(0, 8);
       if (entries.length === 0) return "No audit entries recorded yet.";
