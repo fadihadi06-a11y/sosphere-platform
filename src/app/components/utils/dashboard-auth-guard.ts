@@ -203,6 +203,34 @@ export async function dashboardSessionLoader(): Promise<DashboardLoaderData> {
   return { verified, expired };
 }
 
+// ───────── MOBILE-SIDE LOADER (M3-#20, 2026-06-06) ─────────
+// Mobile entry point (mobile-app.tsx) restores its session inline via
+// a 300+ line restoreSession() that, pre-this commit, never went through
+// loadVerifiedDashboardSession. The bug surface: a tampered local cache
+// could render screens before the server confirmed the JWT was still
+// valid (the screen-render race the dashboard side closed via the route
+// loader pattern).
+//
+// mobileSessionLoader is the safe-by-observation hook: it runs the same
+// non-redirecting verification as dashboardSessionLoader (clears expired
+// hints, calls loadVerifiedDashboardSession) and returns the same shape
+// so mobile-app can compare server truth vs local cache. The initial
+// wire-up uses it as a LOGGING layer only — if server says "no session"
+// while mobile renders screens anyway, we log a warn so monitoring can
+// catch the drift before we promote to render-blocking.
+//
+// Promotion plan: once telemetry shows the warn fires zero times in
+// steady-state, a follow-up commit can gate sensitive mobile screens
+// (sos-emergency, evacuation-screen, dashboard-mobile) on a verified
+// state — same pattern dashboard already uses.
+export async function mobileSessionLoader(): Promise<DashboardLoaderData> {
+  // Identical shape + behaviour to dashboardSessionLoader. Aliased
+  // here so the call-site reads as mobile-specific (greppable) and
+  // future mobile-only divergence (e.g., AAL2 step-up requirements
+  // specific to the mobile threat model) lands in a clear place.
+  return dashboardSessionLoader();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Page-Level Role Protection
 // ═══════════════════════════════════════════════════════════════

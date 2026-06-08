@@ -871,6 +871,44 @@ export function MobileApp() {
     };
 
     restoreSession();
+
+    // ═══════════════════════════════════════════════════════════
+    // 2026-06-06 M3-#20: parallel server-state verification.
+    // ─────────────────────────────────────────────────────────
+    // restoreSession (above, ~300 lines) does its own local-then-
+    // server hydration. This loader runs INDEPENDENTLY in parallel
+    // to surface any drift between what the inline path concluded
+    // and what the centralized verifier reports.
+    //
+    // SAFE-BY-OBSERVATION: log-only for now. If server says "no
+    // verified session" while mobile renders screens anyway, the
+    // warn here is the signal to investigate. Once telemetry shows
+    // zero warns in steady-state, a follow-up commit can promote
+    // this to a render-block (matching the dashboard route loader
+    // pattern).
+    // ═══════════════════════════════════════════════════════════
+    void import("./utils/dashboard-auth-guard").then(async ({ mobileSessionLoader }) => {
+      try {
+        const result = await mobileSessionLoader();
+        if (result.expired) {
+          console.warn("[mobileSessionLoader] cleared expired display hint at boot");
+        }
+        if (!result.verified) {
+          // No server-confirmed session. Mobile-app's inline restore
+          // may have read a stale local cache and rendered screens —
+          // this warn is the canary for that drift.
+          console.warn("[mobileSessionLoader] server reports NO verified session — if mobile is rendering sensitive screens right now, the local cache is ahead of the server");
+        } else {
+          // Optional: useful in dev to confirm the loader is wired.
+          // Comment out before high-traffic launches to silence the log.
+          console.info(`[mobileSessionLoader] verified: role=${result.verified.role} userId=${result.verified.userId?.slice(0, 8)}...`);
+        }
+      } catch (err) {
+        console.warn("[mobileSessionLoader] threw unexpectedly:", err);
+      }
+    }).catch((err) => {
+      console.warn("[mobileSessionLoader] dynamic import failed:", err);
+    });
   }, []);
 
   // -- Google OAuth: Navigation is handled directly by handleGmailLogin() --
