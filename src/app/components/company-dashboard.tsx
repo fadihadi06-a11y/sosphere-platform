@@ -1044,6 +1044,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         });
       }
       if (event.type === "CONNECTION_LOST") {
+        // 2026-06-06 final-audit: this listener is well-built but the
+        // matching emit (a watchdog in offline-sync-engine.ts that
+        // would fire CONNECTION_LOST when a worker goes offline for
+        // X minutes without recovery) is NOT YET WIRED. Keeping the
+        // listener as ready-to-receive infrastructure — when the
+        // watchdog ships, no dashboard change is needed.
         // phase-1/sync-event-handlers (2026-05-25, life-safety):
         // Pre-fix: created an emergency + showed toast, but forced admin to
         // manually navigate to SAR Protocol page. Seconds lost.

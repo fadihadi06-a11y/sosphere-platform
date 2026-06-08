@@ -246,7 +246,6 @@ export interface SyncEvent {
     | "STATUS_UPDATE"        // Employee status update (safe/busy/break)
     // SAR Protocol
     | "SAR_ACTIVATED"        // SAR mission started for missing worker
-    | "SAR_WORKER_FOUND"     // Missing worker located
     | "CONNECTION_LOST"      // Worker connection lost (watchdog)
     // Buddy System
     | "BUDDY_ALERT"          // SOS triggered → alert buddy partner
@@ -826,7 +825,6 @@ function formatEventType(type: SyncEvent["type"]): string {
     SOS_EVIDENCE_SUBMITTED: "Field Evidence Submitted",
     STATUS_UPDATE: "Employee Status Update",
     SAR_ACTIVATED: "SAR Mission Activated",
-    SAR_WORKER_FOUND: "Missing Worker Found",
     CONNECTION_LOST: "Worker Connection Lost",
     BUDDY_ALERT: "Buddy Alert",
     MONITORING_ACTIVATED: "Post-Incident Monitoring Activated",
@@ -881,7 +879,6 @@ function getIconKey(type: SyncEvent["type"]): string {
     SOS_EVIDENCE_SUBMITTED: "Camera",
     STATUS_UPDATE: "RefreshCw",
     SAR_ACTIVATED: "Radar",
-    SAR_WORKER_FOUND: "CheckCircle",
     CONNECTION_LOST: "WifiOff",
     BUDDY_ALERT: "Users",
     MONITORING_ACTIVATED: "Eye",
