@@ -19,6 +19,10 @@ const EXTEND_MINUTES = 30;
 // localStorage keys below stay as the instant-UI source; the RPC is the
 // durable mirror. See checkin-sessions-service.ts for the cache trio.
 import { upsertCheckinSession, clearCheckinSession } from "./checkin-sessions-service";
+// 2026-06-06 final-audit: ISO 27001 §A.12.4 — check-in deadline events
+// must be recorded in the durable audit_log channel. Worker overdue is
+// a safety-critical state; the audit chain links start → extend → end.
+import { logAuditEvent } from "./audit-log-store";
 
 const CHECKIN_DEADLINE_KEY = "sosphere_checkin_deadline";
 const CHECKIN_TOTAL_KEY = "sosphere_checkin_total";
@@ -372,6 +376,16 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
     void clearCheckinSession().catch((err) => {
       console.warn("[checkin-timer] server clear failed (best-effort):", err);
     });
+    // 2026-06-06 final-audit: closes the audit chain. Generic
+    // "checkin_cleared" — the caller's phase context (cancel /
+    // resumed / SOS trigger) is one frame up the call stack so the
+    // audit reader correlates via timestamps + zone.
+    try {
+      logAuditEvent("emergency", "checkin_cleared", {
+        detail: `Worker ${userName} check-in cleared in ${userZone || "(no zone)"}`,
+        zone: userZone, severity: "info",
+      });
+    } catch { /* best-effort */ }
   }
 
   /** Start the deadline-check loop (1s interval, but reads Date.now()) */
@@ -483,6 +497,13 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
       warningCycle: 0,
       zone:         userZone || null,
     });
+    // 2026-06-06 final-audit: audit_log start of the check-in window.
+    try {
+      logAuditEvent("emergency", "checkin_started", {
+        detail: `Worker ${userName} started check-in: ${totalMinutes}min in ${userZone || "(no zone)"}`,
+        zone: userZone, severity: "info",
+      });
+    } catch { /* best-effort */ }
 
     setTotalSeconds(demoSec);
     setRemaining(demoSec);
@@ -553,6 +574,14 @@ export function CheckinTimer({ onSOSTrigger, onBack, onTimerStateChange, userNam
       warningCycle: warningCycleRef.current,
       zone:         userZone || null,
     });
+    // 2026-06-06 final-audit: extension audit — operators can see how
+    // often a worker extends (signal: chronic-late vs one-off).
+    try {
+      logAuditEvent("emergency", "checkin_extended", {
+        detail: `Worker ${userName} extended check-in by ${Math.round(extendSec / 60)}min (warning cycle ${warningCycleRef.current})`,
+        zone: userZone, severity: "info",
+      });
+    } catch { /* best-effort */ }
     syncCheckinEvent({ type: "extend", employeeId: "self", employeeName: userName, zone: userZone, remainingSec: extendSec });
   }, [extendSec, userName, userZone]);
 

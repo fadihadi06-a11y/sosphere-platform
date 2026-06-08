@@ -57,15 +57,18 @@ interface Props {
  * record is enriched without mutating the IncidentRecord TypeScript interface.
  * Swallows all errors — debrief UX must never block on storage failures.
  */
+import { upsertDebrief, buildDebriefRow } from "./incident-debrief-service";
+import { logAuditEvent } from "./audit-log-store";
+
 function saveDebriefToHistory(
   incidentId: string,
   answers: { feltSafe: FeltSafe; note: string }
 ) {
-  const debrief = {
-    feltSafe: answers.feltSafe,
-    note: answers.note.trim() || undefined,
-    submittedAt: new Date().toISOString(),
-  };
+  // 2026-06-06 final-audit refactor: extracted the RPC + jsonb shape
+  // into incident-debrief-service.ts (27th pattern app proper). This
+  // function now only handles the localStorage instant-UI mirror; the
+  // server mirror goes through upsertDebrief() which is contract-tested.
+  const row = buildDebriefRow(answers);
   // ── Local UI write (instant) ─────────────────────────────────
   try {
     const raw = localStorage.getItem("sosphere_incident_history");
@@ -73,33 +76,15 @@ function saveDebriefToHistory(
       const list: any[] = JSON.parse(raw);
       const idx = list.findIndex((e) => e?.id === incidentId);
       if (idx >= 0) {
-        list[idx] = { ...list[idx], debrief };
+        list[idx] = { ...list[idx], debrief: row };
         localStorage.setItem("sosphere_incident_history", JSON.stringify(list));
       }
     }
   } catch {
     /* non-fatal — server write below is the durable record */
   }
-  // ── Server mirror (27th pattern app, M2-#12, 2026-06-06) ─────
-  // The localStorage write above is the instant-UI source. This
-  // server write is the durable record so the worker's "I am OK"
-  // attestation survives device loss / fresh install / cross-device
-  // login. Fire-and-forget — UI never blocks on audit.
-  void (async () => {
-    try {
-      const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
-      if (!SUPABASE_CONFIG.isConfigured) return;
-      const { error } = await supabase.rpc("update_incident_debrief", {
-        p_id: incidentId,
-        p_debrief: debrief,
-      });
-      if (error) {
-        console.warn("[post-emergency-debrief] update_incident_debrief RPC failed:", error.message);
-      }
-    } catch (err) {
-      console.warn("[post-emergency-debrief] update_incident_debrief threw:", err);
-    }
-  })();
+  // ── Server mirror (fire-and-forget) ──────────────────────────
+  void upsertDebrief(incidentId, answers);
 }
 
 export function PostEmergencyDebrief({
@@ -205,6 +190,17 @@ export function PostEmergencyDebrief({
   const handleSubmit = () => {
     if (!feltSafe) return;
     saveDebriefToHistory(record.id, { feltSafe, note });
+    // 2026-06-06 final-audit: the debrief is the worker's formal "I am
+    // OK" attestation post-incident — legal record + closes the audit
+    // chain that opened with sos_triggered_mobile. Severity info
+    // because the resolution itself isn't an alarm; the original
+    // trigger already logged critical.
+    try {
+      logAuditEvent("emergency", "post_incident_debrief_submitted", {
+        detail: `feltSafe=${feltSafe}; note=${note ? note.slice(0, 200) : "(none)"}`,
+        targetId: record.id, severity: "info",
+      });
+    } catch { /* best-effort */ }
     setSubmitted(true);
   };
 
