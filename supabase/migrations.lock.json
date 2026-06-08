@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-06T19:09:35.591Z",
-  "total_migrations": 177,
-  "manifest_sha256": "9d3e44d92ebef9cdca3bb571e1135edf309f2fc30ce7476af37e954df9e239cf",
+  "generated_at": "2026-06-08T19:30:20.719Z",
+  "total_migrations": 183,
+  "manifest_sha256": "e792ed41c66405025ab334eaf36aa51c848d9cf8ed9adb838f04b30c63875e57",
   "migrations": [
     {
       "version": "20260415",
@@ -1237,10 +1237,52 @@
     },
     {
       "version": "20260606",
+      "name": "civilian_incidents_debrief_27th_pattern_app",
+      "file": "20260606_civilian_incidents_debrief_27th_pattern_app.sql",
+      "sha256": "9e0b85847a9fa3fad53036c419af9e8061838a129ea889047e682178f6927406",
+      "bytes": 2684
+    },
+    {
+      "version": "20260606",
       "name": "user_packet_preferences_26th_pattern_app",
       "file": "20260606_user_packet_preferences_26th_pattern_app.sql",
       "sha256": "5a5e83824b1c39fe6ef65d33ee8c3a58b615e71c89bb8f4373b8fca1a02eca6a",
       "bytes": 4123
+    },
+    {
+      "version": "20260608",
+      "name": "pricing_admin_28th_pattern_app",
+      "file": "20260608_pricing_admin_28th_pattern_app.sql",
+      "sha256": "ee24a5a1eeaaebac2280cfe514560a719de44251628a634d89f6655f19d56620",
+      "bytes": 7037
+    },
+    {
+      "version": "20260608",
+      "name": "pricing_admin_audit_company_id_fix",
+      "file": "20260608_pricing_admin_audit_company_id_fix.sql",
+      "sha256": "2cda8dc7b8cc0de53331953c7b6d866518e59e24c6421390545352d8510a6721",
+      "bytes": 5566
+    },
+    {
+      "version": "20260608",
+      "name": "weather_fetch_schedule_pg_cron",
+      "file": "20260608_weather_fetch_schedule_pg_cron.sql",
+      "sha256": "cdbb3891de16b4eaaff8ad193c625ac7983c3022f0e40b2fe45a3a891f19232c",
+      "bytes": 11420
+    },
+    {
+      "version": "20260608",
+      "name": "weather_log_29th_pattern_app",
+      "file": "20260608_weather_log_29th_pattern_app.sql",
+      "sha256": "844b4f53cb25cb1c2eb770d7a78fba59032a9e6cddfa987870c1fe0ab42f35c7",
+      "bytes": 8037
+    },
+    {
+      "version": "20260608",
+      "name": "weather_sweep_bearer_header_fix",
+      "file": "20260608_weather_sweep_bearer_header_fix.sql",
+      "sha256": "96934a82e9c425c1e035899856a92525419264ae10d90de5c68b760716dd0f17",
+      "bytes": 3425
     }
   ]
 }
