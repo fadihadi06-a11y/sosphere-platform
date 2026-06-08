@@ -114,10 +114,12 @@ export function isStaleObs(observedAt: string, nowMs: number = Date.now(), fresh
 /** Pure: pick the highest severity from a list. Used to drive the
  *  fleet-wide weather badge color on the dashboard header. */
 export function aggregateSeverity(rows: WeatherObservation[]): WeatherSeverity {
-  let worst: WeatherSeverity = "info";
+  // After the early "severe" return below, `worst` can only be "info" | "warning",
+  // so we don't need a redundant `worst !== "severe"` guard on the warning branch.
+  let worst: "info" | "warning" = "info";
   for (const r of rows) {
     if (r.severity === "severe") return "severe";
-    if (r.severity === "warning" && worst !== "severe") worst = "warning";
+    if (r.severity === "warning") worst = "warning";
   }
   return worst;
 }
