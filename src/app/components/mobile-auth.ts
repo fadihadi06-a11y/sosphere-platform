@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 export type Role =
+  | "company_owner"
   | "super_admin"
   | "company_admin"
   | "safety_manager"
@@ -49,6 +50,23 @@ export type Permission =
 // localStorage (the previous design stored permissions in localStorage,
 // which let a forged blob show wrong sidebar tabs — UI integrity bug).
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+  // P0-1 (2026-06-09): company_owner is resolved server-side by
+  // getAuthenticatedRole() from companies.owner_id. It was previously
+  // ABSENT from this matrix, so ROLE_PERMISSIONS[role] returned undefined
+  // → [] and the owner was locked out of every admin page (treated as
+  // tier 8 / employee). The owner gets the full permission set — same
+  // ceiling as super_admin, plus everything a company_admin can do.
+  company_owner: [
+    "emergency:create", "emergency:view", "emergency:resolve", "emergency:escalate",
+    "emergency:assign", "emergency:broadcast", "emergency:delete",
+    "users:view", "users:create", "users:edit", "users:delete", "users:manage",
+    "zones:view", "zones:create", "zones:edit", "zones:delete", "zones:manage",
+    "attendance:view", "attendance:export",
+    "settings:view", "settings:edit",
+    "audit:view", "billing:view", "billing:manage",
+    "command:create", "command:view",
+    "reports:view", "reports:export",
+  ],
   super_admin: [
     "emergency:create", "emergency:view", "emergency:resolve", "emergency:escalate",
     "emergency:assign", "emergency:broadcast", "emergency:delete",
@@ -116,6 +134,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 
 // ── Role Display Config ──
 export const ROLE_CONFIG: Record<Role, { label: string; labelAr: string; color: string; tier: number }> = {
+  company_owner:   { label: "Owner",             labelAr: "المالك",             color: "#FF2D55", tier: 1 },
   super_admin:     { label: "Super Admin",       labelAr: "مدير عام",           color: "#FF2D55", tier: 1 },
   company_admin:   { label: "Company Admin",     labelAr: "مدير الشركة",        color: "#FF9500", tier: 2 },
   safety_manager:  { label: "Safety Manager",    labelAr: "مدير السلامة",       color: "#00C8E0", tier: 3 },
@@ -144,6 +163,7 @@ export interface AuthState {
 
 export function createAuthState(role: Role): AuthState {
   const users: Record<Role, MobileUser> = {
+    company_owner:   { id: "USR-000", name: "Owner",         nameAr: "المالك",          email: "",                      role: "company_owner" },
     super_admin:     { id: "USR-001", name: "James Wilson",  nameAr: "James Wilson",   email: "ahmed@sosphere.com",    role: "super_admin" },
     company_admin:   { id: "USR-002", name: "Admin",    nameAr: "Admin",    email: "",      role: "company_admin" },
     safety_manager:  { id: "USR-003", name: "Laura Chen",  nameAr: "Laura Chen",   email: "sara@company.com",      role: "safety_manager" },

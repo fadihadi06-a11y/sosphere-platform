@@ -5,6 +5,7 @@ import { IndividualHome } from "./individual-home";
 import { ProfileSettings } from "./profile-settings";
 import { FamilyCircle } from "./family-circle";
 import { MapScreen } from "./map-screen";
+import { useLang } from "./useLang";
 
 /**
  * Build the tab list with translated labels.
@@ -77,6 +78,7 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
   t: tProp,
 }, ref) {
   const t = tProp || ((k: string) => k);
+  const { isAr } = useLang();
   const tabs = getTabs(t);
   // FIX 2026-04-23: persist last active tab so that returning from a
   // sub-screen (Medical ID, Emergency Packet, etc.) lands the user back on
@@ -144,7 +146,7 @@ export const IndividualLayout = forwardRef<IndividualLayoutHandle, IndividualLay
           onSafeWalk={onNavigateToSafeWalk}
         />
       )}
-      {activeTab === "family" && <FamilyCircle onUpgrade={onNavigateToSubscription} />}
+      {activeTab === "family" && <FamilyCircle lang={isAr ? "ar" : "en"} onUpgrade={onNavigateToSubscription} />}
       {activeTab === "map" && <MapScreen onBack={() => setActiveTab("home")} />}
       {activeTab === "profile" && (
         <ProfileSettings

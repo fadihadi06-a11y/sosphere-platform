@@ -33,7 +33,7 @@ import { CommandCenterPage } from "./command-center";
 import { IncidentReportsTab } from "./hub-incident-reports";
 import { RiskMapLivePage } from "./risk-map-live";
 // PriorityOverrideLog type removed — no longer referenced (audit cleanup 2026-05-29)
-import { hasPermission, ROLE_CONFIG, type AuthState } from "./mobile-auth";
+import { hasPermission, ROLE_CONFIG, type AuthState, type Permission } from "./mobile-auth";
 import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, isTrial, trialDaysRemaining, toAccountStatus, type CompanyState } from "./mobile-company";
 // (LiveAlertOverlay — replaced by SOSEmergencyPopup)
 import { HazardAlertBanner } from "./hazard-banner";
@@ -1720,6 +1720,26 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
   if (!hasFeature(companyState, "advanced_analytics")) reportsLockedTabs.add("analytics");
   if (!hasFeature(companyState, "custom_reports")) reportsLockedTabs.add("reports");
 
+  // ── P0-2 (2026-06-09): RENDER-SIDE RBAC GATE ──────────────────────
+  // The sidebar hides privileged menu items by permission (see
+  // getNavSystem filter), but currentPage can still be set to a
+  // privileged page via a deep link, browser back/forward, or a stale
+  // restored nav state. Row data is always protected by RLS, but we must
+  // not render the privileged admin UI shell for a user who lacks the
+  // permission. This mirrors canAccessPage() from dashboard-auth-guard.
+  // When authState is absent (e.g. demo / pre-auth) we fall through to
+  // existing behaviour (no extra denial).
+  const PAGE_REQUIRED_PERMISSION: Partial<Record<string, Permission>> = {
+    governance:   "settings:view",
+    settings:     "settings:edit",
+    billing:      "billing:view",
+    pricingAdmin: "settings:edit",
+    weatherAdmin: "settings:edit",
+    location:     "zones:view",
+  };
+  const requiredPerm = PAGE_REQUIRED_PERMISSION[currentPage as string];
+  const pageDenied = !!requiredPerm && !!authState && !hasPermission(authState, requiredPerm);
+
   return (
     <div dir={dir} className={`relative ${webMode ? "flex flex-row" : "flex flex-col"} h-full`} style={{ background: "#0A0E17" }}>
       <Toaster
@@ -1971,6 +1991,24 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                     on first navigation. Subsequent navigations are instant
                     (browser cache). */}
                 <Suspense fallback={<div style={{ padding: 24, color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Loading…</div>}>
+                {/* P0-2: render-side access-denied panel for privileged pages */}
+                {pageDenied && (
+                  <div style={{ padding: 48, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 14, minHeight: 320 }}>
+                    <div style={{ width: 64, height: 64, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,45,85,0.12)", border: "1px solid rgba(255,45,85,0.25)" }}>
+                      <Lock className="size-7" style={{ color: "#FF2D55" }} />
+                    </div>
+                    <p className="text-white" style={{ fontSize: 17, fontWeight: 800 }}>{dir === "rtl" ? "لا تملك صلاحية الوصول" : "Access restricted"}</p>
+                    <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", maxWidth: 360 }}>
+                      {dir === "rtl"
+                        ? "هذه الصفحة تتطلّب صلاحية أعلى. تواصل مع مالك الشركة أو المدير لمنحك الوصول."
+                        : "This page requires a higher permission level. Contact your company owner or an admin for access."}
+                    </p>
+                    <button onClick={() => navigateTo("overview")} style={{ marginTop: 6, padding: "10px 20px", borderRadius: 10, background: "rgba(0,200,224,0.14)", border: "1px solid rgba(0,200,224,0.3)", color: "#00C8E0", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                      {dir === "rtl" ? "العودة إلى لوحة التحكم" : "Back to dashboard"}
+                    </button>
+                  </div>
+                )}
+                {!pageDenied && <>
                 {currentPage === "overview" && (
                   <PageErrorBoundary label="Overview">
                   <OverviewPage
@@ -2180,6 +2218,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}
                 {currentPage === "weatherAlerts" && <div><EnterprisePageHeader page="weatherAlerts" /><WeatherAlertsPage t={t} webMode={webMode} /></div>}
                 {currentPage === "rrpAnalytics" && <div><EnterprisePageHeader page="rrpAnalytics" /><RRPAnalyticsPage t={t} webMode={webMode} /></div>}
+                </>}
                 </Suspense>
               </motion.div>
             </AnimatePresence>

@@ -31,6 +31,35 @@ type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents"
 // ── P1-fix: mock data used ONLY in dev when Supabase returns empty ──
 const DEV_ONLY = (import.meta as any).env?.DEV === true;
 
+// P1-6 (2026-06-09): real Security Audit Log export. Replaces the
+// toast-only stub. Pulls the company-scoped audit_log through the data
+// layer (RLS-protected) and downloads a UTF-8 CSV — Excel-friendly,
+// no extra dependencies. Returns the number of rows exported.
+async function downloadAuditLogCsv(): Promise<number> {
+  const rows = await fetchAuditLog(1000);
+  if (!rows.length) return 0;
+  const esc = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = ["Timestamp", "Action", "Actor", "Target", "Details"];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    const ts = r.timestamp instanceof Date ? r.timestamp.toISOString() : String(r.timestamp ?? "");
+    lines.push([esc(ts), esc(r.action), esc(r.actor), esc(r.target), esc(r.details)].join(","));
+  }
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sosphere-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return rows.length;
+}
+
 const ROLE_COLORS: Record<string, string> = {
   admin: "#00C8E0", site_admin: "#7B5EFF", hse_manager: "#00C853",
   supervisor: "#FF9500", viewer: "#FF2D55", employee: "#34C759",
@@ -714,7 +743,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         </div>
                         <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Security Audit Log</p>
                       </div>
-                      <button onClick={() => { hapticSuccess(); toast.success("Exporting Audit Log", { description: "Security audit log PDF is being prepared..." }); }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
+                      <button onClick={async () => { hapticSuccess(); try { const n = await downloadAuditLogCsv(); if (n === 0) { toast.info("No audit events to export yet"); return; } toast.success("Audit log exported", { description: n + " event(s) downloaded as CSV." }); } catch (e) { toast.error("Export failed", { description: (e as Error)?.message || "Please try again." }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
                         <Download className="size-3.5" /> Export Log
                       </button>
                     </div>

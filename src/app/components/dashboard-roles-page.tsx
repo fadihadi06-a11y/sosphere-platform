@@ -122,6 +122,8 @@ const PERMISSION_GROUPS = [
 
 // Role default permissions
 const ROLE_DEFAULTS: Record<Role, string[]> = {
+  // P0-1 (2026-06-09): company_owner (resolved from companies.owner_id) gets the full set.
+  company_owner: ["emergency:create","emergency:view","emergency:resolve","emergency:escalate","emergency:assign","emergency:broadcast","users:view","users:create","users:edit","users:delete","users:manage","zones:view","zones:create","zones:edit","zones:delete","zones:manage","attendance:view","attendance:export","settings:view","settings:edit","audit:view","billing:view","billing:manage","reports:view","reports:export"],
   super_admin: ["emergency:create","emergency:view","emergency:resolve","emergency:escalate","emergency:assign","emergency:broadcast","users:view","users:create","users:edit","users:delete","users:manage","zones:view","zones:create","zones:edit","zones:delete","zones:manage","attendance:view","attendance:export","settings:view","settings:edit","audit:view","billing:view","billing:manage","reports:view","reports:export"],
   company_admin: ["emergency:create","emergency:view","emergency:resolve","emergency:escalate","emergency:assign","emergency:broadcast","users:view","users:create","users:edit","users:delete","users:manage","zones:view","zones:create","zones:edit","zones:delete","zones:manage","attendance:view","attendance:export","settings:view","settings:edit","audit:view","billing:view","billing:manage","reports:view","reports:export"],
   safety_manager: ["emergency:create","emergency:view","emergency:resolve","emergency:escalate","emergency:assign","emergency:broadcast","users:view","users:edit","zones:view","zones:edit","zones:manage","attendance:view","attendance:export","settings:view","audit:view","reports:view","reports:export"],
@@ -169,6 +171,7 @@ const LEVEL_CONFIG: Record<Level, { label: string; icon: React.ElementType; colo
 };
 
 const ROLE_LEVEL: Record<Role, Level> = {
+  company_owner: "owner",
   super_admin: "owner", company_admin: "owner", safety_manager: "zone_admin",
   shift_supervisor: "zone_admin", dispatcher: "zone_admin",
   field_medic: "worker", security_guard: "worker", employee: "worker",
