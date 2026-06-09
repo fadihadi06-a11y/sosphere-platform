@@ -71,6 +71,7 @@ const DashboardJobsPage = lazy(() => import("./dashboard-jobs-page").then(m => (
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
 const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
+const DronesPage = lazy(() => import("./dashboard-drones-page").then(m => ({ default: m.DronesPage })));
 const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
 const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
 import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
@@ -269,6 +270,7 @@ function getNavOperations(_t: (k: string) => string) {
   return [
     { id: "operations" as DashPage,  icon: Route,  label: "Operations Hub"  },
     { id: "people" as DashPage,      icon: Users,  label: "People & Teams"  },
+    { id: "drones" as DashPage,      icon: Navigation, label: "Drones"       },
   ];
 }
 
@@ -2213,6 +2215,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
 
                 {/* ══ Truly Standalone pages (not inside any hub) ══ */}
                 {currentPage === "location" && <div><EnterprisePageHeader page="location" /><LocationZonesPage t={t} webMode={webMode} /></div>}
+                {currentPage === "drones" && <div><DronesPage companyState={companyState} t={t} webMode={webMode} /></div>}
                 {currentPage === "csvGuide" && <CSVFieldGuide standalone onClose={() => navigateTo("people")} />}
                 {/* FIX 1: Removed EnterprisePageHeader — Site Risk Intelligence card inside page is the title */}
                 {currentPage === "safetyIntel" && <div><SafetyIntelligencePage t={t} webMode={webMode} employees={employees} onNavigate={(page, tab) => { if (tab) { setHubTab(page, tab); } navigateTo(page as any); }} onOpenEmployeeDetail={(empId) => { const emp = employees.find(e => e.id === empId); if (emp) setSelectedEmployee(emp); }} /></div>}

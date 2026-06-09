@@ -17,7 +17,7 @@ export type DashPage =
   | "roles" | "auditLog" | "sarProtocol"
   | "billing" | "pricingAdmin" | "weatherAdmin" | "csvGuide" | "leaderboard" | "emailScheduler" | "rrpAnalytics"
   | "buddySystem" | "checklist" | "playbook" | "weatherAlerts" | "safetyScore"
-  | "offlineMonitor" | "location"
+  | "offlineMonitor" | "location" | "drones"
   // ── Legacy aliases (redirect via PAGE_ALIASES / PAGE_TO_HUB) ──
   | "emergencies" | "incidents" | "commandCenter"
   | "zones" | "geofencing" | "gpsCompliance"
