@@ -37,8 +37,10 @@ import {
   getEmployeeTrip,
   getZoneGPS,
   onSyncEvent,
+  getCompanyId,
   type EmployeeTrip,
 } from "./shared-store";
+import { getCompanySosPoints } from "./sos-heatmap-service";
 
 interface RiskMapLiveProps {
   t: (key: string) => string;
@@ -250,6 +252,31 @@ function LiveMap({ selectedWorker, onSelectWorker, showTrip, tripData, replayInd
       );
     });
   }, []);
+
+  // M3 (2026-06-09): SOS press heat layer — translucent red blooms per
+  // SOS location from sos_queue (company-scoped via get_company_sos_points).
+  // Plain Leaflet circles (no extra plugin) → reliable density visual.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    let alive = true;
+    let lg: L.LayerGroup | null = null;
+    const cid = getCompanyId();
+    if (!cid) return;
+    void getCompanySosPoints(cid, 1000).then((points) => {
+      if (!alive || !mapInstanceRef.current) return;
+      lg = L.layerGroup();
+      points.forEach((p) => {
+        if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+        L.circle([p.lat, p.lng], { radius: 90, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.10 }).addTo(lg!);
+        L.circle([p.lat, p.lng], { radius: 45, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.16 }).addTo(lg!);
+        L.circleMarker([p.lat, p.lng], { radius: 4, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.85 }).addTo(lg!);
+      });
+      lg.addTo(map);
+    });
+    return () => { alive = false; if (lg && mapInstanceRef.current) { try { mapInstanceRef.current.removeLayer(lg); } catch (_) { /* */ } } };
+  }, []);
+
 
   // Update worker markers
   useEffect(() => {
