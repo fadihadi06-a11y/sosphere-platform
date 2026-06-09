@@ -5,6 +5,8 @@
 // step-by-step instructions, and 3-stage status flow.
 // ═══════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { motion, AnimatePresence } from "motion/react";
 import {
   AlertTriangle, MapPin, Navigation, CheckCircle2, Clock,
@@ -430,7 +432,7 @@ export function EvacuationScreen({
             </p>
 
             {/* Mini Map Visual */}
-            <MiniMapVisual status={status} />
+            <EvacuationMap workerLat={currentLat} workerLng={currentLng} point={nearestPoint} />
 
             {/* Google Maps Button */}
             {mapsUrl && (
@@ -888,4 +890,40 @@ export function EvacuationAlertOverlay({
       )}
     </AnimatePresence>
   );
+}
+
+// ── Live evacuation map (worker + nearest assembly point) ──
+// Self-contained Leaflet map; CircleMarkers avoid the default-icon
+// bundler issue. Replaces the old decorative MiniMapVisual.
+function EvacuationMap({ workerLat, workerLng, point }: { workerLat: number; workerLng: number; point: { lat: number; lng: number; name: string } }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    if (!ref.current || mapRef.current) return;
+    const map = L.map(ref.current, { zoomControl: false, attributionControl: false });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    layerRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    setTimeout(() => { try { map.invalidateSize(); } catch (_) { /* */ } }, 200);
+    return () => { try { map.remove(); } catch (_) { /* */ } mapRef.current = null; layerRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current, lg = layerRef.current;
+    if (!map || !lg) return;
+    lg.clearLayers();
+    const hasWorker = Number.isFinite(workerLat) && Number.isFinite(workerLng) && (workerLat !== 0 || workerLng !== 0);
+    L.circleMarker([point.lat, point.lng], { radius: 9, color: "#00C8E0", fillColor: "#00C8E0", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip(point.name);
+    if (hasWorker) {
+      L.circleMarker([workerLat, workerLng], { radius: 8, color: "#FF2D55", fillColor: "#FF2D55", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip("You");
+      L.polyline([[workerLat, workerLng], [point.lat, point.lng]], { color: "#00C8E0", weight: 3, dashArray: "6 6", opacity: 0.7 }).addTo(lg);
+      try { map.fitBounds([[workerLat, workerLng], [point.lat, point.lng]], { padding: [40, 40], maxZoom: 16 }); } catch (_) { map.setView([point.lat, point.lng], 15); }
+    } else {
+      map.setView([point.lat, point.lng], 15);
+    }
+  }, [workerLat, workerLng, point.lat, point.lng]);
+
+  return <div ref={ref} style={{ width: "100%", height: 200, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }} />;
 }
