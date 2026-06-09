@@ -43,6 +43,7 @@ const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({
 const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
 const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
 const PricingAdminPage = lazy(() => import("./dashboard-pricing-admin-page").then(m => ({ default: m.PricingAdminPage })));
+const WeatherAdminPage = lazy(() => import("./dashboard-weather-admin-page").then(m => ({ default: m.WeatherAdminPage })));
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
@@ -1990,6 +1991,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                 {/* Billing header removed — accessed via Settings sub-tab; breadcrumb provides context */}
                 {currentPage === "billing" && <div><BillingPage companyState={companyState} webMode={webMode} /><PricingPage webMode={webMode} currentStatus={toAccountStatus(companyState.company.billingStatus, trialDaysRemaining(companyState))} trialDays={trialDaysRemaining(companyState)} /></div>}
                 {currentPage === "pricingAdmin" && <PricingAdminPage userRole={authState.user.role} />}
+                {currentPage === "weatherAdmin" && <WeatherAdminPage userRole={authState.user.role} companyId={companyState.company.id} />}
                 {currentPage === "settings" && <div><SettingsPage companyName={companyName} t={t} lang={lang} onLangChange={setLang} activeRole={activeRole} onRoleChange={setActiveRole} authState={authState} companyState={companyState} onNavigate={navigateTo} webMode={webMode} /></div>}
                 {/* geofencing & gpsCompliance now redirect to "location" via PAGE_ALIASES */}
                 {/* ══ HUB: Emergency Hub — Active | SAR | Playbook ���═ */}
@@ -3734,6 +3736,14 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
             item={{ id: "pricingAdmin" as DashPage, icon: DollarSign, label: "Pricing Admin" }}
             active={currentPage === "pricingAdmin"}
             onClick={() => { onNavigate("pricingAdmin" as DashPage); if (!webMode) onToggle(); }}
+          />
+        )}
+        {/* Weather Admin — same super_admin gate (29th pattern phase 3) */}
+        {authState?.user?.role === "super_admin" && (
+          <SidebarNavItem
+            item={{ id: "weatherAdmin" as DashPage, icon: CloudLightning, label: "Weather Admin" }}
+            active={currentPage === "weatherAdmin"}
+            onClick={() => { onNavigate("weatherAdmin" as DashPage); if (!webMode) onToggle(); }}
           />
         )}
         {/* Billing removed from sidebar — accessible as sub-tab inside Settings */}

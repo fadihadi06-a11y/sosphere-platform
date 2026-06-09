@@ -235,3 +235,157 @@ export async function requestObservation(
     return { ok: false, error: msg };
   }
 }
+
+// ───────── SCHEDULE CRUD (29th pattern phase 2) ─────────
+// Mirrors the cron sweep infra: upsert/list/delete schedules so
+// super_admin can manage per-zone monitoring without writing SQL.
+
+export interface WeatherScheduleRow {
+  id:                string;
+  company_id:        string;
+  zone_id:           string | null;
+  lat:               number;
+  lng:               number;
+  frequency_minutes: number;
+  enabled:           boolean;
+  last_fetched_at:   string | null;
+  last_error:        string | null;
+  created_at:        string;
+  updated_at:        string;
+}
+
+export interface WeatherScheduleInput {
+  companyId:         string;
+  zoneId:            string | null;
+  lat:               number;
+  lng:               number;
+  frequencyMinutes:  number;
+  enabled:           boolean;
+}
+
+// ── PURE HELPERS (Vitest-testable) ──
+
+/** Pure: validate a schedule input. Returns null on success or a
+ *  human-readable reason string. Mirrors the DB-side checks in
+ *  upsert_weather_schedule (15-1440 freq, valid coords). */
+export function validateScheduleInput(input: WeatherScheduleInput): string | null {
+  if (!input.companyId || input.companyId.length < 8) return "Company id required";
+  if (!Number.isFinite(input.lat) || input.lat < -90 || input.lat > 90) {
+    return "Latitude must be between -90 and 90";
+  }
+  if (!Number.isFinite(input.lng) || input.lng < -180 || input.lng > 180) {
+    return "Longitude must be between -180 and 180";
+  }
+  if (!Number.isInteger(input.frequencyMinutes) || input.frequencyMinutes < 15 || input.frequencyMinutes > 1440) {
+    return "Frequency must be an integer between 15 and 1440 minutes";
+  }
+  return null;
+}
+
+/** Pure: compute the next scheduled fetch time, or null for never-fetched.
+ *  Used for the "next fetch in N min" badge in the admin UI. */
+export function nextFetchAt(row: Pick<WeatherScheduleRow, "last_fetched_at" | "frequency_minutes" | "enabled">): Date | null {
+  if (!row.enabled) return null;
+  if (!row.last_fetched_at) return new Date(); // due now (never fetched)
+  const last = Date.parse(row.last_fetched_at);
+  if (!Number.isFinite(last)) return null;
+  return new Date(last + row.frequency_minutes * 60_000);
+}
+
+/** Pure: format a number of minutes until next fetch as a short string.
+ *  "now", "5m", "2h 15m", "—" for unscheduled. */
+export function formatTimeUntil(target: Date | null, nowMs: number = Date.now()): string {
+  if (!target) return "—";
+  const diff = target.getTime() - nowMs;
+  if (diff <= 0) return "now";
+  const mins = Math.round(diff / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
+}
+
+// ── RPC WRAPPERS ──
+
+function scheduleRowFromRpc(r: Record<string, unknown>): WeatherScheduleRow {
+  return {
+    id:                String(r.id),
+    company_id:        String(r.company_id),
+    zone_id:           (r.zone_id as string | null) ?? null,
+    lat:               Number(r.lat),
+    lng:               Number(r.lng),
+    frequency_minutes: Number(r.frequency_minutes ?? 60),
+    enabled:           Boolean(r.enabled),
+    last_fetched_at:   (r.last_fetched_at as string | null) ?? null,
+    last_error:        (r.last_error as string | null) ?? null,
+    created_at:        String(r.created_at),
+    updated_at:        String(r.updated_at),
+  };
+}
+
+/** Load weather schedules for a company. Member-of-company RLS enforced. */
+export async function loadSchedules(companyId: string): Promise<WeatherScheduleRow[]> {
+  if (!companyId) return [];
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { data, error } = await supabase.rpc("list_weather_schedules", { p_company_id: companyId });
+    if (error || !Array.isArray(data)) {
+      console.warn("[weather-service] list_weather_schedules failed:", error?.message);
+      return [];
+    }
+    return (data as Array<Record<string, unknown>>).map(scheduleRowFromRpc);
+  } catch (err) {
+    console.warn("[weather-service] loadSchedules threw:", err);
+    return [];
+  }
+}
+
+/** Upsert a schedule. Super_admin-gated server-side; the UI also
+ *  hides the page from non-super-admins to avoid surfacing a Locked notice. */
+export async function upsertSchedule(input: WeatherScheduleInput): Promise<{ ok: boolean; error?: string }> {
+  const reason = validateScheduleInput(input);
+  if (reason) return { ok: false, error: reason };
+  try {
+    const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+    if (!SUPABASE_CONFIG.isConfigured) return { ok: false, error: "Supabase not configured" };
+    const { error } = await supabase.rpc("upsert_weather_schedule", {
+      p_company_id:        input.companyId,
+      p_zone_id:           input.zoneId,
+      p_lat:               input.lat,
+      p_lng:               input.lng,
+      p_frequency_minutes: input.frequencyMinutes,
+      p_enabled:           input.enabled,
+    });
+    if (error) {
+      console.warn("[weather-service] upsert_weather_schedule failed:", error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err);
+    console.warn("[weather-service] upsertSchedule threw:", msg);
+    return { ok: false, error: msg };
+  }
+}
+
+/** Delete a schedule by (company, zone). Super_admin-gated server-side. */
+export async function deleteSchedule(companyId: string, zoneId: string | null): Promise<{ ok: boolean; error?: string }> {
+  if (!companyId) return { ok: false, error: "Company id required" };
+  try {
+    const { supabase, SUPABASE_CONFIG } = await import("./api/supabase-client");
+    if (!SUPABASE_CONFIG.isConfigured) return { ok: false, error: "Supabase not configured" };
+    const { error } = await supabase.rpc("delete_weather_schedule", {
+      p_company_id: companyId,
+      p_zone_id:    zoneId,
+    });
+    if (error) {
+      console.warn("[weather-service] delete_weather_schedule failed:", error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err);
+    console.warn("[weather-service] deleteSchedule threw:", msg);
+    return { ok: false, error: msg };
+  }
+}
