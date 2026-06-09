@@ -34,6 +34,7 @@ import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } fro
 import { type Employee } from "./dashboard-types";
 import { onSyncEvent } from "./shared-store";
 import { calculateRiskScore, type EmployeeRiskScore, type EmployeeForRiskScoring } from "./risk-scoring-engine";
+import { getCachedLatest, lookupZoneObservation } from "./weather-service";
 
 interface SafetyIntelligenceProps {
   t: (key: string) => string;
@@ -118,6 +119,12 @@ function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee
   const zoneKey = emp.location.split(" - ")[0] || "Zone A";
   const gps = ZONE_GPS[zoneKey] || { lat: 24.71, lng: 46.68 };
 
+  // 29th pattern app integration B: pull live weather for the worker's zone.
+  // getCachedLatest is sync — populated by loadLatestPerZone elsewhere on the
+  // dashboard (the WeatherAdmin page or the weatherAlerts page). If the cache
+  // is empty (first visit, no schedule yet), weather factor is simply absent.
+  const weatherObs = lookupZoneObservation(getCachedLatest(), zoneKey);
+
   // Use the real risk scoring engine
   const riskInput: EmployeeForRiskScoring = {
     id: emp.id,
@@ -131,6 +138,8 @@ function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee
     temperature: temperature > 40 ? temperature : undefined,
     isFasting: seed % 7 === 0,
     lastMovement: lastCheckIn > 30 ? lastCheckIn * 60000 : undefined,
+    weatherSeverity: weatherObs?.severity,
+    weatherCondition: weatherObs?.condition,
   };
 
   const riskResult = calculateRiskScore(riskInput);

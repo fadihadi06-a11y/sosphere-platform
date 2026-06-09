@@ -36,6 +36,14 @@ export interface EmployeeForRiskScoring {
   incidentCount?: number;        // total incidents in last 90 days
   lastIncidentDate?: string;     // ISO date string
   openInvestigations?: number;   // count of open investigations
+  /** 29th pattern app integration B (2026-06-09): live weather context.
+   *  Callers pull from weather-service (getCachedLatest + aggregateSeverity).
+   *  Optional so existing callers without weather data still type-check. */
+  weatherSeverity?: "info" | "warning" | "severe";
+  /** Human-readable weather (e.g. "Sand", "Thunderstorm") for the
+   *  risk factor label. Optional — if weatherSeverity given without
+   *  condition, the label says "Severe weather active". */
+  weatherCondition?: string;
 }
 
 export function calculateRiskScore(employee: EmployeeForRiskScoring): EmployeeRiskScore {
@@ -153,6 +161,34 @@ export function calculateRiskScore(employee: EmployeeForRiskScoring): EmployeeRi
     totalScore += points;
   }
 
+  // 29th pattern app integration B (2026-06-09): live weather risk.
+  // Severe (Sand/Dust/Thunderstorm/heat>=45C/gust>=20m/s) → +30 (high).
+  // Warning (heat>=40C / fog / visibility<1000m / Snow) → +15 (medium).
+  // Info weather contributes 0 (no factor added).
+  if (employee.weatherSeverity === "severe") {
+    const points = 30;
+    factors.push({
+      id: "severe_weather",
+      label: employee.weatherCondition
+        ? `Severe weather: ${employee.weatherCondition}`
+        : "Severe weather active",
+      points,
+      severity: "high",
+    });
+    totalScore += points;
+  } else if (employee.weatherSeverity === "warning") {
+    const points = 15;
+    factors.push({
+      id: "warning_weather",
+      label: employee.weatherCondition
+        ? `Warning weather: ${employee.weatherCondition}`
+        : "Weather warning active",
+      points,
+      severity: "medium",
+    });
+    totalScore += points;
+  }
+
   // Incident history factor
   let incidentFactor = 0;
   if (employee.incidentCount && employee.incidentCount > 0) {
@@ -206,6 +242,11 @@ export function calculateRiskScore(employee: EmployeeForRiskScoring): EmployeeRi
   }
   if (factors.some(f => f.id === "incidents")) {
     suggestions.push("Review incident history and ensure corrective actions are completed");
+  }
+  if (factors.some(f => f.id === "severe_weather")) {
+    suggestions.push("Defer non-critical outdoor work; mandatory hydration breaks every 30 min");
+  } else if (factors.some(f => f.id === "warning_weather")) {
+    suggestions.push("Brief workers on weather conditions; extra hydration recommended");
   }
 
   console.log("[SUPABASE_READY] risk_score_calculated: " + JSON.stringify({ employeeId: employee.id, score: totalScore, level }));

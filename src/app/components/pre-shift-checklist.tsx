@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
+import { getCachedLatest, aggregateSeverity, formatTempC } from "./weather-service";
 
 // ── Types ─────────────────────────────────────────────────────
 interface ChecklistItem {
@@ -180,8 +181,50 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
     setShowRemindAllModal(false);
   }, []);
 
+  // 29th pattern app integration B (2026-06-09): live weather banner.
+  // Reads from the in-memory weather cache (populated by WeatherAdmin /
+  // weatherAlerts page or per-tick cron). Renders only when severe weather
+  // is active so workers see "defer outdoor work" before clocking in.
+  const weatherRows = getCachedLatest();
+  const weatherSeverity = aggregateSeverity(weatherRows);
+  const worstObs = weatherRows.find(r => r.severity === weatherSeverity) ?? weatherRows[0];
+
   return (
     <div className="p-6 space-y-6" style={{ fontFamily: "'Outfit', sans-serif" }}>
+
+      {/* ══════════════════════════════════════════════════════ */}
+      {/* 29th pattern app integration B: severe weather banner */}
+      {/* ══════════════════════════════════════════════════════ */}
+      {weatherSeverity !== "info" && worstObs && (
+        <div style={{
+          padding: "14px 18px",
+          borderRadius: 12,
+          background: weatherSeverity === "severe"
+            ? "linear-gradient(135deg, rgba(255,45,85,0.12), rgba(255,45,85,0.04))"
+            : "linear-gradient(135deg, rgba(255,149,0,0.12), rgba(255,149,0,0.04))",
+          border: `1px solid ${weatherSeverity === "severe" ? "rgba(255,45,85,0.3)" : "rgba(255,149,0,0.3)"}`,
+          display: "flex", alignItems: "center", gap: 14,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: weatherSeverity === "severe" ? "rgba(255,45,85,0.18)" : "rgba(255,149,0,0.18)",
+          }}>
+            <AlertTriangle size={20} color={weatherSeverity === "severe" ? "#FF2D55" : "#FF9500"} strokeWidth={2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ ...TYPOGRAPHY.bodySm, fontWeight: 700, color: weatherSeverity === "severe" ? "#FF2D55" : "#FF9500" }}>
+              {weatherSeverity === "severe" ? "Severe weather active" : "Weather warning active"} — {worstObs.condition} · {formatTempC(worstObs.temp_c)}
+              {worstObs.wind_gust_ms != null && worstObs.wind_gust_ms >= 15 ? ` · gust ${worstObs.wind_gust_ms.toFixed(0)} m/s` : ""}
+            </div>
+            <div style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, marginTop: 3 }}>
+              {weatherSeverity === "severe"
+                ? "Defer non-critical outdoor work. Mandatory hydration breaks every 30 min. Review pre-shift checklists with extra scrutiny."
+                : "Brief workers on conditions. Extra hydration recommended. Adjust outdoor shifts as needed."}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════ */}
       {/* KPI Cards                                            */}

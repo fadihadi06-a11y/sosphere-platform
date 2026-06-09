@@ -152,6 +152,25 @@ export interface TrailStop {
   timestamp: number;
 }
 
+/** 29th pattern app integration A (2026-06-09): weather snapshot at the
+ *  exact moment SAR was launched. Captured for forensic value — if a
+ *  worker was lost in a sandstorm or extreme heat, that context shapes
+ *  the search strategy AND the post-incident investigation. Pulled from
+ *  the latest cached weather observation when the mission is created. */
+export interface WeatherForensicSnapshot {
+  condition: string;
+  temp_c: number | null;
+  feels_like_c: number | null;
+  humidity_pct: number | null;
+  wind_speed_ms: number | null;
+  wind_gust_ms: number | null;
+  visibility_m: number | null;
+  severity: "info" | "warning" | "severe";
+  observedAt: string;       // ISO of the observation
+  capturedAt: string;       // ISO of when SAR captured it
+  provider: string;
+}
+
 export interface SARMission {
   id: string;
   employeeId: string;
@@ -186,6 +205,9 @@ export interface SARMission {
   updatedAt: number;
   /** Notes/log */
   log: MissionLogEntry[];
+  /** 29th pattern app integration A: weather forensics at launch.
+   *  Optional — older missions and offline-only flows may not have it. */
+  weatherAtLaunch?: WeatherForensicSnapshot | null;
 }
 
 export interface SearchTeam {

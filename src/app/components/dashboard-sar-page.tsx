@@ -51,6 +51,10 @@ import {
   saveSARMission, getActiveSARMissions, getAllSARMissions,
   recommendSearchPattern, calculateSearchCone, analyzeTrail,
 } from "./sar-engine";
+// 29th pattern app integration A (2026-06-09): capture forensic weather
+// snapshot at every SAR launch — if a worker was lost in a sandstorm
+// or extreme heat, that context shapes search strategy + investigation.
+import { getCachedLatest, lookupZoneObservation, captureWeatherForSAR, formatTempC } from "./weather-service";
 // #48 SAR Enhancement B (2026-04-28): audit-log every scenario load so
 // there's an unforgeable legal trail showing the SAR console was used
 // in TRAINING mode (not relied on for live rescue dispatch).
@@ -544,7 +548,7 @@ export function SARProtocolPage() {
       };
       // Consume the pre-fill data (one-shot)
       localStorage.removeItem("sosphere_sar_prefill");
-      const mission = createSARMission(
+      const baseMission = createSARMission(
         prefill.emergencyId,
         prefill.employeeName,
         "Field Worker",
@@ -552,6 +556,9 @@ export function SARProtocolPage() {
         prefill.zone,
         "urban",
       );
+      // 29th pattern app A: forensic weather snapshot at launch
+      const wxObs = lookupZoneObservation(getCachedLatest(), prefill.zone);
+      const mission = { ...baseMission, weatherAtLaunch: captureWeatherForSAR(wxObs) };
       saveSARMission(mission);
       setActiveMission(mission);
       setShowScenarioPicker(false);
@@ -588,7 +595,7 @@ export function SARProtocolPage() {
   }, [activeMission, Math.floor(elapsedTimer / 10)]);
 
   const handleStartMission = useCallback((scenario: SARScenario) => {
-    const mission = createSARMission(
+    const baseMission = createSARMission(
       scenario.employeeId,
       scenario.employeeName,
       scenario.employeeRole,
@@ -596,6 +603,9 @@ export function SARProtocolPage() {
       scenario.zone,
       scenario.terrain,
     );
+    // 29th pattern app A: forensic weather snapshot at launch
+    const wxObs = lookupZoneObservation(getCachedLatest(), scenario.zone);
+    const mission = { ...baseMission, weatherAtLaunch: captureWeatherForSAR(wxObs) };
     setActiveMission(mission);
     setShowScenarioPicker(false);
     setElapsedTimer(0);
@@ -1242,6 +1252,52 @@ function MissionDashboard({
         <KPIChip icon={<Users size={14} />} label="Nearby" value={`${mission.nearbyWorkers.length}`} color="#00C8E0" />
         <KPIChip icon={<AlertTriangle size={14} />} label="Hazards" value={`${mission.hazardZones.length}`} color="#FF9500" />
       </div>
+
+      {/* 29th pattern app integration A: weather forensics at launch */}
+      {mission.weatherAtLaunch && (
+        <div style={{
+          marginBottom: 20, padding: "12px 16px", borderRadius: 12,
+          background: mission.weatherAtLaunch.severity === "severe"
+            ? "linear-gradient(135deg, rgba(255,45,85,0.10), rgba(255,45,85,0.03))"
+            : mission.weatherAtLaunch.severity === "warning"
+              ? "linear-gradient(135deg, rgba(255,149,0,0.10), rgba(255,149,0,0.03))"
+              : "linear-gradient(135deg, rgba(74,144,217,0.08), rgba(74,144,217,0.02))",
+          border: `1px solid ${
+            mission.weatherAtLaunch.severity === "severe" ? "rgba(255,45,85,0.25)" :
+            mission.weatherAtLaunch.severity === "warning" ? "rgba(255,149,0,0.25)" :
+            "rgba(74,144,217,0.20)"
+          }`,
+          display: "flex", alignItems: "center", gap: 14,
+        }}>
+          <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
+            FORENSIC SNAPSHOT
+          </div>
+          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 16, ...TYPOGRAPHY.bodySm }}>
+            <span style={{ color: "white", fontWeight: 600 }}>{mission.weatherAtLaunch.condition}</span>
+            <span style={{ color: "rgba(255,255,255,0.7)" }}>
+              {formatTempC(mission.weatherAtLaunch.temp_c)}
+              {mission.weatherAtLaunch.feels_like_c != null && mission.weatherAtLaunch.feels_like_c !== mission.weatherAtLaunch.temp_c
+                ? ` (feels ${formatTempC(mission.weatherAtLaunch.feels_like_c)})` : ""}
+            </span>
+            {mission.weatherAtLaunch.wind_speed_ms != null && (
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>
+                wind {mission.weatherAtLaunch.wind_speed_ms.toFixed(1)} m/s
+                {mission.weatherAtLaunch.wind_gust_ms != null && mission.weatherAtLaunch.wind_gust_ms > mission.weatherAtLaunch.wind_speed_ms
+                  ? ` (gust ${mission.weatherAtLaunch.wind_gust_ms.toFixed(1)})` : ""}
+              </span>
+            )}
+            {mission.weatherAtLaunch.humidity_pct != null && (
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>RH {mission.weatherAtLaunch.humidity_pct}%</span>
+            )}
+            {mission.weatherAtLaunch.visibility_m != null && (
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>vis {(mission.weatherAtLaunch.visibility_m / 1000).toFixed(1)} km</span>
+            )}
+          </div>
+          <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+            {new Date(mission.weatherAtLaunch.observedAt).toLocaleTimeString()}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{

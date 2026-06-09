@@ -124,6 +124,65 @@ export function aggregateSeverity(rows: WeatherObservation[]): WeatherSeverity {
   return worst;
 }
 
+/** Pure: capture a weather forensic snapshot from a cached observation.
+ *  Used by SAR launch (integration A) so the post-incident report has the
+ *  exact conditions the worker was lost in. Returns null if the input is
+ *  null (no observation available — caller decides whether to block or
+ *  proceed without weather data). */
+export function captureWeatherForSAR(obs: WeatherObservation | null): {
+  condition: string;
+  temp_c: number | null;
+  feels_like_c: number | null;
+  humidity_pct: number | null;
+  wind_speed_ms: number | null;
+  wind_gust_ms: number | null;
+  visibility_m: number | null;
+  severity: WeatherSeverity;
+  observedAt: string;
+  capturedAt: string;
+  provider: string;
+} | null {
+  if (!obs) return null;
+  return {
+    condition:     obs.condition,
+    temp_c:        obs.temp_c,
+    feels_like_c:  obs.feels_like_c,
+    humidity_pct:  obs.humidity_pct,
+    wind_speed_ms: obs.wind_speed_ms,
+    wind_gust_ms:  obs.wind_gust_ms,
+    visibility_m:  obs.visibility_m,
+    severity:      obs.severity,
+    observedAt:    obs.observed_at,
+    capturedAt:    new Date().toISOString(),
+    provider:      obs.provider,
+  };
+}
+
+/** Pure: find the most relevant observation for a zone. Prefers an exact
+ *  zone_id match (multi-zone setup), then site-wide (zone_id=null), then
+ *  the worst severity across all observations (fallback). Returns null
+ *  if no observations available. Used by safety-intelligence + pre-shift
+ *  to attach weather context to per-worker risk scoring. */
+export function lookupZoneObservation(
+  rows: WeatherObservation[],
+  zoneId: string | null,
+): WeatherObservation | null {
+  if (rows.length === 0) return null;
+  if (zoneId) {
+    const exact = rows.find(r => r.zone_id === zoneId);
+    if (exact) return exact;
+  }
+  const siteWide = rows.find(r => r.zone_id === null);
+  if (siteWide) return siteWide;
+  // Last resort: return the observation with the worst severity so we
+  // never silently ignore severe weather just because the zone tag missed.
+  return rows.reduce((worst, r) => {
+    if (r.severity === "severe") return r;
+    if (r.severity === "warning" && worst.severity !== "severe") return r;
+    return worst;
+  }, rows[0]);
+}
+
 // ───────── RPC WRAPPERS ─────────
 
 function rowFromRpc(r: Record<string, unknown>): WeatherObservation {
