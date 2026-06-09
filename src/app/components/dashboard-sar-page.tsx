@@ -37,7 +37,7 @@ import "leaflet/dist/leaflet.css";
 import jsPDF from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { toast } from "sonner";
-import { emitAdminSignal, onSyncEvent } from "./shared-store";
+import { emitAdminSignal, onSyncEvent, getCompanyId } from "./shared-store";
 // P0-sar-audit-fixes (2026-05-26, life-safety): durable audit-log entries for every
 // SAR mission state transition (start / pause / resume / end / alert-workers).
 // ISO 27001 §12.4 + ISO 45001 record-keeping for SAR operations.
@@ -51,6 +51,7 @@ import {
   saveSARMission, getActiveSARMissions, getAllSARMissions,
   recommendSearchPattern, calculateSearchCone, analyzeTrail,
 } from "./sar-engine";
+import { getSarCandidates, fetchWorkerTrail, type SarCandidate } from "./sar-service";
 // 29th pattern app integration A (2026-06-09): capture forensic weather
 // snapshot at every SAR launch — if a worker was lost in a sandstorm
 // or extreme heat, that context shapes search strategy + investigation.
@@ -594,6 +595,20 @@ export function SARProtocolPage() {
     return { ...activeMission, searchCone: newCone };
   }, [activeMission, Math.floor(elapsedTimer / 10)]);
 
+  // M2 (2026-06-09): launch a SAR mission from a REAL worker's live gps_trail.
+  const handleStartLiveMission = useCallback(async (c: SarCandidate) => {
+    const trail = await fetchWorkerTrail(c.employee_id);
+    const baseMission = createSARMission(c.employee_id, c.name, c.role || "Field Worker", "field_worker", "", "industrial", trail);
+    const mission = { ...baseMission, weatherAtLaunch: captureWeatherForSAR(lookupZoneObservation(getCachedLatest(), "")) };
+    setActiveMission(mission);
+    setShowScenarioPicker(false);
+    setElapsedTimer(0);
+    saveSARMission(mission);
+    void emitAdminSignal("SAR_ACTIVATED", c.employee_id, { employeeName: c.name, zone: "", zoneIds: [], missionId: mission.id });
+    toast.success("Live SAR launched", { description: `${c.name} — last seen ${c.minutes_since}m ago` });
+  }, []);
+
+
   const handleStartMission = useCallback((scenario: SARScenario) => {
     const baseMission = createSARMission(
       scenario.employeeId,
@@ -1020,6 +1035,7 @@ export function SARProtocolPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
+            <LiveSarCandidates onLaunch={handleStartLiveMission} />
             <ScenarioPicker scenarios={SAR_SCENARIOS} onStart={handleStartMission} />
           </motion.div>
         ) : currentMission ? (
@@ -2245,5 +2261,36 @@ function LogPanel({ log }: { log: MissionLogEntry[] }) {
         })}
       </div>
     </DSCard>
+  );
+}
+
+// ── M2: live "missing worker" candidates from real gps_trail ──
+function LiveSarCandidates({ onLaunch }: { onLaunch: (c: SarCandidate) => void }) {
+  const [list, setList] = useState<SarCandidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    const cid = getCompanyId();
+    if (!cid) { setLoading(false); return; }
+    void getSarCandidates(cid, 10).then((rows) => { if (alive) { setList(rows); setLoading(false); } });
+    return () => { alive = false; };
+  }, []);
+  if (loading || list.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 16, borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,45,85,0.25)" }}>
+      <div style={{ padding: "12px 16px", background: "rgba(255,45,85,0.08)", display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: "#FF2D55", boxShadow: "0 0 8px #FF2D55" }} />
+        <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Live — workers with quiet GPS ({list.length})</span>
+      </div>
+      {list.map((c) => (
+        <div key={c.employee_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <div>
+            <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{c.name}</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{c.role} · GPS quiet {c.minutes_since}m · last {Number(c.last_lat).toFixed(4)}, {Number(c.last_lng).toFixed(4)}</div>
+          </div>
+          <button onClick={() => onLaunch(c)} style={{ padding: "8px 12px", borderRadius: 12, fontSize: 12, fontWeight: 700, color: "#fff", background: "#FF2D55", border: "none", cursor: "pointer" }}>Launch live SAR</button>
+        </div>
+      ))}
+    </div>
   );
 }
