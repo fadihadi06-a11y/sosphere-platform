@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   MapPin, Phone,
@@ -9,6 +9,9 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { Lang } from "./dashboard-i18n";
 import { getSubscription } from "./subscription-service";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { getFamilyLocations, upsertFamilyLocation, subscribeFamilyLocations, type FamilyMemberLoc } from "./family-location-service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface FamilyMember {
@@ -140,6 +143,7 @@ export function FamilyCircle({ lang = "en", onUpgrade }: { lang?: Lang; onUpgrad
       />
 
       <div className="pt-14 pb-28">
+        <div className="px-6 mb-4"><FamilyLiveMap /></div>
         {/* ── Header ── */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -615,6 +619,76 @@ export function FamilyCircle({ lang = "en", onUpgrade }: { lang?: Lang; onUpgrad
           </>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── M5: live family map (opt-in location sharing, realtime) ──
+function FamilyLiveMap() {
+  const ref = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const watchRef = useRef<number | null>(null);
+  const [members, setMembers] = useState<FamilyMemberLoc[]>([]);
+  const [sharing, setSharing] = useState(false);
+
+  useEffect(() => {
+    void getFamilyLocations().then(setMembers);
+    const unsub = subscribeFamilyLocations(() => { void getFamilyLocations().then(setMembers); });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!ref.current || mapRef.current) return;
+    const map = L.map(ref.current, { zoomControl: false, attributionControl: false });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    layerRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    map.setView([24.7136, 46.678], 11);
+    setTimeout(() => { try { map.invalidateSize(); } catch (_) { /* */ } }, 200);
+    return () => { try { map.remove(); } catch (_) { /* */ } mapRef.current = null; layerRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current, lg = layerRef.current;
+    if (!map || !lg) return;
+    lg.clearLayers();
+    const pts: Array<[number, number]> = [];
+    members.forEach((m) => {
+      if (m.lat == null || m.lng == null || !Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+      L.circleMarker([m.lat, m.lng], { radius: 8, color: "#00C8E0", fillColor: "#00C8E0", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip(m.name);
+      pts.push([m.lat, m.lng]);
+    });
+    if (pts.length === 1) map.setView(pts[0], 14);
+    else if (pts.length > 1) { try { map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 }); } catch (_) { /* */ } }
+  }, [members]);
+
+  const toggleShare = () => {
+    if (sharing) {
+      setSharing(false);
+      if (watchRef.current != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchRef.current); watchRef.current = null; }
+      void upsertFamilyLocation(0, 0, null, false);
+      return;
+    }
+    if (!("geolocation" in navigator)) return;
+    setSharing(true);
+    watchRef.current = navigator.geolocation.watchPosition(
+      (pos) => { void upsertFamilyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy ?? null, true); },
+      () => { setSharing(false); },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+    );
+  };
+
+  return (
+    <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,200,224,0.18)", background: "rgba(5,10,20,0.6)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
+        <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Family map · {members.length} sharing</span>
+        <button onClick={toggleShare} style={{ padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", color: sharing ? "#05070E" : "#00C8E0", background: sharing ? "#00C853" : "rgba(0,200,224,0.12)" }}>
+          {sharing ? "Sharing ✓" : "Share my location"}
+        </button>
+      </div>
+      <div ref={ref} style={{ width: "100%", height: 220 }} />
+      {members.length === 0 && <div style={{ padding: 12, fontSize: 11, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>No family members are sharing location yet.</div>}
     </div>
   );
 }
