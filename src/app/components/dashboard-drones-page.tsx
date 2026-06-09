@@ -9,15 +9,17 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Plane, Plus, RefreshCw, Trash2, Copy, X, BatteryMedium, MapPin,
-  Wifi, WifiOff, ShieldAlert, Check, Siren, Navigation2, Gauge, ArrowUp,
+  Wifi, WifiOff, ShieldAlert, Check, Siren, Navigation2, Gauge, ArrowUp, Video, FileDown, Lock, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listDrones, createDrone, deleteDrone,
   reportIncident, listActiveMissions, approveMission,
   listTelemetry, subscribeTelemetry, subscribeMissions,
-  type Drone, type DroneMission, type Telemetry,
+  getDataAccessMode, setDataAccessMode, listAccessAudit,
+  type Drone, type DroneMission, type Telemetry, type AccessAudit,
 } from "./drone-service";
+import { generateMissionReport } from "./drone-report";
 
 const STATUS_META: Record<Drone["status"], { label: string; color: string }> = {
   online:      { label: "Online",      color: "#00C853" },
@@ -38,7 +40,7 @@ interface Props {
 
 export function DronesPage({ companyState }: Props) {
   const companyId = companyState?.company?.id;
-  const [tab, setTab] = useState<"fleet" | "ops">("fleet");
+  const [tab, setTab] = useState<"fleet" | "ops" | "sov">("fleet");
 
   // ── Fleet state ──
   const [drones, setDrones] = useState<Drone[]>([]);
@@ -139,7 +141,7 @@ export function DronesPage({ companyState }: Props) {
         </div>
       </div>
       <div className="flex items-center gap-1 mb-5 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.03)" }}>
-        {([["fleet", "Fleet"], ["ops", "Operations"]] as const).map(([id, label]) => (
+        {([["fleet", "Fleet"], ["ops", "Operations"], ["sov", "Sovereignty"]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} className="px-4 py-1.5 rounded-lg" style={{ fontSize: 13, fontWeight: 700, color: tab === id ? "#05070E" : "rgba(255,255,255,0.5)", background: tab === id ? "#00C8E0" : "transparent", cursor: "pointer" }}>{label}</button>
         ))}
       </div>
@@ -209,6 +211,7 @@ export function DronesPage({ companyState }: Props) {
           )}
         </div>
       )}
+      {tab === "sov" && <SovereigntyTab companyId={companyId} />}
     </div>
   );
 }
@@ -255,6 +258,17 @@ function LiveTracker({ mission, points, droneName }: { mission: DroneMission; po
         <Stat icon={BatteryMedium} label="Battery" value={last?.battery != null ? `${last.battery}%` : "—"} />
         <Stat icon={ArrowUp} label="Altitude" value={last?.altitude != null ? `${Math.round(last.altitude)} m` : "—"} />
         <Stat icon={Gauge} label="Speed" value={last?.speed != null ? `${last.speed} m/s` : "—"} />
+      </div>
+      <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex items-center gap-2" style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
+          <Video className="size-3.5" style={{ color: "#00C8E0" }} />
+          {mission.stream_url
+            ? <a href={mission.stream_url} target="_blank" rel="noreferrer" style={{ color: "#00C8E0" }}>Open live video (client media server)</a>
+            : <span>Live video plays from your media server — no stream URL set</span>}
+        </div>
+        <button onClick={() => generateMissionReport(mission, points, droneName)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>
+          <FileDown className="size-3.5" /> Report PDF
+        </button>
       </div>
     </div>
   );
@@ -354,6 +368,66 @@ function FleetTab(props: {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Sovereignty tab: per-company data access mode + audit trail ──
+function SovereigntyTab({ companyId }: { companyId?: string }) {
+  const [mode, setMode] = useState<"private" | "support_allowed">("private");
+  const [audit, setAudit] = useState<AccessAudit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    if (!companyId) { setLoading(false); return; }
+    setLoading(true);
+    setMode(await getDataAccessMode(companyId));
+    setAudit(await listAccessAudit(companyId));
+    setLoading(false);
+  }, [companyId]);
+  useEffect(() => { void load(); }, [load]);
+  const toggle = async () => {
+    if (!companyId) return;
+    const next = mode === "private" ? "support_allowed" : "private";
+    if (await setDataAccessMode(companyId, next)) { setMode(next); toast.success(next === "private" ? "Support access disabled" : "Support access enabled"); void load(); }
+    else toast.error("Could not change mode");
+  };
+  if (loading) return <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", padding: 24 }}>Loading…</p>;
+  const allowed = mode === "support_allowed";
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="size-10 rounded-xl flex items-center justify-center" style={{ background: allowed ? "rgba(255,150,0,0.12)" : "rgba(0,200,83,0.12)" }}>
+              <Lock className="size-5" style={{ color: allowed ? "#FF9500" : "#00C853" }} />
+            </div>
+            <div>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Data sovereignty</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", maxWidth: 470, marginTop: 4 }}>
+                Video always stays on your own media server. This controls only the light tracking data.{" "}
+                {allowed ? "Support access is ON — the platform team may view your data for support; every access is logged below." : "Private — the platform team cannot access your data."}
+              </p>
+            </div>
+          </div>
+          <button onClick={() => void toggle()} className="px-4 py-2 rounded-xl flex-shrink-0" style={{ fontSize: 13, fontWeight: 700, color: allowed ? "#FF9500" : "#00C853", background: allowed ? "rgba(255,150,0,0.1)" : "rgba(0,200,83,0.1)", border: allowed ? "1px solid rgba(255,150,0,0.25)" : "1px solid rgba(0,200,83,0.25)", cursor: "pointer" }}>
+            {allowed ? "Disable support access" : "Allow support access"}
+          </button>
+        </div>
+      </div>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="px-4 py-3 flex items-center gap-2" style={{ background: "rgba(255,255,255,0.025)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <Eye className="size-4" style={{ color: "#00C8E0" }} />
+          <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Access audit trail</p>
+        </div>
+        {audit.length === 0 ? (
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", padding: 16 }}>No access events recorded.</p>
+        ) : audit.map(a => (
+          <div key={a.id} className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", fontSize: 12 }}>
+            <span className="text-white">{a.action}{a.reason ? ` — ${a.reason}` : ""}</span>
+            <span style={{ color: "rgba(255,255,255,0.35)" }}>{a.actor_email || "—"} · {new Date(a.created_at).toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

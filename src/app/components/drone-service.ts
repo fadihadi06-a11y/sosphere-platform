@@ -17,7 +17,7 @@ export interface DroneMission {
   id: string; company_id: string; incident_id: string; drone_id: string | null;
   operator_id: string | null;
   status: "pending" | "approved" | "enroute" | "onsite" | "returning" | "completed" | "aborted";
-  target_lat: number; target_lng: number; approved_at: string | null; created_at: string;
+  target_lat: number; target_lng: number; stream_url: string | null; approved_at: string | null; created_at: string;
 }
 
 export interface Telemetry {
@@ -87,4 +87,23 @@ export function subscribeMissions(companyId: string, onChange: () => void): () =
       () => onChange())
     .subscribe();
   return () => { void supabase.removeChannel(ch); };
+}
+
+// ── data sovereignty (per-company) ──
+export interface AccessAudit { id: string; action: string; actor_email: string | null; reason: string | null; created_at: string; }
+
+export async function getDataAccessMode(companyId: string): Promise<"private" | "support_allowed"> {
+  const { data } = await supabase.from("companies").select("data_access_mode").eq("id", companyId).maybeSingle();
+  return ((data as { data_access_mode?: string } | null)?.data_access_mode === "support_allowed") ? "support_allowed" : "private";
+}
+export async function setDataAccessMode(companyId: string, mode: "private" | "support_allowed"): Promise<boolean> {
+  const { error } = await supabase.rpc("set_company_data_access_mode", { p_company_id: companyId, p_mode: mode });
+  return !error;
+}
+export async function listAccessAudit(companyId: string): Promise<AccessAudit[]> {
+  const { data, error } = await supabase.from("access_audit_log")
+    .select("id,action,actor_email,reason,created_at").eq("company_id", companyId)
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) return [];
+  return (data as AccessAudit[]) ?? [];
 }
