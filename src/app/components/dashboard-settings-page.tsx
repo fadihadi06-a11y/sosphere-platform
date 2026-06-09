@@ -727,7 +727,20 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                           <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>API Access</p>
                           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>External API key management</p>
                         </div>
-                        <button onClick={() => { hapticSuccess(); toast.success("API Key Rotated", { description: "New key generated. Old key expires in 24h" }); }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.2)", cursor: "pointer" }}>
+                        <button onClick={async () => {
+                          hapticSuccess();
+                          const companyId = companyState?.company?.id;
+                          if (!companyId) { toast.error("No active company"); return; }
+                          try {
+                            const { createApiKey } = await import("./api-keys-service");
+                            const res = await createApiKey(companyId, "Dashboard API Key");
+                            if (!res.ok || !res.apiKey) { toast.error("Could not generate API key", { description: res.error || "Please try again." }); return; }
+                            try { await navigator.clipboard.writeText(res.apiKey); } catch (_) { /* clipboard unavailable */ }
+                            toast.success("API key generated — copied to clipboard", { description: `${res.apiKey.slice(0, 16)}…  ·  Store it now; it will not be shown again.`, duration: 12000 });
+                          } catch (e) {
+                            toast.error("Could not generate API key", { description: (e as Error)?.message || "Please try again." });
+                          }
+                        }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.2)", cursor: "pointer" }}>
                           <RefreshCw className="size-3.5" /> Rotate Key
                         </button>
                       </div>
