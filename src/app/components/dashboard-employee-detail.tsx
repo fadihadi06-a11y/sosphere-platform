@@ -236,7 +236,21 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                 { icon: Radio, label: "Broadcast", color: "#FF9500" },
                 { icon: MapPin, label: "Locate", color: "#7B5EFF" },
               ].map(a => (
-                <button key={a.label} onClick={() => { hapticLight(); toast(`${a.label} ${employee.name}`, { description: `${a.label} action initiated` }); }} className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl transition-all"
+                <button key={a.label} onClick={() => {
+                  hapticLight();
+                  const raw = String(employee.phone || "").trim();
+                  const tel = raw.replace(/[^\d+]/g, "");
+                  const noNumber = tel.replace(/\D/g, "").length < 6 || /x/i.test(raw);
+                  if (a.label === "Call") {
+                    if (noNumber) { toast.error(`No phone number on file for ${employee.name}`); return; }
+                    window.location.href = `tel:${tel}`;
+                  } else if (a.label === "Message") {
+                    if (noNumber) { toast.error(`No phone number on file for ${employee.name}`); return; }
+                    window.location.href = `sms:${tel}`;
+                  } else {
+                    toast(`${a.label} ${employee.name}`, { description: `${a.label} action initiated` });
+                  }
+                }} className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl transition-all"
                   style={{ background: `${a.color}08`, border: `1px solid ${a.color}15`, cursor: "pointer" }}>
                   <a.icon className="size-4" style={{ color: a.color }} />
                   <span style={{ fontSize: 9, fontWeight: 600, color: a.color }}>{a.label}</span>
