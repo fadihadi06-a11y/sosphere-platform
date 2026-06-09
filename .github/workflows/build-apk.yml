@@ -15,12 +15,6 @@ on:
       - 'vite.config.*'
       - '.github/workflows/build-apk.yml'
 
-# Opt JS-based actions (setup-java/setup-android) into the Node 24 runtime
-# ahead of GitHub's Node 20 removal (deadline 2026-09-16). Silences the
-# deprecation warning without changing build behaviour.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-apk:
     name: Build Android Debug APK
