@@ -40,7 +40,7 @@ import {
   getCompanyId,
   type EmployeeTrip,
 } from "./shared-store";
-import { getCompanySosPoints } from "./sos-heatmap-service";
+import { getCompanySosPoints, getGlobalSosMap, isPlatformAdmin } from "./sos-heatmap-service";
 
 interface RiskMapLiveProps {
   t: (key: string) => string;
@@ -253,27 +253,51 @@ function LiveMap({ selectedWorker, onSelectWorker, showTrip, tripData, replayInd
     });
   }, []);
 
-  // M3 (2026-06-09): SOS press heat layer — translucent red blooms per
-  // SOS location from sos_queue (company-scoped via get_company_sos_points).
-  // Plain Leaflet circles (no extra plugin) → reliable density visual.
+  // M3/M4 (2026-06-09): SOS heat layer. For platform admins it shows the
+  // GLOBAL, sovereignty-respecting picture (private tenants appear only as
+  // coarse anonymous density via get_global_sos_map); for company users it
+  // shows their own company's SOS. Plain Leaflet circles (no plugin).
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
     let alive = true;
     let lg: L.LayerGroup | null = null;
-    const cid = getCompanyId();
-    if (!cid) return;
-    void getCompanySosPoints(cid, 1000).then((points) => {
+    const bloom = (lat: number, lng: number, big: number) => {
+      L.circle([lat, lng], { radius: big, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.10 }).addTo(lg!);
+      L.circle([lat, lng], { radius: big / 2, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.16 }).addTo(lg!);
+      return L.circleMarker([lat, lng], { radius: 4, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.85 }).addTo(lg!);
+    };
+    void (async () => {
+      const admin = await isPlatformAdmin();
       if (!alive || !mapInstanceRef.current) return;
-      lg = L.layerGroup();
-      points.forEach((p) => {
-        if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
-        L.circle([p.lat, p.lng], { radius: 90, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.10 }).addTo(lg!);
-        L.circle([p.lat, p.lng], { radius: 45, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.16 }).addTo(lg!);
-        L.circleMarker([p.lat, p.lng], { radius: 4, stroke: false, fillColor: "#FF2D55", fillOpacity: 0.85 }).addTo(lg!);
-      });
-      lg.addTo(map);
-    });
+      if (admin) {
+        const pts = await getGlobalSosMap();
+        if (!alive || !mapInstanceRef.current) return;
+        lg = L.layerGroup();
+        const bounds: [number, number][] = [];
+        pts.forEach((p) => {
+          if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+          const w = Math.max(1, p.weight || 1);
+          const big = p.mode === "aggregate" ? 60 + Math.min(w, 20) * 8 : 90;
+          const m = bloom(p.lat, p.lng, big);
+          m.bindTooltip(p.company_name ? p.company_name : `${w} SOS · private (anonymized)`);
+          bounds.push([p.lat, p.lng]);
+        });
+        lg.addTo(map);
+        if (bounds.length) { try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 }); } catch (_) { /* */ } }
+      } else {
+        const cid = getCompanyId();
+        if (!cid) return;
+        const points = await getCompanySosPoints(cid, 1000);
+        if (!alive || !mapInstanceRef.current) return;
+        lg = L.layerGroup();
+        points.forEach((p) => {
+          if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+          bloom(p.lat, p.lng, 90);
+        });
+        lg.addTo(map);
+      }
+    })();
     return () => { alive = false; if (lg && mapInstanceRef.current) { try { mapInstanceRef.current.removeLayer(lg); } catch (_) { /* */ } } };
   }, []);
 

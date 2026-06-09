@@ -12,3 +12,17 @@ export async function getCompanySosPoints(companyId: string, limit = 1000): Prom
   if (error) return [];
   return (data as SosPoint[]) ?? [];
 }
+
+// ── M4: platform-owner global SOS (sovereignty-respecting) ──
+export interface GlobalSosPoint { lat: number; lng: number; weight: number; mode: "detail" | "aggregate"; company_name: string | null; }
+
+export async function isPlatformAdmin(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("is_platform_admin");
+  return !error && data === true;
+}
+
+export async function getGlobalSosMap(): Promise<GlobalSosPoint[]> {
+  const { data, error } = await supabase.rpc("get_global_sos_map");
+  if (error) return [];
+  return (data as GlobalSosPoint[]) ?? [];
+}
