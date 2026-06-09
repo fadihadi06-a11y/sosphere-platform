@@ -533,6 +533,7 @@ export function LandingPage() {
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {t.footer.links.map((l, i) => (
               <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                onClick={() => { const r = ["/privacy", "/terms", "/demo"][i]; if (r) { navigate(r); } else { window.location.href = "mailto:sales@sosphere.co"; } }}
                 onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}>{l}</button>
             ))}
