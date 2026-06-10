@@ -115,6 +115,14 @@ export async function initSentry(): Promise<void> {
         "ResizeObserver loop limit exceeded",
         "ResizeObserver loop completed with undelivered notifications",
         "Non-Error promise rejection captured",
+        // jsPDF + recharts probe for the global object via
+        // Function("return this") as a last-resort fallback. Our strict CSP
+        // (no 'unsafe-eval' — intentional, must NOT be relaxed) blocks it, so
+        // the browser logs a CSP violation. The libraries fall back to other
+        // globalThis detection and keep working, so this is non-actionable
+        // noise — not a functional failure. Filter it instead of weakening CSP.
+        "unsafe-eval",
+        "Refused to evaluate a string as JavaScript",
       ],
     });
     sentryReady = true;
