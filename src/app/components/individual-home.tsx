@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RecordingConsentModal } from "./recording-consent-modal";
+import { recordRecordingConsent } from "./recording-consent-service";
 import { useLang } from "./useLang";
 import { getRecordingMode, setRecordingMode, availableRecordingModes, type RecordingMode } from "./subscription-service";
 import { SecurityPinModal } from "./security-pin-modal";
@@ -534,8 +535,8 @@ export function IndividualHome({ userName, onSOSTrigger, onRecordingChange, onCh
       <RecordingConsentModal
         visible={showConsentModal}
         lang={isAr ? "ar" : "en"}
-        onAccept={() => { setRecordingEnabled(true); onRecordingChange?.(true); setShowConsentModal(false); }}
-        onDecline={() => { setRecordingEnabled(false); onRecordingChange?.(false); setShowConsentModal(false); }}
+        onAccept={() => { setRecordingEnabled(true); onRecordingChange?.(true); setShowConsentModal(false); void recordRecordingConsent(true); }}
+        onDecline={() => { setRecordingEnabled(false); onRecordingChange?.(false); setShowConsentModal(false); void recordRecordingConsent(false); }}
       />
     </div>
   );
