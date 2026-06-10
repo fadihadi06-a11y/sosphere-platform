@@ -41,6 +41,11 @@ jobs:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Non-blocking: CodeQL upload needs GitHub Advanced Security, which is
+    # not enabled on this private repo. Without it the SARIF upload fails
+    # with 'Requires authentication'. Don't fail the pipeline for that;
+    # enable GHAS to get real results (no other change needed).
+    continue-on-error: true
     permissions:
       # CodeQL needs to read the code, write SARIF results, and update
       # security alerts. These are minimum required permissions.
@@ -60,7 +65,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           # Use the security-extended query suite — broader than default,
@@ -70,10 +75,10 @@ jobs:
           config-file: ./.github/codeql-config.yml
 
       - name: Autobuild (TypeScript/JavaScript needs no build step)
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
           # Upload SARIF to GitHub Security tab so issues are tracked
