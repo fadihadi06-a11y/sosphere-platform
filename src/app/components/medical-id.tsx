@@ -9,6 +9,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 // FIX FATAL-1: Persist medical data so SOS can read blood type + conditions
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+import { pushMedical, pullSafetyProfile } from "./safety-profile-service";
 
 const MEDICAL_STORAGE_KEY = "sosphere_medical_id";
 
@@ -68,6 +69,25 @@ export function MedicalID({ onBack, userPlan }: MedicalIDProps) {
   useEffect(() => {
     storeJSONSync(MEDICAL_STORAGE_KEY, data);
   }, [data]);
+
+  // F1 (2026-06-10): debounced server backup so Medical ID survives device loss.
+  useEffect(() => {
+    const t = setTimeout(() => { void pushMedical(data); }, 1500);
+    return () => clearTimeout(t);
+  }, [data]);
+
+  // F1: on a fresh device (empty local), hydrate from the server backup.
+  useEffect(() => {
+    let alive = true;
+    void pullSafetyProfile().then((p) => {
+      if (!alive || !p || !p.medical) return;
+      setData((prev) => {
+        const localEmpty = !prev.bloodType && prev.conditions.length === 0 && prev.allergies.length === 0 && prev.medications.length === 0;
+        return localEmpty ? { ...prev, ...(p.medical as Partial<MedicalData>) } : prev;
+      });
+    });
+    return () => { alive = false; };
+  }, []);
 
   const addItemToList = (field: "conditions" | "allergies" | "medications") => {
     if (!newItem.trim()) return;

@@ -28,6 +28,7 @@ import {
 // AddEditContactForm). Import at module top so ESLint no-require-imports
 // is satisfied.
 import { COUNTRIES, CountrySheet, type Country } from "./country-picker";
+import { pushContacts, pullSafetyProfile } from "./safety-profile-service";
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -90,8 +91,24 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
   // pattern as MOCK_INCIDENTS and medical-id defaults. New users now see a
   // clean empty state and add their real contacts via the + button.
   useEffect(() => {
-    setContacts(getSafetyContacts());
+    const local = getSafetyContacts();
+    setContacts(local);
+    // F1 (2026-06-10): hydrate from the server backup on a fresh device (empty local).
+    if (local.length === 0) {
+      void pullSafetyProfile().then((p) => {
+        const remote = (p && Array.isArray(p.contacts) ? (p.contacts as SafetyContact[]) : null);
+        if (remote && remote.length) { saveSafetyContacts(remote); setContacts(remote); }
+      });
+    }
   }, []);
+
+  // F1: back up contacts to the server (debounced). Never push an empty list,
+  // so a fresh device cannot clobber an existing backup before it hydrates.
+  useEffect(() => {
+    if (contacts.length === 0) return;
+    const t = setTimeout(() => { void pushContacts(contacts); }, 1500);
+    return () => clearTimeout(t);
+  }, [contacts]);
 
   // Stats
   const stats = useMemo(() => ({
