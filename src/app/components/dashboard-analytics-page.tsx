@@ -359,7 +359,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 (doc as any).autoTable({
                   startY: y,
                   head: [["Zone", "Safety Score", "Incidents", "Status"]],
-                  body: ZONE_SAFETY.map(z => [z.zone, z.safety + "/100", z.incidents.toString(), z.safety >= 85 ? "SAFE" : z.safety >= 70 ? "MODERATE" : "AT RISK"]),
+                  body: (DEV_DEMO ? ZONE_SAFETY : []).map(z => [z.zone, z.safety + "/100", z.incidents.toString(), z.safety >= 85 ? "SAFE" : z.safety >= 70 ? "MODERATE" : "AT RISK"]),
                   theme: "grid",
                   headStyles: { fillColor: [10, 18, 32], textColor: [0, 200, 224], fontSize: 9 },
                   bodyStyles: { fillColor: [8, 12, 22], textColor: [180, 180, 180], fontSize: 8 },
@@ -553,7 +553,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Zone Safety Comparison</p>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={ZONE_SAFETY} barGap={4}>
+            <BarChart data={DEV_DEMO ? ZONE_SAFETY : []} barGap={4}>
               <CartesianGrid key="cg" strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis key="xa" dataKey="zone" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis key="ya" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -570,7 +570,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Safety Radar</p>
           <ResponsiveContainer width="100%" height={200}>
-            <RadarChart data={RADAR_DATA}>
+            <RadarChart data={DEV_DEMO ? RADAR_DATA : []}>
               <PolarGrid key="pg" stroke="rgba(255,255,255,0.08)" />
               <PolarAngleAxis key="paa" dataKey="metric" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 9 }} />
               <PolarRadiusAxis key="pra" angle={30} domain={[0, 100]} tick={false} axisLine={false} />
@@ -585,7 +585,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Department Leaderboard</p>
           <div className="space-y-2.5">
-            {DEPT_PERFORMANCE.sort((a, b) => b.score - a.score).map((dept, i) => (
+            {(DEV_DEMO ? DEPT_PERFORMANCE : []).sort((a, b) => b.score - a.score).map((dept, i) => (
               <div key={dept.dept} className="flex items-center gap-3 p-2.5 rounded-xl"
                 style={{ background: i === 0 ? "rgba(0,200,83,0.06)" : "rgba(255,255,255,0.015)", border: `1px solid ${i === 0 ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.04)"}` }}>
                 <span className="size-6 rounded-full flex items-center justify-center shrink-0"
