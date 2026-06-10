@@ -1,0 +1,13 @@
+# SOSphere — crawler directives
+User-agent: *
+Allow: /
+# Private app surfaces — no need to index (gated anyway)
+Disallow: /dashboard
+Disallow: /app
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /payment-success
+Disallow: /payment-cancelled
+Disallow: /shared-sos/
+
+Sitemap: https://sosphere.co/sitemap.xml
