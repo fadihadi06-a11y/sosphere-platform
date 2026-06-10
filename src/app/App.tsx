@@ -9,8 +9,22 @@ import { initStorage } from "./components/api/storage-adapter";
 import { initAuditStore } from "./components/audit-log-store";
 import { initDuressService } from "./components/duress-service";
 import { initSosEmergency } from "./components/sos-emergency";
+import { useLang } from "./components/useLang";
 
 export default function App() {
+  // ROOT-CAUSE FIX (2026-06-10): index.html hardcodes
+  // <html lang="ar" dir="rtl">, so every screen inherited RTL — even
+  // English surfaces (e.g. the dashboard sign-in card), which made
+  // numbers/punctuation reorder. Direction must follow the ACTIVE
+  // language, not a static default. useLang() re-renders on every
+  // language change (same tab or cross-tab), keeping this in sync.
+  const { lang, isAr } = useLang();
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = lang;
+    document.documentElement.dir = isAr ? "rtl" : "ltr";
+  }, [lang, isAr]);
+
   useEffect(() => {
     void (async () => {
       try {

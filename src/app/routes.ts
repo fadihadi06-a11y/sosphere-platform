@@ -2,14 +2,40 @@
 import { createElement } from "react";
 import { LandingPage } from "./components/landing-page";
 import { RouteTransitionLayout } from "./components/route-layout";
+import { isNativeApp } from "./components/capacitor-bridge";
 
+// Branded loading fallback. Previously a blank dark div, which showed a
+// ~3s empty screen while the lazy dashboard chunk (~3900 lines) loaded.
+// Now renders a centered spinner so first paint communicates progress.
 function RouteLoading() {
-  return createElement("div", { style: { width: "100vw", height: "100vh", background: "#05070E" } });
+  return createElement(
+    "div",
+    {
+      style: {
+        width: "100vw", height: "100vh", background: "#05070E",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      },
+    },
+    createElement("div", {
+      "aria-label": "Loading",
+      role: "status",
+      style: {
+        width: 44, height: 44, borderRadius: "50%",
+        border: "3px solid rgba(255,255,255,0.12)",
+        borderTopColor: "#FF2D55",
+        animation: "sos-route-spin 0.8s linear infinite",
+      },
+    }),
+    createElement("style", null,
+      "@keyframes sos-route-spin{to{transform:rotate(360deg)}}")
+  );
 }
 
-// Detect Capacitor native app
+// Detect Capacitor native app. Single source of truth: isNativeApp()
+// uses Capacitor.isNativePlatform() (true ONLY in a real iOS/Android
+// container), so web visitors correctly fall through to the landing page.
 function isNative(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).Capacitor;
+  return isNativeApp();
 }
 
 export const router = createBrowserRouter([

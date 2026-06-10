@@ -17,12 +17,21 @@ export type NativePlatform = 'ios' | 'android' | 'web';
 export function isNativeApp(): boolean {
   if (typeof window === 'undefined') return false;
 
-  // Check for Capacitor global
-  if ((window as any).Capacitor !== undefined) {
-    return true;
+  // ROOT-CAUSE FIX (2026-06-10): Capacitor's web shim defines
+  // `window.Capacitor` even inside a normal browser, so the old
+  // `window.Capacitor !== undefined` check returned TRUE on web. That
+  // made the landing-page route loader redirect every web visitor to
+  // /app, suppressed PWA service-worker registration, and entered
+  // native-only code paths on web. The authoritative signal is
+  // `Capacitor.isNativePlatform()` — true ONLY inside a real iOS/Android
+  // container, false on web.
+  const cap = (window as any).Capacitor;
+  if (cap && typeof cap.isNativePlatform === 'function') {
+    return cap.isNativePlatform() === true;
   }
 
-  // Fallback: check user agent for common native indicators
+  // Fallback for native WebViews whose bridge hasn't injected yet
+  // (custom appendUserAgent). Web browsers never match these.
   const ua = navigator.userAgent.toLowerCase();
   return ua.includes('sosphere/') || ua.includes('capacitor');
 }
