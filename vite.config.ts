@@ -4,7 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
-  base: './',
+  // base: web (Vercel) must be ABSOLUTE so nested routes like
+  // /legal/dpa, /auth/callback, /shared-sos/:id load their assets from
+  // /assets/... instead of /<segment>/assets/... (which the SPA rewrite
+  // returns index.html for -> JS never executes -> permanent 'Loading').
+  // Native (Capacitor, built locally without VERCEL set) keeps './' for
+  // file://-scheme loading. Vercel auto-sets VERCEL=1 during its build.
+  base: process.env.VERCEL ? '/' : './',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
