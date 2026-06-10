@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchRealCompliance } from "./gps-compliance-service";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Satellite, MapPin, AlertTriangle, CheckCircle2, WifiOff,
@@ -6,7 +7,8 @@ import {
   TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, Eye,
 } from "lucide-react";
 import {
-  runComplianceCheck, getLatestCompliance, getComplianceHistory,
+  getComplianceHistory,
+  // runComplianceCheck/getLatestCompliance removed (F4: real data via gps-compliance-service)
   onComplianceUpdate, GPS_CHECK_INTERVAL_DEMO,
   autoBroadcastOutOfZone,
   type ComplianceCheckResult, type EmployeeGPSSnapshot,
@@ -192,7 +194,7 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
 // Main GPS Compliance Page
 // ═══════════════════════════════════════════════════════════════
 export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => string; webMode?: boolean }) {
-  const [result, setResult] = useState<ComplianceCheckResult | null>(getLatestCompliance);
+  const [result, setResult] = useState<ComplianceCheckResult | null>(null);
   const [history, setHistory] = useState<ComplianceCheckResult[]>(getComplianceHistory);
   const [countdown, setCountdown] = useState(GPS_CHECK_INTERVAL_DEMO);
   const [isChecking, setIsChecking] = useState(false);
@@ -204,20 +206,19 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
 
   const performCheck = useCallback(() => {
     setIsChecking(true);
-    // Simulate 1s GPS acquisition delay
-    setTimeout(() => {
-      const r = runComplianceCheck();
-      setResult(r);
-      setHistory(getComplianceHistory());
-      setCountdown(GPS_CHECK_INTERVAL_DEMO);
+    void (async () => {
+      const r = await fetchRealCompliance();
+      if (r) {
+        setResult(r);
+        setCountdown(GPS_CHECK_INTERVAL_DEMO);
+        r.snapshots
+          .filter(s => s.status === "out-of-zone" && s.distanceMeters !== null)
+          .forEach(s => {
+            autoBroadcastOutOfZone(s.employeeName, s.assignedZoneName || "Unknown", s.distanceMeters!);
+          });
+      }
       setIsChecking(false);
-      // Auto-broadcast out-of-zone employees to Broadcast Center
-      r.snapshots
-        .filter(s => s.status === "out-of-zone" && s.distanceMeters !== null)
-        .forEach(s => {
-          autoBroadcastOutOfZone(s.employeeName, s.assignedZoneName || "Unknown", s.distanceMeters!);
-        });
-    }, 800);
+    })();
   }, []);
 
   // Auto-check interval
