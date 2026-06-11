@@ -20,7 +20,13 @@ interface EmployeeDashboardProps {
 }
 
 // Avatar and role are read from localStorage (saved during employee-quick-setup)
-const AVATAR_FALLBACK = "https://images.unsplash.com/photo-1769636929231-3cd7f853d038?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400";
+function initialsAvatar(name?: string): string {
+  const t = (name || "?").trim().split(/\s+/).slice(0, 2).map(w => (w[0] || "").toUpperCase()).join("") || "U";
+  let h = 0; for (let i = 0; i < (name || "").length; i++) h = ((h << 5) - h + (name as string).charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='hsl(${hue},42%,26%)'/><text x='100' y='118' font-family='system-ui,sans-serif' font-size='90' font-weight='700' fill='hsl(${hue},70%,82%)' text-anchor='middle'>${t}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 // ─── SOS Button ───────────────────────────────────────────────────────────────
 function SOSButton({ onSOSTrigger }: { onSOSTrigger: () => void }) {
@@ -94,8 +100,8 @@ export function EmployeeDashboard({
 
   // FIX: Read avatar and role from localStorage — saved during employee-quick-setup
   const [avatarUrl] = useState<string>(() => {
-    try { return localStorage.getItem("sosphere_employee_avatar") || AVATAR_FALLBACK; }
-    catch { return AVATAR_FALLBACK; }
+    try { return localStorage.getItem("sosphere_employee_avatar") || initialsAvatar(userName); }
+    catch { return initialsAvatar(userName); }
   });
   const [employeeProfile] = useState<{role?:string;department?:string}>(() => {
     try {

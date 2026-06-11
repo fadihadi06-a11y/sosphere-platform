@@ -406,7 +406,13 @@ const DMS_GAP_SEC   = 10;
 //   3. Auto-timeout after CALL_SEC if no confirmation
 
 // Default avatar — used when caller doesn't provide one
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1701463387028-3947648f1337?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtYW4lMjBhdmF0YXIlMjBkYXJrJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzcyODc0MTc5fDA&ixlib=rb-4.1.0&q=80&w=400";
+function initialsAvatar(name?: string): string {
+  const t = (name || "?").trim().split(/\s+/).slice(0, 2).map(w => (w[0] || "").toUpperCase()).join("") || "U";
+  let h = 0; for (let i = 0; i < (name || "").length; i++) h = ((h << 5) - h + (name as string).charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='hsl(${hue},42%,26%)'/><text x='100' y='118' font-family='system-ui,sans-serif' font-size='90' font-weight='700' fill='hsl(${hue},70%,82%)' text-anchor='middle'>${t}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 // FIX 8: ERR_ID was module-level — all SOS sessions shared the same incident ID.
 // Now generated per-call to ensure each SOS session gets a unique ID.
@@ -770,7 +776,7 @@ function GlowCircle({
             className="absolute -bottom-1 -left-2 size-10 rounded-full overflow-hidden"
             style={{ border: "2.5px solid #0A1220", boxShadow: `0 0 14px ${glowColor}50` }}
           >
-            <ImageWithFallback src={userAvatar || DEFAULT_AVATAR} alt={userName} className="w-full h-full object-cover" />
+            <ImageWithFallback src={userAvatar || initialsAvatar(userName)} alt={userName} className="w-full h-full object-cover" />
           </motion.div>
         )}
 
