@@ -7,21 +7,58 @@
 // module (one-way import, no circular risk).
 // ═══════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { Card as DSCard, Badge } from "./design-system";
 import { SEVERITY_CONFIG } from "./dashboard-pages";
+import { useDashboardStore } from "./stores/dashboard-store";
 
-export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => string; webMode?: boolean }) {
-  const incidents = [
+const DEMO_INCIDENTS = [
     { id: "INC-2026-031", type: "SOS Trigger",      employee: "Mohammed Ali", zone: "Zone D", date: "Mar 7, 2026",  severity: "critical" as const, resolved: false, responseTime: "1m 12s", escalations: 2, timeline: [{ time: "09:15", event: "SOS triggered", actor: "Mohammed Ali" }, { time: "09:16", event: "Alert sent to supervisor", actor: "System" }] },
     { id: "INC-2026-030", type: "Geofence Breach",   employee: "Unknown",      zone: "Zone B", date: "Mar 7, 2026",  severity: "medium"   as const, resolved: false, responseTime: "—",      escalations: 0, timeline: [{ time: "08:45", event: "Geofence breach detected", actor: "System" }] },
     { id: "INC-2026-029", type: "Missed Check-in",   employee: "Khalid Omar",  zone: "Zone A", date: "Mar 6, 2026",  severity: "high"     as const, resolved: true,  responseTime: "4m 30s", escalations: 1, timeline: [{ time: "14:00", event: "Check-in missed", actor: "System" }, { time: "14:02", event: "SMS reminder sent", actor: "System" }, { time: "14:04", event: "Employee responded", actor: "Khalid Omar" }] },
     { id: "INC-2026-028", type: "Fall Detection",    employee: "Ahmed Khalil", zone: "Zone C", date: "Mar 5, 2026",  severity: "critical" as const, resolved: true,  responseTime: "0m 45s", escalations: 3, timeline: [{ time: "11:30", event: "Fall detected by wearable", actor: "System" }, { time: "11:30", event: "Emergency alert broadcast", actor: "System" }, { time: "11:31", event: "Medical team dispatched", actor: "Fatima Hassan" }, { time: "11:35", event: "Patient stabilized", actor: "Medical Team" }] },
     { id: "INC-2026-027", type: "Gas Leak Alert",    employee: "System",       zone: "Zone D", date: "Mar 4, 2026",  severity: "high"     as const, resolved: true,  responseTime: "2m 15s", escalations: 2, timeline: [{ time: "16:20", event: "Gas sensor threshold exceeded", actor: "IoT Sensor" }, { time: "16:21", event: "Zone D evacuation initiated", actor: "System" }, { time: "16:25", event: "All personnel cleared", actor: "Omar Al-Farsi" }] },
     { id: "INC-2026-026", type: "Fire Alarm",        employee: "Lina Chen",   zone: "Zone C", date: "Mar 3, 2026",  severity: "critical" as const, resolved: true,  responseTime: "1m 50s", escalations: 3, timeline: [{ time: "10:00", event: "Smoke detector activated", actor: "Fire System" }, { time: "10:01", event: "Fire suppression engaged", actor: "System" }, { time: "10:03", event: "Evacuation complete", actor: "Safety Team" }] },
-  ];
+];
+
+export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => string; webMode?: boolean }) {
+  // REAL DATA: incident history derives from the live emergencies store
+  // (same `emergencies` source the Emergency Hub uses). Previously this page
+  // rendered a hardcoded fabricated list in production. DEV keeps the rich
+  // demo set when there is no real data, for local UI work only.
+  const realEmergencies = useDashboardStore((s) => s.emergencies);
+  const incidents = useMemo(() => {
+    const mapped = realEmergencies.map((e) => {
+      const d = e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp);
+      return {
+        id: e.id,
+        type: e.type,
+        employee: e.employeeName,
+        zone: e.zone,
+        date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        severity: e.severity,
+        resolved: e.status === "resolved",
+        responseTime: "—",
+        escalations: 0,
+        timeline: [
+          { time: d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }), event: "Incident recorded", actor: e.employeeName },
+          ...(e.status === "resolved" ? [{ time: "", event: "Resolved", actor: "System" }] : []),
+        ],
+      };
+    });
+    if (mapped.length === 0 && import.meta.env.DEV) return DEMO_INCIDENTS as typeof mapped;
+    return mapped;
+  }, [realEmergencies]);
+  const stats = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86400000;
+    const ms = (d: Date | string) => (d instanceof Date ? d : new Date(d)).getTime();
+    const thisWeek = realEmergencies.filter((e) => ms(e.timestamp) >= weekAgo).length;
+    const resolved = realEmergencies.filter((e) => e.status === "resolved").length;
+    const rate = realEmergencies.length ? Math.round((resolved / realEmergencies.length) * 100) : 0;
+    return { thisWeek, resolved, rate };
+  }, [realEmergencies]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sevFilter, setSevFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -46,7 +83,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
-          {[{ label: "This Week", value: "12", color: "#00C8E0", sub: "Total incidents" }, { label: "Resolved", value: "9", color: "#00C853", sub: "75% resolution rate" }, { label: "Avg Response", value: "2.4m", color: "#FF9500", sub: "Time to respond" }, { label: "Escalations", value: "11", color: "#FF2D55", sub: "Escalated to mgmt" }].map((k, i) => (
+          {[{ label: "This Week", value: String(stats.thisWeek), color: "#00C8E0", sub: "Total incidents" }, { label: "Resolved", value: String(stats.resolved), color: "#00C853", sub: stats.rate + "% resolution rate" }, { label: "Avg Response", value: "—", color: "#FF9500", sub: "Time to respond" }, { label: "Escalations", value: "—", color: "#FF2D55", sub: "Escalated to mgmt" }].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <p style={{ fontSize: 30, fontWeight: 800, color: k.color }}>{k.value}</p>
               <p className="text-white mt-1" style={{ fontSize: 13, fontWeight: 600 }}>{k.label}</p>
@@ -111,7 +148,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
   return (
     <div className="px-4 pt-4 space-y-3">
       <div className="grid grid-cols-4 gap-1.5">
-        {[{ label: t("inc.thisWeek"), value: "12", color: "#00C8E0" }, { label: t("inc.resolved"), value: "9", color: "#00C853" }, { label: t("inc.avgResp"), value: "2.4m", color: "#FF9500" }, { label: t("inc.escalations"), value: "11", color: "#FF2D55" }].map(s => (
+        {[{ label: t("inc.thisWeek"), value: String(stats.thisWeek), color: "#00C8E0" }, { label: t("inc.resolved"), value: String(stats.resolved), color: "#00C853" }, { label: t("inc.avgResp"), value: "—", color: "#FF9500" }, { label: t("inc.escalations"), value: "—", color: "#FF2D55" }].map(s => (
           <DSCard key={s.label} padding={8} style={{ textAlign: "center" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 7, fontWeight: 600, color: "rgba(255,255,255,0.25)", textTransform: "uppercase" }}>{s.label}</div>
