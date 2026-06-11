@@ -430,7 +430,16 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
   webMode?: boolean;
   onLaunchSAR?: () => void;
 }) {
-  const [emgList, setEmgList] = useState<RichEmergency[]>(RICH_EMERGENCIES);
+  // PROD SAFETY: RICH_EMERGENCIES is DEMO data only. In production the board
+  // MUST start empty and fill exclusively from real SOS triggers (_parentEmg,
+  // sourced from sos_queue via realtime CDC). Without this gate a brand-new
+  // owner saw 7 fabricated catastrophes (Mass Casualty, Chemical Spill, Fire
+  // Alarm, 24 affected...) on first login — confusing, unprofessional, and
+  // dangerous for a life-safety product. import.meta.env.DEV is false in the
+  // Vercel production build, true only in local `vite dev`.
+  const [emgList, setEmgList] = useState<RichEmergency[]>(
+    import.meta.env.DEV ? RICH_EMERGENCIES : [],
+  );
 
   // ── GAP FIX: Bridge parent emergencies → cluster engine ──
   // When mobile workers trigger SOS, the parent `emergencies` state gets updated
