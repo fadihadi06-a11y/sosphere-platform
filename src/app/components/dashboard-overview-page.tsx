@@ -979,7 +979,7 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
               </div>
             </div>
             <div className="space-y-2">
-              {MOCK_SYSTEM_HEALTH.map((s, i) => {
+              {(import.meta.env.DEV ? MOCK_SYSTEM_HEALTH : []).map((s, i) => {
                 const sc = s.status === "operational" ? "#00C853" : "#FF9500";
                 return (
                   <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: `${sc}06` }}>

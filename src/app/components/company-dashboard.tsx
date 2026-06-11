@@ -799,7 +799,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
     setHybridMode(getHybridMode() ? "multi-site" : "single-site");
     const unsub = onHybridModeChange((enabled: boolean) => setHybridMode(enabled ? "multi-site" : "single-site"));
     requestNotificationPermission();
-    seedMockEvidence();
+    if (import.meta.env.DEV) seedMockEvidence();
     return unsub;
   }, [setHybridMode]);
 

@@ -365,9 +365,9 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
     // key). The legacy `sosphere_risks` key is killed inside getCachedRisks
     // as a one-shot migration — eliminates the CRIT-#4 cross-tenant leak.
     const cached = getCachedRisks();
-    return cached.length > 0 ? cached : MOCK_RISKS;
+    return cached.length > 0 ? cached : (import.meta.env.DEV ? MOCK_RISKS : []);
   });
-  const [training, setTraining] = useState<TrainingRecord[]>(MOCK_TRAINING);
+  const [training, setTraining] = useState<TrainingRecord[]>(import.meta.env.DEV ? MOCK_TRAINING : []);
   const [activeTab, setActiveTab] = useState<TabType>("risks");
   const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
   const [zoneFilter, setZoneFilter] = useState("all");

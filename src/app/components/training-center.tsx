@@ -1303,7 +1303,7 @@ export function getRealLeaderboard(): LeaderboardAdmin[] {
   try {
     const auditRaw = localStorage.getItem("sosphere_audit_log");
     const drillRaw = localStorage.getItem("sosphere_drill_progress_global");
-    if (!auditRaw && !drillRaw) return FALLBACK_ADMINS;
+    if (!auditRaw && !drillRaw) return import.meta.env.DEV ? FALLBACK_ADMINS : [];
 
     const auditLogs: any[] = auditRaw ? JSON.parse(auditRaw) : [];
     const drillProgress: Record<string, any> = drillRaw ? JSON.parse(drillRaw) : {};
@@ -1329,7 +1329,7 @@ export function getRealLeaderboard(): LeaderboardAdmin[] {
     }
 
     const allNames = Array.from(new Set([...Object.keys(adminMap), ...Object.keys(drillCounts)]));
-    if (allNames.length === 0) return FALLBACK_ADMINS;
+    if (allNames.length === 0) return import.meta.env.DEV ? FALLBACK_ADMINS : [];
 
     return allNames.map((name, idx) =>
       buildAdminRow({
@@ -1340,7 +1340,7 @@ export function getRealLeaderboard(): LeaderboardAdmin[] {
         drills: drillCounts[name] || 0,
       }),
     );
-  } catch { return FALLBACK_ADMINS; }
+  } catch { return import.meta.env.DEV ? FALLBACK_ADMINS : []; }
 }
 
 // ═══════════════════════════════════════════════════════════════

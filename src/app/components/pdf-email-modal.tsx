@@ -472,7 +472,7 @@ export function PdfEmailModal({
                             className="overflow-hidden mb-2"
                           >
                             <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                              {MOCK_TEAM.map(member => {
+                              {(import.meta.env.DEV ? MOCK_TEAM : []).map(member => {
                                 const isAdded = recipients.some(r => r.email === member.email);
                                 return (
                                   <button key={member.email}

@@ -230,7 +230,7 @@ export function WeatherAlertsPage({ t, webMode }: { t: (k: string) => string; we
   // Build real alerts from live weather, fall back to mock
   const activeAlerts = realWeather
     ? buildWeatherAlerts(realWeather, "All Zones")
-    : MOCK_ALERTS.filter(a => a.isActive);
+    : (import.meta.env.DEV ? MOCK_ALERTS.filter(a => a.isActive) : []);
 
   // Build real zone weather if we have live data
   const zoneWeatherData: ZoneWeather[] = realWeather

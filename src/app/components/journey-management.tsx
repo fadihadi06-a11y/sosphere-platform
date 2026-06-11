@@ -119,7 +119,7 @@ export function JourneyManagementPage({ t, webMode, onGuideMe, onLaunchSAR }: { 
     // `sosphere_journeys` key is killed by getCachedJourneys as a
     // one-shot migration — closes the CRIT-#4 cross-tenant leak class.
     const cached = getCachedJourneys();
-    return cached.length > 0 ? cached : MOCK_JOURNEYS;
+    return cached.length > 0 ? cached : (import.meta.env.DEV ? MOCK_JOURNEYS : []);
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "issues">("all");
