@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-11T13:51:44.030Z",
-  "total_migrations": 188,
-  "manifest_sha256": "07faaea293916713b4e651e03cee0728d1e0881cd0cf0f9404b7027ced79d45f",
+  "generated_at": "2026-06-11T17:29:45.542Z",
+  "total_migrations": 189,
+  "manifest_sha256": "aa59c0694aa0d978f31303e50da7a2be5aa7116078bbb6c4f7bf52eb7ee6bf8e",
   "migrations": [
     {
       "version": "20260415",
@@ -1297,6 +1297,13 @@
       "file": "20260610_gps_trail_company_id_backfill.sql",
       "sha256": "e523fee0b7df21107e2bac83b113e33a2b0fd3f35873624a65721d2fcdc7b6e7",
       "bytes": 2293
+    },
+    {
+      "version": "20260611",
+      "name": "client_append_audit_rpc",
+      "file": "20260611_client_append_audit_rpc.sql",
+      "sha256": "9e4faddb6761d7104c84d67b1f7617a9695c747fd7f2bb43772971d655c922e3",
+      "bytes": 3814
     },
     {
       "version": "20260611",

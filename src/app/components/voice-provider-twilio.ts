@@ -126,6 +126,17 @@ export class TwilioClientProvider implements VoiceProvider {
       return;
     }
 
+    // Defer until a signed-in session exists. twilio-token REQUIRES a user
+    // Bearer token (it 401s without one), so the eager construction-time init
+    // — which runs before login — must NOT call it. refreshAuthToken() re-runs
+    // initialize() with supabaseAccessToken set, and that pass mints the token.
+    // This avoids the harmless-but-noisy 401 on every cold load.
+    if (!config.supabaseAccessToken) {
+      this._ready = false;
+      console.info("[TwilioClient] Awaiting user session — voice token deferred until login.");
+      return;
+    }
+
     try {
       // 1. Fetch token from Supabase Edge Function
       const identity = `sosphere-${config.employeeName || "user"}-${Date.now()}`;

@@ -402,9 +402,11 @@ async function persistToSupabase(entry: AuditEntry): Promise<void> {
           ]
         : [applyServerActor(toDbRow(entry, companyId), serverActorId)];
 
-      const { error } = await supabase
-        .from("audit_log")
-        .upsert(batch, { onConflict: "id" });
+      // Route through the SECURITY DEFINER RPC (client_append_audit):
+      // the authenticated role has no direct INSERT on audit_log (W3-8
+      // tamper lockdown). The RPC forces actor_id=auth.uid(), validates
+      // company membership, and appends ON CONFLICT DO NOTHING.
+      const { error } = await supabase.rpc("client_append_audit", { p_rows: batch });
 
       if (error) {
         console.warn("[audit] Supabase insert failed, queued for retry:", error.message);
@@ -461,9 +463,9 @@ export async function flushAuditRetryQueue(): Promise<number> {
       const queue = loadRetryQueue();
       if (queue.length === 0) return;
       const drainedIds = new Set(queue.map((e) => e.id));
-      const { error } = await supabase
-        .from("audit_log")
-        .upsert(queue.map((e) => toDbRow(e, companyId)), { onConflict: "id" });
+      const { error } = await supabase.rpc("client_append_audit", {
+        p_rows: queue.map((e) => toDbRow(e, companyId)),
+      });
       if (error) {
         console.warn("[audit] flushAuditRetryQueue failed:", error.message);
         return;
