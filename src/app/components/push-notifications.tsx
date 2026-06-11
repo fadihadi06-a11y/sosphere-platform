@@ -1,3 +1,4 @@
+import { showLocalNotification } from "./api/local-notification";
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — Push Notification System
 // ─────────────────────────────────────────────────────────────
@@ -78,24 +79,12 @@ class NotificationManager {
     try {
       const iconEmoji = notif.type === "sos" ? "🚨" : notif.type === "fall_detected" ? "⚠️" : notif.type === "environment" ? "🌡️" : "🔔";
       
-      const n = new Notification(`${iconEmoji} ${notif.title}`, {
+      return await showLocalNotification(`${iconEmoji} ${notif.title}`, {
         body: notif.body,
         tag: notif.id,
         requireInteraction: notif.severity === "critical",
         silent: false,
       });
-
-      n.onclick = () => {
-        window.focus();
-        n.close();
-      };
-
-      // Auto-close non-critical after 10s
-      if (notif.severity !== "critical") {
-        setTimeout(() => n.close(), 10000);
-      }
-
-      return true;
     } catch {
       return false;
     }
