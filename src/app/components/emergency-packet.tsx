@@ -758,7 +758,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                       🚨 <span style={{ fontWeight: 700, color: "#FF2D55" }}>EMERGENCY ALERT</span> — {userName || "User"} needs help!
                       <br />📍 {realLocation.coordinates === "Not yet captured" ? "Location pending" : realLocation.coordinates}
                       <br />🩸 Blood: {realMedical.bloodType} | Allergies: {realMedical.allergies}
-                      <br />🔗 Live: sosphere.app/e/{Date.now().toString(36).slice(-6).toUpperCase()}
+                      <br />🔗 Live: sosphere.co/e/{Date.now().toString(36).slice(-6).toUpperCase()}
                     </p>
                   </div>
                 </div>

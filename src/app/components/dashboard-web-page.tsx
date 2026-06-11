@@ -835,7 +835,7 @@ export function DashboardWebPage() {
       // subdomains catch the OAuth return. We pin redirectTo to the
       // canonical production origin in production builds; dev mode falls
       // back to the live origin so localhost still works.
-      const PROD_ORIGIN = "https://sosphere-platform.vercel.app";
+      const PROD_ORIGIN = "https://sosphere.co";
       const redirectOrigin = import.meta.env.PROD ? PROD_ORIGIN : window.location.origin;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",

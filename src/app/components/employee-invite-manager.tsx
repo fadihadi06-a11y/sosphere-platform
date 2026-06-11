@@ -42,7 +42,7 @@ interface EmployeeInviteManagerProps {
 const APP_LINKS = {
   playStore: "https://play.google.com/store/apps/details?id=com.sosphere.app",
   appStore: "https://apps.apple.com/app/sosphere/id1234567890",
-  universal: "https://sosphere.app/download",
+  universal: "https://sosphere.co/download",
 };
 
 export function EmployeeInviteManager({
@@ -68,7 +68,7 @@ export function EmployeeInviteManager({
     created: number; refreshed: number; invalid: number;
   } | null>(null);
 
-  const joinLink = `https://sosphere.app/join/${inviteCode}`;
+  const joinLink = `https://sosphere.co/join/${inviteCode}`;
 
   const copyText = (text: string, id: string) => {
     navigator.clipboard?.writeText(text);

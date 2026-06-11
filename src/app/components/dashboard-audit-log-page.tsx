@@ -552,7 +552,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     const today = new Date();
     // PR (E) — was Math.random-based AUD doc ID; now crypto-backed.
     const docId = secureRandomId("AUD", 4);
-    const verifyURL = `https://sosphere.app/verify/${docId}`;
+    const verifyURL = `https://sosphere.co/verify/${docId}`;
     let qrDataURL = "";
     try {
       qrDataURL = await QRCode.toDataURL(verifyURL, {

@@ -671,7 +671,7 @@ export function UnifiedEmployeesPage({
         },
         // Audit 2026-05-02 (CRITICAL employee onboarding fix): without an
         // explicit redirect_to, invite-employees falls back to
-        // `${SITE_URL || 'https://sosphere.app'}/welcome` — sosphere.app is
+        // `${SITE_URL || 'https://sosphere.co'}/welcome` — sosphere.app is
         // a wrong domain and Supabase Auth's allowlist may also reject it,
         // so the magic link redirected employees back to the landing page
         // instead of the activation flow. New companies could not onboard

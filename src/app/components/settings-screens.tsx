@@ -442,8 +442,8 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
                   business WhatsApp when available. */}
               {[
                 {
-                  icon: Mail, label: "Email Support", sub: "support@sosphere.app", color: "#00C8E0",
-                  href: "mailto:support@sosphere.app?subject=SOSphere%20Support%20Request",
+                  icon: Mail, label: "Email Support", sub: "support@sosphere.co", color: "#00C8E0",
+                  href: "mailto:support@sosphere.co?subject=SOSphere%20Support%20Request",
                 },
                 {
                   icon: MessageCircle, label: "WhatsApp Support", sub: "Chat with our team", color: "#00C853",
@@ -498,7 +498,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               of a toast stub. Uses https URL so it opens in the device's
               browser (or Capacitor's in-app browser). */}
           <div className="px-5 mt-5">
-            <a href="https://sosphere.app/legal/terms" target="_blank" rel="noopener noreferrer" className="w-full p-4 flex items-center gap-3"
+            <a href="https://sosphere.co/terms" target="_blank" rel="noopener noreferrer" className="w-full p-4 flex items-center gap-3"
               onClick={() => { hapticLight(); }}
               style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", textDecoration: "none" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
