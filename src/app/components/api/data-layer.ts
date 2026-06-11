@@ -302,6 +302,8 @@ export async function fetchEmergencies(): Promise<EmergencyItem[]> {
           evacuation: "Evacuation Alert",
           checkin_timeout: "Missed Check-In",
           missed_checkin:  "Missed Check-In",
+          zone_breach: "Zone Breach",
+          discreet:    "Silent SOS",
         };
         return MAP[t ?? ""] || "SOS Emergency";
       };
