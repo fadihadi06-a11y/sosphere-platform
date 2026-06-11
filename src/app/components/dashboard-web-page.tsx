@@ -1667,7 +1667,7 @@ export function DashboardWebPage() {
                             Start Free Trial
                           </motion.button>
                           <motion.button whileTap={{ scale: 0.97 }}
-                            onClick={() => window.open("mailto:sales@sosphere.io?subject=Demo Request", "_blank")}
+                            onClick={() => window.open("mailto:sales@sosphere.co?subject=Demo Request", "_blank")}
                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px]"
                             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>
                             Request Demo

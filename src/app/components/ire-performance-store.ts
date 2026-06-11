@@ -238,6 +238,6 @@ export function buildQRPayload(data: {
     phases: data.phasesCompleted,
     timestamp: data.timestamp,
     verificationCode: hash,
-    verifyUrl: `https://sosphere.io/verify/${hash}`,
+    verifyUrl: `https://sosphere.co/verify/${hash}`,
   });
 }

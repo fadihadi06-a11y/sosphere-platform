@@ -640,8 +640,12 @@ export function IncidentReportsTab({ webMode = false, onEscalateToInvestigation 
     const realEvidence = getAllEvidence();
     const realReports = realEvidence.map(evidenceToReport);
     const realIds = new Set(realReports.map(r => r.emergencyId));
-    // Only fill with mock reports that don't overlap with real data
-    const mockFiltered = MOCK_REPORTS.filter(m => !realIds.has(m.emergencyId));
+    // DEV-only demo incidents. Production shows REAL data only — never
+    // fabricated reports (with stock-photo evidence) mixed into a customer's
+    // live incident feed. Matches the project's demo-data-gating convention.
+    const mockFiltered = import.meta.env.DEV
+      ? MOCK_REPORTS.filter(m => !realIds.has(m.emergencyId))
+      : [];
     return [...realReports, ...mockFiltered];
   });
   const [selectedReport, setSelectedReport] = useState<IncidentPhotoReport | null>(null);
