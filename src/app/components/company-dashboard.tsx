@@ -571,6 +571,56 @@ function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
 // Main Dashboard Component
 // ═══════════════════════════════════════════════════════════════
 export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOSTrigger, onLogout, webMode = false, authUserId = null }: CompanyDashboardProps) {
+  // ── Voice-engine server-auth sync (admin/dispatcher side) ──────
+  // ROOT-CAUSE FIX (2026-06-11): twilio-token returned 401 on the
+  // dashboard because the admin call surface (AdminCallSystem) shares the
+  // singleton voiceCallEngine, but only mobile-app.tsx ever pushed the
+  // signed-in user's access_token into it. On the web dashboard tree
+  // mobile-app is never mounted, so the engine called twilio-token with
+  // no Authorization header → the auth gate rejected it. We mirror the
+  // mobile token-sync here (token ONLY — no navigation, no FCM) so the
+  // dispatcher's Twilio voice token mints correctly. Idempotent and
+  // null-safe: SIGNED_OUT leaves the engine as-is via refreshAuthToken's
+  // own null guard.
+  useEffect(() => {
+    let cancelled = false;
+    let subscription: { unsubscribe: () => void } | null = null;
+    (async () => {
+      try {
+        const [{ supabase, getSession }, { voiceCallEngine }] = await Promise.all([
+          import("./api/supabase-client"),
+          import("./voice-call-engine"),
+        ]);
+        if (cancelled) return;
+        // Hydrate immediately for an already-restored session (no
+        // SIGNED_IN event fires for a persisted session on cold load).
+        try {
+          const session = await getSession();
+          if (!cancelled && session?.access_token) {
+            await voiceCallEngine.refreshAuthToken(session.access_token);
+          }
+        } catch (err) {
+          console.warn("[dashboard] voice-engine initial token sync failed:", err);
+        }
+        if (cancelled) return;
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          const token = session?.access_token;
+          if (!token) return; // SIGNED_OUT / null — leave engine as-is
+          voiceCallEngine.refreshAuthToken(token).catch((err) => {
+            console.warn("[dashboard] voice-engine token refresh failed:", err);
+          });
+        });
+        subscription = data?.subscription ?? null;
+      } catch (err) {
+        console.warn("[dashboard] voice-engine auth sync setup failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try { subscription?.unsubscribe(); } catch {}
+    };
+  }, []);
+
   // ── Init Supabase Realtime channels on mount ────────────────
   // Uses Supabase session company_id for isolated realtime channel
   useEffect(() => {
