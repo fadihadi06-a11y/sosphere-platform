@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-11T13:38:29.382Z",
-  "total_migrations": 187,
-  "manifest_sha256": "41ac1d8a46ef852b75073466654e382de779be2e46ad30321b56353016aef03c",
+  "generated_at": "2026-06-11T13:51:44.030Z",
+  "total_migrations": 188,
+  "manifest_sha256": "07faaea293916713b4e651e03cee0728d1e0881cd0cf0f9404b7027ced79d45f",
   "migrations": [
     {
       "version": "20260415",
@@ -1304,6 +1304,13 @@
       "file": "20260611_discreet_sos_to_queue_projection.sql",
       "sha256": "c21a07e52e9597ddcd959628fa29fb27fa17a3e85c65e18c4b23243fbae2cbda",
       "bytes": 2704
+    },
+    {
+      "version": "20260611",
+      "name": "duress_to_queue_projection",
+      "file": "20260611_duress_to_queue_projection.sql",
+      "sha256": "db46ced152081bbc10ae8db1867225ec5a1be531925a2bb6c1a8fa76ba14f5e7",
+      "bytes": 3111
     },
     {
       "version": "20260611",

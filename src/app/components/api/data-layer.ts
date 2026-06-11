@@ -304,6 +304,7 @@ export async function fetchEmergencies(): Promise<EmergencyItem[]> {
           missed_checkin:  "Missed Check-In",
           zone_breach: "Zone Breach",
           discreet:    "Silent SOS",
+          duress:      "Duress (covert)",
         };
         return MAP[t ?? ""] || "SOS Emergency";
       };
