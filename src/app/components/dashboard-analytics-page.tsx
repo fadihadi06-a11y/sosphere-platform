@@ -217,9 +217,12 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
   }, [timeRange, realAnalytics.monthlyIncidents]);
 
   const filteredResponseTimes = React.useMemo(() => {
+    // No real response-time SERIES is collected yet; show the demo curve only in
+    // dev, never fabricate a trend in production.
+    const source = DEV_DEMO ? RESPONSE_TIMES : [];
     const sliceMap: Record<string, number> = { "7d": 1, "30d": 2, "90d": 4, "1y": 7 };
-    const count = sliceMap[timeRange] ?? RESPONSE_TIMES.length;
-    return RESPONSE_TIMES.slice(-count);
+    const count = sliceMap[timeRange] ?? source.length;
+    return source.slice(-count);
   }, [timeRange]);
 
   // Real KPI override — uses store KPIs (from Supabase) first, then audit-log fallback
@@ -493,7 +496,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={SAFETY_TREND}>
+            <AreaChart data={DEV_DEMO ? SAFETY_TREND : []}>
               <CartesianGrid key="cg" strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis key="xa" dataKey="week" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis key="ya" domain={[70, 100]} tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -515,7 +518,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             <div style={{ width: 160, height: 160 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie key="pie" data={INCIDENT_BY_TYPE} cx="50%" cy="50%" innerRadius={45} outerRadius={70}
+                  <Pie key="pie" data={realIncidentByType} cx="50%" cy="50%" innerRadius={45} outerRadius={70}
                     paddingAngle={3} dataKey="value" stroke="none">
                   {realIncidentByType.map((entry, i) => (
                     <Cell key={`cell-${i}`} fill={entry.color} />

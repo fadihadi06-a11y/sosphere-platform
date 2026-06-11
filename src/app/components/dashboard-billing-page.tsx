@@ -122,7 +122,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
             Last updated: March 2026
           </p>
           <button
-            onClick={() => toast("Terms of Service", { description: "Full terms document would open in a new tab" })}
+            onClick={() => window.open("/terms", "_blank", "noopener,noreferrer")}
             style={{
               fontSize: compact ? 9 : 11,
               fontWeight: 600,
@@ -616,7 +616,7 @@ export function BillingPage({ companyState, webMode = false }: {
               </div>
               <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Invoice History</p>
             </div>
-            <button onClick={() => { hapticSuccess(); toast.success("Downloading All Invoices", { description: "ZIP archive is being prepared..." }); }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>
+            <button onClick={async () => { hapticSuccess(); try { await openBillingPortal(); } catch { toast("Invoices in billing portal", { description: "Your invoices and PDF downloads open in the Stripe billing portal once you have an active paid subscription." }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>
               <Download className="size-3.5" /> Download All
             </button>
           </div>
@@ -641,7 +641,7 @@ export function BillingPage({ companyState, webMode = false }: {
                 {inv.addonsCost > 0 ? `$${inv.addonsCost}` : "—"}
               </p>
               <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>${inv.amount.toFixed(2)}</p>
-              <button onClick={() => { hapticLight(); toast.success("Downloading Invoice", { description: `${inv.id} PDF is being generated...` }); }} style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
+              <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoice PDF in billing portal", { description: "Open the Stripe billing portal to view and download this invoice as PDF." }); } }} style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
             </div>
           ))}
         </motion.div>
@@ -835,7 +835,7 @@ export function BillingPage({ companyState, webMode = false }: {
       <div>
         <div className="flex items-center justify-between mb-3">
           <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>INVOICE HISTORY</p>
-          <button onClick={() => { hapticLight(); toast.success("Downloading Invoices"); }} style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600, cursor: "pointer" }}>Download All</button>
+          <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoices in billing portal", { description: "Available with an active paid subscription." }); } }} style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600, cursor: "pointer" }}>Download All</button>
         </div>
         <DSCard padding={0}>
           {ALL_INVOICES.slice(0, 6).map((inv, i) => (

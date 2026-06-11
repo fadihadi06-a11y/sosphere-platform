@@ -6,7 +6,8 @@
 // Includes: company logo, headers, tables, charts, timestamps
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { loadEmailSchedules, saveEmailSchedule } from "./email-schedules-service";
 import { motion, AnimatePresence } from "motion/react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -405,10 +406,11 @@ interface PdfReportData {
 // The toggleSchedule handler still mutates local state for instant
 // UX feedback; durable persistence flows through saveEmailSchedule.
 
+const FREQ_LABEL: Record<string, string> = { daily: "Daily 8:00 AM", weekly: "Every Monday 8:00 AM", monthly: "1st of every month", quarterly: "Every 3 months" };
 const DEFAULT_SCHEDULES = [
-  { id: "sched-1", name: "Weekly Safety Report", frequency: "Every Monday 8:00 AM", active: true, reportTypes: ["safety_kpi", "checkin_compliance"] },
-  { id: "sched-2", name: "Monthly Compliance Report", frequency: "1st of every month", active: true, reportTypes: ["full_compliance"] },
-  { id: "sched-3", name: "Quarterly Insurance Report", frequency: "Every 3 months", active: false, reportTypes: ["insurance_claim", "incident_summary"] },
+  { id: "sched-1", name: "Weekly Safety Report", freq: "weekly", frequency: "Every Monday 8:00 AM", active: true, reportTypes: ["safety_kpi", "checkin_compliance"], recipients: [] as string[] },
+  { id: "sched-2", name: "Monthly Compliance Report", freq: "monthly", frequency: "1st of every month", active: true, reportTypes: ["full_compliance"], recipients: [] as string[] },
+  { id: "sched-3", name: "Quarterly Insurance Report", freq: "quarterly", frequency: "Every 3 months", active: false, reportTypes: ["insurance_claim", "incident_summary"], recipients: [] as string[] },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -1784,13 +1786,33 @@ export function ComplianceReportsPage({ t, webMode, companyName: companyNameProp
   const [activeTab, setActiveTab] = useState<"reports" | "schedule">("reports");
 
   // ── Auto-Schedule State ──
-  const [schedules, setSchedules] = useState(DEFAULT_SCHEDULES.map(s => ({ ...s })));
+  // REAL DATA: schedules hydrate from the email_schedules table (get_email_schedules
+  // RPC); toggles persist via upsert_email_schedule. The demo seed shows only in dev
+  // when there is no real schedule yet — never fabricated in production.
+  const [schedules, setSchedules] = useState(() => import.meta.env.DEV ? DEFAULT_SCHEDULES.map(s => ({ ...s })) : [] as typeof DEFAULT_SCHEDULES);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await loadEmailSchedules();
+        if (cancelled || rows.length === 0) return;
+        setSchedules(rows.map(r => ({
+          id: r.id, name: r.name, freq: r.frequency,
+          frequency: FREQ_LABEL[r.frequency] || r.frequency,
+          active: r.enabled, reportTypes: r.report_types || [], recipients: r.recipients || [],
+        })) as typeof DEFAULT_SCHEDULES);
+      } catch { /* keep current state */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const toggleSchedule = useCallback((id: string) => {
     setSchedules(prev => prev.map(s => {
       if (s.id !== id) return s;
       const enabled = !s.active;
-      console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id: s.id, name: s.name, frequency: s.frequency, enabled, reportTypes: s.reportTypes }));
+      // Durable persistence (was console-only before).
+      void saveEmailSchedule({ id: s.id, name: s.name, frequency: ((s as any).freq || "weekly"), reportTypes: s.reportTypes, recipients: (s as any).recipients || [], enabled });
       return { ...s, active: enabled };
     }));
   }, []);
