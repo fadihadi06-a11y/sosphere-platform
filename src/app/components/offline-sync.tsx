@@ -484,7 +484,7 @@ export function OfflineIndicator({ compact = false }: OfflineIndicatorProps) {
                 <div className="flex-1">
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>You're Offline</p>
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, marginTop: 2 }}>
-                    All safety features still work. Data is stored in IndexedDB and will auto-sync when connection returns.
+                    Data is stored locally and syncs when you reconnect. While offline, emergency alerts may be delayed — if it's urgent, call your local emergency services directly.
                   </p>
                 </div>
                 <button onClick={() => setShowOfflineBanner(false)}
@@ -497,7 +497,7 @@ export function OfflineIndicator({ compact = false }: OfflineIndicatorProps) {
               {/* Protection Status */}
               <div className="flex gap-2 mt-3">
                 {[
-                  { icon: Shield, label: "SOS Active", color: "#00C853" },
+                  { icon: Shield, label: "SOS: Delayed", color: "#FF9500" },
                   { icon: Satellite, label: gpsState.isTracking ? "GPS Recording" : "GPS Off", color: gpsState.isTracking ? "#00C8E0" : "#FF9500" },
                   { icon: Clock, label: "Timer Active", color: "#FF9500" },
                   { icon: Database, label: `${totalUnsynced} Queued`, color: "#7B5EFF" },

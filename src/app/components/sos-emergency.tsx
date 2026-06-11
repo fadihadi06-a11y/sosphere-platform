@@ -2401,8 +2401,17 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     }).then(result => {
       setServerResult(result);
       if (result.success) {
-        dlog("[SOS] Path B (server) completed:", result.results?.length, "contacts processed");
-        addEvent({ type: "sms_sent", title: "Server alerts sent", detail: `Tier: ${result.tier} · ${result.results?.length || 0} contacts`, color: "#00C8E0" });
+        const _reached = (result.results || []).filter(r => r.smsSid || r.callSid).length;
+        const _total = result.results?.length || 0;
+        dlog("[SOS] Path B (server) completed:", _reached, "of", _total, "contacts reached");
+        if (_reached > 0) {
+          addEvent({ type: "sms_sent", title: "Server alerts sent", detail: `Tier: ${result.tier} · ${_reached}/${_total} contacts reached`, color: "#00C8E0" });
+        } else {
+          // LIFE-SAFETY HONESTY: a 200 from sos-alert means "received", NOT
+          // "delivered". When zero contacts were actually reached (e.g. SMS/voice
+          // provider degraded), never imply help is on the way.
+          addEvent({ type: "sos_start", title: "Alert logged — contacts NOT yet reached", detail: "Admins were notified in-app. If urgent, call your contacts or local emergency services directly.", color: "#FF9500" });
+        }
       } else {
         console.warn("[SOS] Path B (server) failed:", result.error);
         // Server failure is non-fatal — local call (Path A) continues
