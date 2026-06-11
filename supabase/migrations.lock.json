@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-08T19:30:20.719Z",
-  "total_migrations": 183,
-  "manifest_sha256": "e792ed41c66405025ab334eaf36aa51c848d9cf8ed9adb838f04b30c63875e57",
+  "generated_at": "2026-06-11T11:30:10.755Z",
+  "total_migrations": 184,
+  "manifest_sha256": "d150c30ae21c7a0205e563eaf7a1b7825c63be8e4ef0d01a11a28080fa533899",
   "migrations": [
     {
       "version": "20260415",
@@ -1283,6 +1283,13 @@
       "file": "20260608_weather_sweep_bearer_header_fix.sql",
       "sha256": "96934a82e9c425c1e035899856a92525419264ae10d90de5c68b760716dd0f17",
       "bytes": 3425
+    },
+    {
+      "version": "20260610",
+      "name": "checkin_deadman_watchdog",
+      "file": "20260610_checkin_deadman_watchdog.sql",
+      "sha256": "660d1407f7874c6a2cb137eb4866bfd5704e3e4ee51c51cfcd6162c50c590ea0",
+      "bytes": 3457
     }
   ]
 }
