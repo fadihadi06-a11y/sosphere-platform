@@ -22,6 +22,7 @@ const READ = (rel: string) =>
 
 const CALLER_FILES = [
   "src/app/components/api/subscription-realtime.ts",
+  "src/app/components/company-dashboard.tsx",
   "src/app/components/dashboard-web-page.tsx",
   "src/app/components/mobile-app.tsx",
   "src/app/components/sentry-client.ts",
