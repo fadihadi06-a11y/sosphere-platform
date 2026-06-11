@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-11T12:34:33.170Z",
-  "total_migrations": 185,
-  "manifest_sha256": "926fe5375be9b4ee5e4702f4f4ed88c4dfff66549d0c5702eb4851e32adca929",
+  "generated_at": "2026-06-11T13:16:31.501Z",
+  "total_migrations": 186,
+  "manifest_sha256": "5058f591767abf04d27d3fa849baae39692da0224267184726b8585305d4395d",
   "migrations": [
     {
       "version": "20260415",
@@ -1297,6 +1297,13 @@
       "file": "20260610_gps_trail_company_id_backfill.sql",
       "sha256": "e523fee0b7df21107e2bac83b113e33a2b0fd3f35873624a65721d2fcdc7b6e7",
       "bytes": 2293
+    },
+    {
+      "version": "20260611",
+      "name": "discreet_sos_to_queue_projection",
+      "file": "20260611_discreet_sos_to_queue_projection.sql",
+      "sha256": "c21a07e52e9597ddcd959628fa29fb27fa17a3e85c65e18c4b23243fbae2cbda",
+      "bytes": 2704
     }
   ]
 }
