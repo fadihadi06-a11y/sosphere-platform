@@ -559,7 +559,7 @@ export function BillingPage({ companyState, webMode = false }: {
                       Switch to {plan.name}
                     </button>
                   ) : (
-                    <button onClick={() => { hapticLight(); toast("Contact Sales", { description: "Our enterprise team will reach out within 24 hours" }); }} className="w-full py-3 rounded-xl" style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1.5px solid ${plan.color}30`, cursor: "pointer" }}>
+                    <button onClick={() => { hapticLight(); window.location.href = "mailto:sales@sosphere.co?subject=SOSphere%20Enterprise%20Inquiry"; }} className="w-full py-3 rounded-xl" style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1.5px solid ${plan.color}30`, cursor: "pointer" }}>
                       Contact Sales
                     </button>
                   )}
@@ -822,7 +822,7 @@ export function BillingPage({ companyState, webMode = false }: {
                 </button>
               )}
               {!plan.current && plan.price <= 0 && (
-                <button onClick={() => { hapticLight(); toast("Contact Sales", { description: "Enterprise team will reach out within 24 hours" }); }} className="w-full py-2 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1px solid ${plan.color}25`, cursor: "pointer" }}>
+                <button onClick={() => { hapticLight(); window.location.href = "mailto:sales@sosphere.co?subject=SOSphere%20Enterprise%20Inquiry"; }} className="w-full py-2 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1px solid ${plan.color}25`, cursor: "pointer" }}>
                   Contact Sales
                 </button>
               )}
