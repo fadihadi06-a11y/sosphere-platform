@@ -185,7 +185,11 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 // ── Dashboard Emergency Playbook Page ─────────────────────────
 export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
-  const [playbooks, setPlaybooks] = useState(MOCK_PLAYBOOKS);
+  // PROD SAFETY: MOCK_PLAYBOOKS is demo content. In production the tab starts
+  // empty (owner builds/imports their own); DEV shows the samples. Matches the
+  // import.meta.env.DEV gating convention used across every other dashboard
+  // page. fetchPlaybookUsage() still merges real usage counts on top.
+  const [playbooks, setPlaybooks] = useState<Playbook[]>(import.meta.env.DEV ? MOCK_PLAYBOOKS : []);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "auto" | "manual">("all");
   const [runningPlaybook, setRunningPlaybook] = useState<string | null>(null);
