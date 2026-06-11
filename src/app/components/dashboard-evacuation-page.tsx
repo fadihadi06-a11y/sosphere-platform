@@ -154,6 +154,30 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
         });
       } catch { /* server-write best-effort — local broadcast already fired */ }
     })();
+    // P0 life-safety (evacuation push parity with SOS): sendBroadcast below is
+    // in-app/Realtime only — a worker whose app is backgrounded/closed never
+    // sees the evacuation order. Wake closed apps with a real push to every
+    // company worker via the same send-push-notification path SOS uses.
+    // Best-effort; the durable evacuations row + Realtime already cover open apps.
+    void (async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+        const { supabase } = await import("./api/supabase-client");
+        const { data: workers } = await supabase
+          .from("employees")
+          .select("user_id")
+          .eq("company_id", companyId)
+          .not("user_id", "is", null);
+        const pTitle = `\u{1F6A8} EVACUATION \u2014 ${zone.name}`;
+        const pBody = `IMMEDIATE EVACUATION. ${evacuationReason}. Go to your assembly point now \u2014 this is NOT a drill.`;
+        await Promise.allSettled((workers ?? []).map((w: { user_id: string }) =>
+          supabase.functions.invoke("send-push-notification", {
+            body: { targetUserId: w.user_id, title: pTitle, body: pBody,
+              data: { type: "evacuation", evacId, zone: zone.name, priority: "emergency" } },
+          })));
+      } catch { /* push is best-effort — durable row + Realtime already fired */ }
+    })();
     sendBroadcast({
       title: `🚨 EVACUATION ORDER — ${zone.name}`,
       body: `IMMEDIATE EVACUATION REQUIRED. Reason: ${evacuationReason}. Proceed to your nearest assembly point immediately. This is NOT a drill.`,
