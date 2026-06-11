@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-11T11:30:10.755Z",
-  "total_migrations": 184,
-  "manifest_sha256": "d150c30ae21c7a0205e563eaf7a1b7825c63be8e4ef0d01a11a28080fa533899",
+  "generated_at": "2026-06-11T12:34:33.170Z",
+  "total_migrations": 185,
+  "manifest_sha256": "926fe5375be9b4ee5e4702f4f4ed88c4dfff66549d0c5702eb4851e32adca929",
   "migrations": [
     {
       "version": "20260415",
@@ -1290,6 +1290,13 @@
       "file": "20260610_checkin_deadman_watchdog.sql",
       "sha256": "660d1407f7874c6a2cb137eb4866bfd5704e3e4ee51c51cfcd6162c50c590ea0",
       "bytes": 3457
+    },
+    {
+      "version": "20260610",
+      "name": "gps_trail_company_id_backfill",
+      "file": "20260610_gps_trail_company_id_backfill.sql",
+      "sha256": "e523fee0b7df21107e2bac83b113e33a2b0fd3f35873624a65721d2fcdc7b6e7",
+      "bytes": 2293
     }
   ]
 }

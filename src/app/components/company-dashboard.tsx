@@ -1771,7 +1771,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           about, so we can mount it unconditionally and let it decide. */}
       <LiveTrialBanner companyId={typeof window !== "undefined" ? localStorage.getItem("sosphere_company_id") : null} />
       {/* FIX 3: Trial Expired Overlay — blocks all pages except Settings + Billing */}
-      {isTrialExpired(companyState) && isPageBlockedByTrial(currentPage, companyState) && (
+      {isTrialExpired(companyState) && isPageBlockedByTrial(currentPage, companyState) && !hasActiveEmergency /* LIFE-SAFETY: never paywall the dispatcher console during a live emergency; overlay returns once resolved */ && (
         <TrialExpiredOverlay
           companyState={companyState}
           employeeCount={employees.length}

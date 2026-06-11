@@ -1365,7 +1365,7 @@ export function MobileApp() {
     if (loggedInScreens.includes(screen)) {
       // Start GPS tracking with high-risk preset
       const _realGpsId = loginName.replace(/\s+/g, "") ? `EMP-${loginName.replace(/\s+/g, "")}` : "EMP-UNKNOWN";
-      startGPSTracking({ employeeId: _realGpsId, ...ZONE_PRESETS.high });
+      startGPSTracking({ employeeId: authUserId ?? _realGpsId, ...ZONE_PRESETS.high });  // GAP-3: gps_trail.employee_id is uuid + self-RLS — prefer the auth uid (string EMP-* fails the insert)
       // Enable auto-sync on reconnect
       enableAutoSync();
       // Phase 2 CRIT-3 (2026-06-01): load this company's zones into the
@@ -1383,7 +1383,7 @@ export function MobileApp() {
     return () => {
       // Don't stop GPS on screen change - only stop when logging out
     };
-  }, [screen, activeCompanyId]);
+  }, [screen, activeCompanyId, authUserId]);  // GAP-3: restart tracker once the auth uid loads so breadcrumbs persist
 
   useEffect(() => {
     if (screen === "sos-emergency") {

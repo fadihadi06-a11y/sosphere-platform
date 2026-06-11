@@ -159,9 +159,11 @@ export function DronesPage({ companyState }: Props) {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Raise a test SOS, approve a drone, and watch it fly live.</p>
+            {import.meta.env.DEV && (
             <button onClick={() => void simulateSOS()} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: "#FF2D55", cursor: "pointer" }}>
               <Siren className="size-4" /> Simulate SOS
             </button>
+            )}
           </div>
 
           {/* Live tracker */}
