@@ -221,6 +221,14 @@ const stepsToDTO = (steps: PlaybookStep[]): PlaybookStepDTO[] =>
     timeLimit: st.timeLimit, iconName: st.iconName || "Eye", color: st.color,
   }));
 
+const STEP_COLOR_SWATCHES = ["#FF2D55", "#FF9500", "#FFD60A", "#00C853", "#00C8E0", "#8B5CF6"];
+const STEP_ICON_NAMES = Object.keys(PB_ICONS);
+const DEFAULT_STARTER_STEPS: PlaybookStepDTO[] = [
+  { id: "S1", action: "Verify situation and assess severity", responsible: "Zone Admin", timeLimit: "< 1 min", iconName: "Eye", color: "#00C8E0" },
+  { id: "S2", action: "Contact affected employee(s)", responsible: "Zone Admin", timeLimit: "< 2 min", iconName: "Phone", color: "#00C853" },
+  { id: "S3", action: "Escalate to Main Admin if needed", responsible: "Zone Admin", timeLimit: "< 5 min", iconName: "Users", color: "#FF9500" },
+];
+
 // ── Dashboard Emergency Playbook Page ─────────────────────────
 export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
   // PROD SAFETY: MOCK_PLAYBOOKS is demo content. In production the tab starts
@@ -241,6 +249,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const runStepLogRef = useRef<RunStepLog[]>([]);
+  const [editSteps, setEditSteps] = useState<PlaybookStepDTO[]>([]);
 
   // P3-#11g: Reconcile usage counts from Supabase on mount. Playbook
   // *definitions* stay client-side (icon components + localized
@@ -358,6 +367,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
     setNewSeverity(pb.severity);
     setNewTrigger(pb.triggerType);
     setNewAutoTrigger(pb.autoTrigger);
+    setEditSteps(stepsToDTO(pb.steps));
     setShowCreateModal(true);
   }, []);
 
@@ -365,13 +375,34 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
     hapticLight();
     setEditingId(null);
     setNewName(""); setNewDesc(""); setNewSeverity("high"); setNewTrigger("Manual Trigger"); setNewAutoTrigger(false);
+    setEditSteps(DEFAULT_STARTER_STEPS.map(st => ({ ...st })));
     setShowCreateModal(true);
+  }, []);
+
+  const addEditStep = useCallback(() => {
+    setEditSteps(prev => [...prev, { id: `S${prev.length + 1}_${Date.now().toString(36)}`, action: "", responsible: "", timeLimit: "", iconName: "Eye", color: "#00C8E0" }]);
+  }, []);
+  const removeEditStep = useCallback((idx: number) => {
+    setEditSteps(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+  const moveEditStep = useCallback((idx: number, dir: -1 | 1) => {
+    setEditSteps(prev => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }, []);
+  const updateEditStep = useCallback((idx: number, patch: Partial<PlaybookStepDTO>) => {
+    setEditSteps(prev => prev.map((st, i) => (i === idx ? { ...st, ...patch } : st)));
   }, []);
 
   const resetPlaybookForm = useCallback(() => {
     setShowCreateModal(false);
     setEditingId(null);
     setNewName(""); setNewDesc(""); setNewSeverity("high"); setNewTrigger("Manual Trigger"); setNewAutoTrigger(false);
+    setEditSteps([]);
   }, []);
 
   const handleConfirmCreate = useCallback(() => {
@@ -380,36 +411,34 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
       toast.error("Name Required", { description: "Please enter a playbook name" });
       return;
     }
+    // Clean the edited steps: trim actions, drop fully-empty rows, renumber ids.
+    const cleanSteps: PlaybookStepDTO[] = editSteps
+      .map((st, i) => ({ ...st, id: st.id || `S${i + 1}`, action: st.action.trim(), responsible: st.responsible.trim(), timeLimit: st.timeLimit.trim() }))
+      .filter(st => st.action.length > 0);
+    const toLocalSteps = (dtos: PlaybookStepDTO[]): PlaybookStep[] =>
+      dtos.map(st => ({ id: st.id, action: st.action, responsible: st.responsible, timeLimit: st.timeLimit, icon: iconFor(st.iconName), color: st.color, iconName: st.iconName }));
     const iconName = severityIconName(newSeverity);
     const iconColor = SEVERITY_COLORS[newSeverity];
     void (async () => {
       if (editingId) {
-        // EDIT: persist metadata changes; existing steps are preserved.
         const existing = playbooks.find(p => p.id === editingId);
-        const steps = existing ? stepsToDTO(existing.steps) : [];
         const res = await saveCompanyPlaybook({
           id: editingId, name: newName.trim(),
           description: newDesc.trim() || "Custom emergency response protocol",
           triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger,
-          iconName, iconColor, steps, isDefault: existing?.isDefault ?? false, sortOrder: existing?.sortOrder ?? 100,
+          iconName, iconColor, steps: cleanSteps, isDefault: existing?.isDefault ?? false, sortOrder: existing?.sortOrder ?? 100,
         });
         if (!res.ok) { toast.error("Save failed", { description: res.error || "Could not update playbook" }); return; }
         setPlaybooks(prev => prev.map(p => p.id === editingId
-          ? { ...p, name: newName.trim(), description: newDesc.trim() || p.description, triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger, icon: iconFor(iconName), iconName, iconColor }
+          ? { ...p, name: newName.trim(), description: newDesc.trim() || p.description, triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger, icon: iconFor(iconName), iconName, iconColor, steps: toLocalSteps(cleanSteps) }
           : p));
         hapticSuccess();
-        toast.success("Playbook Updated", { description: `"${newName.trim()}" saved` });
+        toast.success("Playbook Updated", { description: `"${newName.trim()}" saved with ${cleanSteps.length} step${cleanSteps.length !== 1 ? "s" : ""}` });
       } else {
-        // CREATE: 3 standard starter steps, then persist.
-        const stepsDTO: PlaybookStepDTO[] = [
-          { id: "S1", action: "Verify situation and assess severity", responsible: "Zone Admin", timeLimit: "< 1 min", iconName: "Eye", color: "#00C8E0" },
-          { id: "S2", action: "Contact affected employee(s)", responsible: "Zone Admin", timeLimit: "< 2 min", iconName: "Phone", color: "#00C853" },
-          { id: "S3", action: "Escalate to Main Admin if needed", responsible: "Zone Admin", timeLimit: "< 5 min", iconName: "Users", color: "#FF9500" },
-        ];
         const res = await saveCompanyPlaybook({
           name: newName.trim(), description: newDesc.trim() || "Custom emergency response protocol",
           triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger,
-          iconName, iconColor, steps: stepsDTO, isDefault: false, sortOrder: 100,
+          iconName, iconColor, steps: cleanSteps, isDefault: false, sortOrder: 100,
         });
         if (!res.ok || !res.id) { toast.error("Create failed", { description: res.error || "Could not save playbook" }); return; }
         const newPb: Playbook = {
@@ -417,15 +446,15 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
           description: newDesc.trim() || "Custom emergency response protocol",
           triggerType: newTrigger, severity: newSeverity, icon: iconFor(iconName), iconName, iconColor,
           autoTrigger: newAutoTrigger, useCount: 0, isDefault: false, templateKey: null, sortOrder: 100,
-          steps: stepsDTO.map(st => ({ id: st.id, action: st.action, responsible: st.responsible, timeLimit: st.timeLimit, icon: iconFor(st.iconName), color: st.color, iconName: st.iconName })),
+          steps: toLocalSteps(cleanSteps),
         };
         setPlaybooks(prev => [...prev, newPb]);
         hapticSuccess();
-        toast.success("Playbook Created", { description: `"${newPb.name}" added with ${newPb.steps.length} steps` });
+        toast.success("Playbook Created", { description: `"${newPb.name}" added with ${newPb.steps.length} step${newPb.steps.length !== 1 ? "s" : ""}` });
       }
       resetPlaybookForm();
     })();
-  }, [newName, newDesc, newSeverity, newTrigger, newAutoTrigger, editingId, playbooks, resetPlaybookForm]);
+  }, [newName, newDesc, newSeverity, newTrigger, newAutoTrigger, editingId, playbooks, editSteps, resetPlaybookForm]);
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 14px", borderRadius: 12,
@@ -438,6 +467,10 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
     cursor: "pointer", appearance: "none" as const,
     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
     backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+  };
+  const miniBtn: React.CSSProperties = {
+    width: 26, height: 26, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center",
+    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer", flexShrink: 0,
   };
 
   return (
@@ -793,13 +826,64 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                   </div>
                 </div>
 
+                {/* Response Steps editor */}
+                <div>
+                  <label style={{ ...TYPOGRAPHY.overline, color: TOKENS.text.muted, display: "block", marginBottom: 8 }}>
+                    RESPONSE STEPS ({editSteps.length})
+                  </label>
+                  <div className="space-y-2" style={{ maxHeight: 280, overflowY: "auto" }}>
+                    {editSteps.map((st, idx) => (
+                      <div key={st.id || idx} className="p-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, minWidth: 18 }}>#{idx + 1}</span>
+                          <input value={st.action} onChange={e => updateEditStep(idx, { action: e.target.value })} placeholder="Step action"
+                            style={{ ...inputStyle, flex: 1, padding: "6px 10px", fontSize: 12 }} />
+                          <button type="button" title="Move up" onClick={() => moveEditStep(idx, -1)} style={miniBtn}>
+                            <ChevronDown size={12} color="rgba(255,255,255,0.45)" style={{ transform: "rotate(180deg)" }} />
+                          </button>
+                          <button type="button" title="Move down" onClick={() => moveEditStep(idx, 1)} style={miniBtn}>
+                            <ChevronDown size={12} color="rgba(255,255,255,0.45)" />
+                          </button>
+                          <button type="button" title="Remove step" onClick={() => removeEditStep(idx)} style={miniBtn}>
+                            <Trash2 size={12} color="#FF2D55" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input value={st.responsible} onChange={e => updateEditStep(idx, { responsible: e.target.value })} placeholder="Responsible"
+                            style={{ ...inputStyle, flex: 1, padding: "5px 8px", fontSize: 11 }} />
+                          <input value={st.timeLimit} onChange={e => updateEditStep(idx, { timeLimit: e.target.value })} placeholder="Time limit"
+                            style={{ ...inputStyle, width: 92, padding: "5px 8px", fontSize: 11 }} />
+                          <select value={STEP_ICON_NAMES.includes(st.iconName) ? st.iconName : "Eye"} onChange={e => updateEditStep(idx, { iconName: e.target.value })}
+                            style={{ ...selectStyle, width: 116, padding: "5px 8px", fontSize: 11 }}>
+                            {STEP_ICON_NAMES.map(n => <option key={n} value={n} style={{ background: "#0A1220" }}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {STEP_COLOR_SWATCHES.map(c => (
+                            <button key={c} type="button" title={c} onClick={() => updateEditStep(idx, { color: c })}
+                              style={{ width: 18, height: 18, borderRadius: 6, background: c, cursor: "pointer", border: st.color === c ? "2px solid #fff" : "1px solid rgba(255,255,255,0.12)" }} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {editSteps.length === 0 && (
+                      <p style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, padding: "8px 2px" }}>No steps yet — add the first response step.</p>
+                    )}
+                  </div>
+                  <button type="button" onClick={addEditStep} className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl"
+                    style={{ background: "rgba(0,200,224,0.06)", border: "1px dashed rgba(0,200,224,0.25)", cursor: "pointer" }}>
+                    <Plus size={14} color="#00C8E0" />
+                    <span style={{ ...TYPOGRAPHY.caption, color: "#00C8E0", fontWeight: 600 }}>Add Step</span>
+                  </button>
+                </div>
+
                 {/* Info */}
                 <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.08)" }}>
                   <Sparkles size={16} color="#00C8E0" style={{ marginTop: 2, flexShrink: 0 }} />
                   <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, lineHeight: 1.6 }}>
                     {editingId
-                      ? "Editing name, severity, trigger and auto-trigger. The existing steps are preserved."
-                      : "3 standard starter steps are added automatically. You can rename, re-prioritise severity, or toggle auto-trigger anytime via Edit."}
+                      ? "Edit the protocol details and its steps above. Changes save to your company library."
+                      : "Starter steps are pre-filled above — edit, reorder, add or remove them, then create."}
                   </p>
                 </div>
               </div>
