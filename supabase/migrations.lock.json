@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-12T14:52:32.492Z",
-  "total_migrations": 190,
-  "manifest_sha256": "f7e2680e995bb46425738768e83736f97e5319cd541497364b1a2012cd3e3015",
+  "generated_at": "2026-06-12T14:58:35.695Z",
+  "total_migrations": 191,
+  "manifest_sha256": "82d667725cbff69ac042a03f8c264ea0debc0d6d7063046afc74fc6817e00c5f",
   "migrations": [
     {
       "version": "20260415",
@@ -1332,6 +1332,13 @@
       "file": "20260612_create_company_playbooks.sql",
       "sha256": "b492e7bbeac5084e040cb3717cc6101d65f9a02085fb7c1ef35bf666b17cd14c",
       "bytes": 3715
+    },
+    {
+      "version": "20260612",
+      "name": "fix_company_playbooks_unique_for_upsert",
+      "file": "20260612_fix_company_playbooks_unique_for_upsert.sql",
+      "sha256": "631f3648aed68216af505438d62834ffbb44bc18bdd9caebe2f148e51b2018ba",
+      "bytes": 787
     }
   ]
 }
