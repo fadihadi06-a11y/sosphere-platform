@@ -79,7 +79,7 @@ const S: Record<Lang, Record<string, string>> = {
     "zone.back":"Back","zone.riskLevel":"Risk Level","zone.personnelInZone":"Personnel in Zone",
     "zone.noEmployees":"No employees currently in zone","zone.employees":"employees","zone.risk":"RISK",
     // ── Incident History Page ──
-    "inc.thisWeek":"This Week","inc.resolved":"Resolved","inc.avgResp":"Avg Resp.","inc.escalations":"Escalations",
+    "inc.thisWeek":"This Week","inc.resolved":"Resolved","inc.avgResp":"Avg Resp.","inc.escalations":"Escalations","inc.critical":"Critical","inc.severity":"Severity",
     "inc.all":"All","inc.active":"Active","inc.allSev":"All Sev.",
     "inc.responseTime":"Response Time","inc.escalationTimeline":"Escalation Timeline",
     // ── Attendance Page ──
@@ -200,7 +200,7 @@ const S: Record<Lang, Record<string, string>> = {
     "zone.back":"رجوع","zone.riskLevel":"مستوى الخطر","zone.personnelInZone":"الأفراد في المنطقة",
     "zone.noEmployees":"لا يوجد موظفون حالياً في المنطقة","zone.employees":"موظفين","zone.risk":"خطورة",
     // ── Incident History Page ──
-    "inc.thisWeek":"هذا الأسبوع","inc.resolved":"تم الحل","inc.avgResp":"متوسط الاستجابة","inc.escalations":"التصعيدات",
+    "inc.thisWeek":"هذا الأسبوع","inc.resolved":"تم الحل","inc.avgResp":"متوسط الاستجابة","inc.escalations":"التصعيدات","inc.critical":"حرجة","inc.severity":"الخطورة",
     "inc.all":"الكل","inc.active":"نشط","inc.allSev":"كل الخطورة",
     "inc.responseTime":"وقت الاستجابة","inc.escalationTimeline":"مسار التصعيد",
     // ── Attendance Page ──

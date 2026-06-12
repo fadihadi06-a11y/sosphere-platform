@@ -29,9 +29,13 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
   // rendered a hardcoded fabricated list in production. DEV keeps the rich
   // demo set when there is no real data, for local UI work only.
   const realEmergencies = useDashboardStore((s) => s.emergencies);
+  // Real "time to acknowledge" = when an admin took ownership minus when the
+  // incident was recorded. Honest "—" when nobody has taken ownership yet.
+  const fmtDur = (ms: number) => (ms < 60000 ? `${Math.max(0, Math.round(ms / 1000))}s` : `${Math.round(ms / 60000)}m`);
   const incidents = useMemo(() => {
     const mapped = realEmergencies.map((e) => {
       const d = e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp);
+      const ownedMs = e.ownedAt ? (e.ownedAt instanceof Date ? e.ownedAt : new Date(e.ownedAt)).getTime() - d.getTime() : null;
       return {
         id: e.id,
         type: e.type,
@@ -40,8 +44,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
         date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         severity: e.severity,
         resolved: e.status === "resolved",
-        responseTime: "—",
-        escalations: 0,
+        responseTime: ownedMs != null && ownedMs >= 0 ? fmtDur(ownedMs) : "—",
         timeline: [
           { time: d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }), event: "Incident recorded", actor: e.employeeName },
           ...(e.status === "resolved" ? [{ time: "", event: "Resolved", actor: "System" }] : []),
@@ -57,7 +60,17 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
     const thisWeek = realEmergencies.filter((e) => ms(e.timestamp) >= weekAgo).length;
     const resolved = realEmergencies.filter((e) => e.status === "resolved").length;
     const rate = realEmergencies.length ? Math.round((resolved / realEmergencies.length) * 100) : 0;
-    return { thisWeek, resolved, rate };
+    const owned = realEmergencies.filter((e) => e.ownedAt);
+    const avgRespMs = owned.length
+      ? owned.reduce((sum, e) => {
+          const t0 = (e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp)).getTime();
+          const t1 = (e.ownedAt instanceof Date ? e.ownedAt : new Date(e.ownedAt!)).getTime();
+          return sum + Math.max(0, t1 - t0);
+        }, 0) / owned.length
+      : null;
+    const avgResp = avgRespMs != null ? fmtDur(avgRespMs) : "—";
+    const critical = realEmergencies.filter((e) => e.severity === "critical").length;
+    return { thisWeek, resolved, rate, avgResp, critical };
   }, [realEmergencies]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sevFilter, setSevFilter] = useState<string>("all");
@@ -83,7 +96,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
-          {[{ label: "This Week", value: String(stats.thisWeek), color: "#00C8E0", sub: "Total incidents" }, { label: "Resolved", value: String(stats.resolved), color: "#00C853", sub: stats.rate + "% resolution rate" }, { label: "Avg Response", value: "—", color: "#FF9500", sub: "Time to respond" }, { label: "Escalations", value: "—", color: "#FF2D55", sub: "Escalated to mgmt" }].map((k, i) => (
+          {[{ label: "This Week", value: String(stats.thisWeek), color: "#00C8E0", sub: "Total incidents" }, { label: "Resolved", value: String(stats.resolved), color: "#00C853", sub: stats.rate + "% resolution rate" }, { label: "Avg Response", value: stats.avgResp, color: "#FF9500", sub: "Time to acknowledge" }, { label: "Critical", value: String(stats.critical), color: "#FF2D55", sub: "Critical incidents" }].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <p style={{ fontSize: 30, fontWeight: 800, color: k.color }}>{k.value}</p>
               <p className="text-white mt-1" style={{ fontSize: 13, fontWeight: 600 }}>{k.label}</p>
@@ -131,7 +144,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
                         </div>
                         <div className="ml-auto flex items-start gap-2">
                           <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg }}>{inc.severity.toUpperCase()}</span>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{inc.escalations} escalation{inc.escalations !== 1 ? "s" : ""}</span>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Response: {inc.responseTime}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -148,7 +161,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
   return (
     <div className="px-4 pt-4 space-y-3">
       <div className="grid grid-cols-4 gap-1.5">
-        {[{ label: t("inc.thisWeek"), value: String(stats.thisWeek), color: "#00C8E0" }, { label: t("inc.resolved"), value: String(stats.resolved), color: "#00C853" }, { label: t("inc.avgResp"), value: "—", color: "#FF9500" }, { label: t("inc.escalations"), value: "—", color: "#FF2D55" }].map(s => (
+        {[{ label: t("inc.thisWeek"), value: String(stats.thisWeek), color: "#00C8E0" }, { label: t("inc.resolved"), value: String(stats.resolved), color: "#00C853" }, { label: t("inc.avgResp"), value: stats.avgResp, color: "#FF9500" }, { label: t("inc.critical"), value: String(stats.critical), color: "#FF2D55" }].map(s => (
           <DSCard key={s.label} padding={8} style={{ textAlign: "center" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 7, fontWeight: 600, color: "rgba(255,255,255,0.25)", textTransform: "uppercase" }}>{s.label}</div>
@@ -199,7 +212,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
                     <div className="px-3 pb-3 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         <div className="px-2 py-1.5 rounded-lg" style={{ background: "rgba(0,200,224,0.04)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>{t("inc.responseTime")}</span><p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{inc.responseTime}</p></div>
-                        <div className="px-2 py-1.5 rounded-lg" style={{ background: "rgba(255,45,85,0.04)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>{t("inc.escalations")}</span><p style={{ fontSize: 12, fontWeight: 700, color: inc.escalations > 1 ? "#FF2D55" : "#FF9500" }}>{inc.escalations}</p></div>
+                        <div className="px-2 py-1.5 rounded-lg" style={{ background: "rgba(255,45,85,0.04)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>{t("inc.severity")}</span><p style={{ fontSize: 12, fontWeight: 700, color: "#FF9500" }}>{inc.severity.toUpperCase()}</p></div>
                       </div>
                       <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", marginBottom: 6 }}>{t("inc.escalationTimeline")}</div>
                       {inc.timeline.map((tl, idx) => (
