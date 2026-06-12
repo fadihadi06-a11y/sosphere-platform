@@ -259,3 +259,58 @@ export async function deleteCompanyPlaybook(id: string): Promise<{ ok: boolean; 
     return { ok: false, error: (err as Error).message };
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Playbook Runs — durable compliance log of each protocol execution
+// (who ran it, when, which steps were completed). Table: playbook_runs.
+// ═══════════════════════════════════════════════════════════════
+
+export interface RunStepLog { stepId: string; action: string; at: string; }
+
+export async function startPlaybookRun(args: {
+  playbookId: string; playbookName: string; triggerType: string; severity: string; totalSteps: number;
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const companyId = getCompanyId();
+  if (!companyId) return { ok: false, error: "no_company" };
+  try {
+    let uid: string | null = null; let uname = "Admin";
+    try { const u = (await supabase.auth.getUser()).data.user; uid = u?.id ?? null; uname = u?.email?.split("@")[0] || "Admin"; } catch { /* anon */ }
+    const { data, error } = await supabase.from("playbook_runs").insert({
+      company_id: companyId, playbook_id: args.playbookId, playbook_name: args.playbookName,
+      trigger_type: args.triggerType, severity: args.severity, run_by: uid, run_by_name: uname,
+      status: "running", total_steps: args.totalSteps, completed_steps: [],
+    }).select("id").single();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, id: (data as any)?.id };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+
+export async function updateRunSteps(runId: string, steps: RunStepLog[]): Promise<boolean> {
+  const companyId = getCompanyId();
+  if (!companyId) return false;
+  try {
+    const { error } = await supabase.from("playbook_runs").update({ completed_steps: steps }).eq("id", runId).eq("company_id", companyId);
+    return !error;
+  } catch { return false; }
+}
+
+export async function finishPlaybookRun(runId: string, status: "completed" | "abandoned", steps: RunStepLog[]): Promise<boolean> {
+  const companyId = getCompanyId();
+  if (!companyId) return false;
+  try {
+    const { error } = await supabase.from("playbook_runs")
+      .update({ status, completed_at: new Date().toISOString(), completed_steps: steps })
+      .eq("id", runId).eq("company_id", companyId);
+    return !error;
+  } catch { return false; }
+}
+
+export async function fetchRecentRuns(limit = 20): Promise<any[]> {
+  const companyId = getCompanyId();
+  if (!companyId) return [];
+  try {
+    const { data, error } = await supabase.from("playbook_runs").select("*")
+      .eq("company_id", companyId).order("started_at", { ascending: false }).limit(limit);
+    return error || !data ? [] : (data as any[]);
+  } catch { return []; }
+}

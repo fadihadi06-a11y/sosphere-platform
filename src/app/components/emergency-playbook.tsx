@@ -6,7 +6,7 @@
 // Each playbook is a step-by-step rescue guide
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   BookOpen, ChevronRight, ChevronDown, Shield, AlertTriangle,
@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight, hapticHeavy } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { fetchPlaybookUsage, incrementPlaybookUse } from "./playbook-usage-service";
-import { fetchCompanyPlaybooks, seedDefaultPlaybooks, saveCompanyPlaybook, type PlaybookStepDTO } from "./playbook-service";
+import { fetchCompanyPlaybooks, seedDefaultPlaybooks, saveCompanyPlaybook, startPlaybookRun, updateRunSteps, finishPlaybookRun, type PlaybookStepDTO, type RunStepLog } from "./playbook-service";
 
 // ── Types ─────────────────────────────────────────────────────
 interface PlaybookStep {
@@ -239,6 +239,8 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
   const [newTrigger, setNewTrigger] = useState("Manual Trigger");
   const [newAutoTrigger, setNewAutoTrigger] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const runStepLogRef = useRef<RunStepLog[]>([]);
 
   // P3-#11g: Reconcile usage counts from Supabase on mount. Playbook
   // *definitions* stay client-side (icon components + localized
@@ -282,6 +284,10 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
 
   const handleRunPlaybook = useCallback((pb: Playbook) => {
     hapticHeavy();
+    // Only one protocol runs at a time — close any prior run as abandoned.
+    if (activeRunId) void finishPlaybookRun(activeRunId, "abandoned", runStepLogRef.current);
+    runStepLogRef.current = [];
+    setActiveRunId(null);
     setRunningPlaybook(pb.id);
     setCompletedSteps(prev => ({ ...prev, [pb.id]: new Set() }));
     toast.success(`Running: ${pb.name}`, {
@@ -295,7 +301,12 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
       p.id === pb.id ? { ...p, useCount: p.useCount + 1, lastUsed: now } : p,
     ));
     void incrementPlaybookUse(pb.id);
-  }, []);
+    // Durable compliance record of this run (who/when/which steps).
+    void startPlaybookRun({
+      playbookId: pb.id, playbookName: pb.name, triggerType: pb.triggerType,
+      severity: pb.severity, totalSteps: pb.steps.length,
+    }).then(res => { if (res.id) setActiveRunId(res.id); });
+  }, [activeRunId]);
 
   const handleCompleteStep = useCallback((playbookId: string, stepId: string, action: string) => {
     hapticSuccess();
@@ -305,7 +316,23 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
       return { ...prev, [playbookId]: newSet };
     });
     toast.success("Step Completed", { description: action });
-  }, []);
+    // Append to the durable run log (compliance) and persist.
+    if (!runStepLogRef.current.some(st => st.stepId === stepId)) {
+      runStepLogRef.current = [...runStepLogRef.current, { stepId, action, at: new Date().toISOString() }];
+      if (activeRunId) void updateRunSteps(activeRunId, runStepLogRef.current);
+    }
+  }, [activeRunId]);
+
+  const handleFinishRun = useCallback((pb: Playbook) => {
+    hapticSuccess();
+    const logged = runStepLogRef.current.length;
+    if (activeRunId) void finishPlaybookRun(activeRunId, "completed", runStepLogRef.current);
+    setActiveRunId(null);
+    setRunningPlaybook(null);
+    setCompletedSteps(prev => ({ ...prev, [pb.id]: new Set() }));
+    runStepLogRef.current = [];
+    toast.success("Protocol completed", { description: `${pb.name} — ${logged}/${pb.steps.length} steps logged to the compliance record` });
+  }, [activeRunId]);
 
   const handleDuplicate = useCallback((pb: Playbook) => {
     hapticMedium();
@@ -626,11 +653,11 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                       {/* Actions */}
                       <div className="flex gap-3 mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                         <ActionButton
-                          icon={isRunning ? Activity : Play}
-                          label={isRunning ? "Running..." : "Run Playbook"}
-                          color={playbook.iconColor}
-                          onClick={() => handleRunPlaybook(playbook)}
-                          done={isRunning}
+                          icon={isRunning ? CheckCircle : Play}
+                          label={isRunning ? "Complete Protocol" : "Run Playbook"}
+                          color={isRunning ? "#00C853" : playbook.iconColor}
+                          onClick={() => (isRunning ? handleFinishRun(playbook) : handleRunPlaybook(playbook))}
+                          done={false}
                         />
                         <ActionButton
                           icon={Copy}
