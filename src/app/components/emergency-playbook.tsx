@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight, hapticHeavy } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { fetchPlaybookUsage, incrementPlaybookUse } from "./playbook-usage-service";
+import { fetchCompanyPlaybooks, seedDefaultPlaybooks, saveCompanyPlaybook, type PlaybookStepDTO } from "./playbook-service";
 
 // ── Types ─────────────────────────────────────────────────────
 interface PlaybookStep {
@@ -30,6 +31,8 @@ interface PlaybookStep {
   timeLimit: string;
   icon: any;
   color: string;
+  /** persisted icon name (DB round-trip); icon is derived from it */
+  iconName?: string;
 }
 
 interface Playbook {
@@ -44,6 +47,10 @@ interface Playbook {
   autoTrigger: boolean;
   lastUsed?: Date;
   useCount: number;
+  iconName?: string;
+  templateKey?: string | null;
+  isDefault?: boolean;
+  sortOrder?: number;
 }
 
 // ── GlowIcon ──────────────────────────────────────────────────
@@ -183,13 +190,44 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: "#00C8E0",
 };
 
+// ── Icon name <-> Lucide component (DB stores names; UI renders components) ──
+const PB_ICONS: Record<string, any> = {
+  AlertTriangle, Activity, Flame, Shield, Clock, Phone, MessageCircle, Navigation,
+  MapPin, Ambulance, Heart, Users, Eye, Megaphone, Zap, Lock, Radio, Siren,
+};
+const iconFor = (name?: string): any => (name && PB_ICONS[name]) || Shield;
+const severityIconName = (sev: Playbook["severity"]): string =>
+  sev === "critical" ? "Siren" : sev === "high" ? "AlertTriangle" : sev === "medium" ? "Clock" : "Shield";
+
+function companyPlaybookToLocal(cp: {
+  id: string; name: string; description: string; triggerType: string;
+  severity: Playbook["severity"]; autoTrigger: boolean; iconName: string; iconColor: string;
+  steps: PlaybookStepDTO[]; isDefault: boolean; sortOrder: number; templateKey: string | null;
+}): Playbook {
+  return {
+    id: cp.id, name: cp.name, description: cp.description, triggerType: cp.triggerType,
+    severity: cp.severity, icon: iconFor(cp.iconName), iconColor: cp.iconColor,
+    autoTrigger: cp.autoTrigger, useCount: 0, lastUsed: undefined,
+    iconName: cp.iconName, templateKey: cp.templateKey, isDefault: cp.isDefault, sortOrder: cp.sortOrder,
+    steps: cp.steps.map(st => ({
+      id: st.id, action: st.action, responsible: st.responsible, timeLimit: st.timeLimit,
+      icon: iconFor(st.iconName), color: st.color, iconName: st.iconName,
+    })),
+  };
+}
+const stepsToDTO = (steps: PlaybookStep[]): PlaybookStepDTO[] =>
+  steps.map((st, i) => ({
+    id: st.id || `S${i + 1}`, action: st.action, responsible: st.responsible,
+    timeLimit: st.timeLimit, iconName: st.iconName || "Eye", color: st.color,
+  }));
+
 // ── Dashboard Emergency Playbook Page ─────────────────────────
 export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
   // PROD SAFETY: MOCK_PLAYBOOKS is demo content. In production the tab starts
   // empty (owner builds/imports their own); DEV shows the samples. Matches the
   // import.meta.env.DEV gating convention used across every other dashboard
   // page. fetchPlaybookUsage() still merges real usage counts on top.
-  const [playbooks, setPlaybooks] = useState<Playbook[]>(import.meta.env.DEV ? MOCK_PLAYBOOKS : []);
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "auto" | "manual">("all");
   const [runningPlaybook, setRunningPlaybook] = useState<string | null>(null);
@@ -200,6 +238,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
   const [newSeverity, setNewSeverity] = useState<"critical" | "high" | "medium" | "low">("high");
   const [newTrigger, setNewTrigger] = useState("Manual Trigger");
   const [newAutoTrigger, setNewAutoTrigger] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // P3-#11g: Reconcile usage counts from Supabase on mount. Playbook
   // *definitions* stay client-side (icon components + localized
@@ -207,22 +246,27 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
   // per-company dynamic data and used to be wiped on every reload.
   // Merging server values in once at mount means the "28 runs" badge
   // now reflects the whole team's history instead of this browser's.
+  // Load durable playbook definitions from the DB (company_playbooks). Seed the
+  // built-in default library on first load for a company that has none, then
+  // merge real per-company usage counts on top. DEV without a company falls back
+  // to the bundled samples so the page is never blank locally.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      let list = await fetchCompanyPlaybooks();
+      if (list.length === 0) list = await seedDefaultPlaybooks();
+      if (cancelled) return;
+      let local: Playbook[] = list.map(companyPlaybookToLocal);
+      if (local.length === 0 && import.meta.env.DEV) local = MOCK_PLAYBOOKS;
       const usage = await fetchPlaybookUsage();
-      if (cancelled || usage.size === 0) return;
-      setPlaybooks((prev) =>
-        prev.map((pb) => {
+      if (cancelled) return;
+      if (usage.size > 0) {
+        local = local.map((pb) => {
           const u = usage.get(pb.id);
-          if (!u) return pb;
-          return {
-            ...pb,
-            useCount: Math.max(pb.useCount, u.useCount),
-            lastUsed: u.lastUsedAt ?? pb.lastUsed,
-          };
-        }),
-      );
+          return u ? { ...pb, useCount: Math.max(pb.useCount, u.useCount), lastUsed: u.lastUsedAt ?? pb.lastUsed } : pb;
+        });
+      }
+      setPlaybooks(local);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -265,25 +309,42 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
 
   const handleDuplicate = useCallback((pb: Playbook) => {
     hapticMedium();
-    const newPb: Playbook = {
-      ...pb,
-      id: `PB-${Date.now()}`,
-      name: `${pb.name} (Copy)`,
-      useCount: 0,
-      lastUsed: undefined,
-    };
-    setPlaybooks(prev => [...prev, newPb]);
-    toast.success("Playbook Duplicated", { description: `"${pb.name}" has been copied` });
+    void (async () => {
+      const res = await saveCompanyPlaybook({
+        name: `${pb.name} (Copy)`, description: pb.description, triggerType: pb.triggerType,
+        severity: pb.severity, autoTrigger: pb.autoTrigger,
+        iconName: pb.iconName || severityIconName(pb.severity), iconColor: pb.iconColor,
+        steps: stepsToDTO(pb.steps), isDefault: false, sortOrder: 100,
+      });
+      if (!res.ok || !res.id) { toast.error("Duplicate failed", { description: res.error || "Could not save copy" }); return; }
+      const newPb: Playbook = { ...pb, id: res.id, name: `${pb.name} (Copy)`, useCount: 0, lastUsed: undefined, isDefault: false, templateKey: null };
+      setPlaybooks(prev => [...prev, newPb]);
+      toast.success("Playbook Duplicated", { description: `"${pb.name}" copied and saved` });
+    })();
   }, []);
 
   const handleEdit = useCallback((pb: Playbook) => {
     hapticLight();
-    toast("Edit Mode", { description: `Editing "${pb.name}" — modify steps, timing, and assignments` });
+    setEditingId(pb.id);
+    setNewName(pb.name);
+    setNewDesc(pb.description);
+    setNewSeverity(pb.severity);
+    setNewTrigger(pb.triggerType);
+    setNewAutoTrigger(pb.autoTrigger);
+    setShowCreateModal(true);
   }, []);
 
   const handleCreate = useCallback(() => {
     hapticLight();
+    setEditingId(null);
+    setNewName(""); setNewDesc(""); setNewSeverity("high"); setNewTrigger("Manual Trigger"); setNewAutoTrigger(false);
     setShowCreateModal(true);
+  }, []);
+
+  const resetPlaybookForm = useCallback(() => {
+    setShowCreateModal(false);
+    setEditingId(null);
+    setNewName(""); setNewDesc(""); setNewSeverity("high"); setNewTrigger("Manual Trigger"); setNewAutoTrigger(false);
   }, []);
 
   const handleConfirmCreate = useCallback(() => {
@@ -292,32 +353,52 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
       toast.error("Name Required", { description: "Please enter a playbook name" });
       return;
     }
-    const newPb: Playbook = {
-      id: `PB-${Date.now()}`,
-      name: newName.trim(),
-      description: newDesc.trim() || "Custom emergency response protocol",
-      triggerType: newTrigger,
-      severity: newSeverity,
-      icon: newSeverity === "critical" ? Siren : newSeverity === "high" ? AlertTriangle : newSeverity === "medium" ? Clock : Shield,
-      iconColor: SEVERITY_COLORS[newSeverity],
-      autoTrigger: newAutoTrigger,
-      useCount: 0,
-      steps: [
-        { id: "S1", action: "Verify situation and assess severity", responsible: "Zone Admin", timeLimit: "< 1 min", icon: Eye, color: "#00C8E0" },
-        { id: "S2", action: "Contact affected employee(s)", responsible: "Zone Admin", timeLimit: "< 2 min", icon: Phone, color: "#00C853" },
-        { id: "S3", action: "Escalate to Main Admin if needed", responsible: "Zone Admin", timeLimit: "< 5 min", icon: Users, color: "#FF9500" },
-      ],
-    };
-    setPlaybooks(prev => [...prev, newPb]);
-    setShowCreateModal(false);
-    setNewName("");
-    setNewDesc("");
-    setNewSeverity("high");
-    setNewTrigger("Manual Trigger");
-    setNewAutoTrigger(false);
-    hapticSuccess();
-    toast.success("Playbook Created", { description: `"${newPb.name}" added with ${newPb.steps.length} default steps` });
-  }, [newName, newDesc, newSeverity, newTrigger, newAutoTrigger]);
+    const iconName = severityIconName(newSeverity);
+    const iconColor = SEVERITY_COLORS[newSeverity];
+    void (async () => {
+      if (editingId) {
+        // EDIT: persist metadata changes; existing steps are preserved.
+        const existing = playbooks.find(p => p.id === editingId);
+        const steps = existing ? stepsToDTO(existing.steps) : [];
+        const res = await saveCompanyPlaybook({
+          id: editingId, name: newName.trim(),
+          description: newDesc.trim() || "Custom emergency response protocol",
+          triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger,
+          iconName, iconColor, steps, isDefault: existing?.isDefault ?? false, sortOrder: existing?.sortOrder ?? 100,
+        });
+        if (!res.ok) { toast.error("Save failed", { description: res.error || "Could not update playbook" }); return; }
+        setPlaybooks(prev => prev.map(p => p.id === editingId
+          ? { ...p, name: newName.trim(), description: newDesc.trim() || p.description, triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger, icon: iconFor(iconName), iconName, iconColor }
+          : p));
+        hapticSuccess();
+        toast.success("Playbook Updated", { description: `"${newName.trim()}" saved` });
+      } else {
+        // CREATE: 3 standard starter steps, then persist.
+        const stepsDTO: PlaybookStepDTO[] = [
+          { id: "S1", action: "Verify situation and assess severity", responsible: "Zone Admin", timeLimit: "< 1 min", iconName: "Eye", color: "#00C8E0" },
+          { id: "S2", action: "Contact affected employee(s)", responsible: "Zone Admin", timeLimit: "< 2 min", iconName: "Phone", color: "#00C853" },
+          { id: "S3", action: "Escalate to Main Admin if needed", responsible: "Zone Admin", timeLimit: "< 5 min", iconName: "Users", color: "#FF9500" },
+        ];
+        const res = await saveCompanyPlaybook({
+          name: newName.trim(), description: newDesc.trim() || "Custom emergency response protocol",
+          triggerType: newTrigger, severity: newSeverity, autoTrigger: newAutoTrigger,
+          iconName, iconColor, steps: stepsDTO, isDefault: false, sortOrder: 100,
+        });
+        if (!res.ok || !res.id) { toast.error("Create failed", { description: res.error || "Could not save playbook" }); return; }
+        const newPb: Playbook = {
+          id: res.id, name: newName.trim(),
+          description: newDesc.trim() || "Custom emergency response protocol",
+          triggerType: newTrigger, severity: newSeverity, icon: iconFor(iconName), iconName, iconColor,
+          autoTrigger: newAutoTrigger, useCount: 0, isDefault: false, templateKey: null, sortOrder: 100,
+          steps: stepsDTO.map(st => ({ id: st.id, action: st.action, responsible: st.responsible, timeLimit: st.timeLimit, icon: iconFor(st.iconName), color: st.color, iconName: st.iconName })),
+        };
+        setPlaybooks(prev => [...prev, newPb]);
+        hapticSuccess();
+        toast.success("Playbook Created", { description: `"${newPb.name}" added with ${newPb.steps.length} steps` });
+      }
+      resetPlaybookForm();
+    })();
+  }, [newName, newDesc, newSeverity, newTrigger, newAutoTrigger, editingId, playbooks, resetPlaybookForm]);
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 14px", borderRadius: 12,
@@ -346,7 +427,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
         <KPICard label="Total Steps" value={totalSteps} icon={ClipboardList} color="#7B5EFF"
           subtitle="Across all playbooks" />
         <KPICard label="Times Used" value={totalUsage} icon={Activity} color="#00C853"
-          trend={{ value: "28 this month", positive: true }} subtitle="Protocol activations" />
+          subtitle="Protocol activations (all time)" />
       </div>
 
       {/* ══════════════════════════════════════════════════════ */}
@@ -598,8 +679,8 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                 <div className="flex items-center gap-3">
                   <GlowIcon icon={BookOpen} color="#00C8E0" size={40} iconSize={18} />
                   <div>
-                    <h3 style={{ ...TYPOGRAPHY.h2, color: TOKENS.text.primary }}>Create Playbook</h3>
-                    <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, marginTop: 2 }}>Define a new emergency response protocol</p>
+                    <h3 style={{ ...TYPOGRAPHY.h2, color: TOKENS.text.primary }}>{editingId ? "Edit Playbook" : "Create Playbook"}</h3>
+                    <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, marginTop: 2 }}>{editingId ? "Update this protocol\u2019s details" : "Define a new emergency response protocol"}</p>
                   </div>
                 </div>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowCreateModal(false)}
@@ -689,7 +770,9 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                 <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.08)" }}>
                   <Sparkles size={16} color="#00C8E0" style={{ marginTop: 2, flexShrink: 0 }} />
                   <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, lineHeight: 1.6 }}>
-                    3 default steps will be added. You can customize steps after creation using the Edit button.
+                    {editingId
+                      ? "Editing name, severity, trigger and auto-trigger. The existing steps are preserved."
+                      : "3 standard starter steps are added automatically. You can rename, re-prioritise severity, or toggle auto-trigger anytime via Edit."}
                   </p>
                 </div>
               </div>
@@ -710,7 +793,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                     opacity: newName.trim() ? 1 : 0.5,
                   }}>
                   <Plus size={15} color="#00C8E0" />
-                  <span style={{ ...TYPOGRAPHY.caption, color: "#00C8E0", fontWeight: 600 }}>Create Playbook</span>
+                  <span style={{ ...TYPOGRAPHY.caption, color: "#00C8E0", fontWeight: 600 }}>{editingId ? "Save Changes" : "Create Playbook"}</span>
                 </motion.button>
               </div>
             </motion.div>
