@@ -375,9 +375,94 @@ export function storeEvidence(entry: Omit<EvidenceEntry, "id" | "actions" | "com
   return newEntry;
 }
 
-/** Get all evidence entries */
+/** Get all evidence entries (local vault — instant, offline). */
 export function getAllEvidence(): EvidenceEntry[] {
   return loadVault();
+}
+
+// ── DURABLE SAFETY REPORT (proactive, proof-of-reporting) ─────────────
+// A field worker files a hazard/safety report from the mobile app. Unlike
+// the old storeEvidence() (localStorage on whoever's screen is open), this
+// writes a durable, company-scoped row to the `evidence` table directly
+// from the worker's session (RLS: evidence_company_write allows a company
+// member). It is the worker's legal proof they reported the hazard, and
+// every admin of the company sees it. Verified at the DB layer.
+export async function submitSafetyReport(args: {
+  companyId: string;
+  submittedBy: string;
+  zone: string;
+  severity: "low" | "medium" | "high" | "critical";
+  incidentType: string;
+  comment: string;
+  photos?: Array<{ id?: string; caption?: string; size?: number; dataUrl?: string }>;
+  audioMemo?: { durationSec: number; format?: string };
+}): Promise<{ ok: boolean; id: string; error?: string }> {
+  const id = secureRandomId("EVD", 6);
+  // Always keep a local copy too (worker's own offline receipt).
+  try {
+    const vault = loadVault();
+    vault.unshift({
+      id, emergencyId: id, submittedBy: args.submittedBy, submittedAt: Date.now(),
+      zone: args.zone, severity: args.severity, incidentType: args.incidentType,
+      workerComment: args.comment, photos: (args.photos ?? []) as any,
+      audioMemo: args.audioMemo as any, tier: "paid", retentionDays: 90,
+      status: "pending", actions: [], comments: [],
+    } as EvidenceEntry);
+    saveVault(vault.slice(0, 100));
+  } catch { /* local cache best-effort */ }
+
+  if (!isSupabaseReady() || !args.companyId) return { ok: false, id, error: "offline_saved_locally" };
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { error } = await supabase.from("evidence").insert({
+      id,
+      company_id: args.companyId,
+      submitted_by: args.submittedBy,
+      zone: args.zone,
+      severity: args.severity,
+      incident_type: args.incidentType,
+      worker_comment: args.comment,
+      photos: (args.photos ?? []).map(p => ({ id: p.id, caption: p.caption, size: p.size })),
+      audio_memo: args.audioMemo ? { durationSec: args.audioMemo.durationSec, format: args.audioMemo.format } : null,
+      status: "pending",
+      submitted_at: new Date().toISOString(),
+      retention_days: 90,
+    });
+    if (error) { console.warn("[Evidence] submitSafetyReport DB insert failed:", error.message); return { ok: false, id, error: error.message }; }
+    return { ok: true, id };
+  } catch (e) {
+    console.warn("[Evidence] submitSafetyReport threw:", e);
+    return { ok: false, id, error: (e as Error).message };
+  }
+}
+
+/** Load durable evidence from the `evidence` table for a company (admin view). */
+export async function loadCompanyEvidence(companyId: string): Promise<EvidenceEntry[]> {
+  if (!isSupabaseReady() || !companyId) return [];
+  try {
+    const { supabase } = await import("./api/supabase-client");
+    const { data, error } = await supabase
+      .from("evidence").select("*").eq("company_id", companyId)
+      .order("submitted_at", { ascending: false }).limit(100);
+    if (error || !data) return [];
+    return data.map((r: any): EvidenceEntry => ({
+      id: String(r.id),
+      emergencyId: r.emergency_id || String(r.id),
+      submittedBy: r.submitted_by || "Worker",
+      submittedAt: r.submitted_at ? new Date(r.submitted_at).getTime() : Date.now(),
+      zone: r.zone || "Unknown",
+      severity: r.severity || "medium",
+      incidentType: r.incident_type || "Other",
+      workerComment: r.worker_comment || "",
+      photos: Array.isArray(r.photos) ? r.photos : [],
+      audioMemo: r.audio_memo || undefined,
+      tier: r.tier || "paid",
+      retentionDays: r.retention_days || 90,
+      status: r.status || "pending",
+      actions: Array.isArray(r.actions) ? r.actions : [],
+      comments: Array.isArray(r.comments) ? r.comments : [],
+    }));
+  } catch { return []; }
 }
 
 /** Get evidence for a specific emergency */

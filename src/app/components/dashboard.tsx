@@ -17,6 +17,7 @@ interface EmployeeDashboardProps {
   onEmergencyPacket?: () => void; onEmergencyServices?: () => void; onEmergencyContacts?: () => void;
   onNotifications?: () => void; onIncidentHistory?: () => void; onLogout?: () => void;
   timerActive?: boolean; onMissionTracker?: () => void; onSafeWalk?: () => void;
+  onReportHazard?: () => void;
 }
 
 // Avatar and role are read from localStorage (saved during employee-quick-setup)
@@ -90,7 +91,7 @@ interface AlertItem {
 }
 
 export function EmployeeDashboard({
-  companyName, userName, userZone, onSOSTrigger, onCheckinTimer, onMedicalID,
+  companyName, userName, userZone, onSOSTrigger, onCheckinTimer, onMedicalID, onReportHazard,
   onEmergencyPacket, onEmergencyServices, onEmergencyContacts,
   onNotifications, onIncidentHistory, onLogout, timerActive, onMissionTracker, onSafeWalk,
 }: EmployeeDashboardProps) {
@@ -177,7 +178,7 @@ export function EmployeeDashboard({
 
   const quickActions = [
     { icon:Shield, labelAr: isAr ? "الحالة" : "Status", color:"#00C8E0", action:()=>{ emitSyncEvent({type:"STATUS_UPDATE",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{status:"safe"}}); toast.success(isAr ? "تم إرسال تحديث الحالة" : "Status updated"); }},
-    { icon:AlertTriangle, labelAr: isAr ? "خطر" : "Hazard", color:"#FF9500", action:()=>{ emitSyncEvent({type:"HAZARD_REPORT",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{hazardType:"Environmental"}}); autoBroadcastHazard(userName,userZone,"Environmental"); toast.warning(isAr ? "تم الإبلاغ عن الخطر" : "Hazard reported"); }},
+    { icon:AlertTriangle, labelAr: isAr ? "بلاغ سلامة" : "Safety Report", color:"#FF9500", action: onReportHazard || (()=>{ emitSyncEvent({type:"HAZARD_REPORT",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now(),data:{hazardType:"Environmental"}}); autoBroadcastHazard(userName,userZone,"Environmental"); toast.warning(isAr ? "تم الإبلاغ عن الخطر" : "Hazard reported"); }) },
     { icon:MapPin, labelAr: isAr ? "منطقتي" : "My Zone", color:"#00C853", action:()=>{ emitSyncEvent({type:"LOCATION_UPDATE",employeeId:"self",employeeName:userName,zone:userZone,timestamp:Date.now()}); }},
     { icon:Phone, labelAr: isAr ? "اتصال" : "Call", color:"#AF52DE", action:onEmergencyContacts },
   ];

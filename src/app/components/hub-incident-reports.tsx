@@ -17,7 +17,7 @@ import {
 import { safeTelCall } from "./utils/safe-tel";
 import { CallTrigger } from "./call-panel";
 import {
-  getAllEvidence, type EvidenceEntry,
+  getAllEvidence, loadCompanyEvidence, type EvidenceEntry,
   getEvidencePipelineStatus,
 } from "./evidence-store";
 import {
@@ -665,6 +665,27 @@ export function IncidentReportsTab({ webMode = false, onEscalateToInvestigation 
       if (newRealReports.length === 0) return prev;
       return [...newRealReports, ...prev];
     });
+    // Durable, company-scoped evidence from the `evidence` table (worker safety
+    // reports persisted server-side). Merge on top of the local vault so every
+    // admin sees them, not just whoever was online when they arrived.
+    try {
+      const companyId = localStorage.getItem("sosphere_company_id");
+      if (companyId) {
+        void loadCompanyEvidence(companyId).then(dbEv => {
+          if (!dbEv.length) return;
+          setEvidenceEntries(prev => {
+            const ids = new Set(prev.map(e => e.id));
+            const fresh = dbEv.filter(e => !ids.has(e.id));
+            return fresh.length ? [...fresh, ...prev] : prev;
+          });
+          setReports(prev => {
+            const ids = new Set(prev.map(r => r.id));
+            const fresh = dbEv.filter(e => !ids.has(e.id)).map(evidenceToReport);
+            return fresh.length ? [...fresh, ...prev] : prev;
+          });
+        });
+      }
+    } catch { /* non-blocking */ }
   }, []);
 
   // Fetch real incident reports from Supabase on mount

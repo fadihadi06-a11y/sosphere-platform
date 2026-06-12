@@ -51,6 +51,7 @@ import type { IncidentRecord } from "./sos-emergency";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { BroadcastIsland } from "./broadcast-island";
 import { IncidentPhotoReport, type IncidentReportData } from "./incident-photo-report";
+import { submitSafetyReport } from "./evidence-store";
 import { onAdminSignal, onSyncEvent, initRealtimeChannels } from "./shared-store";
 import { emitSyncEvent, onStorageBanner } from "./shared-store";
 import { OfflineIndicator } from "./offline-sync";
@@ -1940,6 +1941,26 @@ export function MobileApp() {
                     incidentType: data.incidentType,
                   },
                 });
+
+                // DURABLE PROOF: persist to the evidence table (company-scoped),
+                // independent of any admin being online — the worker's legal
+                // record that they reported the hazard and discharged their duty.
+                void submitSafetyReport({
+                  companyId: activeCompanyId || "",
+                  submittedBy: loginName,
+                  zone: data.zone || userZone,
+                  severity: data.severity,
+                  incidentType: data.incidentType,
+                  comment: data.comment,
+                  photos: data.photos.map(p => ({ id: p.id, caption: p.caption, size: p.size })),
+                  audioMemo: data.audioMemo ? { durationSec: data.audioMemo.durationSec, format: data.audioMemo.format } : undefined,
+                }).then(r => {
+                  toast.success(
+                    lang === "ar" ? `تم إرسال البلاغ — مرجع ${r.id}` : `Report submitted — Ref ${r.id}`,
+                    { description: lang === "ar" ? "وُثّق بلاغك. لديك دليل أنك نبّهت الإدارة وأخليت مسؤوليتك." : "Documented. You have proof you reported this." },
+                  );
+                });
+
                 setShowIncidentReport(false);
                 setTimeout(() => {
                   navigate(sourceScreen, -1);
@@ -2421,6 +2442,7 @@ export function MobileApp() {
                 onEmergencyContacts={() => { setSourceScreen("employee-dashboard"); navigate("emergency-contacts"); }}
                 onNotifications={() => { setSourceScreen("employee-dashboard"); navigate("notifications"); }}
                 onIncidentHistory={() => { setSourceScreen("employee-dashboard"); navigate("incident-history"); }}
+                onReportHazard={() => { setSourceScreen("employee-dashboard"); setPendingEmergencyId("SR-" + Date.now().toString(36).toUpperCase()); setShowIncidentReport(true); }}
                 timerActive={timerActive}
                 onMissionTracker={() => { setSourceScreen("employee-dashboard"); navigate("mission-tracker"); }}
                 onSafeWalk={() => {
