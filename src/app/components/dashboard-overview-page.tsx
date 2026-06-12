@@ -611,50 +611,6 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
 
         {/* RIGHT — Stats panel */}
         <div className="space-y-4">
-          {/* Safety Score ring */}
-          <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35, type: "spring", stiffness: 200 }}
-            className="rounded-2xl p-5"
-            style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Safety Score</p>
-              <span style={{ fontSize: 11, color: "#00C853", fontWeight: 700, background: "rgba(0,200,83,0.08)", padding: "4px 10px", borderRadius: 10, border: "1px solid rgba(0,200,83,0.12)", letterSpacing: "-0.005em" }}>+3.2% ↑</span>
-            </div>
-            <div className="flex items-center gap-5">
-              <div className="relative size-[90px] shrink-0">
-                <svg viewBox="0 0 90 90" className="size-full -rotate-90">
-                  <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="7" />
-                  <motion.circle cx="45" cy="45" r="38" fill="none" stroke="#00C853" strokeWidth="7" strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 38}`}
-                    initial={{ strokeDashoffset: 2 * Math.PI * 38 }}
-                    animate={{ strokeDashoffset: 2 * Math.PI * 38 * (1 - safetyScore / 100) }}
-                    transition={{ duration: 1.8, ease: "easeOut" }} />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-white" style={{ fontSize: 22, fontWeight: 800 }}>{safetyScore}</span>
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>/ 100</span>
-                </div>
-              </div>
-              <div className="space-y-3 flex-1 min-w-0">
-                {[
-                  { label: "Check-in Rate",  value: "94%", color: "#00C853" },
-                  { label: "SOS Response",    value: "98%", color: "#00C8E0" },
-                  { label: "Zone Compliance", value: "87%", color: "#FF9500" },
-                ].map(m => (
-                  <div key={m.label}>
-                    <div className="flex justify-between mb-1.5 gap-2">
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 500, letterSpacing: "-0.005em", whiteSpace: "nowrap" }}>{m.label}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: m.color, letterSpacing: "-0.01em" }}>{m.value}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
-                      <motion.div initial={{ width: 0 }} animate={{ width: m.value }} transition={{ duration: 1.2, delay: 0.5, ease: "easeOut" }}
-                        className="h-full rounded-full" style={{ background: `linear-gradient(90deg, ${m.color}, ${m.color}CC)`, boxShadow: `0 0 6px ${m.color}30` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
           {/* System Health */}
           <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.42, type: "spring", stiffness: 200 }}
             className="rounded-2xl p-5"
@@ -747,78 +703,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
       </div>
 
       {/* ── Navigation Guide — clarifies each hub for new admins ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
-        className="rounded-2xl overflow-hidden"
-        style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.008) 100%)", border: "1px solid rgba(255,255,255,0.05)" }}
-      >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-[11px] flex items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.12), rgba(0,200,224,0.04))", border: "1px solid rgba(0,200,224,0.1)" }}>
-              <LayoutDashboard className="size-4" style={{ color: "#00C8E0", strokeWidth: 1.8 }} />
-            </div>
-            <div>
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>Quick Navigation</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>Click any section to navigate directly</p>
-            </div>
-          </div>
-          <span className="px-3 py-1.5 rounded-xl" style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.12)", letterSpacing: "0.02em" }}>
-            10 sections
-          </span>
-        </div>
 
-        <div className="grid gap-2.5 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          {([
-            { page: "overview" as DashPage,          icon: LayoutDashboard, label: "Overview",            desc: "Live KPIs, emergencies, team status & system health",       color: "#00C8E0", group: "OPS"  },
-            { page: "emergencyHub" as DashPage,      icon: Siren,           label: "Emergency Hub",       desc: "Live alerts, SAR protocol & response playbook",             color: "#FF2D55", group: "OPS",  badge: "Live" },
-            { page: "riskMap" as DashPage,           icon: MapPin,          label: "Risk Map",            desc: "Real-time situational map with positions & threats",         color: "#FF9500", group: "OPS"  },
-            { page: "safetyIntel" as DashPage,       icon: BarChart3,       label: "Safety Intelligence", desc: "AI-powered predictive risk engine & trend analysis",         color: "#7B5EFF", group: "OPS"  },
-            { page: "operations" as DashPage,        icon: CalendarDays,    label: "Operations Hub",      desc: "Missions, journeys, workforce, comms & connectivity",        color: "#00C8E0", group: "OPS"  },
-            { page: "people" as DashPage,            icon: Users,           label: "People & Teams",      desc: "Directory, buddy system, pre-shift & safety scores",         color: "#00C853", group: "MGMT" },
-            { page: "incidentRisk" as DashPage,      icon: ShieldCheck,     label: "Incident & Risk",     desc: "Investigation, CAPA & risk assessment — ISO 45001",          color: "#FF9500", group: "COMP" },
-            { page: "reportsAnalytics" as DashPage,  icon: BarChart3,       label: "Reports & Analytics", desc: "Compliance reports, metrics, leaderboard & scheduler",        color: "#4A90D9", group: "COMP" },
-            { page: "governance" as DashPage,        icon: Activity,        label: "Governance",          desc: "Audit trail & roles/access control",                         color: "#8090A5", group: "SYS"  },
-            { page: "settings" as DashPage,          icon: Activity,        label: "Settings",            desc: "Company profile, notification rules & integrations",          color: "rgba(255,255,255,0.4)", group: "SYS" },
-          ] as const).map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <motion.button
-                key={item.page}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.65 + i * 0.04, type: "spring", stiffness: 300, damping: 25 }}
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => onNavigate(item.page)}
-                className="text-left p-3.5 rounded-xl relative overflow-hidden group"
-                style={{ background: `linear-gradient(135deg, ${item.color}06, transparent)`, border: `1px solid ${item.color}0A` }}
-              >
-                {/* Hover glow */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  style={{ background: `radial-gradient(ellipse at 20% 30%, ${item.color}0A 0%, transparent 60%)` }} />
-                <div className="flex items-start gap-3 relative z-10">
-                  <div className="size-9 rounded-[10px] flex items-center justify-center shrink-0"
-                    style={{ background: `linear-gradient(135deg, ${item.color}15, ${item.color}06)`, border: `1px solid ${item.color}12` }}>
-                    <Icon style={{ width: 16, height: 16, color: item.color, strokeWidth: 1.8 }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-white" style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>{item.label}</span>
-                      {"badge" in item && item.badge && (
-                        <span className="px-1.5 py-0.5 rounded-md" style={{ fontSize: 8, fontWeight: 800, color: "#fff", background: "linear-gradient(135deg, #FF2D55, #FF1744)", boxShadow: "0 2px 6px rgba(255,45,85,0.3)" }}>{item.badge}</span>
-                      )}
-                      <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded" style={{ fontSize: 8, fontWeight: 700, color: `${item.color}90`, background: `${item.color}08`, letterSpacing: "0.06em" }}>{item.group}</span>
-                    </div>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.45, letterSpacing: "-0.005em" }}>{item.desc}</p>
-                  </div>
-                </div>
-              </motion.button>
-            );
-          })}
-        </div>
-      </motion.div>
     </div>
   );
 }
