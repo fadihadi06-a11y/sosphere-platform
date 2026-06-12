@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Radar, MapPin, AlertTriangle, Clock, Users, Phone,
+  Radar, MapPin, AlertTriangle, Clock, Users,
   Radio, Shield, Navigation, Target, Crosshair,
   ChevronRight, ChevronDown, Circle, Siren, Activity,
   Eye, Send, Volume2, Search, RefreshCw, Download,
@@ -620,26 +620,17 @@ export function SARProtocolPage() {
     );
     // 29th pattern app A: forensic weather snapshot at launch
     const wxObs = lookupZoneObservation(getCachedLatest(), scenario.zone);
-    const mission = { ...baseMission, weatherAtLaunch: captureWeatherForSAR(wxObs) };
+    const mission = { ...baseMission, weatherAtLaunch: captureWeatherForSAR(wxObs), isTraining: true };
     setActiveMission(mission);
     setShowScenarioPicker(false);
     setElapsedTimer(0);
     saveSARMission(mission);
-    // Auto-alert mobile workers via shared store
-    // P0-sar-audit-fixes (2026-05-26): include zoneIds[] for mobile-side geo-filtering
-    // and capture delivery ack so admin sees real status instead of always "alerted".
-    void emitAdminSignal("SAR_ACTIVATED", scenario.employeeId, {
-      employeeName: scenario.employeeName,
-      zone: scenario.zone,
-      zoneIds: [scenario.zone],
-      missionId: mission.id,
-    }).then(({ delivered }) => {
-      if (!delivered) {
-        toast.warning("Mobile alert queued (offline)", {
-          description: "Workers will be notified when the dashboard reconnects.",
-        });
-      }
-    });
+    // TRAINING MODE: do NOT broadcast to real workers. This page is a
+    // planning/training simulator (see demo banner + mode toggle). Previously
+    // loading a scenario fired a REAL SAR_ACTIVATED alert to workers' phones
+    // tagged with fabricated employee/zone data — a life-safety integrity bug.
+    // Real alerts come only from live missions (handleStartLiveMission) and
+    // real emergencies bridged from SOS (prefill/cluster), never from training.
     // P0-sar-audit-fixes: durable audit-log entry for SAR start.
     try {
       logAuditEvent("emergency", "sar_mission_started", {
@@ -702,8 +693,8 @@ export function SARProtocolPage() {
       }
     })();
 
-    toast.success("SAR Mission launched — mobile workers alerted", {
-      description: `Search for ${scenario.employeeName} in ${scenario.zone}`,
+    toast.success("Training scenario started", {
+      description: `Simulated search for ${scenario.employeeName} in ${scenario.zone}. No real alert was sent to workers (training mode).`,
     });
   }, []);
 
@@ -713,14 +704,20 @@ export function SARProtocolPage() {
       saveSARMission(updated);
       // Notify mobile workers that the search is over
       if (status === "found_safe" || status === "found_injured") {
-        void emitAdminSignal("SAR_WORKER_FOUND", activeMission.employeeId, {
-          employeeName: activeMission.employeeName,
-          status,
-          missionId: activeMission.id,
-        });
-        toast.success(status === "found_safe" ? "Worker found safe!" : "Worker found — medical attention needed", {
-          description: `${activeMission.employeeName} — SAR mission concluded`,
-        });
+        if (activeMission.isTraining) {
+          toast.success("Training scenario concluded", {
+            description: `Simulated outcome: ${status === "found_safe" ? "found safe" : "found injured"}. No real notification was sent.`,
+          });
+        } else {
+          void emitAdminSignal("SAR_WORKER_FOUND", activeMission.employeeId, {
+            employeeName: activeMission.employeeName,
+            status,
+            missionId: activeMission.id,
+          });
+          toast.success(status === "found_safe" ? "Worker found safe!" : "Worker found — medical attention needed", {
+            description: `${activeMission.employeeName} — SAR mission concluded`,
+          });
+        }
       }
       // P0-sar-audit-fixes (2026-05-26): durable audit-log entry for SAR resolution.
       // Severity reflects the outcome — success for safe, critical for injured/cancelled.
@@ -1494,6 +1491,12 @@ function MissionHeader({
                   Alert-Workers broadcast was fired and whether it actually delivered. */}
           <button
             onClick={() => {
+              if (mission.isTraining) {
+                toast.info("Training mode — no real alert sent", {
+                  description: "This is a simulated mission. Workers' phones are not contacted.",
+                });
+                return;
+              }
               void emitAdminSignal("SAR_ACTIVATED", mission.employeeId, {
                 employeeName: mission.employeeName,
                 zone: mission.zone,
@@ -2150,13 +2153,6 @@ function TeamsPanel({
                   <span style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.3)" }}>
                     ~{w.estimatedArrivalMin}m
                   </span>
-                  <button style={{
-                    width: 28, height: 28, borderRadius: 8, border: "1px solid rgba(0,200,224,0.3)",
-                    background: "rgba(0,200,224,0.1)", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <Phone size={12} color="#00C8E0" />
-                  </button>
                 </div>
               </div>
             ))}

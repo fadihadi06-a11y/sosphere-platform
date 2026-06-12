@@ -208,6 +208,9 @@ export interface SARMission {
   /** 29th pattern app integration A: weather forensics at launch.
    *  Optional — older missions and offline-only flows may not have it. */
   weatherAtLaunch?: WeatherForensicSnapshot | null;
+  /** True when this mission was started from the TRAINING scenario picker.
+   *  Training missions must NEVER fire real-world broadcasts to workers. */
+  isTraining?: boolean;
 }
 
 export interface SearchTeam {
