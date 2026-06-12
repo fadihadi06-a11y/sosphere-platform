@@ -733,6 +733,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
                 background: "linear-gradient(135deg, #0A1220 0%, #050710 100%)",
                 border: "1px solid rgba(0,200,224,0.15)",
                 boxShadow: "0 32px 64px rgba(0,0,0,0.6), 0 0 60px rgba(0,200,224,0.05)",
+                maxHeight: "90vh", display: "flex", flexDirection: "column",
               }}>
               {/* Header */}
               <div className="flex items-center justify-between p-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
@@ -751,7 +752,7 @@ export function EmergencyPlaybookPage({ t, webMode }: { t: (k: string) => string
               </div>
 
               {/* Body */}
-              <div className="p-6 space-y-5">
+              <div className="p-6 space-y-5" style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
                 {/* Name */}
                 <div>
                   <label style={{ ...TYPOGRAPHY.overline, color: TOKENS.text.muted, display: "block", marginBottom: 8 }}>PLAYBOOK NAME</label>
