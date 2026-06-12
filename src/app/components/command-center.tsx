@@ -3,6 +3,9 @@
 // ═══════════════════════════════════════════════════════════════
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { useDashboardStore } from "./stores/dashboard-store";
+import { sendBroadcast } from "./shared-store";
+import { toast } from "sonner";
 import {
   Radio, Send, Users, Shield, HeartPulse, Megaphone,
   CheckCircle2, Clock, AlertTriangle,
@@ -17,6 +20,18 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [sentMessages, setSentMessages] = useState<string[]>([]);
   const [activeChannel, setActiveChannel] = useState("field");
+
+  // REAL operational data from the shared store (was hardcoded "28 online" etc.).
+  const employees = useDashboardStore(s => s.employees);
+  const emergencies = useDashboardStore(s => s.emergencies);
+  const onlineCount = employees.filter(e => e.status !== "off-shift").length;
+  const alertCount = emergencies.filter(e => e.status !== "resolved").length;
+  const workerCount = employees.length;
+
+  // Team Channels / Response Teams / Recent Commands have no backend yet, so they
+  // are DEV-only (never shown as fake live data in production). They light up once
+  // a real teams/channels feature exists.
+  const SHOW_DEMO = import.meta.env.DEV;
 
   const channels = [
     { id: "field", icon: Radio, label: t("cmd.ch.field"), members: 12, online: 8, color: "#00C8E0" },
@@ -38,9 +53,23 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
   ];
 
   const handleSendBroadcast = () => {
-    if (!broadcastMsg.trim()) return;
-    setSentMessages(prev => [broadcastMsg, ...prev]);
+    const body = broadcastMsg.trim();
+    if (!body) return;
+    // Real broadcast through the same path Live Alerts uses (recorded + cross-tab).
+    sendBroadcast({
+      title: "Command broadcast",
+      body,
+      priority: "urgent",
+      audience: { type: "all" },
+      audienceLabel: "All Company",
+      source: "manual",
+      senderName: "Command Center",
+      senderRole: "Admin",
+      timestamp: Date.now(),
+    });
+    setSentMessages(prev => [body, ...prev]);
     setBroadcastMsg("");
+    toast.success("Broadcast sent to all workers");
   };
 
   return (
@@ -66,16 +95,16 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
 
         <div className="grid grid-cols-3 gap-2">
           <div className="text-center p-2 rounded-lg" style={{ background: "rgba(0,200,224,0.06)" }}>
-            <p style={{ fontSize: 20, fontWeight: 800, color: "#00C8E0" }}>28</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: "#00C8E0" }}>{onlineCount}</p>
             <p style={{ fontSize: 7, color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>{t("cmd.online").toUpperCase()}</p>
           </div>
           <div className="text-center p-2 rounded-lg" style={{ background: "rgba(255,45,85,0.06)" }}>
-            <p style={{ fontSize: 20, fontWeight: 800, color: "#FF2D55" }}>2</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: "#FF2D55" }}>{alertCount}</p>
             <p style={{ fontSize: 7, color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>{t("s.alerts").toUpperCase()}</p>
           </div>
           <div className="text-center p-2 rounded-lg" style={{ background: "rgba(0,200,96,0.06)" }}>
-            <p style={{ fontSize: 20, fontWeight: 800, color: "#00C853" }}>3</p>
-            <p style={{ fontSize: 7, color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>{t("cmd.teams").toUpperCase()}</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: "#00C853" }}>{workerCount}</p>
+            <p style={{ fontSize: 7, color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>WORKERS</p>
           </div>
         </div>
       </div>
@@ -125,8 +154,8 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
         </div>
       </div>
 
-      {/* Team Channels */}
-      <div>
+      {/* Team Channels (DEV-only: no backend yet) */}
+      {SHOW_DEMO && (<div>
         <p className="mb-2" style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
           {t("cmd.channels")}
         </p>
@@ -155,10 +184,10 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
             </button>
           ))}
         </div>
-      </div>
+      </div>)}
 
-      {/* Response Teams */}
-      <div>
+      {/* Response Teams (DEV-only: no backend yet) */}
+      {SHOW_DEMO && (<div>
         <p className="mb-2" style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
           {t("cmd.teams")}
         </p>
@@ -179,10 +208,10 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
             </div>
           ))}
         </div>
-      </div>
+      </div>)}
 
-      {/* Recent Commands */}
-      <div>
+      {/* Recent Commands (DEV-only: no backend yet) */}
+      {SHOW_DEMO && (<div>
         <p className="mb-2" style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
           {t("cmd.recent")}
         </p>
@@ -204,7 +233,7 @@ export function CommandCenterPage({ t }: CommandCenterProps) {
             );
           })}
         </div>
-      </div>
+      </div>)}
     </div>
   );
 }

@@ -78,10 +78,26 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     });
 
     // Call custom error handler if provided
+    // Stale-chunk-after-deploy self-heal: a lazy() import can fail because the old
+    // hashed chunk no longer exists after a new deploy. Reload ONCE (15s guard) to
+    // fetch fresh assets (kills "Failed to fetch dynamically imported module").
+    const _m = error?.message || "";
+    if (/dynamically imported module|ChunkLoadError|Importing a module script failed/i.test(_m)) {
+      try {
+        const k = "sos_chunk_reloaded_at";
+        const last = Number(sessionStorage.getItem(k) || 0);
+        if (Date.now() - last > 15000) { sessionStorage.setItem(k, String(Date.now())); window.location.reload(); }
+      } catch { /* unavailable */ }
+    }
+
     this.props.onError?.(error, errorInfo);
   }
 
   handleRetry = () => {
+    const _rmsg = this.state.error?.message || "";
+    if (/dynamically imported module|ChunkLoadError|Importing a module script failed/i.test(_rmsg)) {
+      try { window.location.reload(); return; } catch { /* */ }
+    }
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
