@@ -268,6 +268,7 @@ function getNavIntelligence(t: (k: string) => string) {
 
 function getNavOperations(_t: (k: string) => string) {
   return [
+    { id: "location" as DashPage,    icon: MapPin, label: "Location & Zones" },
     { id: "operations" as DashPage,  icon: Route,  label: "Operations Hub"  },
     { id: "people" as DashPage,      icon: Users,  label: "People & Teams"  },
     { id: "drones" as DashPage,      icon: Navigation, label: "Drones"       },

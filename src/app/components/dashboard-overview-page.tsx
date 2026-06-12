@@ -107,7 +107,18 @@ function getLiveActivity(): Array<{ time: string; text: string; color: string; i
     AlertTriangle, Clock, CheckCircle2, Shield, Radio, MapPin
   };
 
-  return activities.slice(0, 6).map((act: AppActivity) => {
+  // Declutter: collapse identical repeated entries (e.g. a spammy
+  // "Admin Unreachable — Unknown" status logged over and over) so the
+  // feed shows each distinct activity once, most-recent first.
+  const seen = new Set<string>();
+  const deduped = activities.filter((act: AppActivity) => {
+    const key = (act.action || "") + "|" + (act.zone || "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return deduped.slice(0, 6).map((act: AppActivity) => {
     const elapsed = Date.now() - act.timestamp;
     const minutes = Math.floor(elapsed / 60000);
     const timeStr = minutes === 0 ? "Just now" : minutes === 1 ? "1m ago" : `${minutes}m ago`;
