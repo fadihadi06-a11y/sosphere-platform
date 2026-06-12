@@ -394,7 +394,7 @@ export async function submitSafetyReport(args: {
   severity: "low" | "medium" | "high" | "critical";
   incidentType: string;
   comment: string;
-  photos?: Array<{ id?: string; caption?: string; size?: number; dataUrl?: string }>;
+  photos?: Array<{ id?: string; caption?: string; size?: number | string; dataUrl?: string }>;
   audioMemo?: { durationSec: number; format?: string };
 }): Promise<{ ok: boolean; id: string; error?: string }> {
   const id = secureRandomId("EVD", 6);
