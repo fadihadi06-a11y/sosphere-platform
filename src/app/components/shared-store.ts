@@ -1579,6 +1579,51 @@ export interface BroadcastMessage {
 }
 
 // ── Send Broadcast ────────────────────────────────────────────
+// ── Real delivery: fan out a broadcast as a PUSH notification to the targeted
+// workers' devices (web push + native Android via the send-push-notification
+// edge function). Fire-and-forget; never blocks the caller. Was missing — the
+// broadcast was localStorage/cross-tab only and never reached phones (RED #21).
+async function deliverBroadcastPush(b: BroadcastMessage): Promise<void> {
+  try {
+    let companyId: string | null = null;
+    try { companyId = localStorage.getItem("sosphere_company_id"); } catch { /* */ }
+    if (!companyId) return;
+    const { supabase } = await import("./api/supabase-client");
+    const { data: members, error } = await supabase
+      .from("company_memberships")
+      .select("user_id, role")
+      .eq("company_id", companyId)
+      .eq("active", true);
+    if (error || !members || members.length === 0) return;
+
+    let targets = members as Array<{ user_id: string; role: string }>;
+    if (b.audience.type === "role") {
+      const roles = new Set(b.audience.roles);
+      targets = targets.filter(m => roles.has(m.role as any));
+    }
+    // (zone audience: notify the whole company for now — over-notifying in a
+    //  safety context is safer than missing a worker. Zone-precise targeting TBD.)
+    const userIds = Array.from(new Set(targets.map(m => m.user_id).filter(Boolean)));
+    if (userIds.length === 0) return;
+
+    const data: Record<string, string> = {
+      type: "broadcast",
+      broadcastId: b.id,
+      priority: String(b.priority),
+      path: "/dashboard",
+    };
+    await Promise.allSettled(
+      userIds.slice(0, 500).map(uid =>
+        supabase.functions.invoke("send-push-notification", {
+          body: { targetUserId: uid, title: b.title.slice(0, 200), body: b.body.slice(0, 1000), data },
+        }),
+      ),
+    );
+  } catch (e) {
+    console.warn("[broadcast] push fan-out failed:", e);
+  }
+}
+
 export function sendBroadcast(msg: Omit<BroadcastMessage, "id" | "readBy">): BroadcastMessage {
   const broadcast: BroadcastMessage = {
     ...msg,
@@ -1602,6 +1647,9 @@ export function sendBroadcast(msg: Omit<BroadcastMessage, "id" | "readBy">): Bro
     timestamp: msg.timestamp,
     data: { broadcastId: broadcast.id, broadcastTitle: msg.title, broadcastPriority: msg.priority },
   });
+
+  // Real push delivery to targeted workers' devices (fire-and-forget).
+  void deliverBroadcastPush(broadcast);
 
   return broadcast;
 }
