@@ -288,7 +288,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
   const KPI_CARDS = [
     { label: "Active Emergencies", value: activeCount.toString(), sub: activeCount > 0 ? "Requires attention" : "All clear", color: activeCount > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: activeCount > 0, page: "emergencyHub" as DashPage },
     { label: "Employees On Duty",  value: onShift.toString(),     sub: `${lateCheckins} late check-in`,                    color: "#00C8E0",  icon: Users,         pulse: false,          page: "employees"  as DashPage },
-    { label: "Safety Score",       value: `${safetyScore}%`,      sub: "+3.2% from last week",                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
+    { label: "Safety Score",       value: `${safetyScore}%`,      sub: "Live safety index",                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
     { label: "SLA Compliance",     value: slaBreachCount > 0 ? `${slaBreachCount}` : "100%", sub: slaBreachCount > 0 ? `${slaBreachCount} SLA breach${slaBreachCount > 1 ? "es" : ""}` : `${SLA_THRESHOLD / 60}m response threshold`, color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false, page: "emergencyHub" as DashPage },
   ];
 
@@ -725,7 +725,6 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
 }) {
   const onShift = employees.filter(e => e.status !== "off-shift").length;
   const lateCheckins = employees.filter(e => e.status === "late-checkin").length;
-  const safetyScore = 87;
 
   const activeEmergencies = emergencies.filter(e => e.status !== "resolved");
   const sorted = sortByPriority(activeEmergencies);
@@ -737,6 +736,11 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
   const [expandedIncident, setExpandedIncident] = useState<string | null>(null);
   // FIX 1: Canonical SLA formula — same as main dashboard
   const slaBreachCount = emergencies.filter(e => e.status === "active" && e.elapsed > SLA_THRESHOLD).length;
+  // REAL safety index (was a hardcoded 87). 100 = all clear; each live
+  // incident / SLA breach / late check-in deducts. Honest, derived from
+  // the same real signals as the rest of the dashboard.
+  const safetyScore = Math.max(0, Math.min(100,
+    100 - activeEmergencies.length * 15 - slaBreachCount * 10 - lateCheckins * 5));
 
   // Zone cluster detection for overview alerts
   const overviewClusters = React.useMemo(() => detectClusters(emergencies), [emergencies]);
@@ -910,7 +914,7 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
           </div>
           <div className="flex items-center gap-1">
             <ArrowUpRight className="size-3" style={{ color: "#00C853" }} />
-            <span style={{ fontSize: 9, color: "#00C853", fontWeight: 600 }}>+3.2%</span>
+            <span style={{ fontSize: 9, color: "#00C853", fontWeight: 600 }}>live</span>
           </div>
         </div>
         <div className="flex-1 grid grid-cols-2 gap-2">
