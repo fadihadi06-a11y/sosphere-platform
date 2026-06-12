@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { MapPin, Crosshair, Satellite } from "lucide-react";
 import { ZonesPage } from "./dashboard-pages";
-import { GeofencingPage } from "./dashboard-geofencing-page";
+import { GeofenceMapEditor } from "./dashboard-geofence-map-editor";
 import { GPSCompliancePage } from "./dashboard-gps-compliance";
 import { useDashboardStore } from "./stores/dashboard-store";
 
@@ -114,7 +114,7 @@ export function LocationZonesPage({ t, webMode = false }: LocationPageProps) {
           {activeTab === "zones" && (
             <ZonesPage zones={zones} t={t} webMode={webMode} />
           )}
-          {activeTab === "geofence" && <GeofencingPage t={t} webMode={webMode} />}
+          {activeTab === "geofence" && <GeofenceMapEditor webMode={webMode} />}
           {activeTab === "gps" && <GPSCompliancePage t={t} webMode={webMode} />}
         </motion.div>
       </AnimatePresence>
