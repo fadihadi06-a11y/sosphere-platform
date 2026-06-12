@@ -251,7 +251,7 @@ export async function initGeofenceService(companyId: string): Promise<void> {
     const { supabase } = await import("./api/supabase-client");
     const { data, error } = await supabase
       .from("zones")
-      .select("id, name, lat, lng, lon, radius, radius_meters, type, polygon")
+      .select("id, name, lat, lng, lon, radius, radius_meters, type")
       .eq("company_id", companyId);
     if (error) {
       console.warn("[Geofence] init failed:", error.message);
