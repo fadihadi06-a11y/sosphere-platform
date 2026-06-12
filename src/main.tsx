@@ -10,6 +10,29 @@ import { initSentry } from "./app/components/sentry-client";
 import { initCapacitorBridge } from "./app/components/capacitor-bridge";
 import { runLegacyMigrations } from "./app/components/storage-keys";
 
+// ─────────────────────────────────────────────────────────────────
+// Stale-chunk-after-deploy self-heal AT THE SOURCE.
+// Vite fires `vite:preloadError` on window when a dynamically-imported
+// chunk (a lazy-loaded route/page) 404s because a new deploy replaced the
+// hashed filenames the user's cached index.html still points at. We reload
+// ONCE to pull the fresh manifest — catching the failure BEFORE it bubbles
+// into React, so the user never sees a broken page. A 20s sessionStorage
+// guard prevents a reload loop if the chunk is genuinely gone (real 404).
+// This is the production fix for Sentry "Failed to fetch dynamically
+// imported module" (dashboard-sar-page / dashboard-incident-investigation).
+// ─────────────────────────────────────────────────────────────────
+window.addEventListener("vite:preloadError", (e) => {
+  try {
+    const k = "sos_preload_reloaded_at";
+    const last = Number(sessionStorage.getItem(k) || 0);
+    if (Date.now() - last > 20000) {
+      sessionStorage.setItem(k, String(Date.now()));
+      e.preventDefault();
+      window.location.reload();
+    }
+  } catch { /* sessionStorage unavailable — error boundary self-heal is the fallback */ }
+});
+
 // MUST RUN FIRST: Initialize Environment Shield to prevent secret leakage
 initEnvShield();
 

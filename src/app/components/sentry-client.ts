@@ -123,6 +123,15 @@ export async function initSentry(): Promise<void> {
         // noise — not a functional failure. Filter it instead of weakening CSP.
         "unsafe-eval",
         "Refused to evaluate a string as JavaScript",
+        // Stale-chunk-after-deploy: these fire when a lazy chunk 404s because
+        // a new deploy rotated the hashed filenames. They are self-healed (main.tsx
+        // vite:preloadError listener + error-boundary reload), so they are expected
+        // and non-actionable — filter them so they don't page the operator. Covers
+        // Chrome/Firefox/Safari wording variants.
+        "Failed to fetch dynamically imported module",
+        "Importing a module script failed",
+        "error loading dynamically imported module",
+        "ChunkLoadError",
       ],
     });
     sentryReady = true;
