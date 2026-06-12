@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-11T17:29:45.542Z",
-  "total_migrations": 189,
-  "manifest_sha256": "aa59c0694aa0d978f31303e50da7a2be5aa7116078bbb6c4f7bf52eb7ee6bf8e",
+  "generated_at": "2026-06-12T14:52:32.492Z",
+  "total_migrations": 190,
+  "manifest_sha256": "f7e2680e995bb46425738768e83736f97e5319cd541497364b1a2012cd3e3015",
   "migrations": [
     {
       "version": "20260415",
@@ -1325,6 +1325,13 @@
       "file": "20260611_zone_breach_to_queue_projection.sql",
       "sha256": "4c1e83ef276c2e865e34fb36324553dc8403b9602eaaf72cb85adaf15750d63c",
       "bytes": 3057
+    },
+    {
+      "version": "20260612",
+      "name": "create_company_playbooks",
+      "file": "20260612_create_company_playbooks.sql",
+      "sha256": "b492e7bbeac5084e040cb3717cc6101d65f9a02085fb7c1ef35bf666b17cd14c",
+      "bytes": 3715
     }
   ]
 }
