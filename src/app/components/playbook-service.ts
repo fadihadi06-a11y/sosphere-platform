@@ -269,12 +269,13 @@ export interface RunStepLog { stepId: string; action: string; at: string; }
 
 export async function startPlaybookRun(args: {
   playbookId: string; playbookName: string; triggerType: string; severity: string; totalSteps: number;
+  runByName?: string;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
   const companyId = getCompanyId();
   if (!companyId) return { ok: false, error: "no_company" };
   try {
-    let uid: string | null = null; let uname = "Admin";
-    try { const u = (await supabase.auth.getUser()).data.user; uid = u?.id ?? null; uname = u?.email?.split("@")[0] || "Admin"; } catch { /* anon */ }
+    let uid: string | null = null; let uname = args.runByName || "Admin";
+    try { const u = (await supabase.auth.getUser()).data.user; uid = u?.id ?? null; if (!args.runByName) uname = u?.email?.split("@")[0] || "Admin"; } catch { /* anon */ }
     const { data, error } = await supabase.from("playbook_runs").insert({
       company_id: companyId, playbook_id: args.playbookId, playbook_name: args.playbookName,
       trigger_type: args.triggerType, severity: args.severity, run_by: uid, run_by_name: uname,
@@ -313,4 +314,54 @@ export async function fetchRecentRuns(limit = 20): Promise<any[]> {
       .eq("company_id", companyId).order("started_at", { ascending: false }).limit(limit);
     return error || !data ? [] : (data as any[]);
   } catch { return []; }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// Layer 3 — Phase 1: auto-activate the matching response playbook when a
+// real emergency event fires. SAFE: this ONLY logs a durable activation run
+// (compliance) and returns the playbook so the UI can notify the admin.
+// It performs NO broadcasts and contacts NO workers — live actions are a
+// separate, explicitly-gated Phase 2.
+// ═══════════════════════════════════════════════════════════════
+
+// Real emergency sync-event types → playbook triggerType. Only events that
+// have a verified source in the codebase are mapped (Security/Geofence have
+// no real trigger source yet, so they are intentionally absent).
+const EVENT_TO_TRIGGER: Record<string, string> = {
+  SOS_TRIGGERED:    "SOS Button",
+  FALL_DETECTED:    "Fall Detected",
+  HAZARD_REPORT:    "Environmental Hazard",
+  MONITORING_MISSED:"Missed Check-in",
+};
+
+export function triggerTypeForEvent(eventType: string): string | null {
+  return EVENT_TO_TRIGGER[eventType] ?? null;
+}
+
+// Guard against double-activation for the same emergency within a session
+// (e.g. an event re-delivered on Realtime reconnect).
+const _autoActivated = new Set<string>();
+
+export async function autoActivatePlaybook(args: {
+  eventType: string;
+  emergencyId?: string;
+}): Promise<{ activated: boolean; playbookName?: string; runId?: string }> {
+  const triggerType = triggerTypeForEvent(args.eventType);
+  if (!triggerType) return { activated: false };
+  const key = `${args.eventType}:${args.emergencyId ?? "noid"}`;
+  if (args.emergencyId && _autoActivated.has(key)) return { activated: false };
+  try {
+    const list = await fetchCompanyPlaybooks();
+    const pb = list.find(p => p.autoTrigger && p.triggerType === triggerType);
+    if (!pb) return { activated: false };
+    if (args.emergencyId) _autoActivated.add(key);
+    const res = await startPlaybookRun({
+      playbookId: pb.id, playbookName: pb.name, triggerType: pb.triggerType,
+      severity: pb.severity, totalSteps: pb.steps.length, runByName: "System (auto-trigger)",
+    });
+    return { activated: res.ok, playbookName: pb.name, runId: res.id };
+  } catch {
+    return { activated: false };
+  }
 }

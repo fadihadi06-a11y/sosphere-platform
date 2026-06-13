@@ -97,6 +97,7 @@ import { NotificationsPanel, NotificationsBellButton } from "./dashboard-notific
 // ── NEW: Safety Intelligence Engine ─────────────────────────────
 import { SafetyIntelligencePage } from "./safety-intelligence";
 import { Toaster, toast } from "sonner";
+import { autoActivatePlaybook } from "./playbook-service";
 import { safeTelCall } from "./utils/safe-tel";
 import { hapticLight, playUISound } from "./haptic-feedback";
 
@@ -878,6 +879,22 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
   // ── Cross-Tab Sync from Mobile App ────────────────────────────
   useEffect(() => {
     const unsub = onSyncEvent((event) => {
+      // Layer 3 (Phase 1): auto-activate the matching response playbook for real
+      // emergency events. Fire-and-forget and fully guarded, so a playbook
+      // failure can NEVER affect emergency ingestion. This logs a durable
+      // compliance activation run and notifies the admin — it sends NO broadcast
+      // and contacts NO workers (live actions are a separate, gated Phase 2).
+      void autoActivatePlaybook({ eventType: event.type, emergencyId: event.data?.emergencyId as string | undefined })
+        .then((r) => {
+          if (r.activated && r.playbookName) {
+            toast.info(`Protocol auto-activated: ${r.playbookName}`, {
+              description: "Open Emergency Hub \u2192 Playbook to follow and complete the steps.",
+              duration: 6000,
+            });
+          }
+        })
+        .catch(() => { /* auto-trigger must never break emergency handling */ });
+
       if (event.type === "SOS_TRIGGERED") {
         // FIX AUDIT-2.2: Use mobile's emergencyId as sourceEmergencyId for cancel matching
         const mobileEmgId = event.data?.emergencyId as string | undefined;
