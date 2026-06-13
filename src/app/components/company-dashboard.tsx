@@ -2354,10 +2354,16 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               // Feature gate: AI Co-Admin requires Business plan or above
               const aiGateCheck = checkFeatureGate("ai_co_admin", companyState);
               if (!aiGateCheck.allowed) {
-                toast.error(`AI Co-Admin requires ${aiGateCheck.requiredPlanLabel} plan`, {
-                  description: `Upgrade to ${aiGateCheck.requiredPlanLabel} ($${aiGateCheck.requiredPlanPrice}/mo) to unlock AI Co-Admin`,
+                // LIFE-SAFETY UX FIX: never yank the admin to the billing/sales page
+                // during an ACTIVE emergency. AI Co-Admin (auto-pilot) is premium, but
+                // the admin must ALWAYS get step-by-step guidance — so fall back to the
+                // free response Playbook and surface the upgrade as a gentle, non-blocking
+                // toast (NOT a forced navigation away from the live incident).
+                toast.info("Opening your response Playbook for step-by-step guidance", {
+                  description: `Tip: AI Co-Admin (auto-pilot) is on the ${aiGateCheck.requiredPlanLabel} plan ($${aiGateCheck.requiredPlanPrice}/mo).`,
                 });
-                navigateTo("billing");
+                setCurrentPage("emergencyHub");
+                setHubTab("emergencyHub", "playbook");
                 return;
               }
               const emg = emergencies.find(e => e.id === id);
