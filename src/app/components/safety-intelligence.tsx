@@ -32,9 +32,11 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { type Employee } from "./dashboard-types";
-import { onSyncEvent } from "./shared-store";
+import { onSyncEvent, getCompanyId, sendBroadcast } from "./shared-store";
+import { fetchBuddyPairs } from "./buddy-service";
+import { safeTelCall } from "./utils/safe-tel";
 import { calculateRiskScore, type EmployeeRiskScore, type EmployeeForRiskScoring } from "./risk-scoring-engine";
-import { getCachedLatest, lookupZoneObservation } from "./weather-service";
+import { getCachedLatest, lookupZoneObservation, loadLatestPerZone, aggregateSeverity, formatTempC, type WeatherObservation } from "./weather-service";
 
 interface SafetyIntelligenceProps {
   t: (key: string) => string;
@@ -79,15 +81,7 @@ interface ProactiveAlert {
   navTarget?: { page: string; tab?: string };
 }
 
-interface EnvironmentalThreat {
-  type: string;
-  icon: any;
-  value: string;
-  unit: string;
-  status: "safe" | "caution" | "danger";
-  threshold: string;
-  trend: "up" | "down" | "stable";
-}
+
 
 // ── FIX 2: Convert real Employee to WorkerRisk via calculateRiskScore ──
 // Deterministic "mock sensor" data seeded by employee index
@@ -99,52 +93,64 @@ const ZONE_GPS: Record<string, { lat: number; lng: number }> = {
   "Zone E": { lat: 24.7050, lng: 46.6900 },
 };
 
-function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee[]): WorkerRisk {
-  // Deterministic "sensor" data seeded by employee index
-  const seed = idx + 1;
+function employeeToWorkerRisk(
+  emp: Employee,
+  allEmployees: Employee[],
+  ctx: { buddyEmpIds: Set<string>; weatherRows: WeatherObservation[]; nowHour: number },
+): WorkerRisk {
   const isOnDuty = emp.status === "on-shift" || emp.status === "checked-in";
-  const isLate = emp.status === "late-checkin";
   const isSos = emp.status === "sos";
 
-  const hoursOnSite = isOnDuty ? +(2 + (seed * 1.3) % 9).toFixed(1) : 0;
-  const lastCheckInStr = emp.lastCheckin;
+  // REAL: check-in age (minutes) parsed from the roster's lastCheckin string.
+  const lastCheckInStr = emp.lastCheckin || "";
   const lastCheckIn = lastCheckInStr.includes("m ago")
     ? parseInt(lastCheckInStr) || 0
     : lastCheckInStr.includes("h ago")
     ? (parseInt(lastCheckInStr) || 1) * 60
-    : lastCheckInStr === "0s" ? 0 : 5;
-  const temperature = isOnDuty ? Math.round(28 + (seed * 7) % 22) : 24;
-  const isAlone = seed % 4 === 0;
-  const nearbyWorkers = isAlone ? 0 : Math.round(1 + (seed * 3) % 8);
+    : lastCheckInStr === "0s" ? 0 : 0;
+
   const zoneKey = emp.location.split(" - ")[0] || "Zone A";
-  const gps = ZONE_GPS[zoneKey] || { lat: 24.71, lng: 46.68 };
 
-  // 29th pattern app integration B: pull live weather for the worker's zone.
-  // getCachedLatest is sync — populated by loadLatestPerZone elsewhere on the
-  // dashboard (the WeatherAdmin page or the weatherAlerts page). If the cache
-  // is empty (first visit, no schedule yet), weather factor is simply absent.
-  const weatherObs = lookupZoneObservation(getCachedLatest(), zoneKey);
+  // REAL: nearby = other on-duty workers in the same zone (from the live roster).
+  const nearbyWorkers = allEmployees.filter(e =>
+    e.id !== emp.id &&
+    (e.status === "on-shift" || e.status === "checked-in") &&
+    (e.location.split(" - ")[0] || "") === zoneKey
+  ).length;
 
-  // Use the real risk scoring engine
+  // REAL: buddy presence from buddy_pairs (not a seed guess).
+  const hasBuddy = ctx.buddyEmpIds.has(emp.id);
+  const isWorkingAlone = isOnDuty && !hasBuddy && nearbyWorkers === 0;
+
+  // REAL: live weather for the worker's zone (may be absent → factor skipped).
+  const weatherObs = lookupZoneObservation(ctx.weatherRows, zoneKey);
+  const zoneTemp = weatherObs?.temp_c ?? null;
+
+  // REAL: shift derived from the current hour (day 06:00–18:00, else night).
+  const shift: "day" | "night" = (ctx.nowHour >= 18 || ctx.nowHour < 6) ? "night" : "day";
+
+  // Feed the real risk engine ONLY real-sourced inputs. Factors with no real
+  // source (battery, fasting, hours-on-site) are left null/undefined so the
+  // engine simply skips them instead of scoring fabricated data.
   const riskInput: EmployeeForRiskScoring = {
     id: emp.id,
     name: emp.name,
-    joinDate: Date.now() - (seed % 3 === 0 ? 15 : 90) * 24 * 60 * 60 * 1000,
-    hasBuddy: seed % 3 !== 0,
-    checkInInterval: lastCheckIn > 30 ? 180 : 60,
-    batteryLevel: isSos ? 12 : Math.round(30 + (seed * 17) % 70),
-    isWorkingAlone: isAlone,
-    shift: seed % 5 === 0 ? "night" : "day",
-    temperature: temperature > 40 ? temperature : undefined,
-    isFasting: seed % 7 === 0,
-    lastMovement: lastCheckIn > 30 ? lastCheckIn * 60000 : undefined,
+    // real joinDate when known; otherwise a neutral 1-year-ago so an UNKNOWN
+    // tenure never adds a fake "new worker" penalty.
+    joinDate: emp.joinDate ?? (Date.now() - 365 * 24 * 60 * 60 * 1000),
+    hasBuddy,
+    checkInInterval: emp.checkInInterval ?? (lastCheckIn > 30 ? 180 : 60),
+    batteryLevel: null,                                   // no real battery telemetry → skip
+    isWorkingAlone,
+    shift,
+    temperature: typeof zoneTemp === "number" ? zoneTemp : undefined, // real zone temp only
+    lastMovement: lastCheckIn > 0 ? lastCheckIn * 60000 : undefined,
     weatherSeverity: weatherObs?.severity,
     weatherCondition: weatherObs?.condition,
   };
 
   const riskResult = calculateRiskScore(riskInput);
 
-  // Map engine levels to WorkerRisk levels
   const levelMap: Record<string, "safe" | "elevated" | "high" | "critical"> = {
     safe: "safe",
     caution: "elevated",
@@ -153,11 +159,10 @@ function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee
   };
   const riskLevel = levelMap[riskResult.level] || "safe";
 
-  // SOS employees are always critical
+  // A worker in active SOS is always critical regardless of engine score.
   const finalScore = isSos ? Math.max(riskResult.totalScore, 90) : riskResult.totalScore;
-  const finalLevel = isSos ? "critical" : riskLevel;
+  const finalLevel: WorkerRisk["riskLevel"] = isSos ? "critical" : riskLevel;
 
-  // Convert risk factors to display format
   const factorColors: Record<string, string> = {
     low: "#FF9500", medium: "#FF9500", high: "#FF2D55",
   };
@@ -170,11 +175,12 @@ function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee
     riskFactors.push({ factor: "Normal conditions", weight: 10, color: "#00C853" });
   }
 
-  // Trend based on score
   const trend: "improving" | "stable" | "worsening" =
     finalScore >= 70 ? "worsening" : finalScore >= 40 ? "stable" : "improving";
 
   const initials = emp.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+  // Zone centroid (display only) — honest zone-level position, not fake precision.
+  const gps = ZONE_GPS[zoneKey] || { lat: 0, lng: 0 };
 
   return {
     id: emp.id,
@@ -184,86 +190,17 @@ function employeeToWorkerRisk(emp: Employee, idx: number, allEmployees: Employee
     riskScore: finalScore,
     riskLevel: finalLevel,
     riskFactors,
-    hoursOnSite,
+    hoursOnSite: 0,                                         // no real clock-in source → not displayed
     lastCheckIn,
-    temperature,
+    temperature: typeof zoneTemp === "number" ? Math.round(zoneTemp) : 0, // real zone temp, else 0 (hidden)
     nearbyWorkers,
     trend,
-    lat: gps.lat + (seed * 0.001) % 0.01,
-    lng: gps.lng + (seed * 0.002) % 0.01,
+    lat: gps.lat,
+    lng: gps.lng,
     avatar: initials,
   };
 }
 
-// ── AI Alerts (dynamic from real data, fallback to contextual defaults) ───────
-const MOCK_ALERTS: ProactiveAlert[] = [
-  {
-    id: "PA1", type: "prediction", severity: "critical",
-    title: "Worker Unresponsive — Auto-Escalation",
-    description: "Mohammed Ali has not checked in for 35 minutes. Located in isolated Zone D-4 with no nearby workers. AI has initiated escalation protocol.",
-    affectedWorkers: ["Mohammed Ali"],
-    aiConfidence: 94,
-    timeToRisk: "NOW",
-    suggestedAction: "Dispatch nearest response team + activate peer alert for Zone D workers",
-    timestamp: Date.now() - 120000,
-    autoActioned: true,
-    navTarget: { page: "emergencyHub", tab: "active" },
-  },
-  {
-    id: "PA2", type: "wellness", severity: "warning",
-    title: "Heat Fatigue Risk — Ahmed Khalil",
-    description: "8.5 hours continuous work in 48°C. Historical data shows 73% of heat incidents occur after 7+ hours in similar conditions.",
-    affectedWorkers: ["Ahmed Khalil"],
-    aiConfidence: 87,
-    timeToRisk: "~30 min",
-    suggestedAction: "Send mandatory break alert + notify zone supervisor",
-    timestamp: Date.now() - 300000,
-    navTarget: { page: "people", tab: "directory" },
-  },
-  {
-    id: "PA3", type: "pattern", severity: "warning",
-    title: "Near-Miss Pattern Detected — Zone C-2",
-    description: "3 near-miss incidents in Zone C-2 this week, all during 2-4 PM. Pattern suggests equipment or process issue.",
-    affectedWorkers: ["Khalid Omar", "Nasser Al-Said"],
-    aiConfidence: 79,
-    timeToRisk: "2-4 PM today",
-    suggestedAction: "Schedule safety inspection + reduce worker density in zone during peak hours",
-    timestamp: Date.now() - 600000,
-    navTarget: { page: "incidentRisk", tab: "investigation" },
-  },
-  {
-    id: "PA4", type: "environment", severity: "danger",
-    title: "Extreme Heat Warning — All Outdoor Zones",
-    description: "Temperature reaching 48°C with Heat Index 54°C. Exceeds OSHA recommended limits. 12 outdoor workers affected.",
-    affectedWorkers: ["Ahmed Khalil", "Mohammed Ali", "Khalid Omar"],
-    aiConfidence: 100,
-    timeToRisk: "Active",
-    suggestedAction: "Enforce mandatory rest cycles: 30 min work / 15 min shade rest",
-    timestamp: Date.now() - 900000,
-    autoActioned: true,
-    navTarget: { page: "operations", tab: "workforce" },
-  },
-  {
-    id: "PA5", type: "escalation", severity: "info",
-    title: "Shift Change Optimization",
-    description: "AI analysis: workers transitioning to night shift show 40% higher risk in first 2 hours. Suggest staggered handoff.",
-    affectedWorkers: ["Nasser Al-Said"],
-    aiConfidence: 72,
-    timeToRisk: "6 PM shift change",
-    suggestedAction: "Implement 30-min overlap period with buddy assignment during transition",
-    timestamp: Date.now() - 1200000,
-    navTarget: { page: "operations", tab: "workforce" },
-  },
-];
-
-const ENV_THREATS: EnvironmentalThreat[] = [
-  { type: "Temperature", icon: Thermometer, value: "48", unit: "°C", status: "danger", threshold: "Safe < 35°C", trend: "up" },
-  { type: "Heat Index", icon: Flame, value: "54", unit: "°C", status: "danger", threshold: "Safe < 40°C", trend: "up" },
-  { type: "Wind Speed", icon: Wind, value: "12", unit: "km/h", status: "safe", threshold: "Danger > 50", trend: "stable" },
-  { type: "Visibility", icon: Eye, value: "8", unit: "km", status: "safe", threshold: "Low < 2 km", trend: "stable" },
-  { type: "UV Index", icon: Sun, value: "11+", unit: "", status: "danger", threshold: "Safe < 6", trend: "up" },
-  { type: "Humidity", icon: Waves, value: "23", unit: "%", status: "caution", threshold: "Comfort 30-60%", trend: "down" },
-];
 
 const RISK_COLORS = {
   safe: "#00C853",
@@ -357,7 +294,6 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
   const [activeView, setActiveView] = useState<"overview" | "workers" | "alerts" | "environment">("overview");
   const [selectedWorker, setSelectedWorker] = useState<WorkerRisk | null>(null);
   const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
-  const [liveScore, setLiveScore] = useState(72);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Set<string>>(new Set());
   const [contactedWorkers, setContactedWorkers] = useState<Set<string>>(new Set());
   const [sentAlerts, setSentAlerts] = useState<Set<string>>(new Set());
@@ -366,6 +302,23 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [recalcCounter, setRecalcCounter] = useState(0);
+
+  // REAL context for risk scoring: live buddy pairs + live per-zone weather.
+  const [buddyEmpIds, setBuddyEmpIds] = useState<Set<string>>(new Set());
+  const [weatherRows, setWeatherRows] = useState<WeatherObservation[]>(() => getCachedLatest());
+  useEffect(() => {
+    const cid = getCompanyId();
+    if (!cid) return;
+    let alive = true;
+    fetchBuddyPairs().then(pairs => {
+      if (!alive) return;
+      const ids = new Set<string>();
+      pairs.forEach(pr => { if (pr.isActive !== false) { if (pr.employeeAId) ids.add(pr.employeeAId); if (pr.employeeBId) ids.add(pr.employeeBId); } });
+      setBuddyEmpIds(ids);
+    }).catch(() => { /* buddy load best-effort */ });
+    loadLatestPerZone(cid).then(rows => { if (alive && rows.length) setWeatherRows(rows); }).catch(() => { /* weather best-effort */ });
+    return () => { alive = false; };
+  }, []);
 
   // Build workers from real employee roster
   const roster = employees && employees.length > 0 ? employees : [];
@@ -417,8 +370,43 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
   }, [roster, recalcCounter]);
 
   const workerRisks = useMemo(() => {
-    return roster.map((emp, idx) => employeeToWorkerRisk(emp, idx, roster));
-  }, [roster, recalcCounter]);
+    const nowHour = new Date().getHours();
+    const ctx = { buddyEmpIds, weatherRows, nowHour };
+    return roster.map(emp => employeeToWorkerRisk(emp, roster, ctx));
+  }, [roster, recalcCounter, buddyEmpIds, weatherRows]);
+
+  // REAL site risk = average of the live per-worker risk scores (0 when empty).
+  const liveScore = useMemo(() => {
+    if (workerRisks.length === 0) return 0;
+    return Math.round(workerRisks.reduce((sum, w) => sum + w.riskScore, 0) / workerRisks.length);
+  }, [workerRisks]);
+
+  // REAL: count of high/critical entries in the company risk register.
+  const openHighRisks = useMemo(() => {
+    try { return getCachedRisks().filter((r: any) => r.riskLevel === "high" || r.riskLevel === "critical").length; }
+    catch { return 0; }
+  }, [recalcCounter]);
+
+  // REAL: environment metrics derived from live per-zone weather (weather_log).
+  const envWeather = useMemo(() => {
+    const rows = weatherRows;
+    if (!rows.length) return null;
+    const sevRank = (sv: string) => sv === "severe" ? 2 : sv === "warning" ? 1 : 0;
+    const rep = [...rows].sort((a, b) => sevRank(b.severity) - sevRank(a.severity))[0];
+    const severity = aggregateSeverity(rows);
+    const t = rep.temp_c, fl = rep.feels_like_c, h = rep.humidity_pct;
+    const wKmh = typeof rep.wind_speed_ms === "number" ? rep.wind_speed_ms * 3.6 : null;
+    const visKm = typeof rep.visibility_m === "number" ? rep.visibility_m / 1000 : null;
+    const metrics = [
+      { type: "Temperature", icon: Thermometer, value: typeof t === "number" ? Math.round(t).toString() : "—", unit: "°C", status: (t ?? 0) >= 40 ? "danger" : (t ?? 0) >= 35 ? "caution" : "safe", threshold: "Safe < 35°C" },
+      { type: "Feels Like", icon: Flame, value: typeof fl === "number" ? Math.round(fl).toString() : "—", unit: "°C", status: (fl ?? 0) >= 45 ? "danger" : (fl ?? 0) >= 40 ? "caution" : "safe", threshold: "Safe < 40°C" },
+      { type: "Humidity", icon: Waves, value: typeof h === "number" ? Math.round(h).toString() : "—", unit: "%", status: "safe", threshold: "Comfort 30–60%" },
+      { type: "Wind Speed", icon: Wind, value: wKmh != null ? Math.round(wKmh).toString() : "—", unit: "km/h", status: (wKmh ?? 0) >= 50 ? "danger" : (wKmh ?? 0) >= 30 ? "caution" : "safe", threshold: "Danger > 50" },
+      { type: "Visibility", icon: Eye, value: visKm != null ? visKm.toFixed(1) : "—", unit: "km", status: (visKm ?? 99) < 2 ? "danger" : "safe", threshold: "Low < 2 km" },
+      { type: "Condition", icon: Sun, value: rep.condition || "—", unit: "", status: severity === "severe" ? "danger" : severity === "warning" ? "caution" : "safe", threshold: `as of ${new Date(rep.observed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` },
+    ];
+    return { rep, severity, metrics };
+  }, [weatherRows]);
 
   // FIX 3: Online Now = employees with on-shift or checked-in status (same as dashboard)
   const onDutyEmployees = useMemo(() =>
@@ -444,31 +432,16 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
     if (onOpenEmployeeDetail) onOpenEmployeeDetail(emp.id);
   }, [nameToEmployee, onNavigate, onOpenEmployeeDetail]);
 
-  // REAL: Drive safety score from actual emergency events instead of random noise
+  // REAL: when an emergency/check-in event fires, force a recompute so the
+  // (real) per-worker risk scores — and the derived site score — refresh from
+  // the latest roster. No synthetic drift, no fabricated number.
   useEffect(() => {
     const unsub = onSyncEvent((event) => {
-      setLiveScore(prev => {
-        if (event.type === "SOS_TRIGGERED")    return Math.min(100, prev + 15); // SOS → score spikes up (worse)
-        if (event.type === "FALL_DETECTED")    return Math.min(100, prev + 12);
-        if (event.type === "HAZARD_REPORT")    return Math.min(100, prev + 8);
-        if (event.type === "EMERGENCY_RESOLVED") return Math.max(0, prev - 10); // Resolved → score improves
-        if (event.type === "CHECKIN")          return Math.max(0, prev - 2);   // Check-in → slight improvement
-        return prev;
-      });
+      if (["SOS_TRIGGERED", "FALL_DETECTED", "HAZARD_REPORT", "EMERGENCY_RESOLVED", "CHECKIN"].includes(event.type)) {
+        setRecalcCounter(prev => prev + 1);
+      }
     });
     return unsub;
-  }, []);
-
-  // Slow natural decay toward baseline (60) when no events — score normalizes over time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveScore(prev => {
-        const baseline = 35; // healthy baseline
-        if (Math.abs(prev - baseline) < 2) return baseline;
-        return prev > baseline ? prev - 1 : prev + 1; // drift back toward baseline
-      });
-    }, 10000); // drift every 10s
-    return () => clearInterval(interval);
   }, []);
 
   // FIX 5: Cooldown timer
@@ -507,25 +480,58 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
     toast.success("Alert Acknowledged", { description: alert?.title || "Alert has been acknowledged" });
   }, []);
 
-  const handleContact = useCallback((workerId: string) => {
+  // REAL: place a phone call to the worker (works by employee id OR name —
+  // the alert cards pass a name, the worker cards pass an id).
+  const handleContact = useCallback((workerKey: string) => {
+    const emp = roster.find(e => e.id === workerKey) || roster.find(e => e.name === workerKey);
+    if (!emp) { toast.error("Worker not found"); return; }
     hapticSuccess();
-    setContactedWorkers(prev => new Set([...prev, workerId]));
-    toast.success("Contacting Worker", { description: "Initiating call — standby for connection..." });
-  }, []);
+    setContactedWorkers(prev => new Set([...prev, workerKey]));
+    if (emp.phone) {
+      void safeTelCall(emp.phone, emp.name);
+      toast.success("Calling Worker", { description: `Dialing ${emp.name}…` });
+    } else {
+      toast.info("No phone on file", { description: `${emp.name} has no phone number to call.` });
+    }
+  }, [roster]);
 
+  // REAL: push a safety alert to the worker's device via the broadcast pipeline
+  // (targeted by their auth user_id). Honest fallback when no linked device.
   const handleSendAlert = useCallback((workerId: string) => {
+    const emp = roster.find(e => e.id === workerId);
+    if (!emp) { toast.error("Worker not found"); return; }
     hapticMedium();
     setSentAlerts(prev => new Set([...prev, workerId]));
-    const worker = workerRisks.find(w => w.id === workerId);
-    toast.success("Alert Sent", { description: `Safety alert sent to ${worker?.name || "worker"}` });
-  }, [workerRisks]);
+    const targetId = (emp.userId || "").trim();
+    if (targetId) {
+      sendBroadcast({
+        title: "Safety Check Required",
+        body: `${emp.name}, elevated risk detected for your zone — please confirm your status now.`,
+        priority: "urgent",
+        audience: { type: "custom", employeeIds: [targetId] },
+        audienceLabel: emp.name,
+        source: "manual",
+        senderName: "Safety Intelligence",
+        senderRole: "Admin",
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 6 * 3600000,
+      });
+      toast.success("Alert Sent", { description: `Safety alert pushed to ${emp.name}.` });
+    } else {
+      toast.info("No linked device", { description: `${emp.name} has no linked device id — can't push an alert yet.` });
+    }
+  }, [roster]);
 
+  // REAL: open the worker in People & Teams so the admin sees their live
+  // location/details (instead of a fake location-updated toast).
   const handleLocate = useCallback((workerId: string) => {
+    const emp = roster.find(e => e.id === workerId);
+    if (!emp) { toast.error("Worker not found"); return; }
     hapticSuccess();
     setLocatedWorkers(prev => new Set([...prev, workerId]));
-    const worker = workerRisks.find(w => w.id === workerId);
-    toast.success("Worker Located", { description: `${worker?.name || "Worker"} found at ${worker?.zone || "zone"} — GPS coordinates updated` });
-  }, [workerRisks]);
+    if (onNavigate) onNavigate("people", "directory");
+    if (onOpenEmployeeDetail) onOpenEmployeeDetail(emp.id);
+  }, [roster, onNavigate, onOpenEmployeeDetail]);
 
   // FIX 5: Refresh AI — real recalculation + cooldown
   const handleRefreshAI = useCallback(() => {
@@ -539,11 +545,7 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
     setTimeout(() => {
       // Trigger recalculation by bumping counter
       setRecalcCounter(prev => prev + 1);
-      // Update site score based on new data
-      const avgScore = workerRisks.length > 0
-        ? Math.round(workerRisks.reduce((s, w) => s + w.riskScore, 0) / workerRisks.length)
-        : 50;
-      setLiveScore(Math.max(0, Math.min(100, avgScore)));
+      // Site score is derived from workerRisks (recomputed via recalcCounter).
       setAiRefreshing(false);
       setRefreshCooldown(10);
       setLastRefreshed("just now");
@@ -651,7 +653,7 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
                 { label: "Critical Workers", value: criticalWorkers, color: "#FF2D55", icon: CircleAlert },
                 { label: "High Risk", value: highRiskWorkers, color: "#FF9500", icon: AlertTriangle },
                 { label: "Online Now", value: totalOnline, color: "#00C8E0", icon: Users },
-                { label: "AI Interventions", value: "47", color: "#7B5EFF", icon: Sparkles },
+                { label: "Active Alerts", value: dynamicAlerts.filter(a => !acknowledgedAlerts.has(a.id)).length, color: "#7B5EFF", icon: BrainCircuit },
               ].map(stat => (
                 <div key={stat.label} className="text-center">
                   <GlowIcon icon={stat.icon} color={stat.color} size={36} iconSize={16} />
@@ -756,10 +758,6 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
                   <p style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.35)", lineHeight: 1.6 }}>
                     Danger happens → Worker presses SOS → Wait for help → Response after incident
                   </p>
-                  <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,45,85,0.06)" }}>
-                    <Clock size={12} color="#FF2D55" />
-                    <span style={{ ...TYPOGRAPHY.micro, color: "#FF2D55" }}>Avg. 4min response time</span>
-                  </div>
                 </div>
 
                 <div className="p-4 rounded-xl relative overflow-hidden" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.1)" }}>
@@ -771,24 +769,20 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
                   <p style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.35)", lineHeight: 1.6 }}>
                     AI detects risk → Warns before danger → Auto-escalation → Prevention before incident
                   </p>
-                  <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(0,200,83,0.06)" }}>
-                    <Shield size={12} color="#00C853" />
-                    <span style={{ ...TYPOGRAPHY.micro, color: "#00C853" }}>18s avg. prevention time</span>
-                  </div>
                 </div>
               </div>
             </Card>
 
             {/* Smart KPI Grid */}
             <div className="grid grid-cols-4 gap-4">
-              <KPICard label="Risks Prevented" value="12" icon={ShieldCheck} color="#00C853"
-                trend={{ value: "+4 this week", positive: true }} subtitle="AI-powered prevention" />
-              <KPICard label="Auto-Alerts Sent" value="47" icon={BrainCircuit} color="#00C8E0"
-                trend={{ value: "+12 today", positive: true }} subtitle="Proactive notifications" />
-              <KPICard label="Avg Response" value="18s" icon={Zap} color="#7B5EFF"
-                trend={{ value: "↓ from 4min", positive: true }} subtitle="13x faster than industry" />
-              <KPICard label="Near-Misses" value="3" icon={Target} color="#FF9500"
-                trend={{ value: "Patterns found", positive: false }} subtitle="AI pattern detection" />
+              <KPICard label="Avg Risk Score" value={liveScore} icon={Gauge} color={getSiteRiskColor()}
+                subtitle="Live site average" />
+              <KPICard label="Active Alerts" value={dynamicAlerts.filter(a => !acknowledgedAlerts.has(a.id)).length} icon={BrainCircuit} color="#00C8E0"
+                subtitle="Open AI alerts" />
+              <KPICard label="Workers Online" value={totalOnline} icon={Users} color="#7B5EFF"
+                subtitle="On shift / checked in" />
+              <KPICard label="Open Risks" value={openHighRisks} icon={AlertTriangle} color="#FF9500"
+                subtitle="High/critical in register" />
             </div>
 
             {/* Latest AI Predictions */}
@@ -919,80 +913,74 @@ export function SafetyIntelligencePage({ t, webMode = true, employees, onNavigat
         {/* ── ENVIRONMENT TAB ──────────────────────────────── */}
         {activeView === "environment" && (
           <motion.div key="environment" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
-            
-            {/* Active Weather Alert Banner */}
-            <Card glow="#FF2D55" padding={20}>
-              <div className="flex items-start gap-4">
-                <GlowIcon icon={AlertTriangle} color="#FF2D55" size={44} iconSize={22} pulse />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span style={{ ...TYPOGRAPHY.h3, color: "#FF2D55" }}>Active Weather Alert</span>
-                    <Badge variant="danger" pulse>EXTREME HEAT</Badge>
-                  </div>
-                  <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, lineHeight: 1.6 }}>
-                    Temperature reaching 48°C with Heat Index 54°C. Exceeds OSHA recommended limits. 
-                    AI has automatically enforced mandatory rest cycles for all outdoor workers.
-                  </p>
-                  <div className="flex gap-2 mt-3">
-                    <StatPill label="Workers Affected" value="12" color="#FF2D55" />
-                    <StatPill label="Auto-Actions" value="3" color="#00C853" />
+
+            {/* Honest empty state when no live weather is available */}
+            {!envWeather && (
+              <Card padding={20}>
+                <div className="flex items-start gap-4">
+                  <GlowIcon icon={Thermometer} color="rgba(255,255,255,0.3)" size={44} iconSize={22} />
+                  <div className="flex-1">
+                    <span style={{ ...TYPOGRAPHY.h3, color: TOKENS.text.secondary }}>No live weather data</span>
+                    <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, lineHeight: 1.6, marginTop: 4 }}>
+                      Per-zone weather appears here once the weather fetch runs for your zones. Configure it in the weather settings to see real temperature, wind, and severity.
+                    </p>
                   </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            )}
 
-            {/* Environmental Grid */}
-            <div className="grid grid-cols-3 gap-4">
-              {ENV_THREATS.map(threat => {
-                const statusColor = threat.status === "safe" ? "#00C853" : threat.status === "caution" ? "#FF9500" : "#FF2D55";
-                const ThreatIcon = threat.icon;
-                return (
-                  <Card key={threat.type} glow={statusColor} padding={18}>
-                    <div className="flex items-center justify-between mb-3">
-                      <GlowIcon icon={ThreatIcon} color={statusColor} size={34} iconSize={16} />
-                      <div className="flex items-center gap-1.5">
-                        {threat.trend === "up" && <ArrowUp size={12} color="#FF2D55" />}
-                        {threat.trend === "down" && <ArrowDown size={12} color="#00C853" />}
-                        <Badge variant={threat.status === "safe" ? "success" : threat.status === "caution" ? "warning" : "danger"}>
-                          {threat.status.toUpperCase()}
+            {/* REAL active weather alert — only when live severity is elevated */}
+            {envWeather && envWeather.severity !== "info" && (
+              <Card glow={envWeather.severity === "severe" ? "#FF2D55" : "#FF9500"} padding={20}>
+                <div className="flex items-start gap-4">
+                  <GlowIcon icon={AlertTriangle} color={envWeather.severity === "severe" ? "#FF2D55" : "#FF9500"} size={44} iconSize={22} pulse />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span style={{ ...TYPOGRAPHY.h3, color: envWeather.severity === "severe" ? "#FF2D55" : "#FF9500" }}>Active Weather Alert</span>
+                      <Badge variant={envWeather.severity === "severe" ? "danger" : "warning"} pulse>{envWeather.severity.toUpperCase()}</Badge>
+                    </div>
+                    <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, lineHeight: 1.6 }}>
+                      {envWeather.rep.condition || "Severe weather"} in {envWeather.rep.zone_id || "your area"} — {formatTempC(envWeather.rep.temp_c)}{typeof envWeather.rep.feels_like_c === "number" ? ` (feels ${formatTempC(envWeather.rep.feels_like_c)})` : ""}. Review outdoor work and check-in frequency.
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <StatPill label="Workers On Duty" value={String(totalOnline)} color={envWeather.severity === "severe" ? "#FF2D55" : "#FF9500"} />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* REAL environmental grid from live weather */}
+            {envWeather && (
+              <div className="grid grid-cols-3 gap-4">
+                {envWeather.metrics.map(metric => {
+                  const statusColor = metric.status === "safe" ? "#00C853" : metric.status === "caution" ? "#FF9500" : "#FF2D55";
+                  const ThreatIcon = metric.icon;
+                  return (
+                    <Card key={metric.type} glow={statusColor} padding={18}>
+                      <div className="flex items-center justify-between mb-3">
+                        <GlowIcon icon={ThreatIcon} color={statusColor} size={34} iconSize={16} />
+                        <Badge variant={metric.status === "safe" ? "success" : metric.status === "caution" ? "warning" : "danger"}>
+                          {metric.status.toUpperCase()}
                         </Badge>
                       </div>
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span style={{ ...TYPOGRAPHY.kpiValue, color: statusColor }}>{threat.value}</span>
-                      <span style={{ ...TYPOGRAPHY.caption, color: TOKENS.text.muted }}>{threat.unit}</span>
-                    </div>
-                    <p style={{ ...TYPOGRAPHY.caption, color: TOKENS.text.secondary, marginTop: 4, fontWeight: 600 }}>{threat.type}</p>
-                    <p style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, marginTop: 4 }}>{threat.threshold}</p>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {/* FIX 6: Estimated disclaimer for environment tab */}
-            <EstimatedDisclaimer />
-
-            {/* AI Weather Recommendations */}
-            <Card glow="#00C8E0" padding={20}>
-              <SectionHeader title="AI Weather Recommendations" subtitle="Automated safety actions" icon={BrainCircuit} color="#00C8E0" />
-              <div className="space-y-1 mt-3">
-                {[
-                  { text: "Enforce 30/15 work-rest cycle for outdoor workers", status: "Active", color: "#00C853", icon: CircleCheck },
-                  { text: "Deploy hydration stations to Zones A-3 and D-4", status: "Suggested", color: "#FF9500", icon: CircleDot },
-                  { text: "Reschedule heavy lifting tasks to 6-9 AM window", status: "Suggested", color: "#FF9500", icon: CircleDot },
-                  { text: "Increase check-in frequency to every 15 minutes", status: "Active", color: "#00C853", icon: CircleCheck },
-                ].map((rec, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-white/[0.02] transition-colors"
-                    style={{ borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.03)" : undefined }}>
-                    <rec.icon size={16} color={rec.color} strokeWidth={1.8} />
-                    <p className="flex-1" style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.secondary }}>{rec.text}</p>
-                    <Badge variant={rec.status === "Active" ? "success" : "warning"} size="sm">{rec.status}</Badge>
-                  </div>
-                ))}
+                      <div className="flex items-baseline gap-1">
+                        <span style={{ ...TYPOGRAPHY.kpiValue, color: statusColor }}>{metric.value}</span>
+                        <span style={{ ...TYPOGRAPHY.caption, color: TOKENS.text.muted }}>{metric.unit}</span>
+                      </div>
+                      <p style={{ ...TYPOGRAPHY.caption, color: TOKENS.text.secondary, marginTop: 4, fontWeight: 600 }}>{metric.type}</p>
+                      <p style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, marginTop: 4 }}>{metric.threshold}</p>
+                    </Card>
+                  );
+                })}
               </div>
-            </Card>
+            )}
+
+            {/* Honest source note */}
+            <EstimatedDisclaimer />
           </motion.div>
         )}
+
       </AnimatePresence>
     </div>
   );
@@ -1210,7 +1198,7 @@ function WorkerRiskCard({ worker, selected, onSelect, onSendAlert, onContact, on
             </div>
           </div>
           <p style={{ ...TYPOGRAPHY.caption, color: TOKENS.text.muted, marginTop: 2 }}>
-            {worker.role} · {worker.zone} · {worker.hoursOnSite}h on site
+            {worker.role} · {worker.zone}
           </p>
           <div className="flex items-center gap-4 mt-1.5">
             <span className="flex items-center gap-1" style={{
@@ -1219,12 +1207,14 @@ function WorkerRiskCard({ worker, selected, onSelect, onSendAlert, onContact, on
             }}>
               <Clock size={10} /> {worker.lastCheckIn}m ago
             </span>
-            <span className="flex items-center gap-1" style={{
-              ...TYPOGRAPHY.micro,
-              color: worker.temperature > 40 ? "#FF9500" : TOKENS.text.muted,
-            }}>
-              <Thermometer size={10} /> {worker.temperature}°C
-            </span>
+            {worker.temperature > 0 && (
+              <span className="flex items-center gap-1" style={{
+                ...TYPOGRAPHY.micro,
+                color: worker.temperature > 40 ? "#FF9500" : TOKENS.text.muted,
+              }}>
+                <Thermometer size={10} /> {worker.temperature}°C
+              </span>
+            )}
             <span className="flex items-center gap-1" style={{
               ...TYPOGRAPHY.micro,
               color: worker.nearbyWorkers === 0 ? "#FF2D55" : TOKENS.text.muted,

@@ -12,10 +12,11 @@
     "test:secret-guard": "node scripts/__behavior_tests__/secret-guard.spec.mjs",
     "audit:check": "npm audit --audit-level=high",
     "postinstall": "node scripts/fix-capacitor-gradle.cjs && node scripts/install-git-hooks.mjs",
-    "verify": "node scripts/verify-before-push.mjs && npm run test:secret-guard && npm run test:autotrigger-guard && npm run test:safety-score-guard && npm run test:checklist-guard",
+    "verify": "node scripts/verify-before-push.mjs && npm run test:secret-guard && npm run test:autotrigger-guard && npm run test:safety-score-guard && npm run test:checklist-guard && npm run test:si-guard",
     "test:autotrigger-guard": "node scripts/__behavior_tests__/playbook-autotrigger.spec.mjs",
     "test:safety-score-guard": "node scripts/__behavior_tests__/safety-score.spec.mjs",
     "test:checklist-guard": "node scripts/__behavior_tests__/checklist.spec.mjs",
+    "test:si-guard": "node scripts/__behavior_tests__/safety-intelligence.spec.mjs",
     "drift:update": "node scripts/check-function-drift.mjs --update-manifest",
     "deploy:fn": "node scripts/deploy-edge-function.mjs",
     "stripe:setup-test": "node scripts/stripe-test-setup.mjs"

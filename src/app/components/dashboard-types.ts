@@ -36,6 +36,9 @@ export interface Employee {
   lastCheckin: string;
   phone: string;
   safetyScore: number;
+  /** Real Supabase auth user_id (for targeted worker push). Optional — not
+   *  every roster source provides it. */
+  userId?: string;
   // P0-ci-cleanup-strict-2 (2026-05-24): optional fields referenced in
   // dashboard-pages.tsx (zone at line 555, joinDate at line 1705). They
   // are populated by the server-side employee profile but were missing

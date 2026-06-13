@@ -224,6 +224,7 @@ export async function fetchEmployees(): Promise<Employee[]> {
           // hardcoded verified-based guess. This is the value the Safety Score
           // leaderboard + directory display, so it must reflect the database.
           safetyScore: Number.isFinite(Number(emp.safety_score)) ? Number(emp.safety_score) : 85,
+          userId: typeof emp.user_id === "string" ? emp.user_id : undefined,
         };
       });
     } catch (e) {
