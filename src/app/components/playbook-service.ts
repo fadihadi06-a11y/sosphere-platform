@@ -329,10 +329,14 @@ export async function fetchRecentRuns(limit = 20): Promise<any[]> {
 // have a verified source in the codebase are mapped (Security/Geofence have
 // no real trigger source yet, so they are intentionally absent).
 const EVENT_TO_TRIGGER: Record<string, string> = {
-  SOS_TRIGGERED:    "SOS Button",
-  FALL_DETECTED:    "Fall Detected",
-  HAZARD_REPORT:    "Environmental Hazard",
-  MONITORING_MISSED:"Missed Check-in",
+  SOS_TRIGGERED:        "SOS Button",
+  FALL_DETECTED:        "Fall Detected",
+  HAZARD_REPORT:        "Environmental Hazard",
+  MONITORING_MISSED:    "Missed Check-in",
+  // Duress (covert panic PIN) is a real security event — maps to the Security
+  // Threat protocol. It only auto-activates if the owner sets that playbook's
+  // auto-trigger ON (off by default), so this just enables the capability.
+  SOS_DURESS_TRIGGERED: "Security Threat",
 };
 
 export function triggerTypeForEvent(eventType: string): string | null {
