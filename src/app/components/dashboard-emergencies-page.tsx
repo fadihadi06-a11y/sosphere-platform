@@ -19,7 +19,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   AlertTriangle, ArrowRight, ArrowUpRight, Bell, CheckCircle2, ChevronDown,
-  ChevronLeft, ChevronRight, ClipboardList, Download, HeartPulse, Megaphone,
+  ChevronLeft, ChevronRight, ClipboardList, Download, HeartPulse, Lock, Megaphone,
   Navigation, Phone, Plus, Radar, Search, Send, Shield, Siren, Skull, User,
   UserCheck, Users, XCircle, Zap,
 } from "lucide-react";
