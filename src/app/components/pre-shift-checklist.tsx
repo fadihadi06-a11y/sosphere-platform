@@ -95,13 +95,18 @@ const DEFAULT_TEMPLATES: ChecklistTemplate[] = [
   },
 ];
 
-const RECENT_SUBMISSIONS: ChecklistSubmission[] = [
+const DEMO_SUBMISSIONS: ChecklistSubmission[] = [
   { id: "SUB-001", employeeName: "Ahmed Khalil", employeeId: "EMP-001", templateId: "TPL-001", completedItems: ["C1","C2","C3","C5","C7","C8","C9","C10","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 1800000), zone: "Zone A", isComplete: false, flaggedItems: ["C4","C6","C11"], avatar: "AK" },
   { id: "SUB-002", employeeName: "Sara Al-Mutairi", employeeId: "EMP-005", templateId: "TPL-001", completedItems: ["C1","C2","C3","C4","C5","C6","C7","C8","C9","C10","C11","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 3600000), zone: "Zone C", isComplete: true, flaggedItems: [], avatar: "SM" },
   { id: "SUB-003", employeeName: "Mohammed Ali", employeeId: "EMP-006", templateId: "TPL-002", completedItems: ["H1","H2","H3","H5","H6","H7"], totalItems: 8, submittedAt: new Date(Date.now() - 5400000), zone: "Zone D", isComplete: false, flaggedItems: ["H4","H8"], avatar: "MA" },
   { id: "SUB-004", employeeName: "Lina Chen", employeeId: "EMP-007", templateId: "TPL-001", completedItems: ["C1","C2","C3","C4","C5","C7","C8","C9","C10","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 7200000), zone: "Zone C", isComplete: false, flaggedItems: ["C6","C11"], avatar: "LC" },
   { id: "SUB-005", employeeName: "Omar Al-Farsi", employeeId: "EMP-008", templateId: "TPL-001", completedItems: ["C1","C2","C3","C4","C5","C6","C7","C8","C9","C10","C11","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 9000000), zone: "Zone A", isComplete: true, flaggedItems: [], avatar: "OF" },
 ];
+
+// PROD SAFETY: the above are DEMO submissions. There is no checklist-submission
+// backend yet, so production shows real submissions only (i.e. none) instead of
+// fabricated safety-compliance data. Gated like every other dashboard mock.
+const RECENT_SUBMISSIONS: ChecklistSubmission[] = import.meta.env.DEV ? DEMO_SUBMISSIONS : [];
 
 // ── GlowIcon ──────────────────────────────────────────────────
 function GlowIcon({ icon: Icon, color, size = 40, iconSize = 20 }: {

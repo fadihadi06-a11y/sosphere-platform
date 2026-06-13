@@ -48,7 +48,7 @@ const BADGES: SafetyBadge[] = [
   { id: "B8", name: "Safety Legend", description: "Top 3 in company leaderboard for 3 months", icon: Crown, color: "#FFD60A", rarity: "legendary" },
 ];
 
-const LEADERBOARD: SafetyWorker[] = [
+const DEMO_LEADERBOARD: SafetyWorker[] = [
   { id: "EMP-005", name: "Sara Al-Mutairi", zone: "Zone C", score: 98, rank: 1, streak: 127, badges: ["B1","B2","B4","B5","B6","B7"], pointsThisMonth: 450, trend: "up" },
   { id: "EMP-008", name: "Omar Al-Farsi", zone: "Zone A", score: 95, rank: 2, streak: 98, badges: ["B1","B3","B4","B6"], pointsThisMonth: 420, trend: "up" },
   { id: "EMP-001", name: "Ahmed Khalil", zone: "Zone A", score: 92, rank: 3, streak: 64, badges: ["B1","B6","B3"], pointsThisMonth: 380, trend: "stable" },
@@ -58,6 +58,10 @@ const LEADERBOARD: SafetyWorker[] = [
   { id: "EMP-003", name: "Khalid Omar", zone: "Zone A", score: 78, rank: 7, streak: 15, badges: ["B6"], pointsThisMonth: 220, trend: "down" },
   { id: "EMP-013", name: "Ali Mansour", zone: "Zone A", score: 75, rank: 8, streak: 8, badges: [], pointsThisMonth: 180, trend: "stable" },
 ];
+
+// PROD SAFETY: DEMO leaderboard. No real safety-score engine exists yet, so
+// production shows real scores only (none) rather than a fabricated ranking.
+const LEADERBOARD: SafetyWorker[] = import.meta.env.DEV ? DEMO_LEADERBOARD : [];
 
 const SCORING_RULES = [
   { action: "On-time check-in", points: "+5", frequency: "per check-in" },
@@ -80,8 +84,8 @@ const RARITY_CONFIG = {
 // ── Dashboard Page ────────────────────────────────────────────
 export function SafetyGamificationPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
   const [activeTab, setActiveTab] = useState<"leaderboard" | "badges" | "rules">("leaderboard");
-  const avgScore = Math.round(LEADERBOARD.reduce((a, b) => a + b.score, 0) / LEADERBOARD.length);
-  const topStreak = Math.max(...LEADERBOARD.map(w => w.streak));
+  const avgScore = LEADERBOARD.length ? Math.round(LEADERBOARD.reduce((a, b) => a + b.score, 0) / LEADERBOARD.length) : 0;
+  const topStreak = LEADERBOARD.length ? Math.max(...LEADERBOARD.map(w => w.streak)) : 0;
 
   return (
     <div className={`p-5 space-y-5 ${webMode ? "max-w-5xl mx-auto" : ""}`}>
