@@ -23,6 +23,8 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticWarning, hapticMedium, hapticLight } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge } from "./design-system";
 import { saveBuddyPairs, loadBuddyPairs, emitSyncEvent, type StoredBuddyPair } from "./shared-store";
+import { fetchBuddyPairs, saveBuddyPair, setBuddyActive, deleteBuddyPair } from "./buddy-service";
+import { safeTelCall } from "./utils/safe-tel";
 // P0-ci-cleanup: missing import — useDashboardStore was referenced on line 109
 // without being imported. TS compiled silently before strict checks (TS2304
 // "Cannot find name" was hidden by some inference quirk). Added explicit
@@ -153,6 +155,31 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
   // 'Ahmed → Mohammed' style demo pairs the new owner has not actually
   // created. DEV keeps the fixture; production starts empty.
   const [pairs, setPairs] = useState(() => import.meta.env.DEV ? MOCK_PAIRS : []);
+
+  // DURABLE: buddy pairs from Supabase are the source of truth (synced across
+  // admins/devices, survive cache clear). Overrides the localStorage seed when
+  // the DB has pairs. Life-safety data must not live only in a browser.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const dbPairs = await fetchBuddyPairs();
+      if (cancelled || dbPairs.length === 0) return;
+      const av = (n: string) => n.split(" ").map(x => x[0]).join("").slice(0, 2).toUpperCase();
+      const mapped: BuddyPair[] = dbPairs.map(dp => {
+        const w1 = realWorkers.find((w: Worker) => w.id === dp.employeeAId);
+        const w2 = realWorkers.find((w: Worker) => w.id === dp.employeeBId);
+        return {
+          id: dp.id,
+          employee1: w1 ? { ...w1, status: "on-shift" as const, avatar: w1.avatar } : { id: dp.employeeAId, name: dp.employeeAName, role: "Worker", zone: "Unknown", status: "on-shift" as const, avatar: av(dp.employeeAName) },
+          employee2: w2 ? { ...w2, status: "on-shift" as const, avatar: w2.avatar } : { id: dp.employeeBId, name: dp.employeeBName, role: "Worker", zone: "Unknown", status: "on-shift" as const, avatar: av(dp.employeeBName) },
+          pairedAt: dp.createdAt || new Date(),
+          isActive: dp.isActive,
+        };
+      });
+      setPairs(mapped);
+    })();
+    return () => { cancelled = true; };
+  }, [realWorkers]);
   const [filter, setFilter] = useState<"all" | "active" | "inactive" | "unassigned">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [calledPairs, setCalledPairs] = useState<Set<string>>(new Set());
@@ -255,6 +282,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
         description: `${pair.employee1.name} & ${pair.employee2.name}`,
         icon: newState ? "✅" : "⏸️",
       });
+      void setBuddyActive(id, newState);
       return prev.map(p => p.id === id ? { ...p, isActive: newState } : p);
     });
   }, []);
@@ -263,6 +291,7 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
     hapticWarning();
     const pair = pairs.find(p => p.id === id);
     setPairs(prev => prev.filter(p => p.id !== id));
+    void deleteBuddyPair(id);
     toast("Buddy Pair Removed", {
       description: `${pair?.employee1.name} & ${pair?.employee2.name} have been unpaired`,
       icon: "🔓",
@@ -272,8 +301,16 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
   const handleCallBuddy = useCallback((pairId: string, name: string) => {
     hapticSuccess();
     setCalledPairs(prev => new Set([...prev, pairId]));
-    toast.success("Calling Buddy", { description: `Initiating call to ${name}...` });
-  }, []);
+    const pair = pairs.find(p => p.id === pairId);
+    const target = pair ? [pair.employee1, pair.employee2].find(e => e.name === name) : null;
+    const emp = target ? storeEmployees.find(e => e.id === target.id) : null;
+    if (emp?.phone) {
+      void safeTelCall(emp.phone, emp.name);
+      toast.success("Calling Buddy", { description: `Dialing ${name}` });
+    } else {
+      toast.warning("No phone number on file", { description: `Cannot place a call to ${name}.` });
+    }
+  }, [pairs, storeEmployees]);
 
   const handleLocateBuddy = useCallback((pairId: string, name: string) => {
     hapticSuccess();
@@ -317,6 +354,13 @@ export function BuddySystemPage({ t: _t, webMode: _webMode }: { t: (k: string) =
       pairedAt: new Date(), isActive: true,
     };
     setPairs(prev => [...prev, newPair]);
+    void saveBuddyPair({ employeeAId: w1.id, employeeAName: w1.name, employeeBId: w2.id, employeeBName: w2.name, isActive: true }).then(res => {
+      if (res.ok && res.id) {
+        setPairs(prev => prev.map(p => p.id === newPair.id ? { ...p, id: res.id! } : p));
+      } else {
+        toast.error("Buddy pair not saved to server", { description: res.error || "It will only exist on this device." });
+      }
+    });
     setShowCreateModal(false);
     setNewWorker1("");
     setNewWorker2("");

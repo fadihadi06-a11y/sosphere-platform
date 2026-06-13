@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-12T15:03:50.615Z",
-  "total_migrations": 192,
-  "manifest_sha256": "00ea2bd83cc524a17821d61c4859acf9d384cb9a05a066af07b7e092dfbcde1d",
+  "generated_at": "2026-06-13T14:59:20.118Z",
+  "total_migrations": 193,
+  "manifest_sha256": "ec5a48a7f7091f67feff166fa0ab4e6ed4933533396284143a44ca9ea7775992",
   "migrations": [
     {
       "version": "20260415",
@@ -1325,6 +1325,13 @@
       "file": "20260611_zone_breach_to_queue_projection.sql",
       "sha256": "4c1e83ef276c2e865e34fb36324553dc8403b9602eaaf72cb85adaf15750d63c",
       "bytes": 3057
+    },
+    {
+      "version": "20260612",
+      "name": "buddy_pairs_rls",
+      "file": "20260612_buddy_pairs_rls.sql",
+      "sha256": "c0ec20037a887254edb34f40e3ee0895fdaf37186611e04126009bebe09da16a",
+      "bytes": 3004
     },
     {
       "version": "20260612",
