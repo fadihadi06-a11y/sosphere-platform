@@ -319,6 +319,11 @@ export async function fetchEmergencies(): Promise<EmergencyItem[]> {
         status: sos.status === "resolved" ? "resolved" : "active",
         elapsed: Math.floor((Date.now() - new Date(sos.recorded_at).getTime()) / 1000),
         sourceEmergencyId: sos.emergency_id,
+        // Carry the worker's real GPS fix so the detail view can plot it on a
+        // real map (sos_queue stores lat/lng; previously dropped on read).
+        location: (sos.lat != null && sos.lng != null)
+          ? { lat: Number(sos.lat), lng: Number(sos.lng), address: sos.zone || undefined }
+          : undefined,
       }));
     } catch (e) {
       console.warn("[data-layer] fetchEmergencies fallback to mock:", e);

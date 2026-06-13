@@ -31,6 +31,7 @@ import {
   detectClusters, type ZoneCluster, CLUSTER_LEVEL_CONFIG, activateClusterSAR,
 } from "./zone-cluster-engine";
 import { getActiveEvacuation, triggerEvacuation, sendBroadcast, emitSyncEvent, type ActiveEvacuation } from "./shared-store";
+import { EmergencyLocationMap } from "./emergency-location-map";
 import { toast } from "sonner";
 import { SEVERITY_CONFIG, SLA_THRESHOLD, fmtElapsed, timerColor } from "./dashboard-pages";
 
@@ -47,6 +48,7 @@ interface RichEmergency {
   createdAt: Date; owner?: EmgOwner;
   affectedCount: number; respondersCount: number;
   timeline: EmgTimelineEvent[];
+  location?: { lat: number; lng: number; address?: string };
 }
 
 const EMG_STATUS_CONFIG: Record<EmgStatus, { label: string; color: string; bg: string; tKey: string }> = {
@@ -469,6 +471,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
       createdAt: e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp),
       affectedCount: 1,
       respondersCount: 0,
+      location: e.location,
       owner: e.isOwned ? { name: e.ownedBy || "Admin", takenAt: new Date() } : undefined,
       timeline: [
         { time: e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp), event: "Incident Created", actor: e.employeeName },
@@ -661,18 +664,13 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
             <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>{selected.description}</p>
           </DSCard>
           <DSCard padding={0} style={{ height: 140, overflow: "hidden", position: "relative" }}>
-            <div className="w-full h-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #0A1220 0%, #0F1B2E 100%)" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundImage: "linear-gradient(rgba(0,200,224,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,200,224,0.03) 1px, transparent 1px)", backgroundSize: "30px 30px", opacity: 0.4 }} />
-              <div className="flex flex-col items-center gap-2 z-10">
-                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,45,85,0.15)", border: "2px solid #FF2D55" }}>
-                  <Navigation className="size-5" style={{ color: "#FF2D55" }} />
-                </motion.div>
-              </div>
-              <div className="absolute top-2 right-2 px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{selected.address}</div>
-              <div className="absolute bottom-2 left-2 flex gap-2">
-                <span className="px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 700, color: "#FF2D55" }}>{selected.radius}m {t("emg.radius")}</span>
-                <span className="px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}><Users className="size-3 inline mr-1" />{selected.affectedCount} {t("emg.affected")}</span>
-              </div>
+            {/* Real Leaflet map plotting the worker's actual GPS fix (honest
+                "No GPS fix" fallback when the emergency has no coordinates). */}
+            <EmergencyLocationMap lat={selected.location?.lat} lng={selected.location?.lng} radius={selected.radius} address={selected.address} />
+            <div className="absolute top-2 right-2 px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.7)", zIndex: 1000 }}>{selected.address}</div>
+            <div className="absolute bottom-2 left-2 flex gap-2" style={{ zIndex: 1000 }}>
+              <span className="px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 700, color: "#FF2D55" }}>{selected.radius}m {t("emg.radius")}</span>
+              <span className="px-2 py-1 rounded-lg" style={{ background: "#0F1B2E", border: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}><Users className="size-3 inline mr-1" />{selected.affectedCount} {t("emg.affected")}</span>
             </div>
           </DSCard>
           <div className="grid grid-cols-2 gap-2">
