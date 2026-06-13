@@ -446,7 +446,12 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
   // but EmergenciesPage's `emgList` is independent. This effect merges new parent
   // emergencies into emgList so the cluster engine can detect multi-SOS events
   // from real-time mobile triggers, not just mock data.
-  const knownParentIdsRef = React.useRef<Set<string>>(new Set(_parentEmg.map(e => e.id)));
+  // FIX (live-test catch): start EMPTY so the merge effect below pulls in
+  // emergencies that already existed when this tab mounted. Pre-fix it was
+  // seeded with every current parent id, so any SOS that arrived BEFORE the
+  // admin opened Live Alerts was treated as 'already known' and never shown —
+  // an admin opening the tab after an alert saw an empty board (life-safety bug).
+  const knownParentIdsRef = React.useRef<Set<string>>(new Set<string>());
   useEffect(() => {
     const newEmgs = _parentEmg.filter(e => !knownParentIdsRef.current.has(e.id));
     if (newEmgs.length === 0) return;
