@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { getCachedLatest, aggregateSeverity, formatTempC } from "./weather-service";
-import { fetchChecklistSubmissions } from "./checklist-service";
+import { fetchChecklistSubmissions, subscribeChecklistSubmissions } from "./checklist-service";
 import { DEFAULT_CHECKLIST_TEMPLATES } from "./checklist-templates";
 import { getCompanyId, sendBroadcast } from "./shared-store";
 
@@ -135,23 +135,34 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
     const cid = getCompanyId();
     if (!cid) return;
     let alive = true;
-    fetchChecklistSubmissions(cid).then(rows => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      fetchChecklistSubmissions(cid).then(rows => {
+        if (!alive) return;
+        setSubmissions(rows.map(r => ({
+          id: r.id,
+          employeeName: r.employeeName,
+          employeeId: r.employeeId || "",
+          templateId: r.templateId,
+          completedItems: r.completedItems,
+          totalItems: r.totalItems,
+          submittedAt: r.submittedAt,
+          zone: r.zone || "—",
+          isComplete: r.isComplete,
+          flaggedItems: r.flaggedItems,
+          avatar: (r.employeeName || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?",
+        })));
+      });
+    };
+    load();
+    // Live refresh: when a worker submits (or a row changes), refetch. Debounced
+    // so a burst of events collapses into one reload.
+    const unsubscribe = subscribeChecklistSubmissions(cid, () => {
       if (!alive) return;
-      setSubmissions(rows.map(r => ({
-        id: r.id,
-        employeeName: r.employeeName,
-        employeeId: r.employeeId || "",
-        templateId: r.templateId,
-        completedItems: r.completedItems,
-        totalItems: r.totalItems,
-        submittedAt: r.submittedAt,
-        zone: r.zone || "—",
-        isComplete: r.isComplete,
-        flaggedItems: r.flaggedItems,
-        avatar: (r.employeeName || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?",
-      })));
+      clearTimeout(debounce);
+      debounce = setTimeout(load, 300);
     });
-    return () => { alive = false; };
+    return () => { alive = false; clearTimeout(debounce); unsubscribe(); };
   }, []);
 
   const totalSubmissions = submissions.length;

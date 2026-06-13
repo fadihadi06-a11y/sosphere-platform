@@ -27,7 +27,7 @@ const assert = (label, cond) => {
 };
 
 const migDir = resolve(ROOT, "supabase/migrations");
-const migFile = readdirSync(migDir).find(f => /checklist_submissions/.test(f));
+const migFile = readdirSync(migDir).find(f => /create_checklist_submissions/.test(f));
 const mig = migFile ? readFileSync(resolve(migDir, migFile), "utf8") : "";
 const service = read("src/app/components/checklist-service.ts");
 const worker = read("src/app/components/pre-shift-checklist-screen.tsx");
@@ -53,6 +53,20 @@ assert("Send Reminder really delivers via sendBroadcast",
   /sendBroadcast\(\{/.test(dash) && /audience: \{ type: "custom"/.test(dash));
 assert("worker + dashboard share one templates module",
   templates && /DEFAULT_CHECKLIST_TEMPLATES/.test(worker) && /DEFAULT_CHECKLIST_TEMPLATES/.test(dash));
+
+// ── Realtime live-refresh ────────────────────────────────────────────────────
+assert("service exposes realtime subscription (postgres_changes on checklist_submissions)",
+  /subscribeChecklistSubmissions/.test(service) && /postgres_changes/.test(service) && /table: "checklist_submissions"/.test(service));
+assert("realtime channel is company-filtered + cleaned up (removeChannel)",
+  /filter: `company_id=eq\.\$\{companyId\}`/.test(service) && /removeChannel/.test(service));
+assert("dashboard subscribes and unsubscribes on unmount",
+  /subscribeChecklistSubmissions\(cid,/.test(dash) && /unsubscribe\(\)/.test(dash));
+{
+  const pubMig = readdirSync(migDir).find(f => /checklist_submissions_realtime/.test(f));
+  const pub = pubMig ? readFileSync(resolve(migDir, pubMig), "utf8") : "";
+  assert("migration adds checklist_submissions to supabase_realtime publication",
+    !!pubMig && /publication supabase_realtime add table public\.checklist_submissions/i.test(pub));
+}
 
 console.log(`\n${failures === 0 ? "\x1b[32m✓ ALL PASS\x1b[0m" : `\x1b[31m✗ ${failures} FAILURE(S)\x1b[0m`}\n`);
 process.exit(failures === 0 ? 0 : 1);

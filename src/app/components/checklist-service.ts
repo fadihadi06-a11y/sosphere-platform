@@ -112,3 +112,49 @@ export async function fetchChecklistSubmissions(
     return [];
   }
 }
+
+/**
+ * Live-refresh: subscribe to checklist_submissions changes for a company via
+ * Supabase Realtime (postgres_changes). Calls `onChange` on any INSERT / UPDATE
+ * / DELETE so the dashboard can refetch — the compliance board updates the
+ * moment a worker submits, with no page reload.
+ *
+ * Realtime enforces the table's RLS, so a subscriber only receives events for
+ * rows it can read. Returns an unsubscribe function; call it on unmount.
+ */
+export function subscribeChecklistSubmissions(
+  companyId: string,
+  onChange: () => void,
+): () => void {
+  if (!companyId) return () => { /* nothing to clean up */ };
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  try {
+    channel = supabase
+      // Channel name unique per company to avoid cross-tenant message bleed.
+      .channel(`checklist-submissions:${companyId}`)
+      .on(
+        // Cast keeps the call valid against supabase-js v2 typings.
+        "postgres_changes" as any,
+        {
+          event: "*",
+          schema: "public",
+          table: "checklist_submissions",
+          filter: `company_id=eq.${companyId}`,
+        },
+        () => {
+          try { onChange(); } catch (e) { console.warn("[checklist-rt] onChange threw:", e); }
+        },
+      )
+      .subscribe((status: string) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[checklist-rt] subscribe status=${status}`);
+        }
+      });
+  } catch (e) {
+    console.warn("[checklist-rt] failed to open channel:", e);
+    channel = null;
+  }
+  return () => {
+    if (channel) { try { void supabase.removeChannel(channel); } catch { /* ignore */ } channel = null; }
+  };
+}
