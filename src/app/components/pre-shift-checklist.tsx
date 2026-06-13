@@ -6,7 +6,7 @@
 // Tracks compliance % and flags non-compliant workers
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Clipboard, CheckCircle, CheckCircle2, Circle,
@@ -21,6 +21,9 @@ import { toast } from "sonner";
 import { hapticSuccess } from "./haptic-feedback";
 import { TYPOGRAPHY, TOKENS, KPICard, Card, SectionHeader, Badge, StatPill } from "./design-system";
 import { getCachedLatest, aggregateSeverity, formatTempC } from "./weather-service";
+import { fetchChecklistSubmissions } from "./checklist-service";
+import { DEFAULT_CHECKLIST_TEMPLATES } from "./checklist-templates";
+import { getCompanyId, sendBroadcast } from "./shared-store";
 
 // ── Types ─────────────────────────────────────────────────────
 interface ChecklistItem {
@@ -62,38 +65,7 @@ const CATEGORY_CONFIG = {
   medical:       { label: "Medical",         color: "#FF2D55", icon: Shield, gradient: "linear-gradient(135deg, #FF2D5520, #FF2D5508)" },
 };
 
-const DEFAULT_TEMPLATES: ChecklistTemplate[] = [
-  {
-    id: "TPL-001", name: "General Field Safety", isDefault: true,
-    items: [
-      { id: "C1", text: "Wearing hard hat / safety helmet", category: "ppe", required: true },
-      { id: "C2", text: "High-visibility vest is on", category: "ppe", required: true },
-      { id: "C3", text: "Steel-toe boots are worn", category: "ppe", required: true },
-      { id: "C4", text: "Safety glasses / goggles ready", category: "ppe", required: false },
-      { id: "C5", text: "Radio / phone is charged and working", category: "communication", required: true },
-      { id: "C6", text: "Buddy pair confirmed for the shift", category: "communication", required: false },
-      { id: "C7", text: "Fire extinguisher location noted", category: "environment", required: true },
-      { id: "C8", text: "Evacuation route reviewed", category: "environment", required: true },
-      { id: "C9", text: "Equipment pre-use inspection done", category: "equipment", required: true },
-      { id: "C10", text: "First aid kit location known", category: "medical", required: true },
-      { id: "C11", text: "No open wounds or untreated injuries", category: "medical", required: false },
-      { id: "C12", text: "Weather conditions are safe to work", category: "environment", required: true },
-    ],
-  },
-  {
-    id: "TPL-002", name: "High-Risk Zone Safety", zone: "Zone D", isDefault: false,
-    items: [
-      { id: "H1", text: "Gas detector is calibrated and active", category: "equipment", required: true },
-      { id: "H2", text: "Respiratory protection (mask/respirator)", category: "ppe", required: true },
-      { id: "H3", text: "Chemical-resistant gloves worn", category: "ppe", required: true },
-      { id: "H4", text: "Spill containment equipment verified", category: "equipment", required: true },
-      { id: "H5", text: "Emergency shower location confirmed", category: "environment", required: true },
-      { id: "H6", text: "Supervisor briefing completed", category: "communication", required: true },
-      { id: "H7", text: "SOS app is active and connected", category: "communication", required: true },
-      { id: "H8", text: "Fall protection harness inspected", category: "ppe", required: true },
-    ],
-  },
-];
+const DEFAULT_TEMPLATES = DEFAULT_CHECKLIST_TEMPLATES;
 
 const DEMO_SUBMISSIONS: ChecklistSubmission[] = [
   { id: "SUB-001", employeeName: "Ahmed Khalil", employeeId: "EMP-001", templateId: "TPL-001", completedItems: ["C1","C2","C3","C5","C7","C8","C9","C10","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 1800000), zone: "Zone A", isComplete: false, flaggedItems: ["C4","C6","C11"], avatar: "AK" },
@@ -103,10 +75,7 @@ const DEMO_SUBMISSIONS: ChecklistSubmission[] = [
   { id: "SUB-005", employeeName: "Omar Al-Farsi", employeeId: "EMP-008", templateId: "TPL-001", completedItems: ["C1","C2","C3","C4","C5","C6","C7","C8","C9","C10","C11","C12"], totalItems: 12, submittedAt: new Date(Date.now() - 9000000), zone: "Zone A", isComplete: true, flaggedItems: [], avatar: "OF" },
 ];
 
-// PROD SAFETY: the above are DEMO submissions. There is no checklist-submission
-// backend yet, so production shows real submissions only (i.e. none) instead of
-// fabricated safety-compliance data. Gated like every other dashboard mock.
-const RECENT_SUBMISSIONS: ChecklistSubmission[] = import.meta.env.DEV ? DEMO_SUBMISSIONS : [];
+
 
 // ── GlowIcon ──────────────────────────────────────────────────
 function GlowIcon({ icon: Icon, color, size = 40, iconSize = 20 }: {
@@ -158,14 +127,75 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [showRemindAllModal, setShowRemindAllModal] = useState(false);
 
-  const totalSubmissions = RECENT_SUBMISSIONS.length;
-  const completeCount = RECENT_SUBMISSIONS.filter(s => s.isComplete).length;
+  // ── Real submissions from checklist_submissions (durable compliance records) ──
+  // DEV keeps the demo for local visualization; prod loads real rows (possibly
+  // none — honest empty state) once a company is known.
+  const [submissions, setSubmissions] = useState<ChecklistSubmission[]>(import.meta.env.DEV ? DEMO_SUBMISSIONS : []);
+  useEffect(() => {
+    const cid = getCompanyId();
+    if (!cid) return;
+    let alive = true;
+    fetchChecklistSubmissions(cid).then(rows => {
+      if (!alive) return;
+      setSubmissions(rows.map(r => ({
+        id: r.id,
+        employeeName: r.employeeName,
+        employeeId: r.employeeId || "",
+        templateId: r.templateId,
+        completedItems: r.completedItems,
+        totalItems: r.totalItems,
+        submittedAt: r.submittedAt,
+        zone: r.zone || "—",
+        isComplete: r.isComplete,
+        flaggedItems: r.flaggedItems,
+        avatar: (r.employeeName || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?",
+      })));
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const totalSubmissions = submissions.length;
+  const completeCount = submissions.filter(s => s.isComplete).length;
   const incompleteCount = totalSubmissions - completeCount;
   const complianceRate = totalSubmissions > 0 ? Math.round((completeCount / totalSubmissions) * 100) : 0;
-  const flaggedCount = RECENT_SUBMISSIONS.filter(s => s.flaggedItems.length > 0).length;
-  const totalFlaggedItems = RECENT_SUBMISSIONS.reduce((sum, s) => sum + s.flaggedItems.length, 0);
+  const flaggedCount = submissions.filter(s => s.flaggedItems.length > 0).length;
+  const totalFlaggedItems = submissions.reduce((sum, s) => sum + s.flaggedItems.length, 0);
 
-  const filteredSubmissions = RECENT_SUBMISSIONS.filter(sub => {
+  // Real per-category compliance: across all submissions, the share of that
+  // category's checklist items the workers actually confirmed.
+  const categoryCompliance = useMemo(() => {
+    const res: Record<string, number> = {};
+    for (const key of Object.keys(CATEGORY_CONFIG)) {
+      let confirmed = 0, total = 0;
+      for (const sub of submissions) {
+        const tpl = DEFAULT_TEMPLATES.find(t => t.id === sub.templateId);
+        if (!tpl) continue;
+        for (const it of tpl.items) {
+          if (it.category !== key) continue;
+          total++;
+          if (sub.completedItems.includes(it.id)) confirmed++;
+        }
+      }
+      res[key] = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+    }
+    return res;
+  }, [submissions]);
+
+  // Real 7-day compliance trend from submission timestamps.
+  const trend7 = useMemo(() => {
+    const out: { rate: number; label: string }[] = [];
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    for (let d = 6; d >= 0; d--) {
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - d);
+      const end = new Date(start); end.setDate(end.getDate() + 1);
+      const dayd = submissions.filter(s => s.submittedAt >= start && s.submittedAt < end);
+      const rate = dayd.length ? Math.round((dayd.filter(s => s.isComplete).length / dayd.length) * 100) : 0;
+      out.push({ rate, label: d === 0 ? "Today" : dayNames[start.getDay()] });
+    }
+    return out;
+  }, [submissions]);
+
+  const filteredSubmissions = submissions.filter(sub => {
     const matchesSearch = !searchQuery || sub.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) || sub.zone.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === "all" || (filterStatus === "complete" && sub.isComplete) || (filterStatus === "incomplete" && !sub.isComplete);
     return matchesSearch && matchesFilter;
@@ -174,17 +204,54 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
   const handleRemind = useCallback((subId: string) => {
     hapticSuccess();
     setRemindedWorkers(prev => new Set([...prev, subId]));
-    const sub = RECENT_SUBMISSIONS.find(s => s.id === subId);
-    toast.success("Reminder Sent", { description: `${sub?.employeeName || "Worker"} has been notified to complete their checklist` });
-  }, []);
+    const sub = submissions.find(s => s.id === subId);
+    if (!sub) return;
+    // REAL delivery: push a checklist reminder to this worker's device via the
+    // broadcast push pipeline (custom audience targets just this employee id).
+    const targetId = (sub.employeeId || "").trim();
+    if (targetId) {
+      sendBroadcast({
+        title: "Pre-Shift Checklist Reminder",
+        body: `${sub.employeeName || "Worker"}, please complete your pre-shift safety checklist before starting your shift.`,
+        priority: "normal",
+        audience: { type: "custom", employeeIds: [targetId] },
+        audienceLabel: sub.employeeName || "Worker",
+        source: "manual",
+        senderName: "Safety Admin",
+        senderRole: "Admin",
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 6 * 3600000,
+      });
+      toast.success("Reminder Sent", { description: `${sub.employeeName} has been notified to complete their checklist.` });
+    } else {
+      toast.info("Marked for follow-up", { description: `${sub.employeeName} has no linked device id yet — flagged for manual follow-up.` });
+    }
+  }, [submissions]);
 
   const handleRemindAll = useCallback(() => {
     hapticSuccess();
-    const incompleteSubmissions = RECENT_SUBMISSIONS.filter(s => !s.isComplete);
+    const incompleteSubmissions = submissions.filter(s => !s.isComplete);
     setRemindedWorkers(prev => new Set([...prev, ...incompleteSubmissions.map(s => s.id)]));
-    toast.success("Reminders Sent", { description: `${incompleteSubmissions.length} workers have been notified to complete their checklists` });
+    const targetIds = incompleteSubmissions.map(s => (s.employeeId || "").trim()).filter(Boolean);
+    if (targetIds.length > 0) {
+      sendBroadcast({
+        title: "Pre-Shift Checklist Reminder",
+        body: "Please complete your pre-shift safety checklist before starting your shift.",
+        priority: "normal",
+        audience: { type: "custom", employeeIds: targetIds },
+        audienceLabel: `${targetIds.length} workers`,
+        source: "manual",
+        senderName: "Safety Admin",
+        senderRole: "Admin",
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 6 * 3600000,
+      });
+      toast.success("Reminders Sent", { description: `${targetIds.length} worker(s) have been notified to complete their checklists.` });
+    } else {
+      toast.info("Nothing to send", { description: "No incomplete workers with a linked device to remind." });
+    }
     setShowRemindAllModal(false);
-  }, []);
+  }, [submissions]);
 
   // 29th pattern app integration B (2026-06-09): live weather banner.
   // Reads from the in-memory weather cache (populated by WeatherAdmin /
@@ -743,14 +810,14 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
                 {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
                   const CatIcon = cfg.icon;
                   const allItems = DEFAULT_TEMPLATES.flatMap(t => t.items.filter(i => i.category === key));
-                  const mockCompliance = key === "ppe" ? 92 : key === "equipment" ? 78 : key === "environment" ? 85 : key === "communication" ? 67 : 88;
+                  const realCompliance = categoryCompliance[key] ?? 0;
                   return (
                     <div key={key} className="text-center p-4 rounded-xl" style={{
                       background: `${cfg.color}04`, border: `1px solid ${cfg.color}10`,
                     }}>
                       <GlowIcon icon={CatIcon} color={cfg.color} size={36} iconSize={16} />
                       <div className="mt-3">
-                        <ComplianceRing value={mockCompliance} color={cfg.color} size={56} />
+                        <ComplianceRing value={realCompliance} color={cfg.color} size={56} />
                       </div>
                       <p style={{ ...TYPOGRAPHY.caption, color: cfg.color, fontWeight: 600, marginTop: 8 }}>{cfg.label}</p>
                       <p style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, marginTop: 2 }}>{allItems.length} items</p>
@@ -764,7 +831,8 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
             <Card padding={24}>
               <SectionHeader title="Compliance Trends" subtitle="Last 7 days" icon={Activity} color="#00C853" />
               <div className="flex items-end gap-3 mt-4 h-32">
-                {[68, 72, 75, 70, 78, 82, complianceRate].map((val, i) => {
+                {trend7.map((pt, i) => {
+                  const val = pt.rate;
                   const isToday = i === 6;
                   const barColor = val >= 80 ? "#00C853" : val >= 60 ? "#FF9500" : "#FF2D55";
                   return (
@@ -788,7 +856,7 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
                         )}
                       </motion.div>
                       <span style={{ ...TYPOGRAPHY.micro, color: TOKENS.text.muted, fontSize: 8 }}>
-                        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Today"][i]}
+                        {pt.label}
                       </span>
                     </div>
                   );

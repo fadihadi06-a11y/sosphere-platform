@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLang } from "./useLang";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, Bell, MapPin, Clock, CheckCircle, AlertTriangle, Phone, Home, Map, User, Timer, Heart, Package, FileText, ChevronRight, LogOut, Navigation, X } from "lucide-react";
+import { Shield, Bell, MapPin, Clock, CheckCircle, AlertTriangle, Phone, Home, Map, User, Timer, Heart, Package, FileText, ChevronRight, LogOut, Navigation, X, ClipboardCheck } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { emitSyncEvent, getHybridMode, onHybridModeChange, recordAttendance, autoBroadcastHazard } from "./shared-store";
 import { MissionNotificationBanner } from "./mission-tracker-mobile";
@@ -17,7 +17,7 @@ interface EmployeeDashboardProps {
   onEmergencyPacket?: () => void; onEmergencyServices?: () => void; onEmergencyContacts?: () => void;
   onNotifications?: () => void; onIncidentHistory?: () => void; onLogout?: () => void;
   timerActive?: boolean; onMissionTracker?: () => void; onSafeWalk?: () => void;
-  onReportHazard?: () => void;
+  onReportHazard?: () => void; onPreShiftChecklist?: () => void;
 }
 
 // Avatar and role are read from localStorage (saved during employee-quick-setup)
@@ -91,7 +91,7 @@ interface AlertItem {
 }
 
 export function EmployeeDashboard({
-  companyName, userName, userZone, onSOSTrigger, onCheckinTimer, onMedicalID, onReportHazard,
+  companyName, userName, userZone, onSOSTrigger, onCheckinTimer, onMedicalID, onReportHazard, onPreShiftChecklist,
   onEmergencyPacket, onEmergencyServices, onEmergencyContacts,
   onNotifications, onIncidentHistory, onLogout, timerActive, onMissionTracker, onSafeWalk,
 }: EmployeeDashboardProps) {
@@ -281,6 +281,7 @@ export function EmployeeDashboard({
                 <p style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.25)",letterSpacing:"1.5px",marginBottom:12,direction:"rtl"}}>خدمات الطوارئ</p>
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   {[
+                    { icon:ClipboardCheck, labelAr: isAr ? "فحص ما قبل الوردية" : "Pre-Shift Checklist", color:"#00C8E0", action:onPreShiftChecklist, badge:null },
                     { icon:Timer, labelAr: isAr ? "مؤقت تسجيل الحضور" : "Check-in Timer", color:"#FF9500", action:onCheckinTimer, badge:timerActive?(isAr?"نشط":"Active"):null },
                     { icon:Heart, labelAr: isAr ? "معرّف الطوارئ الطبية" : "Medical ID", color:"#FF2D55", action:onMedicalID },
                     { icon:Navigation, labelAr: isAr ? "وضع المشي الآمن" : "Safe Walk", color:"#00C853", action:onSafeWalk },

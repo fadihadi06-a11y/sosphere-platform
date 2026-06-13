@@ -69,6 +69,7 @@ import { useT, type Lang } from "./dashboard-i18n";
 const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ default: m.MobileEmergencyChat })));
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
+import { PreShiftChecklistScreen } from "./pre-shift-checklist-screen";
 import { Toaster, toast } from "sonner";
 import { MfaGateController } from "./mfa-gate-controller";
 import { loadJSONSync } from "./api/storage-adapter";
@@ -230,6 +231,7 @@ type Screen =
   | "elite-features"
   | "mission-tracker"
   | "safe-walk"
+  | "pre-shift-checklist"
   | "mfa-challenge";
 
 export function MobileApp() {
@@ -1362,7 +1364,7 @@ export function MobileApp() {
     };
   }, []);  // -- Auto-start GPS tracking + offline sync when logged in --
   useEffect(() => {
-    const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk"];
+    const loggedInScreens: Screen[] = ["individual-home", "employee-dashboard", "sos-emergency", "checkin-timer", "medical-id", "emergency-contacts", "notifications", "incident-history", "emergency-packet", "emergency-services", "evacuation", "mission-tracker", "safe-walk", "pre-shift-checklist"];
     if (loggedInScreens.includes(screen)) {
       // Start GPS tracking with high-risk preset
       const _realGpsId = loginName.replace(/\s+/g, "") ? `EMP-${loginName.replace(/\s+/g, "")}` : "EMP-UNKNOWN";
@@ -1884,7 +1886,7 @@ export function MobileApp() {
             "individual-home", "employee-dashboard",
             "medical-id", "emergency-contacts", "emergency-packet",
             "emergency-services", "notifications", "incident-history",
-            "evacuation", "mission-tracker", "safe-walk",
+            "evacuation", "mission-tracker", "safe-walk", "pre-shift-checklist",
             "language", "privacy", "connected-devices", "help",
             "elite-features", "subscription",
           ];
@@ -2445,6 +2447,7 @@ export function MobileApp() {
                 onReportHazard={() => { setSourceScreen("employee-dashboard"); setPendingEmergencyId("SR-" + Date.now().toString(36).toUpperCase()); setShowIncidentReport(true); }}
                 timerActive={timerActive}
                 onMissionTracker={() => { setSourceScreen("employee-dashboard"); navigate("mission-tracker"); }}
+                onPreShiftChecklist={() => { setSourceScreen("employee-dashboard"); navigate("pre-shift-checklist"); }}
                 onSafeWalk={() => {
                   if (!hasFeature("walkMe")) {
                     toast(lang === "ar"
@@ -2655,6 +2658,16 @@ export function MobileApp() {
 
             {screen === "elite-features" && (
               <EliteFeaturesScreen onBack={() => navigate(sourceScreen, -1)} />
+            )}
+
+            {screen === "pre-shift-checklist" && (
+              <PreShiftChecklistScreen
+                companyId={activeCompanyId || ""}
+                employeeId={authUserId || `EMP-${loginName.replace(/\s+/g, "")}`}
+                employeeName={loginName || "Worker"}
+                zone={userZone}
+                onBack={() => navigate("employee-dashboard", -1)}
+              />
             )}
 
             {screen === "mission-tracker" && (

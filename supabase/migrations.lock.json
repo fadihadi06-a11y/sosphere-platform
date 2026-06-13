@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-13T14:59:20.118Z",
-  "total_migrations": 193,
-  "manifest_sha256": "ec5a48a7f7091f67feff166fa0ab4e6ed4933533396284143a44ca9ea7775992",
+  "generated_at": "2026-06-13T15:47:28.782Z",
+  "total_migrations": 194,
+  "manifest_sha256": "9bc9819ba506a121f2989a33272977605c112cf4a4f882b365bb2d8c91e8bec0",
   "migrations": [
     {
       "version": "20260415",
@@ -1353,6 +1353,13 @@
       "file": "20260612_fix_company_playbooks_unique_for_upsert.sql",
       "sha256": "631f3648aed68216af505438d62834ffbb44bc18bdd9caebe2f148e51b2018ba",
       "bytes": 787
+    },
+    {
+      "version": "20260613",
+      "name": "create_checklist_submissions",
+      "file": "20260613_create_checklist_submissions.sql",
+      "sha256": "ecffaee7b522d5fe58ce18808aa8c207493a1c83cdaf7862b967206893f6b68f",
+      "bytes": 2610
     }
   ]
 }
