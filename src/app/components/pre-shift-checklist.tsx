@@ -195,6 +195,19 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
     return out;
   }, [submissions]);
 
+  // Real "today vs yesterday" submission counts (drives the Submissions Today KPI).
+  const { todayCount, yesterdayCount } = useMemo(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const yStart = new Date(start); yStart.setDate(yStart.getDate() - 1);
+    let tcount = 0, ycount = 0;
+    for (const sub of submissions) {
+      if (sub.submittedAt >= start) tcount++;
+      else if (sub.submittedAt >= yStart && sub.submittedAt < start) ycount++;
+    }
+    return { todayCount: tcount, yesterdayCount: ycount };
+  }, [submissions]);
+  const todayDelta = todayCount - yesterdayCount;
+
   const filteredSubmissions = submissions.filter(sub => {
     const matchesSearch = !searchQuery || sub.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) || sub.zone.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === "all" || (filterStatus === "complete" && sub.isComplete) || (filterStatus === "incomplete" && !sub.isComplete);
@@ -302,8 +315,8 @@ export function PreShiftChecklistPage({ t, webMode, onNavigateToFlagged }: { t: 
       {/* KPI Cards                                            */}
       {/* ══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-4">
-        <KPICard label="Submissions Today" value={totalSubmissions} icon={ClipboardList} color="#00C8E0"
-          subtitle="Pre-shift checklists" trend={{ value: "+3 from yesterday", positive: true }} />
+        <KPICard label="Submissions Today" value={todayCount} icon={ClipboardList} color="#00C8E0"
+          subtitle="Pre-shift checklists" trend={{ value: `${todayDelta >= 0 ? "+" : ""}${todayDelta} from yesterday`, positive: todayDelta >= 0 }} />
         <KPICard label="Fully Compliant" value={completeCount} icon={ClipboardCheck} color="#00C853"
           subtitle="100% completion" trend={{ value: `${completeCount}/${totalSubmissions}`, positive: completeCount >= totalSubmissions / 2 }} />
         <KPICard label="Incomplete" value={incompleteCount} icon={AlertTriangle} color="#FF9500"

@@ -220,7 +220,10 @@ export async function fetchEmployees(): Promise<Employee[]> {
             : "Unassigned",
           lastCheckin: emp.last_seen_at || emp.created_at || new Date().toISOString(),
           phone: profile.email || "",
-          safetyScore: emp.verified ? 90 : 70,
+          // Use the REAL employees.safety_score column (default 85), not a
+          // hardcoded verified-based guess. This is the value the Safety Score
+          // leaderboard + directory display, so it must reflect the database.
+          safetyScore: Number.isFinite(Number(emp.safety_score)) ? Number(emp.safety_score) : 85,
         };
       });
     } catch (e) {
