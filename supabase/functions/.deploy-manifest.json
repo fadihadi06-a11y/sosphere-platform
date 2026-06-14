@@ -157,6 +157,11 @@
       "ezbr": "633cae223d2dc0b7514775ee70bb5c85570ff875800df587b4fa8a27ea532531",
       "version": 3,
       "pinned_at": "2026-06-09T08:38:23.898Z"
+    },
+    "send-scheduled-reports": {
+      "ezbr": "78473d14ab8a6e190bc6d1499bcc385839046d4294c1924365b4add695c05516",
+      "version": 1,
+      "pinned_at": "2026-06-14T17:54:23.776Z"
     }
   }
 }
