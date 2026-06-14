@@ -11,9 +11,12 @@
 // it (1) triggers a single guarded reload to fetch fresh assets, and (2) throws
 // an error whose message the error boundary already recognizes as a chunk
 // failure — belt and suspenders. When the export is present it just returns it.
+//
+// IMPORTANT: it is generic over the MODULE type (M) and export key (K) so the
+// returned { default: M[K] } preserves the component's REAL prop types. Erasing
+// to ComponentType<any> would make every lazy page untyped, turning inline prop
+// callbacks (onNavigate, onUpgrade, …) into implicit-any params (TS7006).
 // ═══════════════════════════════════════════════════════════════
-
-import type { ComponentType } from "react";
 
 /** One-time, loop-guarded reload to pull fresh hashed chunks after a deploy. */
 function triggerChunkReloadOnce(): void {
@@ -28,21 +31,18 @@ function triggerChunkReloadOnce(): void {
 }
 
 /**
- * Pick a named export and shape it for React.lazy ({ default: Component }).
- * If the module is undefined or the export is missing (stale/partial chunk),
- * self-heal with a reload and throw a chunk-recognized error.
- *
- * Returns a ComponentType<any> default so React.lazy's generic infers a valid
- * component type (a bare unknown would fail lazy's T extends ComponentType
- * constraint — TS2322).
+ * Pick a named export and shape it for React.lazy ({ default: Component }),
+ * preserving the export's real type. If the module is undefined or the export
+ * is missing (stale/partial chunk), self-heal with a reload and throw a
+ * chunk-recognized error.
  */
-export function pickDefault(mod: unknown, name: string): { default: ComponentType<any> } {
-  const comp = mod ? (mod as Record<string, unknown>)[name] : undefined;
+export function pickDefault<M, K extends keyof M>(mod: M, name: K): { default: M[K] } {
+  const comp = mod ? (mod as Record<PropertyKey, unknown>)[name as PropertyKey] : undefined;
   if (!comp) {
     triggerChunkReloadOnce();
     // Message intentionally contains "dynamically imported module" so the
     // existing error-boundary self-heal regex also matches it.
-    throw new Error(`Failed to fetch dynamically imported module (missing export: ${name})`);
+    throw new Error(`Failed to fetch dynamically imported module (missing export: ${String(name)})`);
   }
-  return { default: comp as ComponentType<any> };
+  return { default: comp as M[K] };
 }
