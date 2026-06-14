@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { pickDefault } from "./utils/lazy-default";
 // L3-B / F-02 (2026-05-09): mobile-app chunk was 787KB + emergency-chat
 // 391KB extra. Workers carry this in the field; every KB = ms during
 // emergency. Convert non-hot-path screens to React.lazy() so they only
@@ -21,14 +22,14 @@ import { IndividualLayout, type IndividualLayoutHandle } from "./individual-layo
 import { safeTelCall } from "./utils/safe-tel";
 import { EmployeeDashboard } from "./dashboard";
 import { SosEmergency } from "./sos-emergency";
-const PostEmergencyDebrief = lazy(() => import("./post-emergency-debrief").then(m => ({ default: m.PostEmergencyDebrief })));
+const PostEmergencyDebrief = lazy(() => import("./post-emergency-debrief").then(m => pickDefault(m, "PostEmergencyDebrief")));
 import { syncIncidentToSupabase, resyncPendingIncidents } from "./incident-sync";
-const EmergencyResponseRecord = lazy(() => import("./emergency-response-record").then(m => ({ default: m.EmergencyResponseRecord })));
+const EmergencyResponseRecord = lazy(() => import("./emergency-response-record").then(m => pickDefault(m, "EmergencyResponseRecord")));
 import { CheckinTimer } from "./checkin-timer";
 import { MedicalID } from "./medical-id";
-const SubscriptionPlans = lazy(() => import("./subscription-plans").then(m => ({ default: m.SubscriptionPlans })));
+const SubscriptionPlans = lazy(() => import("./subscription-plans").then(m => pickDefault(m, "SubscriptionPlans")));
 import { hasFeature } from "./subscription-service";
-const IncidentHistory = lazy(() => import("./incident-history").then(m => ({ default: m.IncidentHistory })));
+const IncidentHistory = lazy(() => import("./incident-history").then(m => pickDefault(m, "IncidentHistory")));
 import { EmergencyPacket } from "./emergency-packet";
 import { EmergencyServices } from "./emergency-services";
 import { EmergencyContacts } from "./emergency-contacts";
@@ -66,7 +67,7 @@ import { useShakeDetection } from "./shake-to-sos";
 // relying on a "feature" that doesn't work at the critical moment. Reliable
 // SOS triggers (Hold 3s, Shake×3, 911/999/112 buttons) are preserved.
 import { useT, type Lang } from "./dashboard-i18n";
-const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => ({ default: m.MobileEmergencyChat })));
+const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => pickDefault(m, "MobileEmergencyChat")));
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
 import { PreShiftChecklistScreen } from "./pre-shift-checklist-screen";

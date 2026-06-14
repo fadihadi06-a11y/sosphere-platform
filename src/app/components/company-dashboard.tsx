@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { pickDefault } from "./utils/lazy-default";
 // L3-A / F-01 (2026-05-09): the dashboard chunk was 2.2MB because every
 // hub-page component was imported eagerly, including ones that drag jsPDF
 // (382KB) + html2canvas (198KB) + QRCode + recharts. Each conditional
@@ -39,17 +40,17 @@ import { hasFeature, canCreateEmergency as canCreateEmgBilling, isTrialExpired, 
 import { HazardAlertBanner } from "./hazard-banner";
 import { TenantBanner } from "./tenant-banner";
 import { ManualPriorityModal } from "./manual-priority-modal";
-const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => ({ default: m.SettingsPage })));
-const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => ({ default: m.PricingPage })));
-const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => ({ default: m.BillingPage })));
-const PricingAdminPage = lazy(() => import("./dashboard-pricing-admin-page").then(m => ({ default: m.PricingAdminPage })));
-const WeatherAdminPage = lazy(() => import("./dashboard-weather-admin-page").then(m => ({ default: m.WeatherAdminPage })));
+const SettingsPage = lazy(() => import("./dashboard-settings-page").then(m => pickDefault(m, "SettingsPage")));
+const PricingPage = lazy(() => import("./dashboard-pricing-page").then(m => pickDefault(m, "PricingPage")));
+const BillingPage = lazy(() => import("./dashboard-billing-page").then(m => pickDefault(m, "BillingPage")));
+const PricingAdminPage = lazy(() => import("./dashboard-pricing-admin-page").then(m => pickDefault(m, "PricingAdminPage")));
+const WeatherAdminPage = lazy(() => import("./dashboard-weather-admin-page").then(m => pickDefault(m, "WeatherAdminPage")));
 import {
   OverviewPage, EmergenciesPage,
   IncidentHistoryPage, CreateEmergencyDrawer,
 } from "./dashboard-pages";
 // (EmployeesPage, ZonesPage, AttendancePage — now handled inside hubs/location page)
-const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => ({ default: m.AnalyticsPage })));
+const AnalyticsPage = lazy(() => import("./dashboard-analytics-page").then(m => pickDefault(m, "AnalyticsPage")));
 import { EmployeeDetailDrawer } from "./dashboard-employee-detail";
 import { onSyncEvent, getHybridMode, onHybridModeChange, onMissedCallChange, onMissedCallNotify, markMissedCallSeen, emitCallSignal, emitAdminSignal, getLastEmployeeSync, emitSyncEvent, initRealtimeChannels, type MissedCall } from "./shared-store";
 import { calculateRiskScore, getRiskLabel } from "./risk-scoring-engine";
@@ -65,24 +66,24 @@ import { GlobalQuickActions } from "./global-quick-actions";
 import { GlobalSearch, useGlobalSearch } from "./global-search";
 
 // Import Unified Employees Page
-const UnifiedEmployeesPage = lazy(() => import("./employees-unified-page").then(m => ({ default: m.UnifiedEmployeesPage })));
-const DashboardJobsPage = lazy(() => import("./dashboard-jobs-page").then(m => ({ default: m.DashboardJobsPage })));
+const UnifiedEmployeesPage = lazy(() => import("./employees-unified-page").then(m => pickDefault(m, "UnifiedEmployeesPage")));
+const DashboardJobsPage = lazy(() => import("./dashboard-jobs-page").then(m => pickDefault(m, "DashboardJobsPage")));
 
 // ── NEW: Hybrid Hub Pages (merged for clarity) ──────────────────
 // EmergencyHubPage tabs now flattened into parent HubTabBar (no double tab bar)
-const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => ({ default: m.LocationZonesPage })));
-const DronesPage = lazy(() => import("./dashboard-drones-page").then(m => ({ default: m.DronesPage })));
-const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => ({ default: m.WorkforcePage })));
-const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => ({ default: m.CommsHubPage })));
+const LocationZonesPage = lazy(() => import("./dashboard-location-page").then(m => pickDefault(m, "LocationZonesPage")));
+const DronesPage = lazy(() => import("./dashboard-drones-page").then(m => pickDefault(m, "DronesPage")));
+const WorkforcePage = lazy(() => import("./dashboard-workforce-page").then(m => pickDefault(m, "WorkforcePage")));
+const CommsHubPage = lazy(() => import("./dashboard-comms-hub").then(m => pickDefault(m, "CommsHubPage")));
 import { SOSEmergencyPopup, type SOSEmployee } from "./sos-emergency-popup";
 import { AdminCallSystem } from "./admin-incoming-call";
 
 // ── NEW: Roles & Permissions Page ──────────────────────────────
-const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => ({ default: m.RolesPermissionsPage })));
+const RolesPermissionsPage = lazy(() => import("./dashboard-roles-page").then(m => pickDefault(m, "RolesPermissionsPage")));
 
 // ── NEW: Audit Log Page ──────────────���────────────────────────
-const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => ({ default: m.AuditLogPage })));
-const PipelineHealthPage = lazy(() => import("./dashboard-pipeline-health-page").then(m => ({ default: m.PipelineHealthPage })));
+const AuditLogPage = lazy(() => import("./dashboard-audit-log-page").then(m => pickDefault(m, "AuditLogPage")));
+const PipelineHealthPage = lazy(() => import("./dashboard-pipeline-health-page").then(m => pickDefault(m, "PipelineHealthPage")));
 // Inline import — see comment on `authUserId` prop. Lives at top of the
 // banner stack (above TrialBanner / HazardAlert / Tenant) so all four
 // banners stack vertically without overlapping.
@@ -134,21 +135,21 @@ import { ComplianceReportsPage } from "./compliance-reports";
 import { AdminHintBar } from "./admin-hints";
 import { useSessionTimeout, SessionTimeoutWarning } from "./use-session-timeout";
 import { LiveTrialBanner } from "./trial-banner-live";  // AUTH-5 P4 (#175)
-const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => ({ default: m.LeaderboardPage })));
+const LeaderboardPage = lazy(() => import("./dashboard-leaderboard-page").then(m => pickDefault(m, "LeaderboardPage")));
 import { trackEventSync } from "./smart-timeline-tracker";
 // RRP merged into unified Smart Response Guide (IRE)
 import { BatchEmailScheduler } from "./batch-email-scheduler";
-const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => ({ default: m.RRPAnalyticsPage })));
+const RRPAnalyticsPage = lazy(() => import("./rrp-analytics-page").then(m => pickDefault(m, "RRPAnalyticsPage")));
 import { OfflineIndicator } from "./offline-sync";
-const OfflineMonitoringPage = lazy(() => import("./dashboard-offline-page").then(m => ({ default: m.OfflineMonitoringPage })));
+const OfflineMonitoringPage = lazy(() => import("./dashboard-offline-page").then(m => pickDefault(m, "OfflineMonitoringPage")));
 import { getTrackerState, startGPSTracking } from "./offline-gps-tracker";
 
 // ── NEW: SAR Protocol Engine ────────────────────────────────────
-const SARProtocolPage = lazy(() => import("./dashboard-sar-page").then(m => ({ default: m.SARProtocolPage })));
+const SARProtocolPage = lazy(() => import("./dashboard-sar-page").then(m => pickDefault(m, "SARProtocolPage")));
 
 // ── NEW: ISO 45001 Compliance Pages ─────────────────��───────────
-const IncidentInvestigationPage = lazy(() => import("./dashboard-incident-investigation").then(m => ({ default: m.IncidentInvestigationPage })));
-const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m => ({ default: m.RiskRegisterPage })));
+const IncidentInvestigationPage = lazy(() => import("./dashboard-incident-investigation").then(m => pickDefault(m, "IncidentInvestigationPage")));
+const RiskRegisterPage = lazy(() => import("./dashboard-risk-register").then(m => pickDefault(m, "RiskRegisterPage")));
 
 // ── NEW: Mission Control ────────────────────────────────────────
 import { MissionControlPage } from "./mission-control";
