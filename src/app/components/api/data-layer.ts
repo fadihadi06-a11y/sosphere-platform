@@ -203,23 +203,28 @@ export async function fetchEmployees(): Promise<Employee[]> {
       // JOIN employees (relationship/status) with profiles (personal data)
       const { data, error } = await supabase
         .from("employees")
-        .select("*, profiles!user_id(full_name, email, user_type)")
+        .select("*")
         .eq("company_id", companyId);
       if (error || !data || data.length === 0) return [];
       return data.map((emp: any): Employee => {
-        const profile = emp.profiles ?? {};
+        // Roster identity comes from the employees table's OWN columns — NOT a
+        // profiles join. profiles holds PII (phone, DOB, parental_contact, pin
+        // material) and is now self/admin-only (RLS), so workers cannot read
+        // teammates' personal data. employees.name/name_ar/phone/role are the
+        // safe, company-scoped source. (Also fixes a latent bug where phone was
+        // being populated from profile.email.)
         return {
           id: emp.id,
-          name: profile.full_name || "Unknown",
-          nameAr: profile.full_name || "??? ?????",
-          role: emp.role || profile.user_type || "employee",
-          department: "General",
+          name: emp.name || "Unknown",
+          nameAr: emp.name_ar || emp.name || "Unknown",
+          role: emp.role || "employee",
+          department: emp.department || "General",
           status: emp.status === "on_duty" ? "on-shift" : "off-shift",
           location: emp.last_lat && emp.last_lon
             ? `${Number(emp.last_lat).toFixed(4)}, ${Number(emp.last_lon).toFixed(4)}`
             : "Unassigned",
           lastCheckin: emp.last_seen_at || emp.created_at || new Date().toISOString(),
-          phone: profile.email || "",
+          phone: emp.phone || "",
           // Use the REAL employees.safety_score column (default 85), not a
           // hardcoded verified-based guess. This is the value the Safety Score
           // leaderboard + directory display, so it must reflect the database.
