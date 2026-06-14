@@ -27,6 +27,9 @@ import {
 // reflected real missions. The new hook subscribes to the `missions`
 // realtime channel and respects RLS scoping by company.
 import { useSupabaseMissions, cancelMissionInSupabase } from "./mission-supabase";
+import { useDashboardStore } from "./stores/dashboard-store";
+import { supabase } from "./api/supabase-client";
+import { getCompanyId } from "./shared-store";
 
 // ── Status Color Map ──────────────────────────────────────────
 const SC = MISSION_STATUS_CONFIG;
@@ -484,29 +487,26 @@ function MissionDetail({ mission: m, onClose, onCancel }: { mission: Mission; on
 // Create Mission Drawer
 // ═══════════════════════════════════════════════════════════════
 
-const EMPLOYEES_LIST = [
-  { id: "EMP-001", name: "Ahmed Khalil" },
-  { id: "EMP-003", name: "Fatima Hassan" },
-  { id: "EMP-005", name: "Sara Al-Mutairi" },
-  { id: "EMP-006", name: "Mohammed Ali" },
-  { id: "EMP-008", name: "Omar Al-Farsi" },
-  { id: "EMP-009", name: "Khalid Rahman" },
-];
-
-const LOCATIONS = [
-  { name: "HQ Gate A", lat: 24.7136, lng: 46.6753 },
-  { name: "HQ Gate B", lat: 24.7150, lng: 46.6770 },
-  { name: "Zone C Lab", lat: 24.6500, lng: 46.6000 },
-  { name: "Zone D Gate", lat: 24.6300, lng: 46.5800 },
-  { name: "Warehouse 7", lat: 24.7000, lng: 46.6800 },
-  { name: "Remote Station Delta", lat: 24.8500, lng: 46.8200 },
-  { name: "Training Center North", lat: 24.7800, lng: 46.7400 },
-  { name: "Zone E Logistics Hub", lat: 24.8000, lng: 46.7800 },
-  { name: "Emergency Repair Site", lat: 24.7200, lng: 46.7200 },
-  { name: "Pipeline Junction B4", lat: 24.7600, lng: 46.7100 },
-];
-
 function CreateMissionDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const storeEmployees = useDashboardStore(s => s.employees);
+  const [zones, setZones] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
+  // REAL: load the company zones (with coordinates) for the route dropdowns.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const cid = getCompanyId();
+      if (!cid) return;
+      const { data } = await supabase.from("zones").select("id, name, lat, lon, lng").eq("company_id", cid);
+      if (!alive || !Array.isArray(data)) return;
+      const mapped = (data as any[]).map(z => ({
+        id: String(z.id), name: z.name || "Zone",
+        lat: Number(z.lat ?? 0), lng: Number(z.lng ?? z.lon ?? 0),
+      })).filter(z => Number.isFinite(z.lat) && Number.isFinite(z.lng) && !(z.lat === 0 && z.lng === 0));
+      setZones(mapped);
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const [empId, setEmpId] = useState("");
   const [destIdx, setDestIdx] = useState(-1);
   const [originIdx, setOriginIdx] = useState(0);
@@ -519,13 +519,15 @@ function CreateMissionDrawer({ onClose, onCreated }: { onClose: () => void; onCr
   });
   const [duration, setDuration] = useState(4); // hours
 
-  const canSubmit = empId && destIdx >= 0 && originIdx >= 0 && destIdx !== originIdx;
+  const canSubmit = !!empId && destIdx >= 0 && originIdx >= 0 && destIdx !== originIdx
+    && zones.length >= 2 && storeEmployees.length > 0;
 
   const handleCreate = () => {
     if (!canSubmit) return;
-    const emp = EMPLOYEES_LIST.find(e => e.id === empId)!;
-    const origin = LOCATIONS[originIdx];
-    const dest = LOCATIONS[destIdx];
+    const emp = storeEmployees.find(e => e.id === empId);
+    const origin = zones[originIdx];
+    const dest = zones[destIdx];
+    if (!emp || !origin || !dest) return;
     const start = new Date(startTime).getTime();
     createMission({
       employeeId: emp.id,
@@ -583,12 +585,20 @@ function CreateMissionDrawer({ onClose, onCreated }: { onClose: () => void; onCr
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {(storeEmployees.length === 0 || zones.length < 2) && (
+            <div style={{ padding: "10px 12px", borderRadius: 10, background: "rgba(255,149,0,0.06)", border: "1px solid rgba(255,149,0,0.2)" }}>
+              <p style={{ fontSize: 11, color: "#FF9500", lineHeight: 1.5 }}>
+                {storeEmployees.length === 0 ? "Add employees to assign a mission. " : ""}
+                {zones.length < 2 ? "Define at least 2 zones in Location & Zones to set a mission route (from \u2192 to)." : ""}
+              </p>
+            </div>
+          )}
           {/* Employee */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>EMPLOYEE</label>
             <select value={empId} onChange={e => setEmpId(e.target.value)} style={selectStyle}>
               <option value="" style={{ background: "#0A1220" }}>Select employee...</option>
-              {EMPLOYEES_LIST.map(e => <option key={e.id} value={e.id} style={{ background: "#0A1220" }}>{e.name}</option>)}
+              {storeEmployees.map(e => <option key={e.id} value={e.id} style={{ background: "#0A1220" }}>{e.name}</option>)}
             </select>
           </div>
 
@@ -597,14 +607,14 @@ function CreateMissionDrawer({ onClose, onCreated }: { onClose: () => void; onCr
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>FROM</label>
               <select value={originIdx} onChange={e => setOriginIdx(Number(e.target.value))} style={selectStyle}>
-                {LOCATIONS.map((l, i) => <option key={i} value={i} style={{ background: "#0A1220" }}>{l.name}</option>)}
+                {zones.map((z, i) => <option key={z.id} value={i} style={{ background: "#0A1220" }}>{z.name}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>TO</label>
               <select value={destIdx} onChange={e => setDestIdx(Number(e.target.value))} style={selectStyle}>
                 <option value={-1} style={{ background: "#0A1220" }}>Select destination...</option>
-                {LOCATIONS.map((l, i) => <option key={i} value={i} style={{ background: "#0A1220" }}>{l.name}</option>)}
+                {zones.map((z, i) => <option key={z.id} value={i} style={{ background: "#0A1220" }}>{z.name}</option>)}
               </select>
             </div>
           </div>
