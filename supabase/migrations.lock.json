@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-13T18:33:05.667Z",
-  "total_migrations": 195,
-  "manifest_sha256": "8f8c9f30220d4d35bc73a6a98f78b3cf603e9de15531213964b4b49999dc0671",
+  "generated_at": "2026-06-14T17:08:45.265Z",
+  "total_migrations": 196,
+  "manifest_sha256": "71131c2e59b9e00d804da4fb834aadeda46472d4a99be1a2c7fb51bf113bfad0",
   "migrations": [
     {
       "version": "20260415",
@@ -1367,6 +1367,13 @@
       "file": "20260613_create_checklist_submissions.sql",
       "sha256": "ecffaee7b522d5fe58ce18808aa8c207493a1c83cdaf7862b967206893f6b68f",
       "bytes": 2610
+    },
+    {
+      "version": "20260614",
+      "name": "scheduled_reports_cron",
+      "file": "20260614_scheduled_reports_cron.sql",
+      "sha256": "1846027a5e32f5b9ab9f8ada7990a76ce329837812873f1d7890cf5788e37d9b",
+      "bytes": 2874
     }
   ]
 }
