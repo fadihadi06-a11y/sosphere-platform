@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-14T17:08:45.265Z",
-  "total_migrations": 196,
-  "manifest_sha256": "71131c2e59b9e00d804da4fb834aadeda46472d4a99be1a2c7fb51bf113bfad0",
+  "generated_at": "2026-06-14T18:59:54.177Z",
+  "total_migrations": 197,
+  "manifest_sha256": "c0530137f8c0b8bf19b7e6fa4d5691d6906a3553257fbe4e1766524bd9b99458",
   "migrations": [
     {
       "version": "20260415",
@@ -1367,6 +1367,13 @@
       "file": "20260613_create_checklist_submissions.sql",
       "sha256": "ecffaee7b522d5fe58ce18808aa8c207493a1c83cdaf7862b967206893f6b68f",
       "bytes": 2610
+    },
+    {
+      "version": "20260614",
+      "name": "missions_assigned_user_id",
+      "file": "20260614_missions_assigned_user_id.sql",
+      "sha256": "972a6a7da37f5d8b272e45612ed7373af421be9e3dd602b661370e2822c36d29",
+      "bytes": 1022
     },
     {
       "version": "20260614",

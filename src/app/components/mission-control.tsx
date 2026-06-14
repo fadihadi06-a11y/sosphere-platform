@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import {
   type Mission, type MissionStatus, type MissionAlert,
-  createMission, cancelMission,
+  cancelMission,
   getMissionProgress, MISSION_STATUS_CONFIG,
 } from "./mission-store";
 // Wave 1 / T1.1 (2026-04-29): Mission Control is now Supabase-backed.
@@ -26,7 +26,7 @@ import {
 // onMissionEvent storage events) showed only seeded demos and never
 // reflected real missions. The new hook subscribes to the `missions`
 // realtime channel and respects RLS scoping by company.
-import { useSupabaseMissions, cancelMissionInSupabase } from "./mission-supabase";
+import { useSupabaseMissions, cancelMissionInSupabase, createMissionInSupabase } from "./mission-supabase";
 import { useDashboardStore } from "./stores/dashboard-store";
 import { supabase } from "./api/supabase-client";
 import { getCompanyId } from "./shared-store";
@@ -522,25 +522,33 @@ function CreateMissionDrawer({ onClose, onCreated }: { onClose: () => void; onCr
   const canSubmit = !!empId && destIdx >= 0 && originIdx >= 0 && destIdx !== originIdx
     && zones.length >= 2 && storeEmployees.length > 0;
 
-  const handleCreate = () => {
-    if (!canSubmit) return;
+  const [creating, setCreating] = useState(false);
+  const handleCreate = async () => {
+    if (!canSubmit || creating) return;
     const emp = storeEmployees.find(e => e.id === empId);
     const origin = zones[originIdx];
     const dest = zones[destIdx];
     if (!emp || !origin || !dest) return;
+    const cid = getCompanyId();
+    if (!cid) { toast.error("No company context"); return; }
     const start = new Date(startTime).getTime();
-    createMission({
+    setCreating(true);
+    // REAL: persist to the missions table (assigned_user_id = the worker's auth
+    // user_id) so it appears in the dashboard list AND the worker's mobile app.
+    const id = await createMissionInSupabase({
       employeeId: emp.id,
       employeeName: emp.name,
-      assignedBy: "Admin",
+      assignedUserId: emp.userId ?? null,
       scheduledStart: start,
-      scheduledEnd: start + duration * 3600000,
-      origin,
-      destination: dest,
-      returnTo: origin,
+      estimatedDurationMin: duration * 60,
+      origin: { name: origin.name, lat: origin.lat, lng: origin.lng },
+      destination: { name: dest.name, lat: dest.lat, lng: dest.lng },
       vehicleType: vehicle,
       notes,
-    });
+      title: `${emp.name}: ${origin.name} → ${dest.name}`,
+    }, cid);
+    setCreating(false);
+    if (!id) { toast.error("Could not create mission", { description: "Please try again." }); return; }
     toast.success("Mission Created", { description: `${emp.name} → ${dest.name} at ${fmtTime(start)}` });
     onCreated();
   };

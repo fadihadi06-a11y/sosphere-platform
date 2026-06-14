@@ -268,6 +268,8 @@ export function useSupabaseMissions(_companyId?: string | null): {
 
 export interface CreateMissionInput {
   employeeId: string;
+  /** Real worker auth user_id — what the worker app filters its missions by. */
+  assignedUserId?: string | null;
   employeeName: string;
   scheduledStart: number;
   estimatedDurationMin: number;
@@ -302,6 +304,7 @@ export async function createMissionInSupabase(
     .insert({
       company_id: companyId,
       employee_id,
+      assigned_user_id: input.assignedUserId ?? null,
       title: input.title ?? `${input.origin.name} → ${input.destination.name}`,
       from_location: input.origin.name,
       to_location: input.destination.name,
