@@ -13,6 +13,8 @@
 // failure — belt and suspenders. When the export is present it just returns it.
 // ═══════════════════════════════════════════════════════════════
 
+import type { ComponentType } from "react";
+
 /** One-time, loop-guarded reload to pull fresh hashed chunks after a deploy. */
 function triggerChunkReloadOnce(): void {
   try {
@@ -29,14 +31,14 @@ function triggerChunkReloadOnce(): void {
  * Pick a named export and shape it for React.lazy ({ default: Component }).
  * If the module is undefined or the export is missing (stale/partial chunk),
  * self-heal with a reload and throw a chunk-recognized error.
+ *
+ * Returns a ComponentType<any> default so React.lazy's generic infers a valid
+ * component type (a bare `unknown` would fail lazy's `T extends ComponentType`
+ * constraint — TS2322).
  */
-export function pickDefault<T = unknown>(mod: unknown, name: string): { default: T } {
+export function pickDefault(mod: unknown, name: string): { default: ComponentType<any> } {
   const comp = mod ? (mod as Record<string, unknown>)[name] : undefined;
   if (!comp) {
     triggerChunkReloadOnce();
     // Message intentionally contains "dynamically imported module" so the
-    // existing error-boundary self-heal regex also matches it.
-    throw new Error(`Failed to fetch dynamically imported module (missing export: ${name})`);
-  }
-  return { default: comp as T };
-}
+    
