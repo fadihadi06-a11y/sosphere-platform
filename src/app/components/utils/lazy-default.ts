@@ -2,7 +2,7 @@
 // pickDefault — resilient export picker for React.lazy() chunks
 // ─────────────────────────────────────────────────────────────
 // After a deploy, an old hashed chunk can 404 or resolve to an empty/partial
-// module. The common pattern `import("./x").then(m => ({ default: m.Page }))`
+// module. The common pattern import("./x").then(m => ({ default: m.Page }))
 // then throws "Cannot read properties of undefined (reading 'Page')" — a
 // message the error boundary's stale-chunk self-heal does NOT recognize, so the
 // user is left on the error fallback instead of getting an auto-reload.
@@ -33,7 +33,7 @@ function triggerChunkReloadOnce(): void {
  * self-heal with a reload and throw a chunk-recognized error.
  *
  * Returns a ComponentType<any> default so React.lazy's generic infers a valid
- * component type (a bare `unknown` would fail lazy's `T extends ComponentType`
+ * component type (a bare unknown would fail lazy's T extends ComponentType
  * constraint — TS2322).
  */
 export function pickDefault(mod: unknown, name: string): { default: ComponentType<any> } {
@@ -41,4 +41,8 @@ export function pickDefault(mod: unknown, name: string): { default: ComponentTyp
   if (!comp) {
     triggerChunkReloadOnce();
     // Message intentionally contains "dynamically imported module" so the
-    
+    // existing error-boundary self-heal regex also matches it.
+    throw new Error(`Failed to fetch dynamically imported module (missing export: ${name})`);
+  }
+  return { default: comp as ComponentType<any> };
+}
