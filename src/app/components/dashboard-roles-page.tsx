@@ -4,7 +4,7 @@
 // Full custom permissions override per user
 // 2FA/PIN required for Owner & Main Admin sensitive operations
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -18,6 +18,9 @@ import {
   Fingerprint, ClipboardList,
 } from "lucide-react";
 import { type Role, ROLE_CONFIG } from "./mobile-auth";
+import { supabase } from "./api/supabase-client";
+import { getCompanyId } from "./shared-store";
+import { fetchEmployees, fetchZones } from "./api/data-layer";
 // 2026-05-31 CRIT-1 fix: PINVerifyModal removed.
 // PIN was security theater: same factor type as password (knowledge),
 // 6-digit entropy (10^6), and lookup key used "actorLevel-actorName"
@@ -201,9 +204,83 @@ interface RolesPermissionsPageProps {
 // ═══════════════════════════════════════════════════════════════
 export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPermissionsPageProps) {
   const [activeTab, setActiveTab] = useState<"members" | "pending" | "zones" | "permissions">("members");
-  const [members, setMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);
-  const [pending, setPending] = useState<PendingUser[]>(INITIAL_PENDING);
-  const [zones, setZones] = useState<ZoneSlot[]>(INITIAL_ZONES);
+  const [members, setMembers] = useState<TeamMember[]>(import.meta.env.DEV ? INITIAL_MEMBERS : []);
+  const [pending, setPending] = useState<PendingUser[]>(import.meta.env.DEV ? INITIAL_PENDING : []);
+  const [zones, setZones] = useState<ZoneSlot[]>(import.meta.env.DEV ? INITIAL_ZONES : []);
+
+  // ── REAL DATA: load the company roster, zones, and pending invites ──
+  // Replaces the hardcoded INITIAL_* demo data. Members come from the real
+  // employees roster (+ companies.owner_id for the owner), zones from the
+  // zones table, pending from invitations(status=pending).
+  useEffect(() => {
+    let alive = true;
+    const palette = ["#00C8E0", "#FF9500", "#34C759", "#9B59B6", "#FF2D55", "#7B5EFF"];
+    const ago = (iso?: string | null) => {
+      if (!iso) return "";
+      const ms = Date.now() - new Date(iso).getTime();
+      const m = Math.round(ms / 60000);
+      if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
+      const h = Math.round(m / 60);
+      if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
+      const d = Math.round(h / 24);
+      return `${d} day${d === 1 ? "" : "s"} ago`;
+    };
+    const fmtDate = (iso?: string | number | null) => {
+      if (!iso) return "—";
+      try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
+      catch { return "—"; }
+    };
+    (async () => {
+      const cid = getCompanyId();
+      if (!cid) return;
+      try {
+        const [emps, zoneData, ownerRes] = await Promise.all([
+          fetchEmployees(),
+          fetchZones(),
+          supabase.from("companies").select("owner_id").eq("id", cid).single(),
+        ]);
+        const ownerUserId = (ownerRes.data as { owner_id?: string } | null)?.owner_id;
+        const knownRoles: Role[] = ["company_admin", "safety_manager", "shift_supervisor", "dispatcher", "field_medic", "security_guard", "employee"];
+        const realMembers: TeamMember[] = emps.map((e, i) => {
+          const isOwner = !!e.userId && e.userId === ownerUserId;
+          const role: Role = isOwner ? "company_owner" : (knownRoles.includes(e.role as Role) ? (e.role as Role) : "employee");
+          const level: Level = isOwner ? "owner" : (role === "company_admin" ? "main_admin" : role === "employee" ? "worker" : "zone_admin");
+          return {
+            id: e.id, name: e.name || "Member", nameAr: e.nameAr || e.name || "",
+            email: e.phone || "", phone: "",
+            role, level,
+            assignedZones: e.zone ? [e.zone] : [],
+            status: e.status === "off-shift" ? "inactive" : "active",
+            joinedAt: fmtDate(e.joinDate),
+            hasCustomPermissions: false,
+            avatarColor: palette[i % palette.length],
+            isOwner,
+          };
+        });
+        const realZones: ZoneSlot[] = zoneData.map(z => ({
+          zoneId: z.id, zoneName: z.name,
+          risk: (z.risk as "high" | "medium" | "low") || "low",
+          employeeCount: z.employees, leadAdminId: null, secondaryAdminId: null,
+        }));
+        const { data: inv } = await supabase
+          .from("invitations")
+          .select("id, email, name, phone, role_type, created_at, status")
+          .eq("company_id", cid).eq("status", "pending").order("created_at", { ascending: false });
+        const realPending: PendingUser[] = ((inv as any[]) ?? []).map(r => ({
+          id: String(r.id), name: r.name || r.email || "Invitee", email: r.email || "", phone: r.phone || "",
+          joinedVia: r.role_type === "csv" ? "csv" : r.role_type === "invite_code" ? "invite_code" : "invite_link",
+          requestedAt: fmtDate(r.created_at), requestedAgo: ago(r.created_at),
+        }));
+        if (!alive) return;
+        setMembers(realMembers);
+        setZones(realZones);
+        setPending(realPending);
+      } catch (err) {
+        console.warn("[roles] real load failed:", err);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
   const [search, setSearch] = useState("");
   const [filterLevel, setFilterLevel] = useState<Level | "all">("all");
   const [selectedMemberForPerms, setSelectedMemberForPerms] = useState<TeamMember | null>(null);
@@ -333,26 +410,23 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     showAudit(`↩ Permissions reset to defaults for ${selectedMemberForPerms.name}`);
   }
 
+  // These rows are REAL pending invitations (sent, awaiting the invitee to
+  // accept via their link) — not admin-approvable join requests. The admin's
+  // real lever is to revoke. We never fabricate a member here; a member appears
+  // only once the invitee accepts (accept_invitation, server-side).
   function handleApprovePending(p: PendingUser) {
-    const role = pendingRole[p.id] || "employee";
-    const newMember: TeamMember = {
-      id: `USR-${Date.now().toString().slice(-4)}`,
-      name: p.name, nameAr: p.name, email: p.email, phone: p.phone,
-      role, level: ROLE_LEVEL[role],
-      assignedZones: pendingZone[p.id] ? [pendingZone[p.id]] : [],
-      status: "active", joinedAt: "Mar 10, 2025",
-      hasCustomPermissions: false,
-      avatarColor: ["#00C8E0","#FF9500","#34C759","#9B59B6"][Math.floor(Math.random()*4)],
-    };
-    setMembers(prev => [...prev, newMember]);
     setPending(prev => prev.filter(x => x.id !== p.id));
-    showAudit(`✓ ${p.name} approved — added as ${ROLE_LEVEL[role]}`);
+    showAudit(`${p.name}: invitation stands — they join automatically once they accept their invite link`);
   }
 
-  function handleRejectPending(id: string) {
+  async function handleRejectPending(id: string) {
     const p = pending.find(x => x.id === id);
-    setPending(prev => prev.filter(x => x.id !== id));
-    if (p) showAudit(`✗ ${p.name} request rejected`);
+    setPending(prev => prev.filter(x => x.id !== id)); // optimistic
+    try {
+      const { error } = await supabase.from("invitations").delete().eq("id", id);
+      if (error) { setPending(prev => p ? [p, ...prev] : prev); showAudit(`Could not revoke invitation: ${error.message}`); return; }
+    } catch { setPending(prev => p ? [p, ...prev] : prev); return; }
+    if (p) showAudit(`✗ Invitation to ${p.name} revoked`);
   }
 
   function handleAssignZoneAdmin(zoneId: string, slot: "lead" | "secondary", memberId: string) {
@@ -880,7 +954,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: 12 }}
                             >
                               <option value="">No Zone</option>
-                              {INITIAL_ZONES.map(z => <option key={z.zoneId} value={z.zoneId}>{z.zoneName}</option>)}
+                              {zones.map(z => <option key={z.zoneId} value={z.zoneId}>{z.zoneName}</option>)}
                             </select>
                           </div>
                         </div>
