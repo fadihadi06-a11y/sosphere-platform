@@ -18,7 +18,7 @@ import { hapticSuccess, hapticWarning, hapticMedium } from "./haptic-feedback";
 import { getBatteryLevel } from "./offline-gps-tracker";
 import {
   type Mission, type MissionStatus,
-  getActiveMission, getMission, onMissionEvent,
+  getMission, onMissionEvent, hydrateMissionsFromServer, getActiveMissionAny,
   acceptMission, startMissionDeparture, arriveAtSite,
   startWorking, leaveSite, arriveHome,
   addGPSPoint, addHeartbeat, getMissionProgress,
@@ -39,6 +39,8 @@ function fmtTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+import { loadMissionsFromSupabase, subscribeToMissions } from "./mission-supabase";
+
 const SC = MISSION_STATUS_CONFIG;
 
 // ═══════════════════════════════════════════════════════════════
@@ -49,12 +51,19 @@ export function MissionNotificationBanner({ employeeId, onOpen }: { employeeId: 
   const [mission, setMission] = useState<Mission | undefined>(undefined);
 
   useEffect(() => {
-    if (import.meta.env.DEV) seedDemoMissions(); // demo missions only in dev — prod shows the real (or empty) list, never fabricated missions
-    const check = () => setMission(getActiveMission(employeeId));
-    check();
-    const interval = setInterval(check, 3000);
-    const unsub = onMissionEvent(check);
-    return () => { clearInterval(interval); unsub(); };
+    if (import.meta.env.DEV) seedDemoMissions(); // demo missions only in dev
+    let alive = true;
+    // REAL: load THIS worker's assigned missions from the server (RLS-scoped),
+    // hydrate the local cache, then show the active one. Realtime keeps it live.
+    const reload = async () => {
+      try { hydrateMissionsFromServer(await loadMissionsFromSupabase()); } catch { /* offline — keep cache */ }
+      if (alive) setMission(getActiveMissionAny());
+    };
+    void reload();
+    const unsubRealtime = subscribeToMissions(() => { void reload(); });
+    const interval = setInterval(() => setMission(getActiveMissionAny()), 3000);
+    const unsub = onMissionEvent(() => setMission(getActiveMissionAny()));
+    return () => { alive = false; clearInterval(interval); unsub(); unsubRealtime(); };
   }, [employeeId]);
 
   if (!mission) return null;
@@ -107,14 +116,17 @@ export function MissionTrackerScreen({ employeeId, onBack }: { employeeId: strin
 
   // Load mission
   useEffect(() => {
-    const check = () => {
-      const m = getActiveMission(employeeId);
-      if (m) setMission({ ...m });
+    let alive = true;
+    const apply = () => { const m = getActiveMissionAny(); if (m) setMission({ ...m }); };
+    const reload = async () => {
+      try { hydrateMissionsFromServer(await loadMissionsFromSupabase()); } catch { /* offline — keep cache */ }
+      if (alive) apply();
     };
-    check();
-    const unsub = onMissionEvent(check);
-    const poll = setInterval(check, 2000);
-    return () => { unsub(); clearInterval(poll); };
+    void reload();
+    const unsubRealtime = subscribeToMissions(() => { void reload(); });
+    const unsub = onMissionEvent(apply);
+    const poll = setInterval(apply, 2000);
+    return () => { alive = false; unsub(); clearInterval(poll); unsubRealtime(); };
   }, [employeeId]);
 
   // Elapsed timer

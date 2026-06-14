@@ -315,6 +315,20 @@ export function getEmployeeMissions(employeeId: string): Mission[] {
   return getAllMissions().filter(m => m.employeeId === employeeId);
 }
 
+/** Replace the local mission cache with the authoritative server list (the
+ *  worker's OWN missions, already RLS-scoped on the server). Used by the
+ *  mobile worker app so it shows real assigned missions, never demo data. */
+export function hydrateMissionsFromServer(missions: Mission[]) {
+  saveMissions(missions);
+}
+
+/** Active (non-finished) mission regardless of employeeId. Safe for the mobile
+ *  worker app because hydrateMissionsFromServer loads ONLY the worker's own
+ *  missions, so there is nothing else in the cache to confuse it. */
+export function getActiveMissionAny(): Mission | undefined {
+  return getAllMissions().find(m => !["completed", "cancelled"].includes(m.status));
+}
+
 export function getMissionProgress(m: Mission): number {
   switch (m.status) {
     case "created": return 0;
