@@ -39,7 +39,7 @@ function fmtTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-import { loadMissionsFromSupabase, subscribeToMissions } from "./mission-supabase";
+import { loadMyAssignedMissions, subscribeToMissions } from "./mission-supabase";
 
 const SC = MISSION_STATUS_CONFIG;
 
@@ -56,7 +56,7 @@ export function MissionNotificationBanner({ employeeId, onOpen }: { employeeId: 
     // REAL: load THIS worker's assigned missions from the server (RLS-scoped),
     // hydrate the local cache, then show the active one. Realtime keeps it live.
     const reload = async () => {
-      try { hydrateMissionsFromServer(await loadMissionsFromSupabase()); } catch { /* offline — keep cache */ }
+      try { hydrateMissionsFromServer(await loadMyAssignedMissions()); } catch { /* offline — keep cache */ }
       if (alive) setMission(getActiveMissionAny());
     };
     void reload();
@@ -119,7 +119,7 @@ export function MissionTrackerScreen({ employeeId, onBack }: { employeeId: strin
     let alive = true;
     const apply = () => { const m = getActiveMissionAny(); if (m) setMission({ ...m }); };
     const reload = async () => {
-      try { hydrateMissionsFromServer(await loadMissionsFromSupabase()); } catch { /* offline — keep cache */ }
+      try { hydrateMissionsFromServer(await loadMyAssignedMissions()); } catch { /* offline — keep cache */ }
       if (alive) apply();
     };
     void reload();

@@ -171,6 +171,31 @@ export async function loadMissionsFromSupabase(): Promise<Mission[]> {
 }
 
 // ──────────────────────────────────────────────────────────────
+// Worker-scoped read: ONLY the missions assigned to the signed-in
+// worker. Defense-in-depth — RLS (missions_admin_all + missions_
+// assigned_worker_read) already restricts a plain worker to their
+// own rows, but the mobile app filters explicitly by assigned_user_id
+// so a future RLS regression cannot leak another worker's mission
+// onto this worker's phone.
+// ──────────────────────────────────────────────────────────────
+export async function loadMyAssignedMissions(): Promise<Mission[]> {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id;
+  if (!uid) return [];
+  const { data, error } = await supabase
+    .from("missions")
+    .select("*, employees(name)")
+    .eq("assigned_user_id", uid)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    console.warn("[mission-supabase] loadMyAssignedMissions failed:", error.message);
+    throw error;
+  }
+  return (data ?? []).map((r) => mapDbRowToMission(r as DbMissionRow));
+}
+
+// ──────────────────────────────────────────────────────────────
 // Subscribe to realtime mutations on `missions`. Returns an
 // unsubscribe function. Caller is responsible for re-fetching
 // when `onChange` fires (or we could pass the row payload, but
