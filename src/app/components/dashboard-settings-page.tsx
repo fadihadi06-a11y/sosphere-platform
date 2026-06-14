@@ -25,6 +25,7 @@ import { DpaSettingsSection } from "./dpa-settings-section";  // AUTH-5 P6
 import { mfaListFactors, mfaUnenroll, mfaRecoveryStatus, mfaGenerateRecoveryCodes } from "./api/mfa-client";
 import { fetchEmployees, fetchAuditLog } from "./api/data-layer";
 import { logAuditEvent } from "./audit-log-store";
+import { loadEmailSchedules, saveEmailSchedule, getCachedEmailSchedules, type EmailScheduleRow } from "./email-schedules-service";
 
 type DashPage = "overview" | "employees" | "emergencies" | "zones" | "incidents" | "attendance" | "settings" | "commandCenter" | "riskMap" | "billing" | "analytics" | "shiftScheduling" | "geofencing";
 
@@ -241,6 +242,22 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     setTimeout(() => setSettingsSaved(false), 2000);
     hapticSuccess();
     toast.success("Settings Saved", { description: "Settings saved and synced" });
+  };
+
+  // ── REAL scheduled reports (email_schedules) for the Reports & Email tab ──
+  const [emailSchedules, setEmailSchedules] = useState<EmailScheduleRow[]>(() => getCachedEmailSchedules());
+  useEffect(() => { void loadEmailSchedules().then(setEmailSchedules); }, []);
+  const toggleEmailSchedule = (sched: EmailScheduleRow) => {
+    const next = { ...sched, enabled: !sched.enabled };
+    setEmailSchedules(prev => prev.map(s => s.id === sched.id ? next : s)); // optimistic
+    void saveEmailSchedule({
+      id: sched.id, name: sched.name, frequency: sched.frequency,
+      reportTypes: sched.report_types, recipients: sched.recipients, enabled: next.enabled,
+      nextRun: sched.next_run, includeCharts: sched.include_charts, includeQR: sched.include_qr, format: sched.format,
+    }).then(ok => {
+      if (ok) toast.success(next.enabled ? "Schedule activated" : "Schedule paused");
+      else { toast.error("Could not update schedule"); setEmailSchedules(prev => prev.map(s => s.id === sched.id ? sched : s)); }
+    });
   };
 
   // ── CRITICAL FIX 3: Session timeout from Zustand store (not local state) ──
@@ -785,85 +802,63 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
               {/* ── REPORTS & EMAIL TAB ── */}
               {activeTab === "reports" && (
                 <div className="space-y-7 max-w-3xl">
-                  {/* Delivery History */}
-                  {/* SUPABASE_MIGRATION_POINT: deliveryHistory → supabase.from('email_deliveries').select('*').eq('company_id', companyId).order('sent_at', { ascending: false }).limit(5) */}
+                  {/* Recent Deliveries — REAL: schedules that have actually run (last_run) */}
                   <div>
                     <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 700 }}>Recent Deliveries</p>
-                    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
-                      {[
-                        { id: "DEL-20260312-A1", report: "Compliance Report Q1 2026", to: "admin@company.com", date: "Mar 12, 2026 09:45", status: "delivered", encrypted: true },
-                        { id: "DEL-20260310-B2", report: "Audit Log Export", to: "owner@company.com", date: "Mar 10, 2026 14:22", status: "delivered", encrypted: true },
-                        { id: "DEL-20260308-C3", report: "Analytics Report (90d)", to: "safety@company.com", date: "Mar 8, 2026 11:15", status: "delivered", encrypted: false },
-                        { id: "DEL-20260305-D4", report: "Incident Report #IR-2026-045", to: "hr@company.com, legal@company.com", date: "Mar 5, 2026 16:30", status: "delivered", encrypted: true },
-                        { id: "DEL-20260301-E5", report: "Monthly Safety Summary", to: "all-admins@company.com", date: "Mar 1, 2026 08:00", status: "scheduled", encrypted: false },
-                      ].map((del, i) => (
-                        <div key={del.id} className="flex items-center gap-4 px-5 py-3.5"
-                          style={{ borderBottom: i < 4 ? "1px solid rgba(255,255,255,0.03)" : "none", background: del.status === "scheduled" ? "rgba(255,150,0,0.03)" : "transparent" }}>
-                          <div className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background: del.status === "delivered" ? "rgba(0,200,83,0.1)" : "rgba(255,150,0,0.1)" }}>
-                            {del.status === "delivered"
-                              ? <CheckCircle2 className="size-4" style={{ color: "#00C853" }} />
-                              : <Clock className="size-4" style={{ color: "#FF9500" }} />
-                            }
+                    {emailSchedules.filter(s => s.last_run).length === 0 ? (
+                      <div className="rounded-xl p-6 text-center" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No reports have been sent yet. Delivered scheduled reports appear here.</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
+                        {emailSchedules.filter(s => s.last_run).sort((a, b) => new Date(b.last_run!).getTime() - new Date(a.last_run!).getTime()).slice(0, 5).map((s, i, arr) => (
+                          <div key={s.id} className="flex items-center gap-4 px-5 py-3.5" style={{ borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}>
+                            <div className="size-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(0,200,83,0.1)" }}>
+                              <CheckCircle2 className="size-4" style={{ color: "#00C853" }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white truncate" style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</p>
+                              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>To: {(s.recipients || []).join(", ") || "\u2014"}</p>
+                            </div>
+                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap" }}>{s.last_run ? new Date(s.last_run).toLocaleString() : ""}</span>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white truncate" style={{ fontSize: 13, fontWeight: 600 }}>{del.report}</p>
-                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>
-                              To: {del.to}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {del.encrypted && (
-                              <div className="px-1.5 py-0.5 rounded-md" style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)" }}>
-                                <Lock className="size-3 inline-block mr-0.5" style={{ color: "#00C853" }} />
-                                <span style={{ fontSize: 8, fontWeight: 700, color: "#00C853" }}>AES</span>
-                              </div>
-                            )}
-                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap" }}>{del.date}</span>
-                          </div>
-                          <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "monospace", color: "rgba(0,200,224,0.5)", minWidth: 90, textAlign: "right" }}>{del.id}</span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Scheduled Reports */}
-                  {/* SUPABASE_MIGRATION_POINT: scheduledReports → supabase.from('report_schedules').select('*').eq('company_id', companyId) */}
+                  {/* Scheduled Reports — REAL from email_schedules */}
                   <div>
-                    <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 700 }}>Scheduled Reports</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Scheduled Reports</p>
+                      {onNavigate && (
+                        <button onClick={() => onNavigate("emailScheduler" as DashPage)} style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0", background: "none", border: "none", cursor: "pointer" }}>Manage in Reports & Analytics \u2192</button>
+                      )}
+                    </div>
                     <div className="space-y-2">
-                      {[
-                        { report: "Monthly Safety Summary", freq: "1st of every month", to: "all-admins@company.com", active: true },
-                        { report: "Weekly Compliance Digest", freq: "Every Monday 8:00 AM", to: "compliance@company.com", active: true },
-                        { report: "Quarterly Audit Export", freq: "Quarterly (Jan, Apr, Jul, Oct)", to: "owner@company.com", active: false },
-                      ].map(sched => (
-                        <div key={sched.report} className="flex items-center gap-4 px-5 py-3.5 rounded-xl"
-                          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                          <div className="size-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background: sched.active ? "rgba(0,200,224,0.1)" : "rgba(255,255,255,0.04)" }}>
-                            <Timer className="size-4" style={{ color: sched.active ? "#00C8E0" : "rgba(255,255,255,0.2)" }} />
+                      {emailSchedules.length === 0 ? (
+                        <div className="rounded-xl p-6 text-center" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No scheduled reports yet. Create one in Reports & Analytics \u2192 Scheduler.</p>
+                        </div>
+                      ) : emailSchedules.map(sched => (
+                        <div key={sched.id} className="flex items-center gap-4 px-5 py-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div className="size-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: sched.enabled ? "rgba(0,200,224,0.1)" : "rgba(255,255,255,0.04)" }}>
+                            <Timer className="size-4" style={{ color: sched.enabled ? "#00C8E0" : "rgba(255,255,255,0.2)" }} />
                           </div>
                           <div className="flex-1">
-                            <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{sched.report}</p>
-                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{sched.freq} -- {sched.to}</p>
+                            <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{sched.name}</p>
+                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{sched.frequency} \u2014 {(sched.recipients || []).join(", ") || "no recipients"}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-full"
-                              style={{ fontSize: 9, fontWeight: 700, color: sched.active ? "#00C853" : "rgba(255,255,255,0.3)", background: sched.active ? "rgba(0,200,83,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${sched.active ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.06)"}` }}>
-                              {sched.active ? "ACTIVE" : "PAUSED"}
-                            </span>
-                            <button onClick={() => { hapticLight(); toast.success(sched.active ? "Schedule paused" : "Schedule activated"); }}
-                              className="px-3 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", cursor: "pointer" }}>
-                              {sched.active ? "Pause" : "Activate"}
-                            </button>
+                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, color: sched.enabled ? "#00C853" : "rgba(255,255,255,0.3)", background: sched.enabled ? "rgba(0,200,83,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${sched.enabled ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.06)"}` }}>{sched.enabled ? "ACTIVE" : "PAUSED"}</span>
+                            <button onClick={() => toggleEmailSchedule(sched)} className="px-3 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", cursor: "pointer" }}>{sched.enabled ? "Pause" : "Activate"}</button>
                           </div>
                         </div>
                       ))}
-                      <button onClick={() => { hapticSuccess(); toast.success("Schedule builder opening", { description: "Configure auto-generated report delivery" }); }}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl"
-                        style={{ background: "rgba(0,200,224,0.06)", border: "1px dashed rgba(0,200,224,0.2)", fontSize: 12, fontWeight: 600, color: "#00C8E0", cursor: "pointer" }}>
-                        <Plus className="size-4" /> Add Scheduled Report
-                      </button>
+                      {onNavigate && (
+                        <button onClick={() => onNavigate("emailScheduler" as DashPage)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl" style={{ background: "rgba(0,200,224,0.06)", border: "1px dashed rgba(0,200,224,0.2)", fontSize: 12, fontWeight: 600, color: "#00C8E0", cursor: "pointer" }}>
+                        <Plus className="size-4" /> Add Scheduled Report</button>
+                      )}
                     </div>
                   </div>
                 </div>
