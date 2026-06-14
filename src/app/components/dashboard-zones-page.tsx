@@ -6,7 +6,7 @@
 // parent — no circular dependency risk).
 // ═══════════════════════════════════════════════════════════════
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, ChevronLeft, ChevronRight, MapPin, User, Users, LogIn, LogOut } from "lucide-react";
 import { Card as DSCard, Badge, TOKENS } from "./design-system";
@@ -31,12 +31,35 @@ interface ZoneTransition {
 }
 const RECENT_TRANSITIONS_MAX = 25;
 
-export function ZonesPage({ zones, t, webMode = false }: { zones: ZoneData[]; t: (k: string) => string; webMode?: boolean }) {
+export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: ZoneData[]; t: (k: string) => string; webMode?: boolean }) {
   const [selectedZone, setSelectedZone] = useState<ZoneData | null>(null);
   const [recentTransitions, setRecentTransitions] = useState<ZoneTransition[]>([]);
   const storeEmployees = useDashboardStore(s => s.employees);
+  const storeEmergencies = useDashboardStore(s => s.emergencies);
+  // REAL active alerts per zone: unresolved (active/responding) emergencies
+  // attributed to a zone by name (best effort). zones[].activeAlerts arrived
+  // hardcoded 0 from the data layer, so we recompute it here from live
+  // emergencies instead of always showing "All clear".
+  const activeAlertsByZone = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of storeEmergencies) {
+      if ((e.status === "active" || e.status === "responding") && e.zone) {
+        m.set(e.zone, (m.get(e.zone) || 0) + 1);
+      }
+    }
+    return m;
+  }, [storeEmergencies]);
+  const zones = useMemo(() => zonesProp.map(z => ({
+    ...z,
+    activeAlerts: activeAlertsByZone.get(z.name) ?? activeAlertsByZone.get(z.name.split(" - ")[0]) ?? 0,
+  })), [zonesProp, activeAlertsByZone]);
   const totalEmps = zones.reduce((s, z) => s + z.employees, 0);
-  const totalAlerts = zones.reduce((s, z) => s + z.activeAlerts, 0);
+  // KPI total counts ALL active emergencies (even ones with no zone attributed),
+  // so nothing is silently dropped.
+  const totalAlerts = useMemo(
+    () => storeEmergencies.filter(e => e.status === "active" || e.status === "responding").length,
+    [storeEmergencies],
+  );
 
   // Phase 2 CRIT-3: subscribe to live ZONE_ENTRY/ZONE_EXIT events.
   // Mounted once per dashboard session — onSyncEvent returns the
