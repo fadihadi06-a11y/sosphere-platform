@@ -11,12 +11,11 @@ import {
   ChevronDown, FileText, Zap, Target, Megaphone, Siren, Satellite,
 } from "lucide-react";
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  PieChart, Pie, Cell, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, LineChart, Line,
+  PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { getBroadcasts, type BroadcastMessage, ZONE_NAMES } from "./shared-store";
+import { getBroadcasts, type BroadcastMessage } from "./shared-store";
 import { getRealAuditLog } from "./audit-log-store";
 import { getTimelineEntries, getRealResponseTimeSec, getAllTimelineEntries, getAverageResponseTimeSec } from "./smart-timeline-tracker";
 import { toast } from "sonner";
@@ -30,6 +29,7 @@ interface AnalyticsPageProps {
 
 // Analytics audit (2026-05-27): mock data used ONLY as fallback when
 // Supabase / audit-log returns empty. Production shows empty state.
+import { fetchSafetyTrend, fetchResponseTimeTrend } from "./analytics-extras-service";
 const DEV_DEMO = (import.meta as any).env?.DEV === true;
 
 // ── Mock Data (DEV fallback only) ─────���───────────────────────────────────────────
@@ -44,30 +44,7 @@ const MONTHLY_INCIDENTS = [
   { month: "Mar", sos: 2, hazard: 3, geofence: 1, checkin: 4 },
 ];
 
-const RESPONSE_TIMES = [
-  { month: "Sep", avg: 180, target: 120 },
-  { month: "Oct", avg: 156, target: 120 },
-  { month: "Nov", avg: 142, target: 120 },
-  { month: "Dec", avg: 128, target: 120 },
-  { month: "Jan", avg: 115, target: 120 },
-  { month: "Feb", avg: 98, target: 120 },
-  { month: "Mar", avg: 87, target: 120 },
-];
 
-const SAFETY_TREND = [
-  { week: "W1", score: 78 },
-  { week: "W2", score: 81 },
-  { week: "W3", score: 79 },
-  { week: "W4", score: 84 },
-  { week: "W5", score: 82 },
-  { week: "W6", score: 86 },
-  { week: "W7", score: 85 },
-  { week: "W8", score: 87 },
-  { week: "W9", score: 89 },
-  { week: "W10", score: 88 },
-  { week: "W11", score: 91 },
-  { week: "W12", score: 87 },
-];
 
 /* SUPABASE_MIGRATION_POINT: analytics_incident_by_type
    SELECT incident_type, count(*) as value FROM analytics_data
@@ -79,32 +56,8 @@ const INCIDENT_BY_TYPE = [
   { name: "Hazard Report", value: 22, color: "#7B5EFF" },
 ];
 
-const ZONE_SAFETY = [
-  { zone: ZONE_NAMES.A, safety: 85, incidents: 12, compliance: 92 },
-  { zone: ZONE_NAMES.B, safety: 94, incidents: 4, compliance: 98 },
-  { zone: ZONE_NAMES.C, safety: 91, incidents: 6, compliance: 95 },
-  { zone: ZONE_NAMES.D, safety: 68, incidents: 22, compliance: 74 },
-  { zone: ZONE_NAMES.E, safety: 96, incidents: 2, compliance: 99 },
-];
 
-const RADAR_DATA = [
-  { metric: "Response Time", A: 92, fullMark: 100 },
-  { metric: "Check-in Rate", A: 88, fullMark: 100 },
-  { metric: "Zone Compliance", A: 85, fullMark: 100 },
-  { metric: "PPE Compliance", A: 91, fullMark: 100 },
-  { metric: "Training", A: 78, fullMark: 100 },
-  { metric: "Drill Participation", A: 95, fullMark: 100 },
-];
 
-const DEPT_PERFORMANCE = [
-  { dept: "Engineering", score: 92, incidents: 3, color: "#00C8E0" },
-  { dept: "Safety", score: 98, incidents: 1, color: "#00C853" },
-  { dept: "Operations", score: 84, incidents: 8, color: "#FF9500" },
-  { dept: "Maintenance", score: 76, incidents: 12, color: "#FF2D55" },
-  { dept: "Security", score: 91, incidents: 2, color: "#7B5EFF" },
-  { dept: "Logistics", score: 88, incidents: 4, color: "#00C8E0" },
-  { dept: "Medical", score: 96, incidents: 1, color: "#00C853" },
-];
 
 const KPI_SUMMARY = [
   { label: "Total Incidents", value: "127", delta: "-23%", up: false, color: "#00C853", icon: AlertTriangle, desc: "vs last quarter" },
@@ -203,6 +156,15 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "90d" | "1y">("90d");
   const uid = useId().replace(/:/g, "-");
   const realAnalytics = React.useMemo(buildRealAnalytics, []);
+  // REAL chart series loaded async: monthly safety score + monthly response time.
+  const [safetyTrend, setSafetyTrend] = React.useState<{ week: string; score: number }[]>([]);
+  const [responseTrend, setResponseTrend] = React.useState<{ month: string; avg: number | null; target: number }[]>([]);
+  React.useEffect(() => {
+    let alive = true;
+    fetchSafetyTrend(6).then(d => { if (alive) setSafetyTrend(d); });
+    fetchResponseTimeTrend(6).then(d => { if (alive) setResponseTrend(d); });
+    return () => { alive = false; };
+  }, []);
   // Pull live KPI data from Zustand store (fetched via Supabase in initDashboard)
   const storeKpis = useDashboardStore(s => s.kpis);
   const storeEmergencies = useDashboardStore(s => s.emergencies);
@@ -217,13 +179,11 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
   }, [timeRange, realAnalytics.monthlyIncidents]);
 
   const filteredResponseTimes = React.useMemo(() => {
-    // No real response-time SERIES is collected yet; show the demo curve only in
-    // dev, never fabricate a trend in production.
-    const source = DEV_DEMO ? RESPONSE_TIMES : [];
+    // REAL monthly average response time from sos_queue (analytics-extras-service).
     const sliceMap: Record<string, number> = { "7d": 1, "30d": 2, "90d": 4, "1y": 7 };
-    const count = sliceMap[timeRange] ?? source.length;
-    return source.slice(-count);
-  }, [timeRange]);
+    const count = sliceMap[timeRange] ?? responseTrend.length;
+    return responseTrend.slice(-count);
+  }, [timeRange, responseTrend]);
 
   // Real KPI override — uses store KPIs (from Supabase) first, then audit-log fallback
   const realKPI = React.useMemo(() => {
@@ -362,7 +322,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 (doc as any).autoTable({
                   startY: y,
                   head: [["Zone", "Safety Score", "Incidents", "Status"]],
-                  body: (DEV_DEMO ? ZONE_SAFETY : []).map(z => [z.zone, z.safety + "/100", z.incidents.toString(), z.safety >= 85 ? "SAFE" : z.safety >= 70 ? "MODERATE" : "AT RISK"]),
+                  body: [] as string[][],
                   theme: "grid",
                   headStyles: { fillColor: [10, 18, 32], textColor: [0, 200, 224], fontSize: 9 },
                   bodyStyles: { fillColor: [8, 12, 22], textColor: [180, 180, 180], fontSize: 8 },
@@ -467,11 +427,6 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
               <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Response Time</p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Average vs 2min SLA target</p>
             </div>
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full"
-              style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.18)" }}>
-              <TrendingDown className="size-3" style={{ color: "#00C853" }} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>-52% improvement</span>
-            </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={filteredResponseTimes}>
@@ -492,14 +447,14 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Safety Score Trend</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>12-week company average</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Monthly company average</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={DEV_DEMO ? SAFETY_TREND : []}>
+            <AreaChart data={safetyTrend}>
               <CartesianGrid key="cg" strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis key="xa" dataKey="week" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis key="ya" domain={[70, 100]} tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis key="ya" domain={[0, 100]} tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip key="tt" content={<CustomTooltip />} />
               <Area key="a-score" type="monotone" dataKey="score" stroke="#00C853" fill={`url(#${uid}-gradSafety)`} strokeWidth={3} name="Safety Score" />
             </AreaChart>
@@ -544,66 +499,6 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 </div>
               ))}
             </div>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Bottom Row */}
-      <div className={`grid gap-4 ${webMode ? "grid-cols-3" : "grid-cols-1"}`}>
-        {/* Zone Safety Comparison */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="rounded-2xl p-5"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Zone Safety Comparison</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={DEV_DEMO ? ZONE_SAFETY : []} barGap={4}>
-              <CartesianGrid key="cg" strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis key="xa" dataKey="zone" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis key="ya" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip key="tt" content={<CustomTooltip />} />
-              <Bar key="b-safety" dataKey="safety" fill="#00C853" radius={[4, 4, 0, 0]} name="Safety" />
-              <Bar key="b-compliance" dataKey="compliance" fill="#00C8E0" radius={[4, 4, 0, 0]} name="Compliance" />
-            </BarChart>
-          </ResponsiveContainer>
-        </motion.div>
-
-        {/* Safety Radar */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-          className="rounded-2xl p-5"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Safety Radar</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <RadarChart data={DEV_DEMO ? RADAR_DATA : []}>
-              <PolarGrid key="pg" stroke="rgba(255,255,255,0.08)" />
-              <PolarAngleAxis key="paa" dataKey="metric" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 9 }} />
-              <PolarRadiusAxis key="pra" angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-              <Radar key="r-score" name="Score" dataKey="A" stroke="#00C8E0" fill="#00C8E0" fillOpacity={0.15} strokeWidth={2} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </motion.div>
-
-        {/* Department Leaderboard */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-          className="rounded-2xl p-5"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Department Leaderboard</p>
-          <div className="space-y-2.5">
-            {(DEV_DEMO ? DEPT_PERFORMANCE : []).sort((a, b) => b.score - a.score).map((dept, i) => (
-              <div key={dept.dept} className="flex items-center gap-3 p-2.5 rounded-xl"
-                style={{ background: i === 0 ? "rgba(0,200,83,0.06)" : "rgba(255,255,255,0.015)", border: `1px solid ${i === 0 ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.04)"}` }}>
-                <span className="size-6 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: i < 3 ? `${dept.color}18` : "rgba(255,255,255,0.04)", fontSize: 10, fontWeight: 800, color: i < 3 ? dept.color : "rgba(255,255,255,0.3)" }}>
-                  {i + 1}
-                </span>
-                <span className="flex-1 text-white" style={{ fontSize: 12, fontWeight: 600 }}>{dept.dept}</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-16 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }}>
-                    <div className="h-full rounded-full" style={{ background: dept.color, width: `${dept.score}%` }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: dept.color, minWidth: 32, textAlign: "right" }}>{dept.score}%</span>
-                </div>
-              </div>
-            ))}
           </div>
         </motion.div>
       </div>
