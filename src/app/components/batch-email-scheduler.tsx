@@ -5,9 +5,9 @@
 // Supports bulk recipients, report type selection, and scheduling.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
+import { loadEmailSchedules, saveEmailSchedule, deleteEmailSchedule, getCachedEmailSchedules, type EmailScheduleRow } from "./email-schedules-service";
 import {
   Mail, Clock, Calendar, Users, FileText, CheckCircle2,
   X, Plus, Trash2, Shield, Send,
@@ -39,14 +39,23 @@ interface ScheduledReport {
 // table: email_schedules(id, company_id, name, report_types,
 // frequency, recipients, enabled, next_run, created_at)
 // Replace storeJSONSync/loadJSONSync with Supabase table operations
-const STORAGE_KEY = "sosphere_email_schedules";
-
-function loadSchedules(): ScheduledReport[] {
-  return loadJSONSync<ScheduledReport[]>(STORAGE_KEY, []);
+// Map the DB row (email_schedules) <-> the component model.
+function rowToSchedule(r: EmailScheduleRow): ScheduledReport {
+  return {
+    id: r.id, name: r.name, frequency: r.frequency,
+    reportTypes: r.report_types ?? [], recipients: r.recipients ?? [],
+    nextRun: r.next_run ?? "", lastRun: r.last_run ?? undefined,
+    enabled: r.enabled, createdAt: r.created_at,
+    includeCharts: r.include_charts, includeQR: r.include_qr, format: r.format,
+  };
 }
-
-function saveSchedules(schedules: ScheduledReport[]) {
-  storeJSONSync(STORAGE_KEY, schedules);
+function scheduleToArgs(sch: ScheduledReport) {
+  return {
+    id: sch.id, name: sch.name, frequency: sch.frequency,
+    reportTypes: sch.reportTypes, recipients: sch.recipients, enabled: sch.enabled,
+    nextRun: sch.nextRun || null, includeCharts: sch.includeCharts,
+    includeQR: sch.includeQR, format: sch.format,
+  };
 }
 
 const REPORT_TYPES = [
@@ -407,45 +416,50 @@ function CreateScheduleModal({ onClose, onSave }: { onClose: () => void; onSave:
 // ═══════════════════════════════════════════════════════════════
 
 export function BatchEmailScheduler({ t: _t, webMode: _webMode, onGenerateReport }: { t: (k: string) => string; webMode?: boolean; onGenerateReport?: (reportTypes: string[]) => void }) {
-  const [schedules, setSchedules] = useState<ScheduledReport[]>(loadSchedules());
+  const [schedules, setSchedules] = useState<ScheduledReport[]>(() => getCachedEmailSchedules().map(rowToSchedule));
   const [showCreate, setShowCreate] = useState(false);
 
+  // DB is the source of truth — load company schedules on mount.
+  useEffect(() => {
+    let alive = true;
+    loadEmailSchedules().then(rows => { if (alive) setSchedules(rows.map(rowToSchedule)); });
+    return () => { alive = false; };
+  }, []);
+
   const handleSave = (schedule: ScheduledReport) => {
-    const updated = [...schedules, schedule];
-    setSchedules(updated);
-    saveSchedules(updated);
+    setSchedules(prev => [...prev, schedule]); // optimistic
     setShowCreate(false);
     playUISound("actionDone");
-    toast.success("Schedule created successfully!");
-    console.log("[SUPABASE_READY] schedule_created: " + JSON.stringify({ id: schedule.id, name: schedule.name, frequency: schedule.frequency, reportTypes: schedule.reportTypes, recipientCount: schedule.recipients.length }));
+    void saveEmailSchedule(scheduleToArgs(schedule)).then(ok => {
+      if (ok) { toast.success("Schedule created"); void loadEmailSchedules().then(rows => setSchedules(rows.map(rowToSchedule))); }
+      else { toast.error("Could not save schedule — try again"); setSchedules(prev => prev.filter(s => s.id !== schedule.id)); }
+    });
   };
 
   const toggleSchedule = (id: string) => {
-    const updated = schedules.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s);
-    setSchedules(updated);
-    saveSchedules(updated);
-    const toggled = updated.find(s => s.id === id);
-    console.log("[SUPABASE_READY] schedule_toggled: " + JSON.stringify({ id, enabled: toggled?.enabled }));
+    const target = schedules.find(s => s.id === id);
+    if (!target) return;
+    const next = { ...target, enabled: !target.enabled };
+    setSchedules(prev => prev.map(s => s.id === id ? next : s)); // optimistic
+    void saveEmailSchedule(scheduleToArgs(next)).then(ok => {
+      if (!ok) { toast.error("Could not update schedule"); setSchedules(prev => prev.map(s => s.id === id ? target : s)); }
+    });
   };
 
   const deleteSchedule = (id: string) => {
-    const updated = schedules.filter(s => s.id !== id);
-    setSchedules(updated);
-    saveSchedules(updated);
-    toast.success("Schedule deleted");
-    console.log("[SUPABASE_READY] schedule_deleted: " + JSON.stringify({ id }));
+    const prevList = schedules;
+    setSchedules(prev => prev.filter(s => s.id !== id)); // optimistic
+    void deleteEmailSchedule(id).then(ok => {
+      if (ok) toast.success("Schedule deleted");
+      else { toast.error("Could not delete schedule"); setSchedules(prevList); }
+    });
   };
 
   const runNow = (schedule: ScheduledReport) => {
-    console.log("[SUPABASE_READY] schedule_run_now: " + JSON.stringify({ id: schedule.id, reportTypes: schedule.reportTypes }));
-    if (onGenerateReport) {
-      onGenerateReport(schedule.reportTypes);
-    }
-
-    toast.success(`Sending ${schedule.name} to ${schedule.recipients.length} recipients...`);
-    const updated = schedules.map(s => s.id === schedule.id ? { ...s, lastRun: new Date().toISOString() } : s);
-    setSchedules(updated);
-    saveSchedules(updated);
+    // Manual "generate now" produces the report client-side. Automated
+    // delivery is handled server-side by the send-scheduled-reports pipeline.
+    if (onGenerateReport) onGenerateReport(schedule.reportTypes);
+    toast.success(`Generating ${schedule.name}…`);
   };
 
   return (
