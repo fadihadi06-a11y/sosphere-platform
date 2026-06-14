@@ -49,7 +49,7 @@ export function MissionNotificationBanner({ employeeId, onOpen }: { employeeId: 
   const [mission, setMission] = useState<Mission | undefined>(undefined);
 
   useEffect(() => {
-    seedDemoMissions(); // Ensure demo data exists
+    if (import.meta.env.DEV) seedDemoMissions(); // demo missions only in dev — prod shows the real (or empty) list, never fabricated missions
     const check = () => setMission(getActiveMission(employeeId));
     check();
     const interval = setInterval(check, 3000);

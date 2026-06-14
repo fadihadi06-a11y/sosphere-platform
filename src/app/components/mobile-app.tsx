@@ -2653,6 +2653,10 @@ export function MobileApp() {
               <ConnectedDevicesScreen onBack={() => navigate(sourceScreen, -1)} />
             )}
 
+            {screen === "privacy" && (
+              <PrivacyScreen onBack={() => navigate(sourceScreen, -1)} />
+            )}
+
             {screen === "help" && (
               <HelpScreen onBack={() => navigate(sourceScreen, -1)} />
             )}
