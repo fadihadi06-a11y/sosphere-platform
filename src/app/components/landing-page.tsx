@@ -222,7 +222,7 @@ export function LandingPage() {
               { label: t.nav.demo, id: "demo" },
             ].map(item => (
               <button key={item.id} onClick={() => scrollTo(item.id)}
-                style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "color 0.2s", fontFamily: "inherit" }}
+                style={{ padding: "10px 14px", borderRadius: 8, background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "color 0.2s", fontFamily: "inherit" }}
                 onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
                 onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
               >{item.label}</button>
@@ -233,7 +233,7 @@ export function LandingPage() {
             {/* Lang picker */}
             <div style={{ position: "relative" }}>
               <button onClick={() => setLangOpen(!langOpen)}
-                style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
+                style={{ padding: "9px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
                 <span>{lang.toUpperCase()}</span>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
@@ -254,12 +254,12 @@ export function LandingPage() {
             </div>
 
             <button onClick={handleSignIn}
-              style={{ padding: "7px 16px", borderRadius: 9, background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ padding: "9px 16px", borderRadius: 9, background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               className="hidden-mobile">
               {t.nav.login}
             </button>
             <button onClick={handleStartTrial}
-              style={{ padding: "7px 18px", borderRadius: 9, background: "linear-gradient(135deg, #00C8E0, #0098B8)", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,200,224,0.3)", fontFamily: "inherit" }}>
+              style={{ padding: "9px 18px", borderRadius: 9, background: "linear-gradient(135deg, #00C8E0, #0098B8)", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,200,224,0.3)", fontFamily: "inherit" }}>
               {t.nav.cta}
             </button>
           </div>
@@ -532,7 +532,7 @@ export function LandingPage() {
           </div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {t.footer.links.map((l, i) => (
-              <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+              <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: "8px 6px" }}
                 onClick={() => { const r = ["/privacy", "/terms"][i]; if (r) { navigate(r); } else { window.location.href = "mailto:sales@sosphere.co"; } }}
                 onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}>{l}</button>
