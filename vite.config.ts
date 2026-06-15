@@ -66,7 +66,12 @@ export default defineConfig({
     minify: "esbuild",
     // -- CSS code splitting --
     cssCodeSplit: true,
-    // O-H6: hidden source maps for Sentry upload, not shipped to browsers
-    sourcemap: "hidden",
+    // O-H6 / pentest 2026-06-15: "hidden" still DEPLOYED .map files publicly
+    // (index-*.js.map -> HTTP 200) while NO Sentry source-map upload exists
+    // (no sentryVitePlugin/sentry-cli) — handing attackers the full source for
+    // recon and giving Sentry nothing. Disabled to close the leak. To re-enable
+    // symbolication later: add the Sentry vite plugin to UPLOAD maps + exclude
+    // them from the public bundle, then switch back to "hidden".
+    sourcemap: false,
   },
 });
