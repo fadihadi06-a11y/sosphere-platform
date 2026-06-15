@@ -6,7 +6,7 @@
 // Components don't need to change — only this file changed.
 // ═══════════════════════════════════════════════════════════════
 
-import { supabase, SUPABASE_CONFIG } from "./api/supabase-client";
+import { supabase, SUPABASE_CONFIG, getCompanyIdFromSession } from "./api/supabase-client";
 
 // ── Supabase Realtime Channels ──────────────────────────────
 // One channel per company — isolated from other companies
@@ -2213,6 +2213,29 @@ export function bulkAutoApprove(): number {
 // ═══════════════════════════════════════════════════════════════
 const CHAT_KEY = "sosphere_emergency_chat";
 
+// -- Realtime chat channel scoping (SECURITY: prevent cross-tenant eavesdrop) --
+// emergency_id is short and guessable (e.g. "EMG-0P91" - 4 random chars). A
+// PUBLIC Supabase Realtime broadcast channel named `chat-<emergencyId>` could
+// be joined by anyone holding the public anon key, letting them live-eavesdrop
+// on another company's emergency chat. We namespace the channel with the
+// caller's company_id - an unguessable UUID injected into the JWT by
+// custom_access_token_hook - so an attacker who does not belong to the company
+// cannot construct the channel name. Both ends of a company emergency resolve
+// the SAME company_id from their own session, so they converge on one channel.
+// Civilian emergencies (no company) fall back to the legacy name; both ends
+// agree there too. The DB table chat_messages is already RLS-protected.
+async function resolveChatCompanyId(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return getCompanyIdFromSession(data?.session ?? null);
+  } catch {
+    return null;
+  }
+}
+function chatChannelTopic(emergencyId: string, companyId: string | null): string {
+  return companyId ? `chat-${companyId}-${emergencyId}` : `chat-${emergencyId}`;
+}
+
 export interface EmergencyChatMessage {
   id: string;
   emergencyId: string;
@@ -2254,8 +2277,12 @@ export function sendChatMessage(msg: Omit<EmergencyChatMessage, "id" | "timestam
           sent_at: new Date(full.timestamp).toISOString(),
         });
 
-        // Broadcast to other devices via Realtime channel
-        const channel = supabase.channel(`chat-${msg.emergencyId}`);
+        // Broadcast to other devices via Realtime channel.
+        // SECURITY: namespace by company_id (unguessable UUID from JWT) so the
+        // short, guessable emergency_id can't be used to join another tenant's
+        // emergency chat. Both ends of a company emergency share company_id.
+        const companyId = await resolveChatCompanyId();
+        const channel = supabase.channel(chatChannelTopic(msg.emergencyId, companyId));
         channel.subscribe((status) => {
           if (status === "SUBSCRIBED") {
             channel.send({
@@ -2318,26 +2345,34 @@ export function onChatMessage(emergencyId: string, callback: (messages: Emergenc
   };
   window.addEventListener("storage", handler);
 
-  // 2) Supabase Realtime listener (cross-device)
+  // 2) Supabase Realtime listener (cross-device).
+  // SECURITY: the channel is namespaced by company_id (see resolveChatCompanyId)
+  // so a guessable emergency_id alone can't be used to join another tenant's
+  // chat. company_id is resolved async, so guard against unmount-before-subscribe.
   let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+  let cancelled = false;
   if (SUPABASE_CONFIG.isConfigured) {
-    realtimeChannel = supabase.channel(`chat-${emergencyId}`);
-    realtimeChannel
-      .on("broadcast", { event: "new_message" }, (payload) => {
-        const msg = payload.payload as EmergencyChatMessage;
-        // Merge into localStorage to stay in sync
-        const current = getChatMessages(emergencyId);
-        if (!current.find((m) => m.id === msg.id)) {
-          current.push(msg);
-          localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(current));
-          callback(current);
-        }
-      })
-      .subscribe();
+    void resolveChatCompanyId().then((companyId) => {
+      if (cancelled) return;
+      realtimeChannel = supabase.channel(chatChannelTopic(emergencyId, companyId));
+      realtimeChannel
+        .on("broadcast", { event: "new_message" }, (payload) => {
+          const msg = payload.payload as EmergencyChatMessage;
+          // Merge into localStorage to stay in sync
+          const current = getChatMessages(emergencyId);
+          if (!current.find((m) => m.id === msg.id)) {
+            current.push(msg);
+            localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(current));
+            callback(current);
+          }
+        })
+        .subscribe();
+    });
   }
 
   // Return cleanup function
   return () => {
+    cancelled = true;
     window.removeEventListener("storage", handler);
     if (realtimeChannel) supabase.removeChannel(realtimeChannel);
   };
