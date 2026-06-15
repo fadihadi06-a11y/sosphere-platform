@@ -118,23 +118,30 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   const [ownerName, setOwnerName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerEmailError, setOwnerEmailError] = useState("");
+  const [ownerEmailWarning, setOwnerEmailWarning] = useState("");
   const [industry, setIndustry] = useState("");
   const [country, setCountry] = useState("SA");
   const [employeeEstimate, setEmployeeEstimate] = useState(25);
 
   // Business email validation
   const FREE_PROVIDERS = ["gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com","icloud.com","mail.com","protonmail.com","yandex.com","zoho.com","live.com","msn.com","me.com","qq.com","163.com","126.com","gmx.com","web.de","mailinator.com","guerrillamail.com","tempmail.com"];
+  // HARD error only for a genuinely malformed address — a free-provider
+  // domain (gmail, etc.) is NOT an error: it must not silently disable the
+  // Continue button. It surfaces as a non-blocking warning (see below) so a
+  // founder testing with a personal email can still proceed.
   const validateBusinessEmail = (email: string) => {
     if (!email) return "";
-    // D-H8: use the canonical isValidEmail helper so every form in
-    // the app applies the SAME RFC-compatible rule. The inline regex
-    // this replaced accepted "a@b.c" which Supabase + most SMTP
-    // servers reject (TLD must be ≥ 2 chars).
     const emailRegex = { test: (v: string) => isValidEmail(v) };
     if (!emailRegex.test(email)) return "Please enter a valid email address";
     const domain = email.split("@")[1]?.toLowerCase();
     if (!domain) return "Invalid email format";
-    if (FREE_PROVIDERS.includes(domain)) return `"${domain}" is a free email provider. Business email required for sending bulk invitations (up to 35,000 employees). Use your company domain like name@${companyName.toLowerCase().replace(/\s+/g, "")}.com`;
+    return "";
+  };
+  // Soft, non-blocking heads-up for free/personal email providers.
+  const ownerEmailFreeWarning = (email: string): string => {
+    const domain = email.split("@")[1]?.toLowerCase();
+    if (domain && FREE_PROVIDERS.includes(domain))
+      return `Heads-up: "${domain}" is a personal email. A business domain is recommended for bulk worker invitations — but you can continue.`;
     return "";
   };
   const ownerDomain = ownerEmail && !ownerEmailError ? ownerEmail.split("@")[1] : "";
@@ -213,6 +220,29 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
 
   // ── Navigation ──────────────────────────────────────────────
   const totalSteps = hasZones === false ? 5 : 6;
+
+  // World-class UX: never leave a disabled Continue button unexplained.
+  // Returns the single most relevant unmet requirement for the current step.
+  const nextBlockedReason = (): string => {
+    switch (step) {
+      case 1:
+        if (companyName.length < 2) return "Enter your company name to continue";
+        if (industry === "") return "Select your industry";
+        if (ownerName.length < 2) return "Enter the owner's full name";
+        if (ownerEmail && ownerEmailError) return ownerEmailError;
+        return "";
+      case 2: return hasZones === null ? "Choose whether you have safety zones" : "";
+      case 3: return (hasZones && zones.length < 1) ? "Add at least one zone, or go back and choose ‘No zones’" : "";
+      case 4: return !(empMethod === "later" || (empMethod === "manual" && manualEmployees.length >= 1) || (empMethod === "csv" && csvUploaded))
+        ? "Add at least one worker, or choose ‘Add later’" : "";
+      case 5:
+        if (selectedPlan === null) return "Select a plan";
+        if (!dpaAccepted) return "Tick the box to accept the Data Processing Agreement";
+        if (signerTitle.trim().length < 2) return "Enter the signer's job title";
+        return "";
+      default: return "";
+    }
+  };
 
   const canNext = (): boolean => {
     switch (step) {
@@ -368,7 +398,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
               </label>
               <input
                 value={ownerEmail}
-                onChange={e => { setOwnerEmail(e.target.value); setOwnerEmailError(validateBusinessEmail(e.target.value)); }}
+                onChange={e => { setOwnerEmail(e.target.value); setOwnerEmailError(validateBusinessEmail(e.target.value)); setOwnerEmailWarning(ownerEmailFreeWarning(e.target.value)); }}
                 placeholder="you@yourcompany.com"
                 maxLength={150}
                 className="w-full bg-transparent text-white outline-none px-4 py-[14px]"
@@ -385,7 +415,13 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                   <p style={{ fontSize: 10, color: "#FF2D55", lineHeight: 1.5 }}>{ownerEmailError}</p>
                 </div>
               )}
-              {ownerEmail && !ownerEmailError && ownerDomain && (
+              {ownerEmailWarning && !ownerEmailError && (
+                <div className="flex items-start gap-2 mt-2 px-1">
+                  <AlertTriangle className="size-3 shrink-0 mt-0.5" style={{ color: "#FF9500" }} />
+                  <p style={{ fontSize: 10, color: "#FF9500", lineHeight: 1.5 }}>{ownerEmailWarning}</p>
+                </div>
+              )}
+              {ownerEmail && !ownerEmailError && !ownerEmailWarning && ownerDomain && (
                 <div className="mt-2 p-3 rounded-xl" style={{ background: "rgba(0,200,83,0.04)", border: "1px solid rgba(0,200,83,0.12)" }}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <CheckCircle2 className="size-3.5" style={{ color: "#00C853" }} />
@@ -1620,6 +1656,11 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
             {step === 5 ? "Start 14-Day Free Trial" : "Continue"}
             <ArrowRight className="size-4" />
           </motion.button>
+          {!canNext() && nextBlockedReason() && (
+            <p style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.5 }}>
+              {nextBlockedReason()}
+            </p>
+          )}
         </div>
       )}
     </div>
