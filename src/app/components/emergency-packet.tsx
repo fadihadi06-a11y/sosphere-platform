@@ -199,10 +199,6 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     });
   };
 
-  const handleCopy = () => {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const packetModules: PacketModule[] = [
     // FIX 2026-04-23: every module below now reads REAL user data. No more
@@ -337,6 +333,17 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     contact: realContacts[0]?.phone || "",
     ts: new Date().toISOString(),
   });
+
+  // Human-readable packet text for real copy/share (real user data only).
+  const packetText = [
+    `SOSphere Emergency Packet — ${userName || "User"}`,
+    realMedical.bloodType && realMedical.bloodType !== "—" ? `Blood: ${realMedical.bloodType}` : "",
+    realMedical.allergies && realMedical.allergies !== "—" ? `Allergies: ${realMedical.allergies}` : "",
+    realMedical.medications && realMedical.medications !== "—" ? `Medications: ${realMedical.medications}` : "",
+    realMedical.conditions && realMedical.conditions !== "—" ? `Conditions: ${realMedical.conditions}` : "",
+    realContacts[0]?.phone ? `Emergency contact: ${realContacts[0].phone}` : "",
+    (realLocation.lat && realLocation.lng) ? `Location: https://maps.google.com/?q=${realLocation.lat},${realLocation.lng}` : "",
+  ].filter(Boolean).join("\n");
 
   return (
     <div className="relative flex flex-col h-full overflow-hidden" style={{ background: "#05070E", fontFamily: "'Outfit', sans-serif" }}>
@@ -850,6 +857,12 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                     <motion.button
                       key={opt.label}
                       whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        const text = packetText;
+                        if (opt.label === "SMS") window.location.href = `sms:?&body=${encodeURIComponent(text)}`;
+                        else if (opt.label === "Email") window.location.href = `mailto:?subject=${encodeURIComponent("Emergency Packet")}&body=${encodeURIComponent(text)}`;
+                        else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+                      }}
                       className="w-full flex items-center gap-3 p-3.5 text-left"
                       style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
                     >
@@ -869,7 +882,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               {/* Copy Link */}
               <motion.button
                 whileTap={{ scale: 0.98 }}
-                onClick={handleCopy}
+                onClick={async () => { try { await navigator.clipboard?.writeText(packetText); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                 className="w-full flex items-center justify-center gap-2 py-3"
                 style={{
                   borderRadius: 14,
@@ -880,7 +893,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 }}
               >
                 {copied ? <Check style={{ width: 14, height: 14 }} /> : <Copy style={{ width: 14, height: 14 }} />}
-                {copied ? "Link Copied!" : "Copy Packet Link"}
+                {copied ? "Copied!" : "Copy Packet Info"}
               </motion.button>
             </motion.div>
           </>
