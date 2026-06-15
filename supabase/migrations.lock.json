@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-15T19:04:11.080Z",
-  "total_migrations": 203,
-  "manifest_sha256": "708cd14b91999d870ebeb33c7a2a5a5f211a651121a9ad76420c9194eaa3bd00",
+  "generated_at": "2026-06-15T20:08:18.509Z",
+  "total_migrations": 204,
+  "manifest_sha256": "12e5b6f6e375d37841f2495b0519e9169bcbd69133c48c76771addd57298cbeb",
   "migrations": [
     {
       "version": "20260415",
@@ -1423,6 +1423,13 @@
       "file": "20260615_pentest_lock_anon_write_rpcs.sql",
       "sha256": "cf6fe14393b8dd1e5f3c9425b4504e53cb1b613325a13941f3ff6e3bc9b644b4",
       "bytes": 4349
+    },
+    {
+      "version": "20260615",
+      "name": "remove_employee_revoke_sessions",
+      "file": "20260615_remove_employee_revoke_sessions.sql",
+      "sha256": "0e8015e8ab2353aa721a2f7e137eb6d0a543751057c584b2b47582f30579d40a",
+      "bytes": 4263
     }
   ]
 }
