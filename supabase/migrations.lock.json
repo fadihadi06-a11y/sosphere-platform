@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-15T20:08:18.509Z",
-  "total_migrations": 204,
-  "manifest_sha256": "12e5b6f6e375d37841f2495b0519e9169bcbd69133c48c76771addd57298cbeb",
+  "generated_at": "2026-06-15T20:38:32.806Z",
+  "total_migrations": 205,
+  "manifest_sha256": "1087cc1479c96d2a0cae8afbb6b04a987548e9cb451431da2b25fcad57ba5864",
   "migrations": [
     {
       "version": "20260415",
@@ -1423,6 +1423,13 @@
       "file": "20260615_pentest_lock_anon_write_rpcs.sql",
       "sha256": "cf6fe14393b8dd1e5f3c9425b4504e53cb1b613325a13941f3ff6e3bc9b644b4",
       "bytes": 4349
+    },
+    {
+      "version": "20260615",
+      "name": "realtime_chat_private_authz",
+      "file": "20260615_realtime_chat_private_authz.sql",
+      "sha256": "2f70f2fdb966371d83d0bd23d87cedda88679b1a2ca52f62df7c6932b054281a",
+      "bytes": 2387
     },
     {
       "version": "20260615",

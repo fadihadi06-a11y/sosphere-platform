@@ -2278,20 +2278,26 @@ export function sendChatMessage(msg: Omit<EmergencyChatMessage, "id" | "timestam
         });
 
         // Broadcast to other devices via Realtime channel.
-        // SECURITY: namespace by company_id (unguessable UUID from JWT) so the
-        // short, guessable emergency_id can't be used to join another tenant's
-        // emergency chat. Both ends of a company emergency share company_id.
+        // SECURITY: company emergencies use a PRIVATE channel authorized server-
+        // side by realtime.messages RLS (topic prefixed with company_id). Falls
+        // back to the (still company-namespaced, unguessable) public channel if
+        // realtime authorization is unavailable, so live delivery never breaks.
         const companyId = await resolveChatCompanyId();
-        const channel = supabase.channel(chatChannelTopic(msg.emergencyId, companyId));
-        channel.subscribe((status) => {
+        const topic = chatChannelTopic(msg.emergencyId, companyId);
+        const sendOn = (ch: ReturnType<typeof supabase.channel>) => {
+          ch.send({ type: "broadcast", event: "new_message", payload: full });
+          setTimeout(() => supabase.removeChannel(ch), 2000);
+        };
+        const primary = companyId
+          ? supabase.channel(topic, { config: { private: true } })
+          : supabase.channel(topic);
+        primary.subscribe((status) => {
           if (status === "SUBSCRIBED") {
-            channel.send({
-              type: "broadcast",
-              event: "new_message",
-              payload: full,
-            });
-            // Unsubscribe after sending (fire-and-forget)
-            setTimeout(() => supabase.removeChannel(channel), 2000);
+            sendOn(primary);
+          } else if (companyId && (status === "CHANNEL_ERROR" || status === "TIMED_OUT")) {
+            supabase.removeChannel(primary);
+            const pub = supabase.channel(topic);
+            pub.subscribe((s2) => { if (s2 === "SUBSCRIBED") sendOn(pub); });
           }
         });
       } catch (e) {
@@ -2354,19 +2360,34 @@ export function onChatMessage(emergencyId: string, callback: (messages: Emergenc
   if (SUPABASE_CONFIG.isConfigured) {
     void resolveChatCompanyId().then((companyId) => {
       if (cancelled) return;
-      realtimeChannel = supabase.channel(chatChannelTopic(emergencyId, companyId));
+      const topic = chatChannelTopic(emergencyId, companyId);
+      const onMsg = (payload: { payload: EmergencyChatMessage }) => {
+        const msg = payload.payload as EmergencyChatMessage;
+        // Merge into localStorage to stay in sync
+        const current = getChatMessages(emergencyId);
+        if (!current.find((m) => m.id === msg.id)) {
+          current.push(msg);
+          localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(current));
+          callback(current);
+        }
+      };
+      const subscribeFallback = () => {
+        if (cancelled) return;
+        const pub = supabase.channel(topic);
+        realtimeChannel = pub;
+        pub.on("broadcast", { event: "new_message" }, onMsg).subscribe();
+      };
+      realtimeChannel = companyId
+        ? supabase.channel(topic, { config: { private: true } })
+        : supabase.channel(topic);
       realtimeChannel
-        .on("broadcast", { event: "new_message" }, (payload) => {
-          const msg = payload.payload as EmergencyChatMessage;
-          // Merge into localStorage to stay in sync
-          const current = getChatMessages(emergencyId);
-          if (!current.find((m) => m.id === msg.id)) {
-            current.push(msg);
-            localStorage.setItem(`${CHAT_KEY}_${emergencyId}`, JSON.stringify(current));
-            callback(current);
+        .on("broadcast", { event: "new_message" }, onMsg)
+        .subscribe((status) => {
+          if (companyId && (status === "CHANNEL_ERROR" || status === "TIMED_OUT")) {
+            if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+            subscribeFallback();
           }
-        })
-        .subscribe();
+        });
     });
   }
 
