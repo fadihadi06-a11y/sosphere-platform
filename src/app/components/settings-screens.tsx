@@ -446,8 +446,8 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
                   href: "mailto:support@sosphere.co?subject=SOSphere%20Support%20Request",
                 },
                 {
-                  icon: MessageCircle, label: "WhatsApp Support", sub: "Chat with our team", color: "#00C853",
-                  href: "https://wa.me/966500000000?text=Hi%2C%20I%20need%20help%20with%20SOSphere",
+                  icon: MessageCircle, label: "WhatsApp Support", sub: "+964 772 747 6519", color: "#00C853",
+                  href: "https://wa.me/9647727476519?text=Hi%2C%20I%20need%20help%20with%20SOSphere",
                 },
               ].map(c => (
                 <a key={c.label} href={c.href} target="_blank" rel="noopener noreferrer" className="p-4 text-left"

@@ -161,7 +161,9 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
   };
 
   const resendInvite = (contact: SafetyContact) => {
-    toast.success(`Invite sent to ${contact.name}`, { description: `SMS sent to ${contact.phone}` });
+    // Open the device SMS app with a prefilled invite — the user actually sends it.
+    const text = `Hi ${contact.name}, I added you as my emergency contact on SOSphere. Get the app: https://sosphere.co`;
+    try { window.location.href = `sms:${contact.phone}?&body=${encodeURIComponent(text)}`; } catch { /* sms unavailable */ }
   };
 
   return (

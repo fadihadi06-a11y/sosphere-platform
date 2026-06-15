@@ -95,7 +95,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
     name: c.name,
     avatar: c.avatar || "",
     relation: c.relation,
-    online: true, // [SUPABASE_MIGRATION_POINT] Will check real online status
+    online: false, // real presence not tracked yet — do not claim "online"
     watching: false,
   }));
 
@@ -349,6 +349,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
   };
 
   const sendQuickMessage = (msg: string) => {
+    // Actually send to the guardian via the device SMS app (real), then log it.
+    const phone = (emergencyContacts || []).find(c => c.name === selectedGuardian?.name)?.phone;
+    if (phone) { try { window.location.href = `sms:${phone}?&body=${encodeURIComponent(msg)}`; } catch { /* sms unavailable */ } }
     addEvent("message", msg, "info");
     setShowQuickMsg(false);
   };
