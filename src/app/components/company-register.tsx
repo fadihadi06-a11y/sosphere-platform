@@ -189,6 +189,8 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
   const [manualEmployees, setManualEmployees] = useState<EmployeeEntry[]>([]);
   const [newEmp, setNewEmp] = useState({ name: "", phone: "", email: "", role: "", department: "", zone: "" });
   const [csvUploaded, setCsvUploaded] = useState(false);
+  const [csvFileName, setCsvFileName] = useState("");
+  const [csvRejected, setCsvRejected] = useState(0);
   const [csvCount, setCsvCount] = useState(0);
   const [showFieldGuide, setShowFieldGuide] = useState(false);
 
@@ -307,11 +309,61 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
     setNewEmp({ name: "", phone: "", email: "", role: "", department: "", zone: "" });
   };
 
-  const handleCsvUpload = useCallback(() => {
-    // Mock CSV import
-    setCsvUploaded(true);
-    setCsvCount(employeeEstimate);
-  }, [employeeEstimate]);
+  // REAL CSV import — parse the uploaded file, validate rows, and push valid
+  // employees into manualEmployees so they are actually persisted as invitations
+  // on registration (invitationsPayload maps manualEmployees). No fabricated count.
+  const handleCsvUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => toast.error("Could not read that file");
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || "");
+        const lines = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+        if (lines.length < 2) { toast.error("CSV looks empty", { description: "Add a header row plus at least one employee row." }); return; }
+        const splitRow = (row: string) => row.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+        const header = splitRow(lines[0]).map(h => h.toLowerCase());
+        const col = (names: string[]) => header.findIndex(h => names.includes(h));
+        const iName = col(["name", "full name", "fullname"]);
+        const iPhone = col(["phone", "mobile", "phone number"]);
+        const iEmail = col(["email", "e-mail"]);
+        const iRole = col(["role", "title", "position"]);
+        const iDept = col(["department", "dept"]);
+        const iZone = col(["zone", "area", "site"]);
+        if (iName < 0 || iPhone < 0) { toast.error("Missing required columns", { description: "The header must include at least Name and Phone." }); return; }
+        const parsed: typeof manualEmployees = [];
+        let rejected = 0;
+        for (let r = 1; r < lines.length; r++) {
+          const cols = splitRow(lines[r]);
+          const name = (cols[iName] || "").slice(0, 100);
+          const phone = (cols[iPhone] || "").slice(0, 16);
+          if (!name || !phone) { rejected++; continue; }
+          parsed.push({
+            id: `EMP-CSV-${parsed.length + 1}`,
+            name, phone,
+            email: iEmail >= 0 ? (cols[iEmail] || "") : "",
+            role: iRole >= 0 ? (cols[iRole] || "") : "",
+            department: iDept >= 0 ? (cols[iDept] || "") : "",
+            zone: iZone >= 0 ? (cols[iZone] || "") : "",
+          });
+        }
+        if (parsed.length === 0) { toast.error("No valid rows", { description: "Every row needs at least Name and Phone." }); return; }
+        setManualEmployees(prev => [...prev, ...parsed]);
+        setCsvFileName(file.name);
+        setCsvRejected(rejected);
+        setCsvCount(parsed.length);
+        setCsvUploaded(true);
+        hapticSuccess();
+        toast.success(`${parsed.length} employee${parsed.length === 1 ? "" : "s"} imported`,
+          rejected ? { description: `${rejected} row${rejected === 1 ? "" : "s"} skipped (missing name or phone)` } : undefined);
+      } catch (err) {
+        toast.error("Could not parse that CSV", { description: "Check the format against the template." });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, []);
 
   // ── Plan Detection ──────────────────────────────────────────
   const totalEmp = empMethod === "csv" ? csvCount : (empMethod === "manual" ? manualEmployees.length : employeeEstimate);
@@ -875,6 +927,11 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                     </svg>
                     {zones.length === 0 ? "Add Zone" : "Add Another Zone"}
                   </button>
+                  {!newZoneName.trim() && (
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+                      Enter a zone name above to enable Add Zone (GPS, radius and evacuation point are optional).
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -964,6 +1021,11 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                       }}>
                       <Plus className="size-3.5" /> Add Employee
                     </button>
+                    {(!newEmp.name || !newEmp.phone) && (
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+                        {!newEmp.name && !newEmp.phone ? "Enter the worker name and phone to add them." : !newEmp.name ? "Enter the worker name to add them." : "Enter the worker phone to add them."}
+                      </p>
+                    )}
                   </div>
 
                   {/* Employee List */}
@@ -1049,7 +1111,14 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
 
                   {/* Download Template */}
                   <button className="w-full flex items-center gap-3 p-3.5 rounded-xl mb-3"
-                    onClick={() => { hapticSuccess(); toast.success("CSV Template Downloaded", { description: "Template with columns: Name, Email, Phone, Role, Zone — ready to fill" }); }}
+                    onClick={() => {
+                      const csv = "Name,Email,Phone,Role,Department,Zone\nAhmed Ali,ahmed@example.com,+9647701234567,Field Worker,Operations," + (zones[0]?.name || "Main Site") + "\n";
+                      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a"); a.href = url; a.download = "sosphere_employees_template.csv"; a.click();
+                      URL.revokeObjectURL(url);
+                      hapticSuccess(); toast.success("CSV template downloaded", { description: "Columns: Name, Email, Phone, Role, Department, Zone" });
+                    }}
                     style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.12)", cursor: "pointer" }}>
                     <Download className="size-4" style={{ color: "#00C8E0" }} />
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>Download CSV Template</span>
@@ -1080,7 +1149,7 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                         <CheckCircle2 className="size-5" style={{ color: "#00C853" }} />
                         <div>
                           <p style={{ fontSize: 14, fontWeight: 700, color: "#00C853" }}>File Uploaded Successfully</p>
-                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>employees_data.csv</p>
+                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{csvFileName || "employees.csv"}</p>
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
@@ -1093,8 +1162,8 @@ export function CompanyRegister({ onComplete, onBack }: CompanyRegisterProps) {
                           <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Valid</p>
                         </div>
                         <div className="p-2 rounded-lg text-center" style={{ background: "rgba(255,255,255,0.03)" }}>
-                          <p style={{ fontSize: 18, fontWeight: 800, color: "#FF9500" }}>0</p>
-                          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Warnings</p>
+                          <p style={{ fontSize: 18, fontWeight: 800, color: csvRejected ? "#FF9500" : "rgba(255,255,255,0.3)" }}>{csvRejected}</p>
+                          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Skipped</p>
                         </div>
                       </div>
                     </motion.div>
