@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-14T18:59:54.177Z",
-  "total_migrations": 197,
-  "manifest_sha256": "c0530137f8c0b8bf19b7e6fa4d5691d6906a3553257fbe4e1766524bd9b99458",
+  "generated_at": "2026-06-15T19:04:11.080Z",
+  "total_migrations": 203,
+  "manifest_sha256": "708cd14b91999d870ebeb33c7a2a5a5f211a651121a9ad76420c9194eaa3bd00",
   "migrations": [
     {
       "version": "20260415",
@@ -1370,6 +1370,13 @@
     },
     {
       "version": "20260614",
+      "name": "fix_is_admin_rls_recursion_secdef",
+      "file": "20260614_fix_is_admin_rls_recursion_secdef.sql",
+      "sha256": "c121e2bd154a138ec5a27f4c0bd4aff8ca3915a973d26fe772b7a6792d478b28",
+      "bytes": 766
+    },
+    {
+      "version": "20260614",
       "name": "missions_assigned_user_id",
       "file": "20260614_missions_assigned_user_id.sql",
       "sha256": "972a6a7da37f5d8b272e45612ed7373af421be9e3dd602b661370e2822c36d29",
@@ -1377,10 +1384,45 @@
     },
     {
       "version": "20260614",
+      "name": "missions_rls_worker_least_privilege",
+      "file": "20260614_missions_rls_worker_least_privilege.sql",
+      "sha256": "7f28ed3bbacd3c91735f4bc6623044efdfae5146a79c2a97577f2ed891557705",
+      "bytes": 1840
+    },
+    {
+      "version": "20260614",
+      "name": "profiles_pii_self_admin_only",
+      "file": "20260614_profiles_pii_self_admin_only.sql",
+      "sha256": "caa28577e35895f9ac13498e5496dd0370f5c7997c3ef8bb4d383ccc79555a53",
+      "bytes": 952
+    },
+    {
+      "version": "20260614",
+      "name": "rls_location_read_data_minimization",
+      "file": "20260614_rls_location_read_data_minimization.sql",
+      "sha256": "cd2ba51a75dbd795d072b3c3978ff1d9a973a5f056992f5e6ebae9830930a5b7",
+      "bytes": 1310
+    },
+    {
+      "version": "20260614",
+      "name": "rls_worker_write_least_privilege_sweep",
+      "file": "20260614_rls_worker_write_least_privilege_sweep.sql",
+      "sha256": "43fcd56db8f152ce2309362179fd7b33646efb3aa40eefacd19895e803049451",
+      "bytes": 6968
+    },
+    {
+      "version": "20260614",
       "name": "scheduled_reports_cron",
       "file": "20260614_scheduled_reports_cron.sql",
       "sha256": "1846027a5e32f5b9ab9f8ada7990a76ce329837812873f1d7890cf5788e37d9b",
       "bytes": 2874
+    },
+    {
+      "version": "20260615",
+      "name": "pentest_lock_anon_write_rpcs",
+      "file": "20260615_pentest_lock_anon_write_rpcs.sql",
+      "sha256": "cf6fe14393b8dd1e5f3c9425b4504e53cb1b613325a13941f3ff6e3bc9b644b4",
+      "bytes": 4349
     }
   ]
 }
