@@ -83,7 +83,6 @@ export { OverviewPage, WebOverviewLayout } from "./dashboard-overview-page";
 // ═══════════════════════════════════════════════════════════════
 // Employees Page + EmpDetailView — extracted 2026-05-31 (Tier A step 6/7)
 // ═══════════════════════════════════════════════════════════════
-export { EmployeesPage } from "./dashboard-employees-page";
 
 // ═══════════════════════════════════════════════════════════════
 // Emergencies Page — extracted 2026-05-31 (Tier A step 7/7 — final)
