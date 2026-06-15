@@ -58,7 +58,7 @@ const LANGS = {
     },
     footer: {
       tagline: "Enterprise safety intelligence for the field.",
-      links: ["Privacy Policy", "Terms of Service", "Documentation", "Contact Sales"],
+      links: ["Privacy Policy", "Terms of Service", "Contact Sales"],
       copy: "© 2025 SOSphere. All rights reserved.",
     },
   },
@@ -113,7 +113,7 @@ const LANGS = {
     },
     footer: {
       tagline: "ذكاء السلامة المؤسسي للعمل الميداني.",
-      links: ["سياسة الخصوصية", "شروط الخدمة", "التوثيق", "تواصل مع المبيعات"],
+      links: ["سياسة الخصوصية", "شروط الخدمة", "تواصل مع المبيعات"],
       copy: "© 2025 SOSphere. جميع الحقوق محفوظة.",
     },
   },
@@ -245,7 +245,7 @@ export function LandingPage() {
                       <button key={l} onClick={() => { setLang(l); setLangOpen(false); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: lang === l ? "rgba(0,200,224,0.08)" : "transparent", border: "none", color: lang === l ? "#00C8E0" : "rgba(255,255,255,0.6)", fontSize: 13, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
                         <span style={{ fontSize: 15 }}>{l === "en" ? "🇺🇸" : l === "ar" ? "🇸🇦" : l === "fr" ? "🇫🇷" : l === "es" ? "🇪🇸" : l === "de" ? "🇩🇪" : "🌐"}</span>
-                        {l === "en" ? "English" : l === "ar" ? "العربية" : l === "fr" ? "Français" : l === "es" ? "Español" : l === "de" ? "Deutsch" : (l as string).toUpperCase()}  /* P0-ci-cleanup-strict-2: l narrowed to never here */
+                        {l === "en" ? "English" : l === "ar" ? "العربية" : l === "fr" ? "Français" : l === "es" ? "Español" : l === "de" ? "Deutsch" : (l as string).toUpperCase()}
                       </button>
                     ))}
                   </motion.div>
@@ -533,7 +533,7 @@ export function LandingPage() {
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {t.footer.links.map((l, i) => (
               <button key={i} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-                onClick={() => { const r = ["/privacy", "/terms", "/demo"][i]; if (r) { navigate(r); } else { window.location.href = "mailto:sales@sosphere.co"; } }}
+                onClick={() => { const r = ["/privacy", "/terms"][i]; if (r) { navigate(r); } else { window.location.href = "mailto:sales@sosphere.co"; } }}
                 onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}>{l}</button>
             ))}
