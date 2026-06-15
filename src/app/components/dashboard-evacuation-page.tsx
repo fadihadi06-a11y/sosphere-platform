@@ -102,15 +102,9 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   const loadData = () => {
     setEvacHistory(getEvacuationHistory());
     const zoneData = getZoneGPS();
-    // If no zones in store, use defaults
-    const defaultZones: ZoneGPSData[] = [
-      { id: "Z-A", name: "Zone A - North Gate", lat: 24.7136, lng: 46.6753, radiusMeters: 150 },
-      { id: "Z-B", name: "Zone B - Control Room", lat: 24.7140, lng: 46.6760, radiusMeters: 100 },
-      { id: "Z-C", name: "Zone C - Main Hall", lat: 24.7145, lng: 46.6770, radiusMeters: 200 },
-      { id: "Z-D", name: "Zone D - Warehouse", lat: 24.7160, lng: 46.6800, radiusMeters: 120 },
-      { id: "Z-E", name: "Zone E - Parking", lat: 24.7120, lng: 46.6730, radiusMeters: 250 },
-    ];
-    setZones(zoneData.length > 0 ? zoneData : defaultZones);
+    // Real zones only — no fabricated fallback. When the company has no zones
+    // configured, the UI shows an honest empty state and Trigger is disabled.
+    setZones(zoneData);
     setEvacPoints(getEvacuationPoints());
     const active = getActiveEvacuation();
     setActiveEvacuation(active);
@@ -706,6 +700,11 @@ function TriggerPanel({
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
               SELECT ZONE
             </label>
+            {zones.length === 0 && (
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 8, lineHeight: 1.5 }}>
+                No zones configured yet. Add zones in Location &amp; Zones before triggering an evacuation.
+              </p>
+            )}
             <div className="mt-2 grid grid-cols-3 gap-2">
               {zones.map(zone => {
                 const hasPoints = evacPoints.some(p => p.zoneId === zone.id);

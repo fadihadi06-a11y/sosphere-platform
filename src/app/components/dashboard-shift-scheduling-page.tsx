@@ -21,6 +21,7 @@ import { useDashboardStore } from "./stores/dashboard-store";
 // (was localStorage-only — CRIT-#4 cross-tenant leak class).
 import { fetchShifts, upsertShiftsBatch, getCachedShifts, setCachedShifts, type Shift as ServerShift } from "./shifts-service";
 import { toast } from "sonner";
+import { fetchZones } from "./api/data-layer";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -62,7 +63,6 @@ const SHIFT_COLORS: Record<ShiftType, string> = {
 };
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const ZONES = ["Zone A", "Zone B", "Zone C", "Zone D", "Zone E"];
 
 const getWeekDates = (offset: number) => {
   const now = new Date();
@@ -122,6 +122,13 @@ function detectConflicts(shifts: Shift[]): Set<string> {
 // ═══════════════════════════════════════════════════════════════
 export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => string; webMode?: boolean }) {
   const storeEmployees = useDashboardStore(s => s.employees);
+  // Real zones from the company zones table (no hardcoded "Zone A..E").
+  const [zoneNames, setZoneNames] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void fetchZones().then(zs => { if (alive) setZoneNames(zs.map(z => z.name).filter(Boolean)); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const [shifts, setShifts] = useState<Shift[]>(() => {
     // 2026-06-03 16th pattern app: bootstrap from the service cache
     // (in-memory + non-legacy localStorage). The legacy `sosphere_shifts`
@@ -295,7 +302,19 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
             <Copy className="size-3" /> Copy Week
           </button>
           <button
-            onClick={() => { hapticSuccess(); toast.success("Exporting Schedule", { description: "Weekly shift schedule PDF is being generated..." }); }}
+            onClick={() => {
+              hapticSuccess();
+              const rows = shifts.map(sh => {
+                const emp = storeEmployees.find(e => String(e.id) === String(sh.employeeId));
+                return [emp?.name || sh.employeeId, DAYS[sh.day] || sh.day, sh.type, `${sh.startHour}:00`, `${sh.endHour}:00`, sh.zone || "Unassigned"].join(",");
+              });
+              const csv = "Employee,Day,Type,Start,End,Zone\n" + rows.join("\n") + "\n";
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href = url; a.download = "sosphere_shift_schedule.csv"; a.click();
+              URL.revokeObjectURL(url);
+              toast.success(shifts.length ? `Exported ${shifts.length} shifts to CSV` : "No shifts to export");
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
             style={{ fontSize: 11, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.15)", fontWeight: 600, cursor: "pointer" }}
           >
@@ -572,6 +591,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
               : storeEmployees.find(e => e.id === createTarget?.employeeId)?.name || ""
             }
             dayLabel={editingShift ? DAYS[editingShift.day] : createTarget ? DAYS[createTarget.day] : ""}
+            zoneNames={zoneNames}
           />
         )}
       </AnimatePresence>
@@ -629,8 +649,9 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
 // ═══════════════════════════════════════════════════════════════
 // Shift Create/Edit Modal
 // ═══════════════════════════════════════════════════════════════
-function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm, onClose, employeeName, dayLabel }: {
+function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm, onClose, employeeName, dayLabel, zoneNames }: {
   editing: Shift | null;
+  zoneNames: string[];
   template: ShiftTemplate;
   templates: ShiftTemplate[];
   onSelectTemplate: (t: ShiftTemplate) => void;
@@ -639,7 +660,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
   employeeName: string;
   dayLabel: string;
 }) {
-  const [zone, setZone] = useState(editing?.zone || "Zone A");
+  const [zone, setZone] = useState(editing?.zone || "");
   const [note, setNote] = useState(editing?.note || "");
 
   return (
@@ -716,7 +737,8 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
               className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
               style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
             >
-              {ZONES.map(z => (
+              <option value="" style={{ background: "#0A1220" }}>Unassigned</option>
+              {zoneNames.map(z => (
                 <option key={z} value={z} style={{ background: "#0A1220" }}>{z}</option>
               ))}
             </select>

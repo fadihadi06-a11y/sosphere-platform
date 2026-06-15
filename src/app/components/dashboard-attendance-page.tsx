@@ -156,7 +156,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>{t("att.live")} — March 7, 2026</span>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>{t("att.live")} — {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</span>
           </div>
           <div className="flex gap-1">
             {(["list", "zone"] as const).map(v => (
