@@ -387,13 +387,13 @@ export function OfflineMonitoringPage() {
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span style={{ fontSize: 40, fontWeight: 900, color: networkScore > 70 ? "#00C853" : networkScore > 40 ? "#FF9500" : "#FF2D55", letterSpacing: "-0.03em" }}>
-                {networkScore}
+              <span style={{ fontSize: 40, fontWeight: 900, color: DISPLAY_FLEET.length === 0 ? "rgba(255,255,255,0.3)" : networkScore > 70 ? "#00C853" : networkScore > 40 ? "#FF9500" : "#FF2D55", letterSpacing: "-0.03em" }}>
+                {DISPLAY_FLEET.length === 0 ? "—" : networkScore}
               </span>
               <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>/100</span>
             </div>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-              {networkScore > 70 ? "Fleet connectivity is healthy" : networkScore > 40 ? "Some workers need attention" : "Critical — multiple workers disconnected"}
+              {DISPLAY_FLEET.length === 0 ? "No worker devices connected yet" : networkScore > 70 ? "Fleet connectivity is healthy" : networkScore > 40 ? "Some workers need attention" : "Critical — multiple workers disconnected"}
             </p>
           </div>
 

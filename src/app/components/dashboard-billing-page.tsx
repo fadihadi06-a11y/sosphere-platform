@@ -315,7 +315,9 @@ export function BillingPage({ companyState, webMode = false }: {
     { id: "INV-2025-012", date: "Dec 1, 2025", period: "December 2025", planName: currentPlanName, baseCost: invoiceBasePrice > 0 ? invoiceBasePrice : 0, extraCount: baseExtraCount, extraCost: baseExtraCost, addonsCost: 0, amount: (invoiceBasePrice > 0 ? invoiceBasePrice : 0) + baseExtraCost, seats: empCount },
   ];
   const DEV_DEMO = (import.meta as any).env?.DEV === true;
-  const ALL_INVOICES = [...extraInvoices, ...(DEV_DEMO ? BASE_INVOICES : [])];
+  // No fabricated invoices in production — real invoices live in the Stripe billing
+  // portal (Download All / PDF open it). Locally-generated + demo invoices are DEV-only.
+  const ALL_INVOICES = DEV_DEMO ? [...extraInvoices, ...BASE_INVOICES] : [];
 
   const usagePercent = employeeUsagePercent(companyState);
 
@@ -626,6 +628,11 @@ export function BillingPage({ companyState, webMode = false }: {
               <span key={h || "action"} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>
             ))}
           </div>
+          {ALL_INVOICES.length === 0 && (
+            <div className="px-6 py-8 text-center" style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+              No invoices yet. Paid invoices appear in the Stripe billing portal — use “Download All”.
+            </div>
+          )}
           {ALL_INVOICES.slice(0, 8).map((inv, i) => (
             <div key={inv.id} className="grid items-center px-6 py-3.5" style={{ gridTemplateColumns: "120px 100px 100px 160px 80px 90px 60px", borderBottom: i < Math.min(ALL_INVOICES.length, 8) - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}>
               <div>
@@ -838,6 +845,11 @@ export function BillingPage({ companyState, webMode = false }: {
           <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoices in billing portal", { description: "Available with an active paid subscription." }); } }} style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600, cursor: "pointer" }}>Download All</button>
         </div>
         <DSCard padding={0}>
+          {ALL_INVOICES.length === 0 && (
+            <div style={{ padding: "16px", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+              No invoices yet — open the billing portal via “Download All”.
+            </div>
+          )}
           {ALL_INVOICES.slice(0, 6).map((inv, i) => (
             <div key={inv.id}>
               <div className="flex items-center gap-3 px-3 py-3">
@@ -855,7 +867,7 @@ export function BillingPage({ companyState, webMode = false }: {
                 <div className="flex items-center gap-2">
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>${inv.amount.toFixed(2)}</span>
                   <Badge variant="success" size="sm">Paid</Badge>
-                  <button onClick={() => { hapticLight(); toast.success("Downloading PDF", { description: `Invoice ${inv.id}` }); }} style={{ fontSize: 10, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
+                  <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoice PDF in billing portal", { description: "Open the Stripe billing portal to view and download this invoice as PDF." }); } }} style={{ fontSize: 10, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
                 </div>
               </div>
               {i < Math.min(ALL_INVOICES.length, 6) - 1 && <Divider />}
