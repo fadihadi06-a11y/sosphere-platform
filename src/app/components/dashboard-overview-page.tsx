@@ -460,7 +460,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                                 { icon: Megaphone, label: "Broadcast", color: "#FF9500" },
                                 { icon: Send,      label: "Dispatch",  color: "#00C8E0" },
                               ].map(a => (
-                                <button key={a.label} onClick={(e) => { e.stopPropagation(); hapticLight(); toast(`${a.label} initiated`, { description: `${a.label} for ${emg.employeeName}` }); }} className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl"
+                                <button key={a.label} onClick={(e) => { e.stopPropagation(); hapticLight(); onNavigate("emergencyHub" as DashPage); }} className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl"
                                   style={{ background: `${a.color}10`, border: `1px solid ${a.color}20`, minWidth: 64, cursor: "pointer" }}>
                                   <div className="size-7 rounded-full flex items-center justify-center" style={{ background: `${a.color}18` }}>
                                     <a.icon className="size-3.5" style={{ color: a.color }} />
@@ -617,10 +617,16 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
               <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>System Health</p>
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
-                <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#00C853", boxShadow: "0 0 6px rgba(0,200,83,0.5)" }} />
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853", letterSpacing: "-0.005em" }}>99.8% uptime</span>
-              </div>
+              {(() => {
+                const degraded = systemHealth.filter(sh => sh.status === "degraded").length;
+                const ok = degraded === 0;
+                return (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl" style={{ background: ok ? "rgba(0,200,83,0.06)" : "rgba(255,149,0,0.06)", border: `1px solid ${ok ? "rgba(0,200,83,0.12)" : "rgba(255,149,0,0.12)"}` }}>
+                    <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: ok ? "#00C853" : "#FF9500" }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: ok ? "#00C853" : "#FF9500" }}>{ok ? "All operational" : `${degraded} degraded`}</span>
+                  </div>
+                );
+              })()}
             </div>
             <div className="space-y-2.5">
               {systemHealth.map((s, i) => {
@@ -760,9 +766,8 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
       <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
         {([
           { id: "active" as KpiFilter,   label: t("emg.activeStatus"), value: stats.unowned.toString(), color: stats.unowned > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: stats.unowned > 0 },
-          { id: "onDuty" as KpiFilter,   label: t("emp.onShift"),       value: "142",                   color: "#00C8E0", icon: Users,         pulse: false },
+          { id: "onDuty" as KpiFilter,   label: t("emp.onShift"),       value: onShift.toString(),       color: "#00C8E0", icon: Users,         pulse: false },
           { id: "slaBreach" as KpiFilter,label: t("emg.sla"),           value: slaBreachCount.toString(),color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false },
-          { id: "health" as KpiFilter,   label: t("emg.health"),        value: "99.8%",                 color: "#00C853", icon: Activity,      pulse: false },
         ]).map(chip => (
           <button key={chip.id} onClick={() => setKpiFilter(prev => prev === chip.id ? null : chip.id)}
             className="flex items-center gap-2 px-3 py-2 rounded-full flex-shrink-0 transition-all"
@@ -828,7 +833,7 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
               <div className="flex items-center justify-between">
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#00C8E0", letterSpacing: "0.5px" }}>{t("ov.onDutyPersonnel")}</span>
                 <div className="flex gap-3">
-                  {[{ l: t("ov.avail"), c: "#00C853", v: 98 }, { l: t("ov.activeShort"), c: "#FF9500", v: 12 }, { l: t("ov.break"), c: "rgba(255,255,255,0.3)", v: 32 }].map(s => (
+                  {[{ l: t("ov.avail"), c: "#00C853", v: employees.filter(e => e.status === "on-shift").length }, { l: t("ov.activeShort"), c: "#FF9500", v: employees.filter(e => (e as any).status === "responding").length }, { l: t("ov.break"), c: "rgba(255,255,255,0.3)", v: employees.filter(e => e.status === "off-shift").length }].map(s => (
                     <div key={s.l} className="text-center">
                       <p style={{ fontSize: 13, fontWeight: 800, color: s.c }}>{s.v}</p>
                       <p style={{ fontSize: 6, color: "rgba(255,255,255,0.25)", fontWeight: 600 }}>{s.l}</p>
@@ -1001,7 +1006,7 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
                     { label: t("emg.dispatch"),     icon: Send,      color: "#FF9500" },
                     { label: t("emg.escalate"),     icon: Zap,       color: "#FF9500" },
                   ].map(a => (
-                    <button key={a.label} onClick={() => { hapticLight(); toast(`${a.label}`, { description: "Action initiated" }); }} className="flex flex-col items-center gap-1.5 py-2 rounded-xl"
+                    <button key={a.label} onClick={() => { hapticLight(); onNavigate("emergencyHub" as DashPage); }} className="flex flex-col items-center gap-1.5 py-2 rounded-xl"
                       style={{ background: `${a.color}08`, border: `1px solid ${a.color}18`, cursor: "pointer" }}>
                       <div className="size-7 rounded-full flex items-center justify-center" style={{ background: `${a.color}18` }}>
                         <a.icon className="size-3.5" style={{ color: a.color }} />
@@ -1151,18 +1156,22 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
       <div className="pb-4">
         <SectionHeader title={t("l.liveAct")} icon={Activity} color={TOKENS.accent.success} />
         <DSCard padding={0}>
-          {[
-            { time: "Just now", text: "Mohammed Ali triggered SOS in Zone D",    color: "#FF2D55", icon: AlertTriangle, unread: true  },
-            { time: "2m ago",   text: "Khalid Omar missed scheduled check-in",   color: "#FF9500", icon: Clock,         unread: true  },
-            { time: "5m ago",   text: "Fatima Hassan checked in at Zone B",       color: "#00C853", icon: CheckCircle2,  unread: false },
-            { time: "12m ago",  text: "Sara Al-Mutairi completed safety drill",   color: "#00C8E0", icon: Shield,        unread: false },
-            { time: "18m ago",  text: "Zone D restricted — gas leak detected",    color: "#FF2D55", icon: AlertTriangle, unread: false },
-          ].map((activity, i) => (
-            <div key={i}>
-              <AlertItem title={activity.text} icon={activity.icon} color={activity.color} timestamp={activity.time} unread={activity.unread} />
-              {i < 4 && <Divider />}
-            </div>
-          ))}
+          {(() => {
+            const liveActivity = getLiveActivity();
+            if (liveActivity.length === 0) {
+              return (
+                <div style={{ padding: "20px 16px", textAlign: "center" }}>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{t("l.noRecentActivity") || "No recent activity"}</p>
+                </div>
+              );
+            }
+            return liveActivity.map((activity, i) => (
+              <div key={i}>
+                <AlertItem title={activity.text} icon={activity.icon} color={activity.color} timestamp={activity.time} unread={activity.unread} />
+                {i < liveActivity.length - 1 && <Divider />}
+              </div>
+            ));
+          })()}
         </DSCard>
       </div>
 
