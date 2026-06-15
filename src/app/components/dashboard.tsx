@@ -3,7 +3,7 @@ import { useLang } from "./useLang";
 import { motion, AnimatePresence } from "motion/react";
 import { Shield, Bell, MapPin, Clock, CheckCircle, AlertTriangle, Phone, Home, Map, User, Timer, Heart, Package, FileText, ChevronRight, LogOut, Navigation, X, ClipboardCheck } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { emitSyncEvent, getHybridMode, onHybridModeChange, recordAttendance, autoBroadcastHazard } from "./shared-store";
+import { emitSyncEvent, getHybridMode, onHybridModeChange, recordAttendance, autoBroadcastHazard, getBroadcasts } from "./shared-store";
 import { MissionNotificationBanner } from "./mission-tracker-mobile";
 import { toast } from "sonner";
 import { MonitoringModeBanner } from "./monitoring-mode-banner";
@@ -118,13 +118,31 @@ export function EmployeeDashboard({
   const [showAttendConfirm, setShowAttendConfirm] = useState(false);
   const [monitoringMode, setMonitoringMode] = useState(false);
   const [monitoringData, setMonitoringData] = useState<{checkInInterval:number;nextCheckIn:number;monitorUntil:number;}|null>(null);
-  const [alerts, setAlerts] = useState<AlertItem[]>([
-    { id:"a1",title:"إحاطة السلامة الإلزامية",subtitle:"يلزم مراجعة بروتوكول السلامة المحدث",desc:"يجب على جميع العمال مراجعة بروتوكول السلامة المحدث قبل الوردية التالية.",time:"اليوم",color:"#FF2D55",severity:"حرج",severityColor:"#FF2D55",zone:"جميع المناطق",icon:AlertTriangle,iconColor:"#FF2D55",read:false },
-    { id:"a2",title:"المنطقة C مقيدة",subtitle:"المنطقة C تحت الصيانة حتى 10 مارس",desc:"المنطقة C تحت الصيانة. يُمنع الدخول. سيتم إلغاء الوصول فوراً للمخالفين.",time:"أمس",color:"#FF9500",severity:"عالٍ",severityColor:"#FF9500",zone:"المنطقة C",icon:MapPin,iconColor:"#FF9500",read:false },
-    { id:"a3",title:"تدريب الإخلاء الشهري",subtitle:"تدريب طوارئ يوم 12 مارس الساعة 10 صباحاً",desc:"تدريب إخلاء طارئ يوم 12 مارس. يجب على جميع العمال المشاركة.",time:"3 مارس",color:"#00C8E0",severity:"متوسط",severityColor:"#00C8E0",zone:"جميع المناطق",icon:Clock,iconColor:"#00C8E0",read:false },
-    { id:"a4",title:"فحص معدات الوقاية",subtitle:"موعد الفحص الربع سنوي يقترب",desc:"سلّم معدات الحماية الشخصية للفحص الربعي. الموعد النهائي 15 مارس.",time:"1 مارس",color:"#00C853",severity:"منخفض",severityColor:"#00C853",zone:"المنطقة B-7",icon:CheckCircle,iconColor:"#00C853",read:true },
-  ]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [selectedAlert, setSelectedAlert] = useState<string|null>(null);
+
+  // REAL alerts: the worker sees actual company broadcasts (server + push backed),
+  // mapped from the broadcast store. No fabricated safety notices. Empty when none.
+  useEffect(() => {
+    const prio: Record<string, { sevEn: string; sevAr: string; color: string }> = {
+      emergency: { sevEn: "Critical", sevAr: "حرج", color: "#FF2D55" },
+      urgent:    { sevEn: "High",     sevAr: "عالٍ", color: "#FF9500" },
+      high:      { sevEn: "High",     sevAr: "عالٍ", color: "#FF9500" },
+    };
+    const load = () => {
+      const bms = getBroadcasts().filter(b => !b.expiresAt || b.expiresAt > Date.now());
+      setAlerts(bms.slice(0, 20).map(b => {
+        const p = prio[String(b.priority)] || { sevEn: "Info", sevAr: "معلومة", color: "#00C8E0" };
+        const mins = Math.max(0, Math.floor((Date.now() - b.timestamp) / 60000));
+        const time = mins < 1 ? (isAr ? "الآن" : "now") : mins < 60 ? `${mins}${isAr ? "د" : "m"}` : `${Math.floor(mins / 60)}${isAr ? "س" : "h"}`;
+        return { id: b.id, title: b.title, subtitle: (b.body || "").slice(0, 60), desc: b.body || "", time, color: p.color, severity: isAr ? p.sevAr : p.sevEn, severityColor: p.color, zone: b.audienceLabel || "", icon: AlertTriangle, iconColor: p.color, read: false } as AlertItem;
+      }));
+    };
+    load();
+    window.addEventListener("storage", load);
+    const intv = setInterval(load, 15000);
+    return () => { window.removeEventListener("storage", load); clearInterval(intv); };
+  }, [isAr]);
 
   const unreadCount = alerts.filter(a=>!a.read).length;
   const activeAlert = alerts.find(a=>a.id===selectedAlert)||null;
@@ -157,11 +175,9 @@ export function EmployeeDashboard({
     }
   };
 
-  useEffect(() => {
-    if(!hybridMode||!onDuty){setNearZone(false);return;}
-    const t = setTimeout(()=>setNearZone(true),5000);
-    return ()=>clearTimeout(t);
-  },[hybridMode,onDuty]);
+  // Attendance proximity is driven by the real geofence flow, not a timer.
+  // Without a live GPS proximity signal here we never fake a "near zone" prompt.
+  useEffect(() => { setNearZone(false); }, [hybridMode, onDuty]);
 
   const handleAttend = () => {
     recordAttendance({employeeId:"self",employeeName:userName,zoneId:"GZ-1",zoneName:userZone,timestamp:Date.now(),type:"enter"});
@@ -238,12 +254,11 @@ export function EmployeeDashboard({
                 </div>
                 <div className="flex items-center gap-5 pt-4" style={{borderTop:"1px solid rgba(255,255,255,.05)",direction:"rtl"}}>
                   <div className="flex items-center gap-1.5"><MapPin size={13} color="rgba(0,200,224,.7)"/><span style={{fontSize:12,color:"rgba(255,255,255,.4)"}}>{userZone}</span></div>
-                  <div className="flex items-center gap-1.5"><Clock size={13} color="rgba(0,200,224,.7)"/><span style={{fontSize:12,color:"rgba(255,255,255,.4)",fontFamily:"'Outfit',sans-serif"}}>06:00 — 14:00</span></div>
                 </div>
               </motion.div>
 
               {/* Mission banner */}
-              <div className="px-5"><MissionNotificationBanner employeeId="EMP-001" onOpen={()=>onMissionTracker?.()}/></div>
+              <div className="px-5"><MissionNotificationBanner employeeId="self" onOpen={()=>onMissionTracker?.()}/></div>
 
               {/* SOS Button */}
               <SOSButton onSOSTrigger={onSOSTrigger}/>

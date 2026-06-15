@@ -84,20 +84,11 @@ export function MapScreen({ onBack }: MapScreenProps) {
 
   useEffect(() => { retryGPS(); }, [retryGPS]);
 
-  // ── Generate nearby places around user position ──
-  useEffect(() => {
-    if (!gpsCoords) return;
-    const { lat, lng } = gpsCoords;
-    // Place mock emergency services around the user's real location
-    const places: NearbyPlace[] = [
-      { id: "h1", name: "Nearest Hospital", type: "hospital", distance: "1.2 km", address: "Emergency services", phone: "911", lat: lat + 0.008, lng: lng + 0.005 },
-      { id: "h2", name: "Medical Center", type: "hospital", distance: "2.5 km", address: "24H Emergency", phone: "911", lat: lat - 0.006, lng: lng + 0.012 },
-      { id: "p1", name: "Police Station", type: "police", distance: "0.8 km", address: "Local police", phone: "999", lat: lat + 0.004, lng: lng - 0.007 },
-      { id: "p2", name: "Security Office", type: "police", distance: "1.9 km", address: "Security patrol", phone: "999", lat: lat - 0.009, lng: lng - 0.004 },
-      { id: "f1", name: "Fire Station", type: "fire", distance: "1.5 km", address: "Fire & rescue", phone: "998", lat: lat + 0.01, lng: lng - 0.003 },
-    ];
-    setNearbyPlaces(places);
-  }, [gpsCoords]);
+  // NO fabricated "nearby" facilities. We never invent hospital/police/fire
+  // locations, distances, or phone numbers — in an emergency that is dangerous.
+  // The map shows the user's REAL position; verified emergency numbers live in the
+  // Emergency Services screen. (Real POI/Places search is a future enhancement.)
+  useEffect(() => { setNearbyPlaces([]); }, [gpsCoords]);
 
   // ── Initialize Leaflet Map ──
   useEffect(() => {
@@ -298,7 +289,8 @@ export function MapScreen({ onBack }: MapScreenProps) {
             </motion.button>
           </div>
 
-          {/* Category Filters */}
+          {/* Facility filters render only when real nearby data exists (no fabrication) */}
+          {nearbyPlaces.length > 0 ? (
           <div className="flex gap-2">
             {categories.map((cat) => {
               const isActive = category === cat.id;
@@ -321,6 +313,11 @@ export function MapScreen({ onBack }: MapScreenProps) {
               );
             })}
           </div>
+          ) : (
+          <div className="px-3 py-2" style={{ borderRadius: 12, background: "rgba(10,14,28,0.7)", border: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(12px)" }}>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.35)" }}>Your live location is shown above. For verified emergency numbers, open Emergency Services.</span>
+          </div>
+          )}
         </div>
 
         {/* ── Bottom: Selected Place Card ── */}
