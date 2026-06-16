@@ -26,6 +26,7 @@ import { auditEmergency } from "./audit-log-store";
 // Basic+ only — Free users hitting this component (deep-link, etc.)
 // must NOT see the active flow. The prop `isPro` was advisory only.
 import { getSubscription } from "./subscription-service";
+import type { Lang } from "./dashboard-i18n";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -54,13 +55,17 @@ interface WalkEvent {
 // ── Quick Messages ────────────────────────────────────────────
 
 const QUICK_MESSAGES = [
-  { emoji: "👋", text: "Almost there!" },
-  { emoji: "☕", text: "Stopping briefly" },
-  { emoji: "🏠", text: "Arrived safely!" },
-  { emoji: "🚶", text: "Still walking" },
-  { emoji: "🚗", text: "Got a ride" },
-  { emoji: "⚠️", text: "Feeling unsafe" },
+  { emoji: "👋", text: "Almost there!", ar: "أوشكت على الوصول!" },
+  { emoji: "☕", text: "Stopping briefly", ar: "أتوقف قليلاً" },
+  { emoji: "🏠", text: "Arrived safely!", ar: "وصلت بأمان!" },
+  { emoji: "🚶", text: "Still walking", ar: "ما زلت أمشي" },
+  { emoji: "🚗", text: "Got a ride", ar: "حصلت على توصيلة" },
+  { emoji: "⚠️", text: "Feeling unsafe", ar: "أشعر بعدم الأمان" },
 ];
+
+const DEST_LABELS_AR: Record<string, string> = {
+  Home: "المنزل", Work: "العمل", School: "المدرسة", Custom: "مخصّص",
+};
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -80,9 +85,11 @@ interface SafeWalkModeProps {
   userId?: string;
   userName?: string;
   userZone?: string;
+  lang?: Lang;
 }
 
-export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, onUpgrade, emergencyContacts, userId = "unknown", userName = "Unknown", userZone = "Unknown" }: SafeWalkModeProps) {
+export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, onUpgrade, emergencyContacts, userId = "unknown", userName = "Unknown", userZone = "Unknown", lang = "en" }: SafeWalkModeProps) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   // R-46: derive isPro from the SERVER subscription, ignoring the
   // parent's advisory `isPro` prop. Caller bypassing parent gating
   // can't grant themselves Walk-me.
@@ -162,8 +169,8 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
           if (next >= stopThreshold && !guardianAlerted) {
             // Alert guardian
             setGuardianAlerted(true);
-            addEvent("stop_detected", "Stopped moving — guardian alerted", "warning");
-            addEvent("guardian_alert", `${selectedGuardian?.name} has been notified`, "warning");
+            addEvent("stop_detected", tr("Stopped moving — guardian alerted", "توقّف عن الحركة — تم تنبيه الوصيّ"), "warning");
+            addEvent("guardian_alert", lang === "ar" ? `تم إخطار ${selectedGuardian?.name}` : `${selectedGuardian?.name} has been notified`, "warning");
             // Start escalation countdown
             setEscalationCountdown(escalationDelay);
           }
@@ -177,7 +184,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
         setGuardianAlerted(false);
         setEscalationCountdown(0);
         setStoppedTimer(0);
-        addEvent("resume", "Resumed walking — alert cancelled", "info");
+        addEvent("resume", tr("Resumed walking — alert cancelled", "استؤنف المشي — تم إلغاء التنبيه"), "info");
       }
     }
     return () => { if (stopTimerRef.current) clearInterval(stopTimerRef.current); };
@@ -192,7 +199,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
           if (c <= 1) {
             // CRITICAL FIX (2026-05-27): previously NEVER fired SOS — silent escalation.
             setPhase("escalated");
-            addEvent("sos_escalated", "No response — auto-escalated to SOS!", "danger");
+            addEvent("sos_escalated", tr("No response — auto-escalated to SOS!", "لا استجابة — تصعيد تلقائي للطوارئ!"), "danger");
             void emitSyncEvent({
               type: "SOS_ESCALATED",
               employeeId: userId,
@@ -311,7 +318,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
     setGuardianAlerted(false);
     setEscalationCountdown(0);
     setGuardians(gs => gs.map(g => g.id === selectedGuardian.id ? { ...g, watching: true } : g));
-    addEvent("start", `Walk started — ${selectedGuardian.name} is watching`, "info");
+    addEvent("start", lang === "ar" ? `بدأ المشي — ${selectedGuardian.name} يراقب` : `Walk started — ${selectedGuardian.name} is watching`, "info");
   };
 
   const arrivedSafely = () => {
@@ -324,7 +331,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
       timestamp: Date.now(),
       data: { arrivedSafely: true, duration: walkTimer },
     });
-    addEvent("arrived", `Arrived safely at ${destination}!`, "info");
+    addEvent("arrived", lang === "ar" ? `وصلت بأمان إلى ${DEST_LABELS_AR[destination] || destination}!` : `Arrived safely at ${destination}!`, "info");
   };
 
   const pauseWalk = () => {
@@ -345,7 +352,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
     setEscalationCountdown(0);
     setStoppedTimer(0);
     setIsMoving(true);
-    addEvent("resume", "Escalation cancelled — I'm OK", "info");
+    addEvent("resume", tr("Escalation cancelled — I'm OK", "تم إلغاء التصعيد — أنا بخير"), "info");
   };
 
   const sendQuickMessage = (msg: string) => {
@@ -406,7 +413,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-white" style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px" }}>
-                    {phase === "setup" ? "Safe Walk" : phase === "arrived" ? "Arrived!" : phase === "escalated" ? "SOS Escalated" : "Walking..."}
+                    {phase === "setup" ? tr("Safe Walk", "المشي الآمن") : phase === "arrived" ? tr("Arrived!", "وصلت!") : phase === "escalated" ? tr("SOS Escalated", "تصعيد الطوارئ") : tr("Walking...", "جارٍ المشي...")}
                   </h1>
                   {phase === "active" && (
                     <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>
@@ -415,11 +422,11 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   )}
                 </div>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
-                  {phase === "setup" ? "Virtual escort for your safety"
-                    : phase === "active" ? `${selectedGuardian?.name} is watching · ${formatTime(walkTimer)}`
+                  {phase === "setup" ? tr("Virtual escort for your safety", "مرافقة افتراضية لأمانك")
+                    : phase === "active" ? (lang === "ar" ? `${selectedGuardian?.name} يراقب · ${formatTime(walkTimer)}` : `${selectedGuardian?.name} is watching · ${formatTime(walkTimer)}`)
                       : phase === "arrived" ? `${formatTime(walkTimer)} · ${Math.round(distanceWalked)}m`
-                        : phase === "escalated" ? "Emergency services contacted"
-                          : "Walk paused"
+                        : phase === "escalated" ? tr("Emergency services contacted", "تم الاتصال بخدمات الطوارئ")
+                          : tr("Walk paused", "تم إيقاف المشي مؤقتاً")
                   }
                 </p>
               </div>
@@ -450,10 +457,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       <Footprints className="size-7" style={{ color: "#00C8E0" }} />
                     </div>
                     <div>
-                      <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>Walk Me Home</p>
+                      <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>{tr("Walk Me Home", "أوصلني إلى البيت")}</p>
                       <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>
-                        A trusted person watches your live location while you walk. 
-                        If you stop for too long, they're alerted. If no response — auto-SOS.
+                        {tr("A trusted person watches your live location while you walk. If you stop for too long, they're alerted. If no response — auto-SOS.", "يراقب شخص موثوق موقعك المباشر أثناء مشيك. إذا توقّفت طويلاً يتم تنبيهه. وإن لم تستجب — طوارئ تلقائية.")}
                       </p>
                     </div>
                   </div>
@@ -463,14 +469,14 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {/* How It Works */}
               <div className="px-5 mb-5">
                 <p className="mb-3" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px" }}>
-                  HOW IT WORKS
+                  {tr("HOW IT WORKS", "كيف يعمل")}
                 </p>
                 <div className="space-y-2">
                   {[
-                    { step: 1, icon: User, text: "Choose a guardian to watch you", color: "#00C8E0" },
-                    { step: 2, icon: Navigation, text: "Set your destination & start walking", color: "#00C853" },
-                    { step: 3, icon: Eye, text: "Guardian sees your live location", color: "#FF9500" },
-                    { step: 4, icon: AlertTriangle, text: "Stop 2min → guardian alert → SOS auto-escalation", color: "#FF2D55" },
+                    { step: 1, icon: User, text: tr("Choose a guardian to watch you", "اختر وصيّاً يراقبك"), color: "#00C8E0" },
+                    { step: 2, icon: Navigation, text: tr("Set your destination & start walking", "حدّد وجهتك وابدأ المشي"), color: "#00C853" },
+                    { step: 3, icon: Eye, text: tr("Guardian sees your live location", "يرى الوصيّ موقعك المباشر"), color: "#FF9500" },
+                    { step: 4, icon: AlertTriangle, text: tr("Stop 2min → guardian alert → SOS auto-escalation", "توقّف دقيقتين ← تنبيه الوصيّ ← تصعيد طوارئ تلقائي"), color: "#FF2D55" },
                   ].map(item => (
                     <div key={item.step} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.03)" }}>
                       <div className="size-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${item.color}08` }}>
@@ -488,7 +494,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {/* Select Guardian */}
               <div className="px-5 mb-5">
                 <p className="mb-3" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px" }}>
-                  SELECT YOUR GUARDIAN
+                  {tr("SELECT YOUR GUARDIAN", "اختر وصيّك")}
                 </p>
                 <div className="space-y-2">
                   {guardians.map(g => (
@@ -513,7 +519,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       <div className="flex-1 text-left">
                         <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{g.name}</p>
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-                          {g.relation} · {g.online ? "Online" : "Offline"}
+                          {g.relation} · {g.online ? tr("Online", "متصل") : tr("Offline", "غير متصل")}
                         </p>
                       </div>
                       <div className="size-6 rounded-full flex items-center justify-center"
@@ -531,7 +537,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {/* Destination */}
               <div className="px-5 mb-5">
                 <p className="mb-3" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px" }}>
-                  DESTINATION
+                  {tr("DESTINATION", "الوجهة")}
                 </p>
                 <div className="flex gap-2">
                   {["Home", "Work", "School", "Custom"].map(d => (
@@ -547,7 +553,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       }}
                     >
                       {d === "Home" && <Home className="size-3" />}
-                      {d}
+                      {lang === "ar" ? (DEST_LABELS_AR[d] || d) : d}
                     </button>
                   ))}
                 </div>
@@ -556,7 +562,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {/* Est. Time */}
               <div className="px-5 mb-5">
                 <p className="mb-3" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px" }}>
-                  ESTIMATED WALK TIME
+                  {tr("ESTIMATED WALK TIME", "الوقت المقدّر للمشي")}
                 </p>
                 <div className="flex gap-2">
                   {[5, 10, 15, 20, 30].map(m => (
@@ -586,7 +592,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                 >
                   <div className="flex items-center gap-2.5">
                     <Shield className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>Safety Settings</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.35)" }}>{tr("Safety Settings", "إعدادات الأمان")}</span>
                   </div>
                   <ChevronDown className="size-4" style={{ color: "rgba(255,255,255,0.15)", transform: showSettings ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
                 </button>
@@ -596,7 +602,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       <div className="mt-2 space-y-3 p-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.03)" }}>
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
-                            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>Stop alert after</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>{tr("Stop alert after", "تنبيه التوقّف بعد")}</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: "#FF9500" }}>{stopThreshold}s</span>
                           </div>
                           <input
@@ -608,7 +614,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                         </div>
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
-                            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>SOS escalation after</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>{tr("SOS escalation after", "تصعيد الطوارئ بعد")}</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55" }}>{escalationDelay}s</span>
                           </div>
                           <input
@@ -641,11 +647,11 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   }}
                 >
                   <Footprints className="size-5" />
-                  Start Safe Walk
+                  {tr("Start Safe Walk", "ابدأ المشي الآمن")}
                 </motion.button>
                 {!selectedGuardian && (
                   <p className="text-center mt-2" style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>
-                    Select a guardian to continue
+                    {tr("Select a guardian to continue", "اختر وصيّاً للمتابعة")}
                   </p>
                 )}
 
@@ -653,7 +659,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                 {!isPro && (
                   <button onClick={onUpgrade} className="w-full flex items-center justify-center gap-2 mt-3 py-2.5 rounded-xl"
                     style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)", fontSize: 11, fontWeight: 600, color: "#00C8E0" }}>
-                    <Crown className="size-3.5" /> Pro feature — tap to upgrade
+                    <Crown className="size-3.5" /> {tr("Pro feature — tap to upgrade", "ميزة برو — اضغط للترقية")}
                   </button>
                 )}
               </div>
@@ -682,10 +688,10 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   </div>
                   <div className="flex-1">
                     <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>
-                      {selectedGuardian?.name} is watching
+                      {lang === "ar" ? `${selectedGuardian?.name} يراقب` : `${selectedGuardian?.name} is watching`}
                     </p>
                     <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.25)" }}>
-                      Live location sharing · To {destination}
+                      {lang === "ar" ? `مشاركة الموقع المباشر · إلى ${DEST_LABELS_AR[destination] || destination}` : `Live location sharing · To ${destination}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -700,9 +706,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               <div className="px-5 mb-4">
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: "Duration", value: formatTime(walkTimer), color: "#00C8E0", icon: Clock },
-                    { label: "Distance", value: `${Math.round(distanceWalked)}m`, color: "#00C853", icon: Route },
-                    { label: "Status", value: isMoving ? "Moving" : "Stopped", color: isMoving ? "#00C853" : "#FF9500", icon: isMoving ? Navigation : Pause },
+                    { label: tr("Duration", "المدة"), value: formatTime(walkTimer), color: "#00C8E0", icon: Clock },
+                    { label: tr("Distance", "المسافة"), value: `${Math.round(distanceWalked)}m`, color: "#00C853", icon: Route },
+                    { label: tr("Status", "الحالة"), value: isMoving ? tr("Moving", "يتحرّك") : tr("Stopped", "متوقّف"), color: isMoving ? "#00C853" : "#FF9500", icon: isMoving ? Navigation : Pause },
                   ].map(s => (
                     <div key={s.label} className="p-3 rounded-xl text-center" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
                       <s.icon className="size-4 mx-auto mb-1.5" style={{ color: s.color }} />
@@ -733,8 +739,8 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   </motion.div>
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>Start</span>
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>{destination} · ~{estimatedTime}min</span>
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>{tr("Start", "البداية")}</span>
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>{lang === "ar" ? `${DEST_LABELS_AR[destination] || destination} · ~${estimatedTime} د` : `${destination} · ~${estimatedTime}min`}</span>
                 </div>
               </div>
 
@@ -763,9 +769,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                           <AlertTriangle className="size-5" style={{ color: "#FF2D55" }} />
                         </motion.div>
                         <div className="flex-1">
-                          <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>You stopped moving</p>
+                          <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("You stopped moving", "لقد توقّفت عن الحركة")}</p>
                           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                            {selectedGuardian?.name} has been alerted
+                            {lang === "ar" ? `تم تنبيه ${selectedGuardian?.name}` : `${selectedGuardian?.name} has been alerted`}
                           </p>
                         </div>
                       </div>
@@ -774,7 +780,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       {escalationCountdown > 0 && (
                         <div className="mb-3">
                           <div className="flex items-center justify-between mb-1">
-                            <span style={{ fontSize: 11, color: "rgba(255,45,85,0.6)" }}>SOS auto-escalation in</span>
+                            <span style={{ fontSize: 11, color: "rgba(255,45,85,0.6)" }}>{tr("SOS auto-escalation in", "تصعيد طوارئ تلقائي خلال")}</span>
                             <span style={{ fontSize: 18, fontWeight: 800, color: "#FF2D55" }}>{escalationCountdown}s</span>
                           </div>
                           <div className="relative rounded-full overflow-hidden h-1.5" style={{ background: "rgba(255,45,85,0.1)" }}>
@@ -793,7 +799,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                         style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontSize: 14, fontWeight: 700, color: "#00C853" }}
                       >
                         <CheckCircle2 className="size-4" />
-                        I'm OK — Cancel Alert
+                        {tr("I'm OK — Cancel Alert", "أنا بخير — إلغاء التنبيه")}
                       </motion.button>
                     </motion.div>
                   </motion.div>
@@ -806,7 +812,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {import.meta.env.DEV && (
               <div className="px-5 mb-4">
                 <p className="mb-2" style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.08)", letterSpacing: "0.5px" }}>
-                  DEMO SIMULATION
+                  {tr("DEMO SIMULATION", "محاكاة تجريبية")}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -818,7 +824,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       fontSize: 11, fontWeight: 600, color: isMoving ? "#00C853" : "rgba(255,255,255,0.2)",
                     }}
                   >
-                    <Navigation className="size-3" /> Moving
+                    <Navigation className="size-3" /> {tr("Moving", "يتحرّك")}
                   </button>
                   <button
                     onClick={() => { setIsMoving(false); setStoppedTimer(0); }}
@@ -829,14 +835,14 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       fontSize: 11, fontWeight: 600, color: !isMoving ? "#FF9500" : "rgba(255,255,255,0.2)",
                     }}
                   >
-                    <Pause className="size-3" /> Stopped
+                    <Pause className="size-3" /> {tr("Stopped", "متوقّف")}
                   </button>
                 </div>
                 {!isMoving && (
                   <div className="flex items-center gap-1.5 mt-2">
                     <Timer className="size-3" style={{ color: "rgba(255,150,0,0.5)" }} />
                     <p style={{ fontSize: 10, color: "rgba(255,150,0,0.5)" }}>
-                      Stopped for {stoppedTimer}s — alert at {stopThreshold}s
+                      {lang === "ar" ? `متوقّف منذ ${stoppedTimer} ث — تنبيه عند ${stopThreshold} ث` : `Stopped for ${stoppedTimer}s — alert at ${stopThreshold}s`}
                     </p>
                   </div>
                 )}
@@ -848,7 +854,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                 <button onClick={() => setShowQuickMsg(!showQuickMsg)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl"
                   style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)", fontSize: 12, fontWeight: 600, color: "#00C8E0" }}>
-                  <MessageSquare className="size-3.5" /> Quick Message to {selectedGuardian?.name}
+                  <MessageSquare className="size-3.5" /> {lang === "ar" ? `رسالة سريعة إلى ${selectedGuardian?.name}` : `Quick Message to ${selectedGuardian?.name}`}
                 </button>
                 <AnimatePresence>
                   {showQuickMsg && (
@@ -857,11 +863,11 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                         {QUICK_MESSAGES.map(msg => (
                           <button
                             key={msg.text}
-                            onClick={() => sendQuickMessage(`${msg.emoji} ${msg.text}`)}
+                            onClick={() => sendQuickMessage(`${msg.emoji} ${lang === "ar" ? msg.ar : msg.text}`)}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-lg"
                             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", fontSize: 11, color: "rgba(255,255,255,0.4)" }}
                           >
-                            <span style={{ fontSize: 13 }}>{msg.emoji}</span> {msg.text}
+                            <span style={{ fontSize: 13 }}>{msg.emoji}</span> {lang === "ar" ? msg.ar : msg.text}
                           </button>
                         ))}
                       </div>
@@ -883,7 +889,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   }}
                 >
                   <CheckCircle2 className="size-5" />
-                  I Arrived Safely
+                  {tr("I Arrived Safely", "وصلت بأمان")}
                 </motion.button>
 
                 <div className="flex gap-2">
@@ -892,14 +898,14 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl"
                     style={{ background: "rgba(255,150,0,0.06)", border: "1px solid rgba(255,150,0,0.12)", fontSize: 13, fontWeight: 600, color: "#FF9500" }}
                   >
-                    {phase === "paused" ? <><Play className="size-3.5" /> Resume</> : <><Pause className="size-3.5" /> Pause</>}
+                    {phase === "paused" ? <><Play className="size-3.5" /> {tr("Resume", "استئناف")}</> : <><Pause className="size-3.5" /> {tr("Pause", "إيقاف مؤقت")}</>}
                   </button>
                   <button
                     onClick={() => { if (onSOSTrigger) onSOSTrigger(); }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl"
                     style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)", fontSize: 13, fontWeight: 600, color: "#FF2D55" }}
                   >
-                    <AlertTriangle className="size-3.5" /> SOS Now
+                    <AlertTriangle className="size-3.5" /> {tr("SOS Now", "طوارئ الآن")}
                   </button>
                 </div>
               </div>
@@ -908,7 +914,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
               {events.length > 0 && (
                 <div className="px-5 mt-5">
                   <p className="mb-2" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px" }}>
-                    ACTIVITY LOG ({events.length})
+                    {lang === "ar" ? `سجلّ النشاط (${events.length})` : `ACTIVITY LOG (${events.length})`}
                   </p>
                   <div className="space-y-1">
                     {events.slice(0, 6).map(ev => (
@@ -921,7 +927,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                             {ev.message}
                           </p>
                           <p style={{ fontSize: 9, color: "rgba(255,255,255,0.1)" }}>
-                            {new Date(ev.timestamp).toLocaleTimeString()}
+                            {new Date(ev.timestamp).toLocaleTimeString(lang === "ar" ? "ar" : "en-US")}
                           </p>
                         </div>
                       </div>
@@ -960,7 +966,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   className="text-white mb-2"
                   style={{ fontSize: 24, fontWeight: 800 }}
                 >
-                  Arrived Safely!
+                  {tr("Arrived Safely!", "وصلت بأمان!")}
                 </motion.h2>
                 <motion.p
                   initial={{ y: 10, opacity: 0 }}
@@ -968,7 +974,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   transition={{ delay: 0.3 }}
                   style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginBottom: 24 }}
                 >
-                  {selectedGuardian?.name} has been notified you're safe
+                  {lang === "ar" ? `تم إخطار ${selectedGuardian?.name} بأنك بأمان` : `${selectedGuardian?.name} has been notified you're safe`}
                 </motion.p>
 
                 {/* Walk Summary */}
@@ -979,9 +985,9 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   className="grid grid-cols-3 gap-2 mb-6"
                 >
                   {[
-                    { label: "Duration", value: formatTime(walkTimer), color: "#00C8E0" },
-                    { label: "Distance", value: `${Math.round(distanceWalked)}m`, color: "#00C853" },
-                    { label: "Alerts", value: events.filter(e => e.severity === "warning").length.toString(), color: "#FF9500" },
+                    { label: tr("Duration", "المدة"), value: formatTime(walkTimer), color: "#00C8E0" },
+                    { label: tr("Distance", "المسافة"), value: `${Math.round(distanceWalked)}m`, color: "#00C853" },
+                    { label: tr("Alerts", "تنبيهات"), value: events.filter(e => e.severity === "warning").length.toString(), color: "#FF9500" },
                   ].map(s => (
                     <div key={s.label} className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
                       <p style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
@@ -1003,7 +1009,7 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                     fontSize: 15, fontWeight: 700, color: "#00C8E0",
                   }}
                 >
-                  Done
+                  {tr("Done", "تم")}
                 </motion.button>
               </div>
             </motion.div>
@@ -1027,18 +1033,18 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                   </motion.div>
                 </motion.div>
 
-                <h2 className="text-white mb-2" style={{ fontSize: 24, fontWeight: 800 }}>SOS Escalated</h2>
+                <h2 className="text-white mb-2" style={{ fontSize: 24, fontWeight: 800 }}>{tr("SOS Escalated", "تصعيد الطوارئ")}</h2>
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>
-                  You didn't respond — emergency protocol activated
+                  {tr("You didn't respond — emergency protocol activated", "لم تستجب — تم تفعيل بروتوكول الطوارئ")}
                 </p>
 
                 {/* What happened */}
                 <div className="rounded-2xl p-4 text-left mb-6" style={{ background: "rgba(255,45,85,0.04)", border: "1px solid rgba(255,45,85,0.1)" }}>
                   <div className="space-y-2.5">
                     {[
-                      { label: "Guardian alerted", desc: `${selectedGuardian?.name} received emergency notification`, done: true },
-                      { label: "Emergency contacts notified", desc: "All contacts received SOS with location", done: true },
-                      { label: "Emergency Ripple activated", desc: "3-wave alert system triggered", done: true },
+                      { label: tr("Guardian alerted", "تم تنبيه الوصيّ"), desc: lang === "ar" ? `تلقّى ${selectedGuardian?.name} إشعار الطوارئ` : `${selectedGuardian?.name} received emergency notification`, done: true },
+                      { label: tr("Emergency contacts notified", "تم إخطار جهات الطوارئ"), desc: tr("All contacts received SOS with location", "تلقّت كل الجهات نداء الطوارئ مع الموقع"), done: true },
+                      { label: tr("Emergency Ripple activated", "تم تفعيل موجة الطوارئ"), desc: tr("3-wave alert system triggered", "تشغيل نظام التنبيه ثلاثي الموجات"), done: true },
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5">
                         <CheckCircle2 className="size-4 shrink-0 mt-0.5" style={{ color: "#FF2D55" }} />
@@ -1060,20 +1066,20 @@ export function SafeWalkMode({ onBack, onSOSTrigger, isPro: _propIsPro = false, 
                       setGuardianAlerted(false);
                       setEscalationCountdown(0);
                       setStoppedTimer(0);
-                      addEvent("resume", "SOS cancelled — I'm safe", "info");
+                      addEvent("resume", tr("SOS cancelled — I'm safe", "تم إلغاء الطوارئ — أنا بأمان"), "info");
                     }}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl"
                     style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontSize: 15, fontWeight: 700, color: "#00C853" }}
                   >
                     <CheckCircle2 className="size-5" />
-                    I'm Safe — Cancel SOS
+                    {tr("I'm Safe — Cancel SOS", "أنا بأمان — إلغاء الطوارئ")}
                   </motion.button>
                   <button
                     onClick={endWalk}
                     className="w-full flex items-center justify-center gap-2 py-3 rounded-xl"
                     style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}
                   >
-                    End Walk
+                    {tr("End Walk", "إنهاء المشي")}
                   </button>
                 </div>
               </div>

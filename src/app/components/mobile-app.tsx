@@ -2683,6 +2683,7 @@ export function MobileApp() {
 
             {screen === "safe-walk" && (
               <SafeWalkMode
+                lang={lang}
                 emergencyContacts={safeWalkContacts}
                 userName={loginName}
                 userId={`EMP-${loginName.replace(/\s+/g, "")}`}
