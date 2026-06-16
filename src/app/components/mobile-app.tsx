@@ -2621,6 +2621,7 @@ export function MobileApp() {
                 onBack={() => navigate(sourceScreen, -1)}
                 userPlan={userPlan}
                 userName={loginName}
+                lang={lang}
                 onUpgrade={() => navigate("subscription")}
               />
             )}

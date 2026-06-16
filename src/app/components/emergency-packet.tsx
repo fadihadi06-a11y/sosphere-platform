@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { Lang } from "./dashboard-i18n";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft, Package, MapPin, Heart, Phone, Smartphone,
@@ -41,6 +42,7 @@ interface EmergencyPacketProps {
   userPlan: "free" | "pro" | "employee";
   onUpgrade?: () => void;
   userName?: string;
+  lang?: Lang;
 }
 
 // FIX 2026-04-23: helpers to read REAL user data from localStorage instead of
@@ -54,30 +56,31 @@ function readReal<T>(key: string, fallback: T): T {
   catch { return fallback; }
 }
 
-function readRealLocation() {
+function readRealLocation(lang: Lang) {
+  const L = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const trail = readReal<Array<{ lat: number; lng: number; timestamp: number }>>("sosphere_gps_trail", []);
   const last = trail[trail.length - 1];
   if (last) {
     return {
       lat: last.lat, lng: last.lng,
       coordinates: `${last.lat.toFixed(6)}°N, ${last.lng.toFixed(6)}°E`,
-      address: "Location captured — resolve via lat/lng", // no reverse-geocoding on device
-      lastUpdated: new Date(last.timestamp).toLocaleTimeString("en-US", { hour12: false }),
+      address: L("Location captured — resolve via lat/lng", "تم التقاط الموقع — يُحدَّد عبر الإحداثيات"),
+      lastUpdated: new Date(last.timestamp).toLocaleTimeString(lang === "ar" ? "ar" : "en-US", { hour12: false }),
       accuracy: "—",
       altitude: "—",
     };
   }
   return {
     lat: 0, lng: 0,
-    coordinates: "Not yet captured",
-    address: "GPS not acquired yet",
+    coordinates: L("Not yet captured", "لم يُلتقط بعد"),
+    address: L("GPS not acquired yet", "لم يُحدَّد GPS بعد"),
     lastUpdated: "—",
     accuracy: "—",
     altitude: "—",
   };
 }
 
-function readRealMedicalId() {
+function readRealMedicalId(lang: Lang) {
   const data = readReal<{
     bloodType?: string; conditions?: string[]; allergies?: string[];
     medications?: string[]; organDonor?: boolean; notes?: string;
@@ -87,7 +90,7 @@ function readRealMedicalId() {
     conditions: (data.conditions || []).join(", ") || "—",
     allergies: (data.allergies || []).join(", ") || "—",
     medications: (data.medications || []).join(", ") || "—",
-    organDonor: data.organDonor ? "Yes" : "No",
+    organDonor: data.organDonor ? (lang === "ar" ? "نعم" : "Yes") : (lang === "ar" ? "لا" : "No"),
     notes: data.notes?.trim() || "—",
   };
 }
@@ -105,7 +108,8 @@ function readRealContacts() {
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: EmergencyPacketProps) {
+export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName, lang = "en" }: EmergencyPacketProps) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const isPro = userPlan === "pro" || userPlan === "employee";
   const [showPreview, setShowPreview] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -158,8 +162,8 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
   }, []);
 
   // FIX 2026-04-23: compute real data once per render from storage.
-  const realLocation = readRealLocation();
-  const realMedical = readRealMedicalId();
+  const realLocation = readRealLocation(lang);
+  const realMedical = readRealMedicalId(lang);
   // CRITICAL FIX (2026-05-27): contacts are AES-GCM encrypted now; must load async.
   const [realContacts, setRealContacts] = useState<Array<{priority:number;name:string;phone:string;relation:string}>>([]);
   useEffect(() => {
@@ -206,52 +210,52 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     {
       id: "location",
       icon: MapPin,
-      label: "Live Location",
-      description: "GPS coordinates updated every 10s",
+      label: tr("Live Location", "الموقع المباشر"),
+      description: tr("GPS coordinates updated every 10s", "إحداثيات GPS تُحدَّث كل ١٠ ثوانٍ"),
       color: "#00C8E0",
       enabled: true,
       proOnly: false,
       items: [
-        { label: "Address", value: realLocation.address },
-        { label: "Coordinates", value: realLocation.coordinates },
-        { label: "Accuracy", value: realLocation.accuracy, color: "#00C853" },
-        { label: "Last Updated", value: realLocation.lastUpdated, color: "#00C8E0" },
-        { label: "Altitude", value: realLocation.altitude },
+        { label: tr("Address", "العنوان"), value: realLocation.address },
+        { label: tr("Coordinates", "الإحداثيات"), value: realLocation.coordinates },
+        { label: tr("Accuracy", "الدقة"), value: realLocation.accuracy, color: "#00C853" },
+        { label: tr("Last Updated", "آخر تحديث"), value: realLocation.lastUpdated, color: "#00C8E0" },
+        { label: tr("Altitude", "الارتفاع"), value: realLocation.altitude },
       ],
     },
     {
       id: "medical",
       icon: Heart,
-      label: "Medical ID",
-      description: "Blood type, allergies, medications, conditions",
+      label: tr("Medical ID", "البطاقة الطبية"),
+      description: tr("Blood type, allergies, medications, conditions", "فصيلة الدم، الحساسية، الأدوية، الحالات"),
       color: "#FF2D55",
       enabled: modules.medical,
       proOnly: false,
       items: [
-        { label: "Blood Type", value: realMedical.bloodType, color: "#FF2D55" },
-        { label: "Conditions", value: realMedical.conditions },
-        { label: "Allergies", value: realMedical.allergies, color: "#FF9500" },
-        { label: "Medications", value: realMedical.medications },
-        { label: "Organ Donor", value: realMedical.organDonor, color: "#00C853" },
-        { label: "Emergency Note", value: realMedical.notes },
+        { label: tr("Blood Type", "فصيلة الدم"), value: realMedical.bloodType, color: "#FF2D55" },
+        { label: tr("Conditions", "الحالات الصحية"), value: realMedical.conditions },
+        { label: tr("Allergies", "الحساسية"), value: realMedical.allergies, color: "#FF9500" },
+        { label: tr("Medications", "الأدوية"), value: realMedical.medications },
+        { label: tr("Organ Donor", "متبرّع بالأعضاء"), value: realMedical.organDonor, color: "#00C853" },
+        { label: tr("Emergency Note", "ملاحظة طارئة"), value: realMedical.notes },
       ],
     },
     {
       id: "contacts",
       icon: Users,
-      label: "Emergency Contacts",
+      label: tr("Emergency Contacts", "جهات الطوارئ"),
       description: realContacts.length === 0
-        ? "No contacts added yet"
+        ? tr("No contacts added yet", "لا جهات مضافة بعد")
         : isPro
-          ? `${realContacts.length} contact(s) with call order`
-          : `${Math.min(1, realContacts.length)} contact (Free limit)`,
+          ? (lang === "ar" ? `${realContacts.length} جهة بترتيب الاتصال` : `${realContacts.length} contact(s) with call order`)
+          : (lang === "ar" ? `${Math.min(1, realContacts.length)} جهة (حدّ المجاني)` : `${Math.min(1, realContacts.length)} contact (Free limit)`),
       color: "#00C8E0",
       enabled: modules.contacts,
       proOnly: false,
       items: realContacts.length === 0
-        ? [{ label: "Status", value: "Add at least one contact via Home or Profile", color: "#FF9500" }]
+        ? [{ label: tr("Status", "الحالة"), value: tr("Add at least one contact via Home or Profile", "أضِف جهة واحدة على الأقل من الرئيسية أو الملف"), color: "#FF9500" }]
         : realContacts.slice(0, isPro ? 10 : 1).map((c, i) => ({
-            label: i === 0 ? "#1 Priority" : `#${i + 1}`,
+            label: i === 0 ? tr("#1 Priority", "الأولوية ١") : `#${i + 1}`,
             value: `${c.name}${c.relation ? ` (${c.relation})` : ""} · ${c.phone}`,
             color: i === 0 ? "#00C853" : undefined,
           })),
@@ -259,8 +263,8 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
     {
       id: "device",
       icon: Smartphone,
-      label: "Device Info",
-      description: "Phone model, battery, network status",
+      label: tr("Device Info", "معلومات الجهاز"),
+      description: tr("Phone model, battery, network status", "طراز الهاتف، البطارية، حالة الشبكة"),
       color: "#8E8E93",
       enabled: modules.device,
       proOnly: true,
@@ -268,41 +272,41 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       // Real device info requires Capacitor Device plugin which is already
       // installed — but until wired, show honest placeholders.
       items: [
-        { label: "Device", value: typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent.slice(0, 60) : "—" },
-        { label: "Battery", value: "Captured at SOS trigger", color: "#00C853" },
-        { label: "Network", value: typeof navigator !== "undefined" && (navigator as { onLine?: boolean }).onLine ? "Online" : "Offline", color: "#00C853" },
-        { label: "App Version", value: "SOSphere (debug build)" },
+        { label: tr("Device", "الجهاز"), value: typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent.slice(0, 60) : "—" },
+        { label: tr("Battery", "البطارية"), value: tr("Captured at SOS trigger", "يُلتقط عند تفعيل SOS"), color: "#00C853" },
+        { label: tr("Network", "الشبكة"), value: typeof navigator !== "undefined" && (navigator as { onLine?: boolean }).onLine ? tr("Online", "متصل") : tr("Offline", "غير متصل"), color: "#00C853" },
+        { label: tr("App Version", "إصدار التطبيق"), value: "SOSphere (debug build)" },
       ],
     },
     {
       id: "recording",
       icon: Mic,
-      label: "Audio Recording",
-      description: isPro ? "Up to 5 min continuous recording" : "60s recording (Free limit)",
+      label: tr("Audio Recording", "تسجيل صوتي"),
+      description: isPro ? tr("Up to 5 min continuous recording", "تسجيل متواصل حتى ٥ دقائق") : tr("60s recording (Free limit)", "تسجيل ٦٠ ثانية (حدّ المجاني)"),
       color: "#FF2D55",
       enabled: modules.recording,
       proOnly: false,
       items: [
-        { label: "Max Duration", value: isPro ? "5 minutes" : "60 seconds", color: isPro ? "#00C853" : "#FF9500" },
-        { label: "Format", value: "AAC 128kbps" },
-        { label: "Auto-start", value: "On SOS activation", color: "#00C8E0" },
-        { label: "Storage", value: "Encrypted local + cloud sync", color: "#00C853" },
+        { label: tr("Max Duration", "أقصى مدة"), value: isPro ? tr("5 minutes", "٥ دقائق") : tr("60 seconds", "٦٠ ثانية"), color: isPro ? "#00C853" : "#FF9500" },
+        { label: tr("Format", "الصيغة"), value: "AAC 128kbps" },
+        { label: tr("Auto-start", "بدء تلقائي"), value: tr("On SOS activation", "عند تفعيل SOS"), color: "#00C8E0" },
+        { label: tr("Storage", "التخزين"), value: tr("Encrypted local + cloud sync", "مشفّر محلياً + مزامنة سحابية"), color: "#00C853" },
       ],
     },
     {
       id: "incident",
       icon: Clock,
-      label: "Incident Timeline",
-      description: "Real-time event log with timestamps",
+      label: tr("Incident Timeline", "الخط الزمني للحادثة"),
+      description: tr("Real-time event log with timestamps", "سجلّ أحداث لحظي بطوابع زمنية"),
       color: "#FF9500",
       enabled: modules.incident,
       proOnly: true,
       items: [
-        { label: "Events", value: "All SOS events logged with UTC timestamps" },
-        { label: "Integrity", value: "Audit trail recorded", color: "#00C853" },
-        { label: "Export", value: "PDF with digital signature", color: "#00C8E0" },
+        { label: tr("Events", "الأحداث"), value: tr("All SOS events logged with UTC timestamps", "تُسجَّل كل أحداث SOS بطوابع UTC") },
+        { label: tr("Integrity", "النزاهة"), value: tr("Audit trail recorded", "سجلّ تدقيق مُوثَّق"), color: "#00C853" },
+        { label: tr("Export", "تصدير"), value: tr("PDF with digital signature", "PDF بتوقيع رقمي"), color: "#00C8E0" },
         // B-18 (2026-04-25): admissibility is a courtroom call, not ours.
-        { label: "Legal", value: "Structured for legal review (admissibility depends on jurisdiction)" },
+        { label: tr("Legal", "قانوني"), value: tr("Structured for legal review (admissibility depends on jurisdiction)", "مُهيكَل للمراجعة القانونية (القبول يعتمد على الاختصاص القضائي)") },
       ],
     },
   ];
@@ -358,7 +362,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="flex items-center gap-1 -ml-1 p-1">
             <ChevronLeft style={{ width: 20, height: 20, color: "#00C8E0" }} />
-            <span style={{ fontSize: 15, color: "#00C8E0", fontWeight: 500 }}>Back</span>
+            <span style={{ fontSize: 15, color: "#00C8E0", fontWeight: 500 }}>{tr("Back", "رجوع")}</span>
           </button>
           <motion.button
             whileTap={{ scale: 0.95 }}
@@ -374,10 +378,10 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
           <div className="flex items-center gap-2.5 mb-1">
             <Package style={{ width: 18, height: 18, color: "#00C8E0" }} />
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>Emergency Packet</h1>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.4px" }}>{tr("Emergency Packet", "حقيبة الطوارئ")}</h1>
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
-            Data bundle sent to contacts when SOS activates
+            {tr("Data bundle sent to contacts when SOS activates", "حزمة بيانات تُرسَل لجهاتك عند تفعيل SOS")}
           </p>
         </motion.div>
 
@@ -416,7 +420,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               </motion.div>
               <div>
                 <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>
-                  {packetReady ? "Packet Ready" : "Preparing..."}
+                  {packetReady ? tr("Packet Ready", "الحقيبة جاهزة") : tr("Preparing...", "جارٍ التحضير...")}
                 </p>
                 {/* FIX 2026-04-23 (v2): the earlier span-level dir="ltr" was
                     being over-ridden by the parent RTL paragraph. Forcing
@@ -424,7 +428,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                     "4 modules active · Standby" reads correctly regardless
                     of the root language direction. */}
                 <p dir="ltr" style={{ fontSize: 11, color: packetReady ? "rgba(0,200,83,0.5)" : "rgba(255,150,0,0.5)", textAlign: "left" }}>
-                  {enabledCount} modules active · {packetReady ? "Standby" : "Loading data"}
+                  {enabledCount} {tr("modules active", "وحدة مفعّلة")} · {packetReady ? tr("Standby", "استعداد") : tr("Loading data", "تحميل البيانات")}
                 </p>
               </div>
             </div>
@@ -437,7 +441,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               }}
             >
               <span style={{ fontSize: 9, fontWeight: 700, color: packetReady ? "#00C853" : "#FF9500", letterSpacing: "0.5px" }}>
-                {packetReady ? "READY" : "LOADING"}
+                {packetReady ? tr("READY", "جاهز") : tr("LOADING", "تحميل")}
               </span>
             </div>
           </div>
@@ -447,7 +451,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
       {/* ── Modules List ── */}
       <div className="flex-1 overflow-y-auto px-5 pb-44" style={{ scrollbarWidth: "none" }}>
         <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.6px", marginBottom: 8, textTransform: "uppercase" }}>
-          Packet Modules
+          {tr("Packet Modules", "وحدات الحقيبة")}
         </p>
 
         <div className="space-y-2">
@@ -527,7 +531,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                       <ChevronRight style={{ width: 14, height: 14, color: "rgba(255,150,0,0.3)" }} />
                     ) : mod.id === "location" ? (
                       <div className="px-2 py-0.5" style={{ borderRadius: 6, background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.1)" }}>
-                        <span style={{ fontSize: 8, fontWeight: 700, color: "#00C853", letterSpacing: "0.3px" }}>ALWAYS ON</span>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: "#00C853", letterSpacing: "0.3px" }}>{tr("ALWAYS ON", "دائماً مفعّل")}</span>
                       </div>
                     ) : (
                       // FIX 2026-04-23: missed RTL fix — same pattern as
@@ -628,10 +632,10 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 </div>
                 <div className="flex-1">
                   <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>
-                    Unlock Full Packet
+                    {tr("Unlock Full Packet", "افتح الحقيبة الكاملة")}
                   </p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
-                    Device info + incident timeline + 5 min recording
+                    {tr("Device info + incident timeline + 5 min recording", "معلومات الجهاز + الخط الزمني + تسجيل ٥ دقائق")}
                   </p>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "rgba(255,150,0,0.3)" }} />
@@ -652,10 +656,10 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
             <Shield style={{ width: 12, height: 12, color: "rgba(0,200,224,0.3)", flexShrink: 0, marginTop: 1 }} />
             <div>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.6 }}>
-                Emergency Packet is automatically sent via SMS with a secure link when SOS activates. The link is unguessable, served over HTTPS, and expires after 24 hours.
+                {tr("Emergency Packet is automatically sent via SMS with a secure link when SOS activates. The link is unguessable, served over HTTPS, and expires after 24 hours.", "تُرسَل حقيبة الطوارئ تلقائياً عبر SMS برابط آمن عند تفعيل SOS. الرابط غير قابل للتخمين، يُقدَّم عبر HTTPS، وينتهي بعد ٢٤ ساعة.")}
               </p>
               <p style={{ fontSize: 9, color: "rgba(0,200,224,0.2)", marginTop: 4 }}>
-                Secure link · Expires 24h · GDPR-aligned
+                {tr("Secure link · Expires 24h · GDPR-aligned", "رابط آمن · ينتهي خلال ٢٤ ساعة · متوافق GDPR")}
               </p>
             </div>
           </div>
@@ -682,7 +686,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
             }}
           >
             <Eye style={{ width: 15, height: 15 }} />
-            Preview
+            {tr("Preview", "معاينة")}
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.97 }}
@@ -696,7 +700,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
             }}
           >
             <Share2 style={{ width: 15, height: 15 }} />
-            Test Share
+            {tr("Test Share", "مشاركة تجريبية")}
           </motion.button>
         </div>
       </div>
@@ -733,8 +737,8 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
 
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>Packet Preview</p>
-                  <p style={{ fontSize: 11, color: "rgba(0,200,224,0.4)", marginTop: 2 }}>What your contacts will receive</p>
+                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{tr("Packet Preview", "معاينة الحقيبة")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(0,200,224,0.4)", marginTop: 2 }}>{tr("What your contacts will receive", "ما سيستلمه جهاتك")}</p>
                 </div>
                 <button onClick={() => setShowPreview(false)}>
                   <X style={{ width: 18, height: 18, color: "rgba(255,255,255,0.3)" }} />
@@ -749,7 +753,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 >
                   <div className="flex items-center gap-2 mb-2.5">
                     <MessageSquare style={{ width: 12, height: 12, color: "#00C8E0" }} />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.5)", letterSpacing: "0.4px" }}>SMS MESSAGE</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,200,224,0.5)", letterSpacing: "0.4px" }}>{tr("SMS MESSAGE", "رسالة SMS")}</span>
                   </div>
                   <div
                     className="p-3"
@@ -762,10 +766,10 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                         persona. If a field is missing (user hasn't filled
                         Medical ID yet), we show a dash instead of a lie. */}
                     <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
-                      🚨 <span style={{ fontWeight: 700, color: "#FF2D55" }}>EMERGENCY ALERT</span> — {userName || "User"} needs help!
-                      <br />📍 {realLocation.coordinates === "Not yet captured" ? "Location pending" : realLocation.coordinates}
-                      <br />🩸 Blood: {realMedical.bloodType} | Allergies: {realMedical.allergies}
-                      <br />🔗 Live: sosphere.co/e/{Date.now().toString(36).slice(-6).toUpperCase()}
+                      🚨 <span style={{ fontWeight: 700, color: "#FF2D55" }}>{tr("EMERGENCY ALERT", "تنبيه طوارئ")}</span> — {userName || "User"} {tr("needs help!", "يحتاج مساعدة!")}
+                      <br />📍 {realLocation.lat === 0 && realLocation.lng === 0 ? tr("Location pending", "الموقع قيد التحديد") : realLocation.coordinates}
+                      <br />🩸 {tr("Blood", "الدم")}: {realMedical.bloodType} | {tr("Allergies", "الحساسية")}: {realMedical.allergies}
+                      <br />🔗 {tr("Live", "مباشر")}: sosphere.co/e/{Date.now().toString(36).slice(-6).toUpperCase()}
                     </p>
                   </div>
                 </div>
@@ -777,7 +781,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 >
                   <div className="flex items-center gap-2 mb-2.5">
                     <Globe style={{ width: 12, height: 12, color: "rgba(255,255,255,0.25)" }} />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.15)", letterSpacing: "0.4px" }}>WEB PAGE PREVIEW</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.15)", letterSpacing: "0.4px" }}>{tr("WEB PAGE PREVIEW", "معاينة صفحة الويب")}</span>
                   </div>
                   <div className="space-y-2">
                     {packetModules
@@ -788,7 +792,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                           <div key={m.id} className="flex items-center gap-2.5 py-2 px-3" style={{ borderRadius: 10, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.025)" }}>
                             <MIcon style={{ width: 12, height: 12, color: m.color }} />
                             <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{m.label}</span>
-                            <span style={{ fontSize: 9, color: "rgba(0,200,83,0.4)", marginLeft: "auto" }}>✓ Included</span>
+                            <span style={{ fontSize: 9, color: "rgba(0,200,83,0.4)", marginLeft: "auto" }}>✓ {tr("Included", "مُضمَّن")}</span>
                           </div>
                         );
                       })}
@@ -798,7 +802,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 {/* Expiry Notice */}
                 <div className="flex items-center gap-2 px-3 py-2.5" style={{ borderRadius: 10, background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.08)" }}>
                   <Clock style={{ width: 11, height: 11, color: "#FF9500" }} />
-                  <span style={{ fontSize: 10, color: "rgba(255,150,0,0.5)" }}>Link expires 24 hours after incident ends</span>
+                  <span style={{ fontSize: 10, color: "rgba(255,150,0,0.5)" }}>{tr("Link expires 24 hours after incident ends", "ينتهي الرابط بعد ٢٤ ساعة من انتهاء الحادثة")}</span>
                 </div>
               </div>
             </motion.div>
@@ -837,8 +841,8 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
 
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>Test Share</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>Send a test packet to yourself</p>
+                  <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{tr("Test Share", "مشاركة تجريبية")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>{tr("Send a test packet to yourself", "أرسل حقيبة تجريبية لنفسك")}</p>
                 </div>
                 <button onClick={() => setShowShareSheet(false)}>
                   <X style={{ width: 18, height: 18, color: "rgba(255,255,255,0.3)" }} />
@@ -848,9 +852,9 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
               {/* Share Options */}
               <div className="space-y-2 mb-5">
                 {[
-                  { icon: MessageSquare, label: "SMS", detail: "Send test SMS to your phone", color: "#00C853" },
-                  { icon: Mail, label: "Email", detail: "Send full report to your email", color: "#00C8E0" },
-                  { icon: Globe, label: "WhatsApp", detail: "Share via WhatsApp", color: "#25D366" },
+                  { icon: MessageSquare, label: "SMS", detail: tr("Send test SMS to your phone", "أرسل SMS تجريبية إلى هاتفك"), color: "#00C853" },
+                  { icon: Mail, label: "Email", detail: tr("Send full report to your email", "أرسل تقريراً كاملاً إلى بريدك"), color: "#00C8E0" },
+                  { icon: Globe, label: "WhatsApp", detail: tr("Share via WhatsApp", "شارك عبر واتساب"), color: "#25D366" },
                 ].map(opt => {
                   const OptIcon = opt.icon;
                   return (
@@ -893,7 +897,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 }}
               >
                 {copied ? <Check style={{ width: 14, height: 14 }} /> : <Copy style={{ width: 14, height: 14 }} />}
-                {copied ? "Copied!" : "Copy Packet Info"}
+                {copied ? tr("Copied!", "تم النسخ!") : tr("Copy Packet Info", "انسخ معلومات الحقيبة")}
               </motion.button>
             </motion.div>
           </>
@@ -952,9 +956,9 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                 >
                   ×
                 </button>
-                <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>Emergency QR</p>
+                <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 700 }}>{tr("Emergency QR", "رمز QR للطوارئ")}</p>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginBottom: 16 }}>
-                  Scan for instant packet access
+                  {tr("Scan for instant packet access", "امسح للوصول الفوري للحقيبة")}
                 </p>
                 <div
                   className="p-4 mb-4"
@@ -969,8 +973,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                   />
                 </div>
                 <p style={{ fontSize: 9, color: "rgba(0,200,224,0.3)", textAlign: "center", lineHeight: 1.5 }}>
-                  First responders can scan this code
-                  <br />to access your emergency information
+                  {tr("First responders can scan this code to access your emergency information", "يمكن لرجال الإنقاذ مسح هذا الرمز للوصول إلى معلومات الطوارئ الخاصة بك")}
                 </p>
                 <button
                   onClick={() => setShowQR(false)}
@@ -982,7 +985,7 @@ export function EmergencyPacket({ onBack, userPlan, onUpgrade, userName }: Emerg
                     fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.4)",
                   }}
                 >
-                  Close
+                  {tr("Close", "إغلاق")}
                 </button>
               </div>
             </motion.div>
