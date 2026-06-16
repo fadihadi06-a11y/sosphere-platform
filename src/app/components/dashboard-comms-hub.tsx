@@ -9,26 +9,26 @@ import { BroadcastPage } from "./dashboard-broadcast";
 import { DashboardEvacuationPage } from "./dashboard-evacuation-page";
 
 // ── Tab Bar ──────────────────────────────────────────────────────
-type Tab = { id: string; label: string; icon: React.ElementType; desc: string; accentColor: string };
+type Tab = { id: string; labelKey: string; icon: React.ElementType; descKey: string; accentColor: string };
 
 const TABS: Tab[] = [
   {
     id: "broadcast",
-    label: "Broadcast",
+    labelKey: "comms.broadcast",
     icon: Megaphone,
-    desc: "Send prioritized alerts & announcements to any group or zone",
+    descKey: "comms.broadcastDesc",
     accentColor: "#00C8E0",
   },
   {
     id: "evacuation",
-    label: "Evacuation",
+    labelKey: "comms.evacuation",
     icon: Target,
-    desc: "Trigger evacuation protocol & track employee muster status",
+    descKey: "comms.evacuationDesc",
     accentColor: "#FF9500",
   },
 ];
 
-function CommsTabBar({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
+function CommsTabBar({ active, onSelect, t }: { active: string; onSelect: (id: string) => void; t: (k: string) => string }) {
   return (
     <div
       className="flex items-center gap-1 mx-4 mt-4 p-1 rounded-2xl"
@@ -73,7 +73,7 @@ function CommsTabBar({ active, onSelect }: { active: string; onSelect: (id: stri
                 letterSpacing: "-0.1px",
               }}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </span>
           </motion.button>
         );
@@ -82,7 +82,7 @@ function CommsTabBar({ active, onSelect }: { active: string; onSelect: (id: stri
   );
 }
 
-function ContextBanner({ tabId }: { tabId: string }) {
+function ContextBanner({ tabId, t }: { tabId: string; t: (k: string) => string }) {
   const tab = TABS.find(t => t.id === tabId);
   if (!tab) return null;
   const Icon = tab.icon;
@@ -98,7 +98,7 @@ function ContextBanner({ tabId }: { tabId: string }) {
       }}
     >
       <Icon style={{ width: 12, height: 12, color: tab.accentColor, flexShrink: 0 }} />
-      <span style={{ fontSize: 10, color: `${tab.accentColor}AA`, fontWeight: 500 }}>{tab.desc}</span>
+      <span style={{ fontSize: 10, color: `${tab.accentColor}AA`, fontWeight: 500 }}>{t(tab.descKey)}</span>
     </motion.div>
   );
 }
@@ -115,8 +115,8 @@ export function CommsHubPage({ t, webMode = false, initialTab = "broadcast" }: C
 
   return (
     <div className="flex flex-col h-full">
-      <CommsTabBar active={activeTab} onSelect={setActiveTab} />
-      <ContextBanner tabId={activeTab} />
+      <CommsTabBar active={activeTab} onSelect={setActiveTab} t={t} />
+      <ContextBanner tabId={activeTab} t={t} />
 
       <AnimatePresence mode="wait">
         <motion.div

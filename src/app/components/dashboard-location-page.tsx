@@ -11,15 +11,15 @@ import { GPSCompliancePage } from "./dashboard-gps-compliance";
 import { useDashboardStore } from "./stores/dashboard-store";
 
 // ── Tab Bar ──────────────────────────────────────────────────────
-type Tab = { id: string; label: string; icon: React.ElementType; desc: string };
+type Tab = { id: string; labelKey: string; icon: React.ElementType; descKey: string };
 
 const TABS: Tab[] = [
-  { id: "zones",    label: "Zones",       icon: MapPin,    desc: "Site zones with risk levels & employee counts" },
-  { id: "geofence", label: "Geofencing",  icon: Crosshair, desc: "Draw & configure virtual perimeters with alert rules" },
-  { id: "gps",      label: "GPS Compliance", icon: Satellite, desc: "Real-time zone compliance monitoring (auto-checks every 15 min)" },
+  { id: "zones",    labelKey: "loc.zones",    icon: MapPin,    descKey: "loc.zonesDesc" },
+  { id: "geofence", labelKey: "loc.geofence", icon: Crosshair, descKey: "loc.geofenceDesc" },
+  { id: "gps",      labelKey: "loc.gps",      icon: Satellite, descKey: "loc.gpsDesc" },
 ];
 
-function LocationTabBar({ active, onSelect }: { active: string; onSelect: (id: string) => void }) {
+function LocationTabBar({ active, onSelect, t }: { active: string; onSelect: (id: string) => void; t: (k: string) => string }) {
   return (
     <div
       className="flex items-center gap-1 mx-4 mt-4 p-1 rounded-2xl"
@@ -59,7 +59,7 @@ function LocationTabBar({ active, onSelect }: { active: string; onSelect: (id: s
                 letterSpacing: "-0.1px",
               }}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </span>
           </motion.button>
         );
@@ -68,7 +68,7 @@ function LocationTabBar({ active, onSelect }: { active: string; onSelect: (id: s
   );
 }
 
-function ContextBanner({ tabId }: { tabId: string }) {
+function ContextBanner({ tabId, t }: { tabId: string; t: (k: string) => string }) {
   const tab = TABS.find(t => t.id === tabId);
   if (!tab) return null;
   const Icon = tab.icon;
@@ -81,7 +81,7 @@ function ContextBanner({ tabId }: { tabId: string }) {
       style={{ background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.10)" }}
     >
       <Icon style={{ width: 12, height: 12, color: "#00C8E0", flexShrink: 0 }} />
-      <span style={{ fontSize: 10, color: "rgba(0,200,224,0.7)", fontWeight: 500 }}>{tab.desc}</span>
+      <span style={{ fontSize: 10, color: "rgba(0,200,224,0.7)", fontWeight: 500 }}>{t(tab.descKey)}</span>
     </motion.div>
   );
 }
@@ -98,8 +98,8 @@ export function LocationZonesPage({ t, webMode = false }: LocationPageProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <LocationTabBar active={activeTab} onSelect={setActiveTab} />
-      <ContextBanner tabId={activeTab} />
+      <LocationTabBar active={activeTab} onSelect={setActiveTab} t={t} />
+      <ContextBanner tabId={activeTab} t={t} />
 
       <AnimatePresence mode="wait">
         <motion.div

@@ -22,6 +22,8 @@ export const LANG_META: Record<Lang, { label: string; native: string; dir: "ltr"
 
 const S: Record<Lang, Record<string, string>> = {
   en: {
+    "loc.zones":"Zones","loc.zonesDesc":"Site zones with risk levels & employee counts","loc.geofence":"Geofencing","loc.geofenceDesc":"Draw & configure virtual perimeters with alert rules","loc.gps":"GPS Compliance","loc.gpsDesc":"Real-time zone compliance monitoring (auto-checks every 15 min)",
+    "comms.broadcast":"Broadcast","comms.broadcastDesc":"Send prioritized alerts & announcements to any group or zone","comms.evacuation":"Evacuation","comms.evacuationDesc":"Trigger evacuation protocol & track employee muster status",
     "nav.ops":"OPERATIONS","nav.mgmt":"MANAGEMENT","nav.overview":"Operations","nav.emg":"Emergencies",
     "nav.incidents":"Incident History","nav.emp":"Employees","nav.zones":"Zones","nav.attend":"Attendance",
     "nav.settings":"Settings","nav.cmd":"Command Center","nav.risk":"Risk Map",
@@ -143,6 +145,8 @@ const S: Record<Lang, Record<string, string>> = {
     "rbac.role":"Role",
   },
   ar: {
+    "loc.zones":"المناطق","loc.zonesDesc":"مناطق الموقع مع مستويات المخاطر وأعداد الموظفين","loc.geofence":"السياج الجغرافي","loc.geofenceDesc":"ارسم وكوّن محيطات افتراضية مع قواعد التنبيه","loc.gps":"امتثال GPS","loc.gpsDesc":"مراقبة امتثال المناطق لحظياً (فحص تلقائي كل 15 دقيقة)",
+    "comms.broadcast":"بثّ","comms.broadcastDesc":"أرسل تنبيهات وإعلانات ذات أولوية إلى أي مجموعة أو منطقة","comms.evacuation":"إخلاء","comms.evacuationDesc":"فعّل بروتوكول الإخلاء وتتبّع حالة تجمّع الموظفين",
     "nav.ops":"العمليات","nav.mgmt":"الإدارة","nav.overview":"العمليات","nav.emg":"الطوارئ",
     "nav.incidents":"سجل الحوادث","nav.emp":"الموظفون","nav.zones":"المناطق","nav.attend":"الحضور",
     "nav.settings":"الإعدادات","nav.cmd":"مركز القيادة","nav.risk":"خريطة المخاطر",
