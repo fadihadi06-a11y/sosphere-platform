@@ -24,6 +24,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { CloudLightning, Plus, Edit3, Trash2, Save, X, AlertTriangle, CheckCircle2, Lock, RefreshCw, Zap } from "lucide-react";
 import { TOKENS, TYPOGRAPHY, PageHeader } from "./design-system";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 import {
   loadSchedules,
   upsertSchedule,
@@ -82,6 +84,8 @@ function rowToInput(r: WeatherScheduleRow): WeatherScheduleInput {
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [schedules, setSchedules] = useState<WeatherScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -134,9 +138,9 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
     try {
       const result = await upsertSchedule(editing.input);
       if (!result.ok) {
-        setToast({ kind: "err", msg: result.error ?? "Save failed" });
+        setToast({ kind: "err", msg: result.error ?? t("wea.saveFailed") });
       } else {
-        setToast({ kind: "ok", msg: `Schedule for "${editing.input.zoneId ?? "site"}" saved` });
+        setToast({ kind: "ok", msg: `${t("wea.scheduleForPrefix")}"${editing.input.zoneId ?? t("wea.site")}"${t("wea.savedSuffix")}` });
         setEditing(null);
         await refresh();
       }
@@ -147,16 +151,16 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
 
   async function handleDelete(row: WeatherScheduleRow) {
     if (deleteTypedId !== row.id) {
-      setToast({ kind: "err", msg: "Typed id does not match" });
+      setToast({ kind: "err", msg: t("wea.typedIdMismatch") });
       return;
     }
     setBusy(true);
     try {
       const result = await deleteSchedule(row.company_id, row.zone_id);
       if (!result.ok) {
-        setToast({ kind: "err", msg: result.error ?? "Delete failed" });
+        setToast({ kind: "err", msg: result.error ?? t("wea.deleteFailed") });
       } else {
-        setToast({ kind: "ok", msg: `Schedule deleted` });
+        setToast({ kind: "ok", msg: t("wea.scheduleDeleted") });
         setConfirmDelete(null);
         setDeleteTypedId("");
         await refresh();
@@ -171,9 +175,9 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
     try {
       const result = await requestObservation(row.company_id, row.zone_id, row.lat, row.lng);
       if (!result.ok) {
-        setToast({ kind: "err", msg: result.error ?? "Fetch failed" });
+        setToast({ kind: "err", msg: result.error ?? t("wea.fetchFailed") });
       } else {
-        setToast({ kind: "ok", msg: `Fetched ${row.zone_id ?? "site"} (saved to weather_log)` });
+        setToast({ kind: "ok", msg: `${t("wea.fetchedPrefix")}${row.zone_id ?? t("wea.site")}${t("wea.fetchedSuffix")}` });
         await refresh();
       }
     } finally {
@@ -186,8 +190,8 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
     return (
       <div style={{ padding: 24 }}>
         <PageHeader
-          title="Weather Monitoring"
-          description="Schedule + manage per-zone weather observations"
+          title={t("wea.title")}
+          description={t("wea.descriptionGuard")}
           icon={CloudLightning}
         />
         <div style={{
@@ -197,10 +201,10 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
         }}>
           <Lock size={36} color={TOKENS.accent.danger} style={{ margin: "0 auto 12px" }} />
           <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.text.primary, marginBottom: 6 }}>
-            Super Admin Only
+            {t("wea.superAdminOnly")}
           </div>
           <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>
-            Weather schedules drive OpenWeather API costs + sweep timing. Only platform super-admins can edit.
+            {t("wea.superAdminOnlyDesc")}
           </div>
         </div>
       </div>
@@ -211,10 +215,10 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="Weather Monitoring"
-        description="Schedule + manage per-zone weather observations (OpenWeather)"
+        title={t("wea.title")}
+        description={t("wea.descriptionMain")}
         icon={CloudLightning}
-        badge={{ label: `${enabledCount} enabled · ${dueCount} due now`, pulse: dueCount > 0 }}
+        badge={{ label: `${enabledCount} ${t("wea.badgeEnabled")} · ${dueCount} ${t("wea.badgeDueNow")}`, pulse: dueCount > 0 }}
       />
 
       <div style={{ display: "flex", gap: 8, marginTop: 20, marginBottom: 16 }}>
@@ -230,7 +234,7 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
             ...TYPOGRAPHY.bodySm,
           }}
         >
-          <Plus size={14} /> New Schedule
+          <Plus size={14} /> {t("wea.newSchedule")}
         </button>
         <button
           onClick={refresh}
@@ -243,19 +247,19 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
             ...TYPOGRAPHY.bodySm,
           }}
         >
-          Refresh
+          {t("wea.refresh")}
         </button>
       </div>
 
       {loadError && (
         <div style={{ padding: 12, borderRadius: TOKENS.radius.small, background: "rgba(255,45,85,0.1)", color: TOKENS.accent.danger, marginBottom: 16 }}>
           <AlertTriangle size={14} style={{ display: "inline", marginRight: 6 }} />
-          Failed to load schedules: {loadError}
+          {t("wea.failedToLoad")} {loadError}
         </div>
       )}
 
       {loading && !schedules.length && (
-        <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>Loading schedules…</div>
+        <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>{t("wea.loadingSchedules")}</div>
       )}
 
       {!loading && schedules.length === 0 && (
@@ -265,7 +269,7 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
           textAlign: "center", color: TOKENS.text.muted,
           ...TYPOGRAPHY.bodySm,
         }}>
-          No weather schedules yet. Click <strong>New Schedule</strong> to start monitoring a zone.
+          {t("wea.emptyPrefix")} <strong>{t("wea.newSchedule")}</strong> {t("wea.emptySuffix")}
         </div>
       )}
 
@@ -274,13 +278,13 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
           <table style={{ width: "100%", borderCollapse: "collapse", background: TOKENS.bg.surface }}>
             <thead>
               <tr style={{ background: TOKENS.bg.elevated }}>
-                <th style={thStyle}>Zone</th>
-                <th style={thStyle}>Coords</th>
-                <th style={thStyle}>Freq</th>
-                <th style={thStyle}>Last fetch</th>
-                <th style={thStyle}>Next</th>
-                <th style={thStyle}>Status</th>
-                <th style={{ ...thStyle, width: 180 }}>Actions</th>
+                <th style={thStyle}>{t("wea.colZone")}</th>
+                <th style={thStyle}>{t("wea.colCoords")}</th>
+                <th style={thStyle}>{t("wea.colFreq")}</th>
+                <th style={thStyle}>{t("wea.colLastFetch")}</th>
+                <th style={thStyle}>{t("wea.colNext")}</th>
+                <th style={thStyle}>{t("wea.colStatus")}</th>
+                <th style={{ ...thStyle, width: 180 }}>{t("wea.colActions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -288,26 +292,26 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
                 const next = nextFetchAt(s);
                 return (
                   <tr key={s.id} style={{ borderTop: `1px solid ${TOKENS.border.subtle}` }}>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.zone_id ?? <em style={{ color: TOKENS.text.muted }}>site-wide</em>}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.zone_id ?? <em style={{ color: TOKENS.text.muted }}>{t("wea.siteWide")}</em>}</td>
                     <td style={{ ...tdStyle, fontFamily: "monospace", color: TOKENS.text.muted }}>
                       {s.lat.toFixed(4)}, {s.lng.toFixed(4)}
                     </td>
-                    <td style={tdStyle}>{s.frequency_minutes}m</td>
+                    <td style={tdStyle}>{s.frequency_minutes}{t("wea.minUnit")}</td>
                     <td style={tdStyle}>{formatLastFetched(s.last_fetched_at)}</td>
                     <td style={tdStyle}>{formatTimeUntil(next)}</td>
                     <td style={tdStyle}>
                       {s.last_error
-                        ? <span style={{ color: TOKENS.accent.danger }} title={s.last_error}>⚠ error</span>
+                        ? <span style={{ color: TOKENS.accent.danger }} title={s.last_error}>⚠ {t("wea.statusError")}</span>
                         : s.enabled
-                          ? <span style={{ color: TOKENS.accent.success }}>● enabled</span>
-                          : <span style={{ color: TOKENS.text.muted }}>○ paused</span>}
+                          ? <span style={{ color: TOKENS.accent.success }}>● {t("wea.statusEnabled")}</span>
+                          : <span style={{ color: TOKENS.text.muted }}>○ {t("wea.statusPaused")}</span>}
                     </td>
                     <td style={tdStyle}>
                       <button
                         onClick={() => handleFetchNow(s)}
                         disabled={busy || fetchingId === s.id}
                         style={iconBtnStyle}
-                        title="Fetch now (manual)"
+                        title={t("wea.fetchNowTooltip")}
                       >
                         {fetchingId === s.id
                           ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} />
@@ -317,13 +321,13 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
                         onClick={() => setEditing({ input: rowToInput(s), isNew: false })}
                         disabled={busy}
                         style={{ ...iconBtnStyle, marginLeft: 6 }}
-                        title="Edit"
+                        title={t("wea.editTooltip")}
                       ><Edit3 size={13} /></button>
                       <button
                         onClick={() => { setConfirmDelete(s); setDeleteTypedId(""); }}
                         disabled={busy}
                         style={{ ...iconBtnStyle, color: TOKENS.accent.danger, marginLeft: 6 }}
-                        title="Delete"
+                        title={t("wea.deleteTooltip")}
                       ><Trash2 size={13} /></button>
                     </td>
                   </tr>
@@ -340,22 +344,22 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.text.primary }}>
-                {editing.isNew ? "New Schedule" : "Edit Schedule"}
+                {editing.isNew ? t("wea.newSchedule") : t("wea.editSchedule")}
               </div>
               <button onClick={() => setEditing(null)} disabled={busy} style={iconBtnStyle}><X size={16} /></button>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Zone ID (empty for site-wide)" value={editing.input.zoneId ?? ""}
+              <Field label={t("wea.fieldZoneId")} value={editing.input.zoneId ?? ""}
                 onChange={v => setEditing({ ...editing, input: { ...editing.input, zoneId: v.trim() === "" ? null : v.trim() } })}
                 disabled={busy || !editing.isNew} />
-              <Field label="Frequency (min, 15-1440)" type="number" value={String(editing.input.frequencyMinutes)}
+              <Field label={t("wea.fieldFrequency")} type="number" value={String(editing.input.frequencyMinutes)}
                 onChange={v => setEditing({ ...editing, input: { ...editing.input, frequencyMinutes: Number(v) || 60 } })}
                 disabled={busy} />
-              <Field label="Latitude (-90 to 90)" type="number" value={String(editing.input.lat)}
+              <Field label={t("wea.fieldLatitude")} type="number" value={String(editing.input.lat)}
                 onChange={v => setEditing({ ...editing, input: { ...editing.input, lat: Number(v) || 0 } })}
                 disabled={busy} />
-              <Field label="Longitude (-180 to 180)" type="number" value={String(editing.input.lng)}
+              <Field label={t("wea.fieldLongitude")} type="number" value={String(editing.input.lng)}
                 onChange={v => setEditing({ ...editing, input: { ...editing.input, lng: Number(v) || 0 } })}
                 disabled={busy} />
 
@@ -363,18 +367,18 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
                 <input type="checkbox" checked={editing.input.enabled}
                   onChange={e => setEditing({ ...editing, input: { ...editing.input, enabled: e.target.checked } })}
                   disabled={busy} />
-                Enabled (cron will fetch this schedule)
+                {t("wea.enabledCheckbox")}
               </label>
             </div>
 
             <div style={{ marginTop: 12, padding: 10, background: TOKENS.bg.elevated, borderRadius: TOKENS.radius.small, ...TYPOGRAPHY.micro, color: TOKENS.text.muted }}>
-              💡 Common coords: Baghdad (33.3152, 44.3661) · Basra (30.5085, 47.7804) · Erbil (36.1911, 43.9931) · Mosul (36.3450, 43.1450)
+              💡 {t("wea.commonCoords")} {t("wea.cityBaghdad")} (33.3152, 44.3661) · {t("wea.cityBasra")} (30.5085, 47.7804) · {t("wea.cityErbil")} (36.1911, 43.9931) · {t("wea.cityMosul")} (36.3450, 43.1450)
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-              <button onClick={() => setEditing(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>Cancel</button>
+              <button onClick={() => setEditing(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>{t("wea.cancel")}</button>
               <button onClick={handleSave} disabled={busy} style={{ ...btnStyle, background: TOKENS.accent.primary, color: "#fff" }}>
-                <Save size={13} style={{ marginRight: 6 }} /> {busy ? "Saving…" : "Save"}
+                <Save size={13} style={{ marginRight: 6 }} /> {busy ? t("wea.saving") : t("wea.save")}
               </button>
             </div>
           </div>
@@ -387,11 +391,11 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
           <div style={{ ...modalStyle, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.accent.danger, marginBottom: 12 }}>
               <AlertTriangle size={18} style={{ display: "inline", marginRight: 6 }} />
-              Delete schedule?
+              {t("wea.deleteScheduleTitle")}
             </div>
             <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, marginBottom: 8 }}>
-              Removes monitoring for <strong>{confirmDelete.zone_id ?? "site-wide"}</strong> at ({confirmDelete.lat}, {confirmDelete.lng}).
-              Past observations in <code>weather_log</code> are kept. Type the id to confirm:
+              {t("wea.deleteRemovesPrefix")} <strong>{confirmDelete.zone_id ?? t("wea.siteWide")}</strong> {t("wea.deleteAt")} ({confirmDelete.lat}, {confirmDelete.lng}).
+              {" "}{t("wea.deleteKeptSuffix")}
             </p>
             <p style={{ ...TYPOGRAPHY.micro, fontFamily: "monospace", color: TOKENS.text.muted, marginBottom: 8, wordBreak: "break-all" }}>
               {confirmDelete.id}
@@ -399,7 +403,7 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
             <input
               type="text" value={deleteTypedId}
               onChange={(e) => setDeleteTypedId(e.target.value)}
-              placeholder="Paste the id above" disabled={busy}
+              placeholder={t("wea.pasteIdPlaceholder")} disabled={busy}
               style={{
                 width: "100%", padding: "8px 12px",
                 background: TOKENS.bg.elevated, color: TOKENS.text.primary,
@@ -409,13 +413,13 @@ export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps)
               }}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={() => setConfirmDelete(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>Cancel</button>
+              <button onClick={() => setConfirmDelete(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>{t("wea.cancel")}</button>
               <button
                 onClick={() => handleDelete(confirmDelete)}
                 disabled={busy || deleteTypedId !== confirmDelete.id}
                 style={{ ...btnStyle, background: TOKENS.accent.danger, color: "#fff", opacity: deleteTypedId !== confirmDelete.id ? 0.5 : 1 }}
               >
-                <Trash2 size={13} style={{ marginRight: 6 }} /> {busy ? "Deleting…" : "Delete"}
+                <Trash2 size={13} style={{ marginRight: 6 }} /> {busy ? t("wea.deleting") : t("wea.delete")}
               </button>
             </div>
           </div>

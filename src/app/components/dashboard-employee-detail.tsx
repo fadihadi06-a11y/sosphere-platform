@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { hapticLight } from "./haptic-feedback";
 import { getRealAuditLog } from "./audit-log-store";
 import { fetchTrainingRecords, type TrainingRecord } from "./risk-register-service";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 interface EmployeeDetailProps {
   employee: Employee | null;
@@ -24,20 +26,20 @@ interface EmployeeDetailProps {
 
 // Mock extended data
 const MOCK_ACTIVITY = [
-  { time: "08:01", action: "Checked in via mobile app", color: "#00C853", icon: CheckCircle2 },
-  { time: "08:15", action: "Entered Zone A - North Gate", color: "#00C8E0", icon: MapPin },
-  { time: "09:30", action: "Completed safety briefing", color: "#7B5EFF", icon: Shield },
-  { time: "10:45", action: "Reported minor hazard (wet floor)", color: "#FF9500", icon: AlertTriangle },
-  { time: "11:00", action: "Hazard acknowledged by supervisor", color: "#00C853", icon: CheckCircle2 },
-  { time: "12:00", action: "Break started", color: "rgba(255,255,255,0.3)", icon: Clock },
-  { time: "12:30", action: "Break ended, re-entered Zone A", color: "#00C8E0", icon: MapPin },
-  { time: "14:02", action: "Last GPS ping received", color: "#00C853", icon: Wifi },
+  { time: "08:01", actionKey: "empdt.act.checkedIn", color: "#00C853", icon: CheckCircle2 },
+  { time: "08:15", actionKey: "empdt.act.enteredZoneA", color: "#00C8E0", icon: MapPin },
+  { time: "09:30", actionKey: "empdt.act.briefing", color: "#7B5EFF", icon: Shield },
+  { time: "10:45", actionKey: "empdt.act.hazard", color: "#FF9500", icon: AlertTriangle },
+  { time: "11:00", actionKey: "empdt.act.hazardAck", color: "#00C853", icon: CheckCircle2 },
+  { time: "12:00", actionKey: "empdt.act.breakStart", color: "rgba(255,255,255,0.3)", icon: Clock },
+  { time: "12:30", actionKey: "empdt.act.breakEnd", color: "#00C8E0", icon: MapPin },
+  { time: "14:02", actionKey: "empdt.act.lastGps", color: "#00C853", icon: Wifi },
 ];
 
 const MOCK_INCIDENTS = [
-  { date: "Mar 2, 2026", type: "Missed Check-in", severity: "medium", resolved: true },
-  { date: "Feb 18, 2026", type: "Geofence Breach", severity: "low", resolved: true },
-  { date: "Jan 5, 2026", type: "SOS Triggered (false alarm)", severity: "high", resolved: true },
+  { date: "Mar 2, 2026", typeKey: "empdt.inc.missedCheckin", severity: "medium", resolved: true },
+  { date: "Feb 18, 2026", typeKey: "empdt.inc.geofence", severity: "low", resolved: true },
+  { date: "Jan 5, 2026", typeKey: "empdt.inc.sosFalse", severity: "high", resolved: true },
 ];
 
 const MOCK_CERTIFICATIONS = [
@@ -48,13 +50,15 @@ const MOCK_CERTIFICATIONS = [
 ];
 
 const MOCK_SHIFTS = [
-  { date: "Today", shift: "06:00 – 14:00", status: "on-shift" },
-  { date: "Tomorrow", shift: "06:00 – 14:00", status: "scheduled" },
-  { date: "Mar 10", shift: "14:00 – 22:00", status: "scheduled" },
-  { date: "Mar 11", shift: "Day Off", status: "off" },
+  { dateKey: "empdt.shift.today", shift: "06:00 – 14:00", status: "on-shift" },
+  { dateKey: "empdt.shift.tomorrow", shift: "06:00 – 14:00", status: "scheduled" },
+  { dateKey: "empdt.shift.mar10", shift: "14:00 – 22:00", status: "scheduled" },
+  { dateKey: "empdt.shift.mar11", shiftKey: "empdt.shift.dayOff", status: "off" },
 ];
 
 export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: EmployeeDetailProps) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [activeTab, setActiveTab] = useState<"overview" | "activity" | "incidents" | "schedule">("overview");
   // Certifications pulled from the shared training_records table (P3-#11i).
   // We fetch the whole list once on mount and filter client-side by
@@ -103,7 +107,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
         const isCheckin   = e.action?.includes("checkin") || e.action?.includes("check");
         return {
           time,
-          action: e.detail || e.action || "Activity recorded",
+          action: e.detail || e.action || t("empdt.activityRecorded"),
           color: isEmergency ? "#FF2D55" : isCheckin ? "#00C853" : "#00C8E0",
           icon: isEmergency ? AlertTriangle : isCheckin ? CheckCircle2 : Activity,
         };
@@ -130,7 +134,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
         const isSOS = e.action?.includes("sos") || e.detail?.toLowerCase().includes("sos");
         return {
           date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          type: isSOS ? "SOS Triggered" : e.action?.includes("fall") ? "Fall Detected" : e.action?.includes("hazard") ? "Hazard Reported" : "Incident",
+          type: isSOS ? t("empdt.inc.sosTriggered") : e.action?.includes("fall") ? t("empdt.inc.fallDetected") : e.action?.includes("hazard") ? t("empdt.inc.hazardReported") : t("empdt.inc.generic"),
           severity: isSOS ? "high" : "medium",
           resolved: isResolved,
         };
@@ -143,20 +147,20 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
     : employee.status === "on-shift" || employee.status === "checked-in" ? "#00C853"
     : "rgba(255,255,255,0.2)";
 
-  const statusLabel = employee.status === "sos" ? "SOS ACTIVE"
-    : employee.status === "late-checkin" ? "Late Check-in"
-    : employee.status === "on-shift" ? "On Shift"
-    : employee.status === "checked-in" ? "Checked In"
-    : "Off Shift";
+  const statusLabel = employee.status === "sos" ? t("empdt.status.sos")
+    : employee.status === "late-checkin" ? t("empdt.status.lateCheckin")
+    : employee.status === "on-shift" ? t("empdt.status.onShift")
+    : employee.status === "checked-in" ? t("empdt.status.checkedIn")
+    : t("empdt.status.offShift");
 
   const initials = (employee.name || "??").split(" ").map(n => n?.[0] || "").join("").slice(0, 2) || "??";
   const scoreColor = employee.safetyScore >= 90 ? "#00C853" : employee.safetyScore >= 75 ? "#FF9500" : "#FF2D55";
 
   const tabs = [
-    { id: "overview" as const, label: "Overview" },
-    { id: "activity" as const, label: "Activity" },
-    { id: "incidents" as const, label: "Incidents" },
-    { id: "schedule" as const, label: "Schedule" },
+    { id: "overview" as const, label: t("empdt.tab.overview") },
+    { id: "activity" as const, label: t("empdt.tab.activity") },
+    { id: "incidents" as const, label: t("empdt.tab.incidents") },
+    { id: "schedule" as const, label: t("empdt.tab.schedule") },
   ];
 
   return (
@@ -231,24 +235,24 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
             {/* Quick Actions */}
             <div className="flex gap-2 mt-4 relative z-10">
               {[
-                { icon: Phone, label: "Call", color: "#00C853" },
-                { icon: Send, label: "Message", color: "#00C8E0" },
-                { icon: Radio, label: "Broadcast", color: "#FF9500" },
-                { icon: MapPin, label: "Locate", color: "#7B5EFF" },
+                { icon: Phone, label: t("empdt.action.call"), action: "call", color: "#00C853" },
+                { icon: Send, label: t("empdt.action.message"), action: "message", color: "#00C8E0" },
+                { icon: Radio, label: t("empdt.action.broadcast"), action: "broadcast", color: "#FF9500" },
+                { icon: MapPin, label: t("empdt.action.locate"), action: "locate", color: "#7B5EFF" },
               ].map(a => (
                 <button key={a.label} onClick={() => {
                   hapticLight();
                   const raw = String(employee.phone || "").trim();
                   const tel = raw.replace(/[^\d+]/g, "");
                   const noNumber = tel.replace(/\D/g, "").length < 6 || /x/i.test(raw);
-                  if (a.label === "Call") {
-                    if (noNumber) { toast.error(`No phone number on file for ${employee.name}`); return; }
+                  if (a.action === "call") {
+                    if (noNumber) { toast.error(`${t("empdt.toast.noPhone")} ${employee.name}`); return; }
                     window.location.href = `tel:${tel}`;
-                  } else if (a.label === "Message") {
-                    if (noNumber) { toast.error(`No phone number on file for ${employee.name}`); return; }
+                  } else if (a.action === "message") {
+                    if (noNumber) { toast.error(`${t("empdt.toast.noPhone")} ${employee.name}`); return; }
                     window.location.href = `sms:${tel}`;
                   } else {
-                    toast(`${a.label} ${employee.name}`, { description: `${a.label} action initiated` });
+                    toast(`${a.label} ${employee.name}`, { description: `${a.label} ${t("empdt.toast.initiated")}` });
                   }
                 }} className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl transition-all"
                   style={{ background: `${a.color}08`, border: `1px solid ${a.color}15`, cursor: "pointer" }}>
@@ -282,7 +286,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                 {/* Safety Score Card */}
                 <div className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Safety Score</p>
+                    <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.safetyScore")}</p>
                     <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
                       style={{ background: "rgba(0,200,83,0.1)", border: "1px solid rgba(0,200,83,0.2)" }}>
                       <TrendingUp className="size-3" style={{ color: "#00C853" }} />
@@ -306,9 +310,9 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                     </div>
                     <div className="flex-1 space-y-2">
                       {[
-                        { label: "Check-in Rate", value: "96%", color: "#00C853" },
-                        { label: "PPE Compliance", value: "100%", color: "#00C8E0" },
-                        { label: "Zone Compliance", value: "92%", color: "#FF9500" },
+                        { label: t("empdt.metric.checkinRate"), value: "96%", color: "#00C853" },
+                        { label: t("empdt.metric.ppe"), value: "100%", color: "#00C8E0" },
+                        { label: t("empdt.metric.zone"), value: "92%", color: "#FF9500" },
                       ].map(m => (
                         <div key={m.label}>
                           <div className="flex justify-between mb-0.5">
@@ -328,10 +332,10 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                 {/* Info Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { icon: MapPin, label: "Location", value: employee.location, color: "#00C8E0" },
-                    { icon: Clock, label: "Last Check-in", value: employee.lastCheckin, color: "#FF9500" },
-                    { icon: Phone, label: "Phone", value: employee.phone, color: "#00C853" },
-                    { icon: Shield, label: "Department", value: employee.department, color: "#7B5EFF" },
+                    { icon: MapPin, label: t("empdt.info.location"), value: employee.location, color: "#00C8E0" },
+                    { icon: Clock, label: t("empdt.info.lastCheckin"), value: employee.lastCheckin, color: "#FF9500" },
+                    { icon: Phone, label: t("empdt.info.phone"), value: employee.phone, color: "#00C853" },
+                    { icon: Shield, label: t("empdt.info.department"), value: employee.department, color: "#7B5EFF" },
                   ].map(info => (
                     <div key={info.label} className="p-3 rounded-xl"
                       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -346,7 +350,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
 
                 {/* Certifications — P3-#11i: real training_records when present */}
                 <div className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>Certifications</p>
+                  <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.certifications")}</p>
                   <div className="space-y-2">
                     {(realCerts && realCerts.length > 0
                       ? realCerts.map((t) => ({
@@ -366,7 +370,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                           <FileText className="size-4 shrink-0" style={{ color: c }} />
                           <div className="flex-1 min-w-0">
                             <p className="text-white truncate" style={{ fontSize: 12, fontWeight: 600 }}>{cert.name}</p>
-                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>Expires: {cert.expiry}</p>
+                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{t("empdt.expires")}: {cert.expiry}</p>
                           </div>
                           <span className="px-2 py-0.5 rounded-md shrink-0"
                             style={{ fontSize: 9, fontWeight: 700, color: c, background: `${c}15`, textTransform: "uppercase" }}>
@@ -383,12 +387,12 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
             {activeTab === "activity" && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Today's Activity</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.todaysActivity")}</p>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
                     style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)" }}>
                     <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
                       className="size-1.5 rounded-full" style={{ background: "#00C853" }} />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0" }}>App Connected</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0" }}>{t("empdt.appConnected")}</span>
                   </div>
                 </div>
                 {realActivity.map((act, i) => {
@@ -406,7 +410,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                         style={{ background: `${act.color}12` }}>
                         <Icon className="size-3.5" style={{ color: act.color }} />
                       </div>
-                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: 500, lineHeight: 1.5 }}>{act.action}</p>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: 500, lineHeight: 1.5 }}>{(act as any).actionKey ? t((act as any).actionKey) : (act as any).action}</p>
                     </div>
                   );
                 })}
@@ -416,8 +420,8 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
             {activeTab === "incidents" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Incident History</p>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{realIncidents.length} total</span>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.incidentHistory")}</p>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{realIncidents.length} {t("empdt.total")}</span>
                 </div>
                 {realIncidents.map((inc, i) => {
                   const c = inc.severity === "high" ? "#FF2D55" : inc.severity === "medium" ? "#FF9500" : "#00C8E0";
@@ -426,7 +430,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{inc.type}</p>
+                          <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{(inc as any).typeKey ? t((inc as any).typeKey) : (inc as any).type}</p>
                           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{inc.date}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -437,7 +441,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                           {inc.resolved && (
                             <span className="px-2 py-0.5 rounded-md"
                               style={{ fontSize: 10, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,0.12)" }}>
-                              RESOLVED
+                              {t("empdt.resolved")}
                             </span>
                           )}
                         </div>
@@ -448,8 +452,8 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                 {realIncidents.length === 0 && (
                   <div className="text-center py-12">
                     <Shield className="size-10 mx-auto mb-3" style={{ color: "rgba(0,200,83,0.2)" }} />
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>Clean Record</p>
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>No incidents reported</p>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{t("empdt.cleanRecord")}</p>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>{t("empdt.noIncidents")}</p>
                   </div>
                 )}
               </div>
@@ -458,7 +462,7 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
             {activeTab === "schedule" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Shift Schedule</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.shiftSchedule")}</p>
                   <Calendar className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
                 </div>
                 {(import.meta.env.DEV ? MOCK_SHIFTS : []).map((shift, i) => {
@@ -468,12 +472,12 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
                       style={{ background: shift.status === "on-shift" ? "rgba(0,200,83,0.04)" : "rgba(255,255,255,0.02)", border: `1px solid ${shift.status === "on-shift" ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.04)"}` }}>
                       <div className="size-2 rounded-full shrink-0" style={{ background: c }} />
                       <div className="flex-1">
-                        <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{shift.date}</p>
-                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>{shift.shift}</p>
+                        <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{t((shift as any).dateKey)}</p>
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>{(shift as any).shiftKey ? t((shift as any).shiftKey) : shift.shift}</p>
                       </div>
                       <span className="px-2.5 py-1 rounded-lg"
                         style={{ fontSize: 10, fontWeight: 700, color: c, background: `${c}12` }}>
-                        {shift.status === "on-shift" ? "ACTIVE" : shift.status === "scheduled" ? "Scheduled" : "Off"}
+                        {shift.status === "on-shift" ? t("empdt.shiftStatus.active") : shift.status === "scheduled" ? t("empdt.shiftStatus.scheduled") : t("empdt.shiftStatus.off")}
                       </span>
                     </div>
                   );
@@ -481,12 +485,12 @@ export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: Emp
 
                 {/* Weekly Summary */}
                 <div className="p-4 rounded-2xl mt-2" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>This Week Summary</p>
+                  <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>{t("empdt.weekSummary")}</p>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: "Hours Worked", value: "32h", color: "#00C8E0" },
-                      { label: "Check-ins", value: "12", color: "#00C853" },
-                      { label: "Overtime", value: "2h", color: "#FF9500" },
+                      { label: t("empdt.summary.hours"), value: "32h", color: "#00C8E0" },
+                      { label: t("empdt.summary.checkins"), value: "12", color: "#00C853" },
+                      { label: t("empdt.summary.overtime"), value: "2h", color: "#FF9500" },
                     ].map(s => (
                       <div key={s.label} className="text-center p-2.5 rounded-xl"
                         style={{ background: `${s.color}06`, border: `1px solid ${s.color}12` }}>

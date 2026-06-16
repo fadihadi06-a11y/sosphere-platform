@@ -13,6 +13,8 @@ import {
   autoBroadcastOutOfZone,
   type ComplianceCheckResult, type EmployeeGPSSnapshot,
 } from "./shared-store";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ═══════════════════════════════════════════════════════════════
 // GPS Zone Compliance Monitor
@@ -21,10 +23,10 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 const STATUS_CONFIG = {
-  "in-zone": { label: "In Zone", color: "#00C853", bg: "rgba(0,200,83,0.08)", border: "rgba(0,200,83,0.15)", icon: CheckCircle2 },
-  "out-of-zone": { label: "Out of Zone", color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.15)", icon: AlertTriangle },
-  "no-zone": { label: "Unassigned", color: "#FF9500", bg: "rgba(255,150,0,0.08)", border: "rgba(255,150,0,0.15)", icon: Minus },
-  "offline": { label: "Offline", color: "rgba(255,255,255,0.2)", bg: "rgba(255,255,255,0.02)", border: "rgba(255,255,255,0.06)", icon: WifiOff },
+  "in-zone": { labelKey: "gpsc.statusInZone", color: "#00C853", bg: "rgba(0,200,83,0.08)", border: "rgba(0,200,83,0.15)", icon: CheckCircle2 },
+  "out-of-zone": { labelKey: "gpsc.statusOutOfZone", color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.15)", icon: AlertTriangle },
+  "no-zone": { labelKey: "gpsc.statusUnassigned", color: "#FF9500", bg: "rgba(255,150,0,0.08)", border: "rgba(255,150,0,0.15)", icon: Minus },
+  "offline": { labelKey: "gpsc.statusOffline", color: "rgba(255,255,255,0.2)", bg: "rgba(255,255,255,0.02)", border: "rgba(255,255,255,0.06)", icon: WifiOff },
 };
 
 function fmtTime(ts: number): string {
@@ -35,16 +37,16 @@ function fmtTimeShort(ts: number): string {
   return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, t: (k: string) => string): string {
   const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 5) return "Just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 5) return t("gpsc.justNow");
+  if (diff < 60) return `${diff}${t("gpsc.secondsAgo")}`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}${t("gpsc.minutesAgo")}`;
+  return `${Math.floor(diff / 3600)}${t("gpsc.hoursAgo")}`;
 }
 
 // ── Compliance Ring ───────────────────────────────────────────
-function ComplianceRing({ percent, size = 120 }: { percent: number; size?: number }) {
+function ComplianceRing({ percent, size = 120, t }: { percent: number; size?: number; t: (k: string) => string }) {
   const r = (size - 12) / 2;
   const circ = 2 * Math.PI * r;
   const color = percent >= 80 ? "#00C853" : percent >= 50 ? "#FF9500" : "#FF2D55";
@@ -65,14 +67,14 @@ function ComplianceRing({ percent, size = 120 }: { percent: number; size?: numbe
       </svg>
       <div className="absolute flex flex-col items-center">
         <span style={{ fontSize: 28, fontWeight: 900, color, letterSpacing: "-1px" }}>{percent}%</span>
-        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontWeight: 600, letterSpacing: "0.5px" }}>COMPLIANCE</span>
+        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gpsc.complianceLabel")}</span>
       </div>
     </div>
   );
 }
 
 // ── Employee Row ──────────────────────────────────────────────
-function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
+function EmployeeRow({ snapshot, t }: { snapshot: EmployeeGPSSnapshot; t: (k: string) => string }) {
   const config = STATUS_CONFIG[snapshot.status];
   const Icon = config.icon;
   const [expanded, setExpanded] = useState(false);
@@ -103,7 +105,7 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
             {snapshot.employeeName}
           </p>
           <p className="truncate" style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
-            {snapshot.assignedZoneName || "No zone assigned"}
+            {snapshot.assignedZoneName || t("gpsc.noZoneAssigned")}
           </p>
         </div>
 
@@ -118,7 +120,7 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
             style={{ background: `${config.color}12`, border: `1px solid ${config.color}20` }}
           >
             <span style={{ fontSize: 9, fontWeight: 700, color: config.color, letterSpacing: "0.3px" }}>
-              {config.label.toUpperCase()}
+              {t(config.labelKey).toUpperCase()}
             </span>
           </div>
           {expanded ? (
@@ -143,14 +145,14 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
                 {snapshot.status !== "offline" && (
                   <>
                     <div className="px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                      <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>GPS POSITION</p>
+                      <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>{t("gpsc.gpsPosition")}</p>
                       <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
                         {snapshot.currentLat.toFixed(6)}, {snapshot.currentLng.toFixed(6)}
                       </p>
                     </div>
                     {snapshot.zoneCenterLat && (
                       <div className="px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>ZONE CENTER</p>
+                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>{t("gpsc.zoneCenter")}</p>
                         <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
                           {snapshot.zoneCenterLat.toFixed(6)}, {snapshot.zoneCenterLng!.toFixed(6)}
                         </p>
@@ -158,7 +160,7 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
                     )}
                     {snapshot.zoneRadiusMeters && (
                       <div className="px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>ZONE RADIUS</p>
+                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>{t("gpsc.zoneRadius")}</p>
                         <p style={{ fontSize: 10, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>
                           {snapshot.zoneRadiusMeters}m
                         </p>
@@ -166,9 +168,9 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
                     )}
                     {snapshot.distanceMeters !== null && (
                       <div className="px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>DISTANCE FROM CENTER</p>
+                        <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px", marginBottom: 2 }}>{t("gpsc.distanceFromCenter")}</p>
                         <p style={{ fontSize: 10, color: config.color, fontWeight: 700 }}>
-                          {snapshot.distanceMeters}m {snapshot.status === "in-zone" ? "inside" : "outside"}
+                          {snapshot.distanceMeters}m {snapshot.status === "in-zone" ? t("gpsc.inside") : t("gpsc.outside")}
                         </p>
                       </div>
                     )}
@@ -177,7 +179,7 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
                 {snapshot.status === "offline" && (
                   <div className="col-span-2 px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
                     <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
-                      Employee is off-shift — no GPS data available
+                      {t("gpsc.offShiftNoData")}
                     </p>
                   </div>
                 )}
@@ -193,7 +195,10 @@ function EmployeeRow({ snapshot }: { snapshot: EmployeeGPSSnapshot }) {
 // ═══════════════════════════════════════════════════════════════
 // Main GPS Compliance Page
 // ═══════════════════════════════════════════════════════════════
-export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => string; webMode?: boolean }) {
+export function GPSCompliancePage({ t: tProp, webMode = false }: { t?: (k: string) => string; webMode?: boolean }) {
+  const { lang } = useLang();
+  const tFallback = useT(lang);
+  const t = tProp ?? tFallback;
   const [result, setResult] = useState<ComplianceCheckResult | null>(null);
   const [history, setHistory] = useState<ComplianceCheckResult[]>(getComplianceHistory);
   const [countdown, setCountdown] = useState(GPS_CHECK_INTERVAL_DEMO);
@@ -214,7 +219,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
         r.snapshots
           .filter(s => s.status === "out-of-zone" && s.distanceMeters !== null)
           .forEach(s => {
-            autoBroadcastOutOfZone(s.employeeName, s.assignedZoneName || "Unknown", s.distanceMeters!);
+            autoBroadcastOutOfZone(s.employeeName, s.assignedZoneName || t("gpsc.unknown"), s.distanceMeters!);
           });
       }
       setIsChecking(false);
@@ -276,11 +281,11 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             <div className="flex items-center gap-3 mb-1">
               <Satellite style={{ width: 22, height: 22, color: "#00C8E0" }} />
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
-                GPS Zone Compliance
+                {t("gpsc.title")}
               </h1>
             </div>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
-              Automatic position check every 15 minutes (Demo: {GPS_CHECK_INTERVAL_DEMO}s)
+              {t("gpsc.subtitle")} ({t("gpsc.demoLabel")}: {GPS_CHECK_INTERVAL_DEMO}s)
             </p>
           </div>
 
@@ -288,7 +293,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             {/* Cost badge */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
               <DollarSign style={{ width: 12, height: 12, color: "#00C853" }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#00C853" }}>$0 GPS Cost</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#00C853" }}>{t("gpsc.gpsCostBadge")}</span>
             </div>
 
             {/* Auto toggle */}
@@ -312,7 +317,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
                 />
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, color: autoEnabled ? "#00C8E0" : "rgba(255,255,255,0.3)" }}>
-                Auto-Check
+                {t("gpsc.autoCheck")}
               </span>
             </button>
 
@@ -332,7 +337,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
               <motion.div animate={isChecking ? { rotate: 360 } : {}} transition={{ duration: 1, repeat: isChecking ? Infinity : 0, ease: "linear" }}>
                 <RefreshCw style={{ width: 14, height: 14 }} />
               </motion.div>
-              {isChecking ? "Scanning..." : "Check Now"}
+              {isChecking ? t("gpsc.scanning") : t("gpsc.checkNow")}
             </motion.button>
           </div>
         </div>
@@ -344,7 +349,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             className="col-span-1 flex flex-col items-center justify-center py-4"
             style={{ borderRadius: 16, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
           >
-            <ComplianceRing percent={result?.compliancePercent || 0} size={110} />
+            <ComplianceRing percent={result?.compliancePercent || 0} size={110} t={t} />
             {trend !== 0 && (
               <div className="flex items-center gap-1 mt-2">
                 {trend > 0 ? (
@@ -353,7 +358,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
                   <TrendingDown style={{ width: 12, height: 12, color: "#FF2D55" }} />
                 )}
                 <span style={{ fontSize: 10, fontWeight: 700, color: trend > 0 ? "#00C853" : "#FF2D55" }}>
-                  {trend > 0 ? "+" : ""}{trend}% vs last check
+                  {trend > 0 ? "+" : ""}{trend}% {t("gpsc.vsLastCheck")}
                 </span>
               </div>
             )}
@@ -361,10 +366,10 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
 
           {/* Stat cards */}
           {[
-            { label: "In Zone", value: result?.inZone || 0, icon: CheckCircle2, color: "#00C853" },
-            { label: "Out of Zone", value: result?.outOfZone || 0, icon: AlertTriangle, color: "#FF2D55" },
-            { label: "Unassigned", value: result?.noZone || 0, icon: Target, color: "#FF9500" },
-            { label: "Offline", value: result?.offline || 0, icon: WifiOff, color: "rgba(255,255,255,0.2)" },
+            { label: t("gpsc.statusInZone"), value: result?.inZone || 0, icon: CheckCircle2, color: "#00C853" },
+            { label: t("gpsc.statusOutOfZone"), value: result?.outOfZone || 0, icon: AlertTriangle, color: "#FF2D55" },
+            { label: t("gpsc.statusUnassigned"), value: result?.noZone || 0, icon: Target, color: "#FF9500" },
+            { label: t("gpsc.statusOffline"), value: result?.offline || 0, icon: WifiOff, color: "rgba(255,255,255,0.2)" },
           ].map((stat) => {
             const SIcon = stat.icon;
             return (
@@ -400,10 +405,10 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
               <Clock style={{ width: 16, height: 16, color: autoEnabled ? "#00C8E0" : "rgba(255,255,255,0.15)" }} />
               <div>
                 <p style={{ fontSize: 12, fontWeight: 600, color: autoEnabled ? "#fff" : "rgba(255,255,255,0.3)" }}>
-                  Next Check
+                  {t("gpsc.nextCheck")}
                 </p>
                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
-                  {autoEnabled ? `in ${countdown}s (demo)` : "Auto-check disabled"}
+                  {autoEnabled ? `${t("gpsc.inPrefix")} ${countdown}s (${t("gpsc.demoLabel")})` : t("gpsc.autoCheckDisabled")}
                 </p>
               </div>
             </div>
@@ -421,7 +426,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             )}
             {result && (
               <div className="text-right">
-                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>Last check</p>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{t("gpsc.lastCheck")}</p>
                 <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,200,224,0.6)" }}>
                   {fmtTime(result.timestamp)}
                 </p>
@@ -436,14 +441,14 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
           >
             <Shield style={{ width: 18, height: 18, color: "#00C853", flexShrink: 0 }} />
             <div className="flex-1 min-w-0">
-              <p style={{ fontSize: 12, fontWeight: 700, color: "#00C853" }}>Zero Cost GPS Tracking</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#00C853" }}>{t("gpsc.zeroCostTracking")}</p>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.5, marginTop: 2 }}>
-                Device GPS = free | Haversine formula = no API calls | 96 checks/day/employee = $0
+                {t("gpsc.costBreakdownDetail")}
               </p>
             </div>
             <div className="text-right shrink-0">
               <p style={{ fontSize: 20, fontWeight: 900, color: "#00C853" }}>$0</p>
-              <p style={{ fontSize: 8, color: "rgba(0,200,83,0.4)", letterSpacing: "0.5px" }}>PER MONTH</p>
+              <p style={{ fontSize: 8, color: "rgba(0,200,83,0.4)", letterSpacing: "0.5px" }}>{t("gpsc.perMonth")}</p>
             </div>
           </div>
         </div>
@@ -467,7 +472,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
                   color: active ? "#00C8E0" : "rgba(255,255,255,0.25)",
                 }}
               >
-                {f === "all" ? "All" : STATUS_CONFIG[f].label}
+                {f === "all" ? t("gpsc.filterAll") : t(STATUS_CONFIG[f].labelKey)}
                 <span style={{
                   fontSize: 9, fontWeight: 700,
                   background: active ? "rgba(0,200,224,0.15)" : "rgba(255,255,255,0.04)",
@@ -493,7 +498,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             }}
           >
             <Eye style={{ width: 12, height: 12 }} />
-            History ({history.length})
+            {t("gpsc.history")} ({history.length})
           </button>
         </div>
 
@@ -502,12 +507,12 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
           <div>
             {filteredSnapshots
               .filter((_, i) => i % 2 === 0)
-              .map((s) => <EmployeeRow key={s.employeeId} snapshot={s} />)}
+              .map((s) => <EmployeeRow key={s.employeeId} snapshot={s} t={t} />)}
           </div>
           <div>
             {filteredSnapshots
               .filter((_, i) => i % 2 === 1)
-              .map((s) => <EmployeeRow key={s.employeeId} snapshot={s} />)}
+              .map((s) => <EmployeeRow key={s.employeeId} snapshot={s} t={t} />)}
           </div>
         </div>
 
@@ -515,8 +520,8 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
         {!result && (
           <div className="flex flex-col items-center justify-center py-16">
             <Satellite style={{ width: 40, height: 40, color: "rgba(255,255,255,0.06)", marginBottom: 12 }} />
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.2)" }}>No compliance data yet</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.1)", marginTop: 4 }}>Click "Check Now" to run the first GPS scan</p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.2)" }}>{t("gpsc.noDataYet")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.1)", marginTop: 4 }}>{t("gpsc.noDataHint")}</p>
           </div>
         )}
 
@@ -532,7 +537,7 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
             >
               <h3 className="flex items-center gap-2 mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>
                 <Clock style={{ width: 14, height: 14, color: "#FF9500" }} />
-                Check History
+                {t("gpsc.checkHistory")}
               </h3>
               <div
                 className="overflow-hidden"
@@ -541,8 +546,11 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
                 <table className="w-full" style={{ fontSize: 12 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      {["Time", "Compliance", "In Zone", "Out", "Unassigned", "Offline", "Total"].map((h) => (
-                        <th key={h} className="px-3 py-2.5 text-left" style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px" }}>
+                      {[
+                        t("gpsc.colTime"), t("gpsc.colCompliance"), t("gpsc.statusInZone"),
+                        t("gpsc.colOut"), t("gpsc.statusUnassigned"), t("gpsc.statusOffline"), t("gpsc.colTotal"),
+                      ].map((h, hi) => (
+                        <th key={hi} className="px-3 py-2.5 text-left" style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px" }}>
                           {h.toUpperCase()}
                         </th>
                       ))}
@@ -566,11 +574,11 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
                               </span>
                               {i === 0 && (
                                 <span className="ml-1.5 px-1.5 py-0.5 rounded" style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,200,224,0.1)", color: "#00C8E0" }}>
-                                  LATEST
+                                  {t("gpsc.latest")}
                                 </span>
                               )}
                             </div>
-                            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>{timeAgo(check.timestamp)}</span>
+                            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.12)" }}>{timeAgo(check.timestamp, t)}</span>
                           </td>
                           <td className="px-3 py-2.5">
                             <div className="flex items-center gap-2">
@@ -602,14 +610,14 @@ export function GPSCompliancePage({ t, webMode = false }: { t?: (k: string) => s
         >
           <Navigation style={{ width: 16, height: 16, color: "rgba(0,200,224,0.4)", marginTop: 1, flexShrink: 0 }} />
           <div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,200,224,0.6)", marginBottom: 4 }}>How it works — Zero Cost Architecture</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,200,224,0.6)", marginBottom: 4 }}>{t("gpsc.howItWorks")}</p>
             <div className="space-y-1.5">
               {[
-                "GPS coordinates read directly from employee's phone hardware — FREE",
-                "Haversine formula calculates distance to zone center locally — no API calls",
-                "Only raw lat/lng stored — no Google Maps reverse geocoding needed ($5/1K saved)",
-                "96 checks/day/employee @ 15-min intervals × unlimited employees = $0/month",
-                "Optional: Add Google Maps visualization only for admin dashboard ($7/1K loads)",
+                t("gpsc.note1"),
+                t("gpsc.note2"),
+                t("gpsc.note3"),
+                t("gpsc.note4"),
+                t("gpsc.note5"),
               ].map((text, i) => (
                 <p key={i} style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.5 }}>
                   <span style={{ color: "rgba(0,200,224,0.3)", marginRight: 6 }}>{i + 1}.</span>
