@@ -241,7 +241,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);
     hapticSuccess();
-    toast.success("Settings Saved", { description: "Settings saved and synced" });
+    toast.success(tr("setg.settingsSaved"), { description: tr("setg.settingsSavedDesc") });
   };
 
   // ── REAL scheduled reports (email_schedules) for the Reports & Email tab ──
@@ -255,8 +255,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       reportTypes: sched.report_types, recipients: sched.recipients, enabled: next.enabled,
       nextRun: sched.next_run, includeCharts: sched.include_charts, includeQR: sched.include_qr, format: sched.format,
     }).then(ok => {
-      if (ok) toast.success(next.enabled ? "Schedule activated" : "Schedule paused");
-      else { toast.error("Could not update schedule"); setEmailSchedules(prev => prev.map(s => s.id === sched.id ? sched : s)); }
+      if (ok) toast.success(next.enabled ? tr("setg.scheduleActivated") : tr("setg.schedulePaused"));
+      else { toast.error(tr("setg.couldNotUpdateSchedule")); setEmailSchedules(prev => prev.map(s => s.id === sched.id ? sched : s)); }
     });
   };
 
@@ -268,7 +268,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
     { id: "access", label: tr("st.access"), icon: Users },
     { id: "security", label: tr("st.security"), icon: Lock },
     { id: "billing", label: tr("st.billing"), icon: BarChart3 },
-    { id: "reports", label: "Reports", icon: Send },
+    { id: "reports", label: tr("setg.reports"), icon: Send },
   ];
   const handleTabChange = (tab: SettingsTab) => { setActiveTab(tab); setAccessSubPage("list"); };
 
@@ -291,7 +291,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
 
   const renderRow = (icon: typeof Bell, label: string, value: string, color: string) => (
     <button className="w-full flex items-center gap-3 px-3 py-3"
-      onClick={() => { hapticLight(); toast(`${label}`, { description: `Current: ${value}. Tap to modify this setting.` }); }}
+      onClick={() => { hapticLight(); toast(`${label}`, { description: `${tr("setg.current")}: ${value}. ${tr("setg.tapToModify")}` }); }}
       style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "pointer" }}>
       <div className="size-7 rounded-lg flex items-center justify-center" style={{ background: `${color}10` }}>
         {React.createElement(icon, { className: "size-3.5", style: { color } })}
@@ -305,11 +305,11 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
   // ─── WEB DESKTOP SETTINGS ────────────────────────────────────
   if (webMode) {
     const WEB_NAV: { id: SettingsTab; label: string; icon: typeof Building2; desc: string }[] = [
-      { id: "company",  label: "Company",        icon: Building2, desc: "Profile & preferences" },
-      { id: "access",   label: "Access Control", icon: Users,     desc: "Roles & permissions" },
-      { id: "security", label: "Security",        icon: Lock,      desc: "Auth & audit" },
-      { id: "billing",  label: "Billing",         icon: BarChart3, desc: "Plan & invoices" },
-      { id: "reports",  label: "Email & Reports", icon: Send,      desc: "Delivery history & scheduling" },
+      { id: "company",  label: tr("setg.navCompany"),  icon: Building2, desc: tr("setg.navCompanyDesc") },
+      { id: "access",   label: tr("setg.navAccess"),   icon: Users,     desc: tr("setg.navAccessDesc") },
+      { id: "security", label: tr("setg.navSecurity"), icon: Lock,      desc: tr("setg.navSecurityDesc") },
+      { id: "billing",  label: tr("setg.navBilling"),  icon: BarChart3, desc: tr("setg.navBillingDesc") },
+      { id: "reports",  label: tr("setg.navReports"),  icon: Send,      desc: tr("setg.navReportsDesc") },
     ];
 
     const WebToggle = ({ id, label, desc, color }: { id: string; label: string; desc: string; color: string }) => (
@@ -337,7 +337,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       <div className="flex h-full" style={{ minHeight: "calc(100vh - 56px)" }}>
         {/* ── Left nav ── */}
         <div className="flex-shrink-0 p-5" style={{ width: 240, borderRight: "1px solid rgba(255,255,255,0.05)" }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px", marginBottom: 16 }}>SETTINGS</p>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px", marginBottom: 16 }}>{tr("setg.settingsHeader")}</p>
           <div className="space-y-1">
             {WEB_NAV.map(nav => {
               const Icon = nav.icon;
@@ -378,9 +378,9 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,149,0,0.12)" }}>
                           <Building2 className="size-4" style={{ color: "#FF9500" }} />
                         </div>
-                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Company Profile</p>
+                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.companyProfile")}</p>
                       </div>
-                      <button onClick={saveAllSettings} className="px-4 py-2 rounded-xl flex items-center gap-2" style={{ fontSize: 12, fontWeight: 700, color: settingsSaved ? "#00C853" : "#00C8E0", background: settingsSaved ? "rgba(0,200,83,0.08)" : "rgba(0,200,224,0.08)", border: settingsSaved ? "1px solid rgba(0,200,83,0.2)" : "1px solid rgba(0,200,224,0.2)", cursor: "pointer", transition: "all 0.3s" }}>{settingsSaved ? <span>✓ Saved</span> : "Save Changes"}</button>
+                      <button onClick={saveAllSettings} className="px-4 py-2 rounded-xl flex items-center gap-2" style={{ fontSize: 12, fontWeight: 700, color: settingsSaved ? "#00C853" : "#00C8E0", background: settingsSaved ? "rgba(0,200,83,0.08)" : "rgba(0,200,224,0.08)", border: settingsSaved ? "1px solid rgba(0,200,83,0.2)" : "1px solid rgba(0,200,224,0.2)", cursor: "pointer", transition: "all 0.3s" }}>{settingsSaved ? <span>✓ {tr("setg.saved")}</span> : tr("setg.saveChanges")}</button>
                     </div>
                     <div className="p-6 space-y-5" style={{ background: "rgba(255,255,255,0.01)" }}>
                       <div className="flex items-center gap-5">
@@ -389,8 +389,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         </div>
                         <div>
                           <p className="text-white" style={{ fontSize: 18, fontWeight: 800 }}>{companyName}</p>
-                          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Enterprise Account · Since Jan 2024</p>
-                          <button onClick={() => { hapticLight(); toast("Upload Logo", { description: "File picker would open here to upload company logo" }); }} className="mt-2 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}>Upload Logo</button>
+                          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>{tr("setg.enterpriseAccount")}</p>
+                          <button onClick={() => { hapticLight(); toast(tr("setg.uploadLogo"), { description: tr("setg.uploadLogoDesc") }); }} className="mt-2 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}>{tr("setg.uploadLogo")}</button>
                         </div>
                       </div>
                       {/* SUPABASE_MIGRATION_POINT: companyProfile → supabase.from('companies').select('*').eq('id', companyId).single()
@@ -398,12 +398,12 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                           a `companies` profile table is created. Low risk — display-only, no compliance impact. */}
                       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
                         {[
-                          { label: "Company Name",     value: companyName,                     icon: Building2, color: "#FF9500" },
-                          { label: "Industry",          value: "Not configured",                icon: Layers,    color: "#00C8E0" },
-                          { label: "Company Size",      value: companyState ? `${companyState.company.employeeCount} employees` : "—", icon: Users, color: "#00C853" },
-                          { label: "Country / Region",  value: "Not configured",                icon: Globe,     color: "#7B5EFF" },
-                          { label: "Time Zone",         value: Intl.DateTimeFormat().resolvedOptions().timeZone, icon: Clock, color: "#FF9500" },
-                          { label: "Contact Email",     value: "Not configured",                icon: Send,      color: "#00C8E0" },
+                          { label: tr("setg.fieldCompanyName"), value: companyName,                     icon: Building2, color: "#FF9500" },
+                          { label: tr("setg.fieldIndustry"),    value: tr("setg.notConfigured"),        icon: Layers,    color: "#00C8E0" },
+                          { label: tr("setg.fieldCompanySize"), value: companyState ? `${companyState.company.employeeCount} ${tr("setg.employees")}` : "—", icon: Users, color: "#00C853" },
+                          { label: tr("setg.fieldCountryRegion"), value: tr("setg.notConfigured"),      icon: Globe,     color: "#7B5EFF" },
+                          { label: tr("setg.fieldTimeZone"),    value: Intl.DateTimeFormat().resolvedOptions().timeZone, icon: Clock, color: "#FF9500" },
+                          { label: tr("setg.fieldContactEmail"), value: tr("setg.notConfigured"),       icon: Send,      color: "#00C8E0" },
                         ].map(field => {
                           const Icon = field.icon;
                           return (
@@ -435,17 +435,17 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Hybrid Mode</p>
+                            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{tr("setg.hybridMode")}</p>
                             <span className="px-2 py-0.5 rounded-full" style={{
                               fontSize: 9, fontWeight: 700, letterSpacing: "0.5px",
                               color: toggles.hybridMode ? "#7B5EFF" : "rgba(255,255,255,0.3)",
                               background: toggles.hybridMode ? "rgba(123,94,255,0.12)" : "rgba(255,255,255,0.04)",
                             }}>
-                              {toggles.hybridMode ? "MULTI-SITE" : "HQ ONLY"}
+                              {toggles.hybridMode ? tr("setg.multiSite") : tr("setg.hqOnly")}
                             </span>
                           </div>
                           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 3, maxWidth: 400 }}>
-                            Enable if your company has external field sites or zones. When OFF, only HQ-based features are shown.
+                            {tr("setg.hybridModeDesc")}
                           </p>
                         </div>
                       </div>
@@ -464,15 +464,15 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                           className="overflow-hidden"
                         >
                           <div className="px-6 py-4 space-y-3" style={{ background: "rgba(123,94,255,0.02)" }}>
-                            <p style={{ fontSize: 10, fontWeight: 700, color: "#7B5EFF", letterSpacing: "1px" }}>ENABLED FEATURES</p>
+                            <p style={{ fontSize: 10, fontWeight: 700, color: "#7B5EFF", letterSpacing: "1px" }}>{tr("setg.enabledFeatures")}</p>
                             <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
                               {[
-                                { icon: MapPin, label: "Zone Management", desc: "Create & manage field zones" },
-                                { icon: Crosshair, label: "Geofencing Editor", desc: "Draw zone boundaries on map" },
-                                { icon: Map, label: "Risk Map", desc: "Live risk visualization" },
-                                { icon: Navigation, label: "Proximity Attend", desc: "Auto-attend when near zone" },
-                                { icon: Clock, label: "Shift Scheduling", desc: "Assign shifts per zone" },
-                                { icon: Bell, label: "Zone Alerts", desc: "Entry/exit/dwell alerts" },
+                                { icon: MapPin, label: tr("setg.featZoneMgmt"), desc: tr("setg.featZoneMgmtDesc") },
+                                { icon: Crosshair, label: tr("setg.featGeofenceEditor"), desc: tr("setg.featGeofenceEditorDesc") },
+                                { icon: Map, label: tr("setg.featRiskMap"), desc: tr("setg.featRiskMapDesc") },
+                                { icon: Navigation, label: tr("setg.featProximityAttend"), desc: tr("setg.featProximityAttendDesc") },
+                                { icon: Clock, label: tr("setg.featShiftSched"), desc: tr("setg.featShiftSchedDesc") },
+                                { icon: Bell, label: tr("setg.featZoneAlerts"), desc: tr("setg.featZoneAlertsDesc") },
                               ].map(feat => (
                                 <div key={feat.label} className="flex items-start gap-2 p-3 rounded-xl"
                                   style={{ background: "rgba(123,94,255,0.04)", border: "1px solid rgba(123,94,255,0.08)" }}>
@@ -487,15 +487,15 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                             <div className="flex items-center gap-2 mt-2 p-3 rounded-xl" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.1)" }}>
                               <MapPin className="size-4 flex-shrink-0" style={{ color: "#00C8E0" }} />
                               <div className="flex-1">
-                                <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>Zone Creation via GPS</p>
+                                <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{tr("setg.zoneCreationGps")}</p>
                                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>
-                                  Admin creates zones by entering GPS coordinates or sharing Google Maps location. Employees are assigned to zones, and the Attend button appears when they enter the zone radius.
+                                  {tr("setg.zoneCreationGpsDesc")}
                                 </p>
                               </div>
                               {onNavigate && (
                                 <button onClick={() => onNavigate("geofencing")} className="px-3 py-1.5 rounded-lg flex-shrink-0"
                                   style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)" }}>
-                                  Open Editor
+                                  {tr("setg.openEditor")}
                                 </button>
                               )}
                             </div>
@@ -512,22 +512,22 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,224,0.12)" }}>
                           <Settings className="size-4" style={{ color: "#00C8E0" }} />
                         </div>
-                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Operational Preferences</p>
+                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.operationalPreferences")}</p>
                       </div>
                     </div>
                     <div className="px-6" style={{ background: "rgba(255,255,255,0.01)" }}>
-                      <WebToggle id="notifications"  label="Push & SMS Notifications"  desc="Send real-time alerts to supervisors and admins"           color="#00C853" />
-                      <WebToggle id="geofencing"     label="Automatic Geofencing"      desc="Auto-create safety zones based on employee GPS data"       color="#00C8E0" />
-                      <WebToggle id="sosHold"        label="Hold-to-Activate SOS"      desc="Require 3-second hold to prevent accidental SOS triggers"  color="#FF2D55" />
-                      <WebToggle id="autoEscalation" label="Auto Escalation Engine"    desc="Automatically escalate unresponded alerts up the chain"    color="#FF9500" />
+                      <WebToggle id="notifications"  label={tr("setg.pushSmsNotif")}     desc={tr("setg.pushSmsNotifDesc")}     color="#00C853" />
+                      <WebToggle id="geofencing"     label={tr("setg.autoGeofencing")}   desc={tr("setg.autoGeofencingDesc")}   color="#00C8E0" />
+                      <WebToggle id="sosHold"        label={tr("setg.holdToActivateSos")} desc={tr("setg.holdToActivateSosDesc")} color="#FF2D55" />
+                      <WebToggle id="autoEscalation" label={tr("setg.autoEscEngine")}    desc={tr("setg.autoEscEngineDesc")}    color="#FF9500" />
                       <div className="flex items-center justify-between py-4">
                         <div>
-                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>Check-in Interval</p>
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>How often field workers must check in</p>
+                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{tr("setg.checkinInterval")}</p>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{tr("setg.checkinIntervalDesc")}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {["15m", "30m", "1h", "2h"].map(v => (
-                            <button key={v} onClick={() => { setCheckinInterval(v); hapticLight(); toast.success("Check-in Interval Updated", { description: `Workers must check in every ${v}` }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 12, fontWeight: v === checkinInterval ? 700 : 500, background: v === checkinInterval ? "rgba(0,200,224,0.12)" : "rgba(255,255,255,0.04)", color: v === checkinInterval ? "#00C8E0" : "rgba(255,255,255,0.35)", border: v === checkinInterval ? "1px solid rgba(0,200,224,0.25)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                            <button key={v} onClick={() => { setCheckinInterval(v); hapticLight(); toast.success(tr("setg.checkinIntervalUpdated"), { description: `${tr("setg.workersCheckInEvery")} ${v}` }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 12, fontWeight: v === checkinInterval ? 700 : 500, background: v === checkinInterval ? "rgba(0,200,224,0.12)" : "rgba(255,255,255,0.04)", color: v === checkinInterval ? "#00C8E0" : "rgba(255,255,255,0.35)", border: v === checkinInterval ? "1px solid rgba(0,200,224,0.25)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
                               {v}
                             </button>
                           ))}
@@ -545,8 +545,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                             <Globe className="size-4" style={{ color: "#7B5EFF" }} />
                           </div>
                           <div>
-                            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Language & Localization</p>
-                            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>12 languages supported</p>
+                            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.languageLocalization")}</p>
+                            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{tr("setg.languagesSupported")}</p>
                           </div>
                         </div>
                       </div>
@@ -576,17 +576,17 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                     <div className="flex gap-3">
                       <button onClick={() => setShowInviteUser(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl"
                         style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)" }}>
-                        <Send className="size-4" /> Invite Member
+                        <Send className="size-4" /> {tr("setg.inviteMember")}
                       </button>
                       <button onClick={() => setAccessSubPage("createRole")} className="flex items-center gap-2 px-5 py-2.5 rounded-xl"
                         style={{ fontSize: 13, fontWeight: 700, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.2)" }}>
-                        <Plus className="size-4" /> Create Role
+                        <Plus className="size-4" /> {tr("setg.createRole")}
                       </button>
                     </div>
                   </div>
 
                   {accessSubPage === "createRole" ? (
-                    <CreateCustomRolePage onBack={() => setAccessSubPage("list")} />
+                    <CreateCustomRolePage t={tr} onBack={() => setAccessSubPage("list")} />
                   ) : (
                     <>
                       {/* Team table */}
@@ -596,19 +596,19 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                             <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,224,0.12)" }}>
                               <Users className="size-4" style={{ color: "#00C8E0" }} />
                             </div>
-                            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Team Members</p>
-                            {isDemo && <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(255,150,0,0.12)", color: "#FF9500", marginLeft: 6 }}>DEMO</span>}
+                            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.teamMembers")}</p>
+                            {isDemo && <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(255,150,0,0.12)", color: "#FF9500", marginLeft: 6 }}>{tr("setg.demo")}</span>}
                           </div>
-                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{TEAM_MEMBERS.length} members</span>
+                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{TEAM_MEMBERS.length} {tr("setg.membersCount")}</span>
                         </div>
                         <div className="grid px-6 py-3" style={{ gridTemplateColumns: "48px 1fr 160px 120px 100px 80px", background: "rgba(255,255,255,0.015)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          {["", "Member", "Role", "Last Active", "Status", ""].map((h, i) => (
+                          {["", tr("setg.colMember"), tr("setg.colRole"), tr("setg.colLastActive"), tr("setg.colStatus"), ""].map((h, i) => (
                             <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>
                           ))}
                         </div>
                         {TEAM_MEMBERS.map((member, i) => {
                           const statusColor = member.status === "active" ? "#00C853" : member.status === "pending" ? "#FF9500" : "rgba(255,255,255,0.2)";
-                          const statusLabel = member.status === "active" ? "Active" : member.status === "pending" ? "Pending" : "Inactive";
+                          const statusLabel = member.status === "active" ? tr("setg.statusActive") : member.status === "pending" ? tr("setg.statusPending") : tr("setg.statusInactive");
                           return (
                             <div key={member.name} className="grid items-center px-6 py-4" style={{ gridTemplateColumns: "48px 1fr 160px 120px 100px 80px", borderBottom: i < TEAM_MEMBERS.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}>
                               <div className="size-9 rounded-full flex items-center justify-center" style={{ background: `${member.color}18`, border: `1.5px solid ${member.color}30` }}>
@@ -621,7 +621,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                               <span className="px-2.5 py-1 rounded-lg" style={{ fontSize: 11, fontWeight: 600, color: member.color, background: `${member.color}12`, display: "inline-block" }}>{member.role}</span>
                               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{member.lastActive}</p>
                               <span className="px-2.5 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}12`, display: "inline-block" }}>{statusLabel}</span>
-                              <button onClick={() => { hapticLight(); toast("Edit Role", { description: "Role editor — use Roles & Access page for full control" }); }} style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                              <button onClick={() => { hapticLight(); toast(tr("setg.editRole"), { description: tr("setg.editRoleDesc") }); }} style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", fontWeight: 600, cursor: "pointer" }}>{tr("setg.edit")}</button>
                             </div>
                           );
                         })}
@@ -635,8 +635,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                               <Lock className="size-4" style={{ color: "#AF52DE" }} />
                             </div>
                             <div>
-                              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Role Permissions Matrix</p>
-                              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>Current role: <span style={{ color: activeRole ? ROLE_CONFIG[activeRole]?.color : "#00C8E0", fontWeight: 700 }}>{activeRole}</span> — click to switch</p>
+                              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.rolePermissionsMatrix")}</p>
+                              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{tr("setg.currentRole")}: <span style={{ color: activeRole ? ROLE_CONFIG[activeRole]?.color : "#00C8E0", fontWeight: 700 }}>{activeRole}</span> — {tr("setg.clickToSwitch")}</p>
                             </div>
                           </div>
                         </div>
@@ -662,7 +662,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                                           <span style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", fontFamily: "monospace" }}>{p}</span>
                                         </div>
                                       ))}
-                                      {authState.permissions.length > 4 && <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>+{authState.permissions.length - 4} more</p>}
+                                      {authState.permissions.length > 4 && <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>+{authState.permissions.length - 4} {tr("setg.more")}</p>}
                                     </div>
                                   )}
                                 </button>
@@ -698,12 +698,12 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         </div>
                       </div>
                       <div>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "#00C853", letterSpacing: "1px" }}>SECURITY SCORE — STRONG</p>
-                        <p className="text-white mt-1" style={{ fontSize: 20, fontWeight: 800 }}>Your account is well protected</p>
-                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4, lineHeight: 1.6 }}>2FA enabled · Sessions monitored · Audit logging active</p>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#00C853", letterSpacing: "1px" }}>{tr("setg.securityScoreStrong")}</p>
+                        <p className="text-white mt-1" style={{ fontSize: 20, fontWeight: 800 }}>{tr("setg.accountWellProtected")}</p>
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4, lineHeight: 1.6 }}>{tr("setg.securityScoreSubtitle")}</p>
                       </div>
                       <div className="ml-auto flex flex-col gap-2">
-                        {[{ label: "2FA Active", color: "#00C853" }, { label: "SSO Enabled", color: "#00C853" }].map(b => (
+                        {[{ label: tr("setg.twoFaActive"), color: "#00C853" }, { label: tr("setg.ssoEnabled"), color: "#00C853" }].map(b => (
                           <div key={b.label} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)" }}>
                             <div className="size-2 rounded-full" style={{ background: b.color }} />
                             <span style={{ fontSize: 12, fontWeight: 700, color: b.color }}>{b.label}</span>
@@ -720,20 +720,20 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,83,0.12)" }}>
                           <Lock className="size-4" style={{ color: "#00C853" }} />
                         </div>
-                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Authentication & Access</p>
+                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.authAndAccess")}</p>
                       </div>
                     </div>
                     <div className="px-6" style={{ background: "rgba(255,255,255,0.01)" }}>
-                      <MFAControlSection />
-                      <WebToggle id="auditLog" label="Audit Logging"                   desc="Record all admin actions with timestamps and IP" color="#00C8E0" />
+                      <MFAControlSection t={tr} />
+                      <WebToggle id="auditLog" label={tr("setg.auditLogging")} desc={tr("setg.auditLoggingDesc")} color="#00C8E0" />
                       <div className="flex items-center justify-between py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                         <div>
-                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>Session Timeout</p>
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>Auto-logout after inactivity</p>
+                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{tr("setg.sessionTimeout")}</p>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{tr("setg.autoLogoutInactivity")}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {["15m", "30m", "1h", "4h"].map(v => (
-                            <button key={v} onClick={() => { setSessionTimeout(v); hapticLight(); toast.success("Session Timeout Updated", { description: `Auto-logout set to ${v}. Timer resets on activity. Suspended during emergencies.` }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 12, fontWeight: v === sessionTimeout ? 700 : 500, background: v === sessionTimeout ? "rgba(0,200,224,0.12)" : "rgba(255,255,255,0.04)", color: v === sessionTimeout ? "#00C8E0" : "rgba(255,255,255,0.35)", border: v === sessionTimeout ? "1px solid rgba(0,200,224,0.25)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                            <button key={v} onClick={() => { setSessionTimeout(v); hapticLight(); toast.success(tr("setg.sessionTimeoutUpdated"), { description: `${tr("setg.autoLogoutSetTo")} ${v}. ${tr("setg.timerResetsNote")}` }); }} className="px-3 py-1.5 rounded-lg" style={{ fontSize: 12, fontWeight: v === sessionTimeout ? 700 : 500, background: v === sessionTimeout ? "rgba(0,200,224,0.12)" : "rgba(255,255,255,0.04)", color: v === sessionTimeout ? "#00C8E0" : "rgba(255,255,255,0.35)", border: v === sessionTimeout ? "1px solid rgba(0,200,224,0.25)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
                               {v}
                             </button>
                           ))}
@@ -741,24 +741,24 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                       </div>
                       <div className="flex items-center justify-between py-4">
                         <div>
-                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>API Access</p>
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>External API key management</p>
+                          <p className="text-white" style={{ fontSize: 14, fontWeight: 600 }}>{tr("setg.apiAccess")}</p>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{tr("setg.apiAccessDesc")}</p>
                         </div>
                         <button onClick={async () => {
                           hapticSuccess();
                           const companyId = companyState?.company?.id;
-                          if (!companyId) { toast.error("No active company"); return; }
+                          if (!companyId) { toast.error(tr("setg.noActiveCompany")); return; }
                           try {
                             const { createApiKey } = await import("./api-keys-service");
                             const res = await createApiKey(companyId, "Dashboard API Key");
-                            if (!res.ok || !res.apiKey) { toast.error("Could not generate API key", { description: res.error || "Please try again." }); return; }
+                            if (!res.ok || !res.apiKey) { toast.error(tr("setg.couldNotGenerateApiKey"), { description: res.error || tr("setg.pleaseTryAgain") }); return; }
                             try { await navigator.clipboard.writeText(res.apiKey); } catch (_) { /* clipboard unavailable */ }
-                            toast.success("API key generated — copied to clipboard", { description: `${res.apiKey.slice(0, 16)}…  ·  Store it now; it will not be shown again.`, duration: 12000 });
+                            toast.success(tr("setg.apiKeyGenerated"), { description: `${res.apiKey.slice(0, 16)}…  ·  ${tr("setg.storeItNow")}`, duration: 12000 });
                           } catch (e) {
-                            toast.error("Could not generate API key", { description: (e as Error)?.message || "Please try again." });
+                            toast.error(tr("setg.couldNotGenerateApiKey"), { description: (e as Error)?.message || tr("setg.pleaseTryAgain") });
                           }
                         }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.2)", cursor: "pointer" }}>
-                          <RefreshCw className="size-3.5" /> Rotate Key
+                          <RefreshCw className="size-3.5" /> {tr("setg.rotateKey")}
                         </button>
                       </div>
                     </div>
@@ -771,10 +771,10 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                         <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,45,85,0.12)" }}>
                           <ShieldAlert className="size-4" style={{ color: "#FF2D55" }} />
                         </div>
-                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Security Audit Log</p>
+                        <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{tr("setg.securityAuditLog")}</p>
                       </div>
-                      <button onClick={async () => { hapticSuccess(); try { const n = await downloadAuditLogCsv(); if (n === 0) { toast.info("No audit events to export yet"); return; } toast.success("Audit log exported", { description: n + " event(s) downloaded as CSV." }); } catch (e) { toast.error("Export failed", { description: (e as Error)?.message || "Please try again." }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
-                        <Download className="size-3.5" /> Export Log
+                      <button onClick={async () => { hapticSuccess(); try { const n = await downloadAuditLogCsv(); if (n === 0) { toast.info(tr("setg.noAuditEvents")); return; } toast.success(tr("setg.auditLogExported"), { description: `${n} ${tr("setg.eventsDownloadedCsv")}` }); } catch (e) { toast.error(tr("setg.exportFailed"), { description: (e as Error)?.message || tr("setg.pleaseTryAgain") }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
+                        <Download className="size-3.5" /> {tr("setg.exportLog")}
                       </button>
                     </div>
                     <div style={{ background: "rgba(255,255,255,0.01)" }}>
@@ -804,10 +804,10 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                 <div className="space-y-7 max-w-3xl">
                   {/* Recent Deliveries — REAL: schedules that have actually run (last_run) */}
                   <div>
-                    <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 700 }}>Recent Deliveries</p>
+                    <p className="text-white mb-3" style={{ fontSize: 15, fontWeight: 700 }}>{tr("setg.recentDeliveries")}</p>
                     {emailSchedules.filter(s => s.last_run).length === 0 ? (
                       <div className="rounded-xl p-6 text-center" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
-                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No reports have been sent yet. Delivered scheduled reports appear here.</p>
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{tr("setg.noReportsSentYet")}</p>
                       </div>
                     ) : (
                       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -818,7 +818,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-white truncate" style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</p>
-                              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>To: {(s.recipients || []).join(", ") || "\u2014"}</p>
+                              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{tr("setg.to")}: {(s.recipients || []).join(", ") || "\u2014"}</p>
                             </div>
                             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap" }}>{s.last_run ? new Date(s.last_run).toLocaleString() : ""}</span>
                           </div>
@@ -830,15 +830,15 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                   {/* Scheduled Reports — REAL from email_schedules */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Scheduled Reports</p>
+                      <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{tr("setg.scheduledReports")}</p>
                       {onNavigate && (
-                        <button onClick={() => onNavigate("emailScheduler" as DashPage)} style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0", background: "none", border: "none", cursor: "pointer" }}>Manage in Reports & Analytics \u2192</button>
+                        <button onClick={() => onNavigate("emailScheduler" as DashPage)} style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0", background: "none", border: "none", cursor: "pointer" }}>{tr("setg.manageInReports")}</button>
                       )}
                     </div>
                     <div className="space-y-2">
                       {emailSchedules.length === 0 ? (
                         <div className="rounded-xl p-6 text-center" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No scheduled reports yet. Create one in Reports & Analytics \u2192 Scheduler.</p>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{tr("setg.noScheduledReports")}</p>
                         </div>
                       ) : emailSchedules.map(sched => (
                         <div key={sched.id} className="flex items-center gap-4 px-5 py-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -847,17 +847,17 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                           </div>
                           <div className="flex-1">
                             <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{sched.name}</p>
-                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{sched.frequency} \u2014 {(sched.recipients || []).join(", ") || "no recipients"}</p>
+                            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{sched.frequency} \u2014 {(sched.recipients || []).join(", ") || tr("setg.noRecipients")}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, color: sched.enabled ? "#00C853" : "rgba(255,255,255,0.3)", background: sched.enabled ? "rgba(0,200,83,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${sched.enabled ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.06)"}` }}>{sched.enabled ? "ACTIVE" : "PAUSED"}</span>
-                            <button onClick={() => toggleEmailSchedule(sched)} className="px-3 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", cursor: "pointer" }}>{sched.enabled ? "Pause" : "Activate"}</button>
+                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, color: sched.enabled ? "#00C853" : "rgba(255,255,255,0.3)", background: sched.enabled ? "rgba(0,200,83,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${sched.enabled ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.06)"}` }}>{sched.enabled ? tr("setg.active") : tr("setg.paused")}</span>
+                            <button onClick={() => toggleEmailSchedule(sched)} className="px-3 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", cursor: "pointer" }}>{sched.enabled ? tr("setg.pause") : tr("setg.activate")}</button>
                           </div>
                         </div>
                       ))}
                       {onNavigate && (
                         <button onClick={() => onNavigate("emailScheduler" as DashPage)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl" style={{ background: "rgba(0,200,224,0.06)", border: "1px dashed rgba(0,200,224,0.2)", fontSize: 12, fontWeight: 600, color: "#00C8E0", cursor: "pointer" }}>
-                        <Plus className="size-4" /> Add Scheduled Report</button>
+                        <Plus className="size-4" /> {tr("setg.addScheduledReport")}</button>
                       )}
                     </div>
                   </div>
@@ -873,8 +873,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                       <BarChart3 className="size-7" style={{ color: "#00C8E0" }} />
                     </div>
                     <div className="flex-1">
-                      <p className="text-white" style={{ fontSize: 17, fontWeight: 800 }}>Full Billing Dashboard</p>
-                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>View invoices, change plans, and manage payment methods</p>
+                      <p className="text-white" style={{ fontSize: 17, fontWeight: 800 }}>{tr("setg.fullBillingDashboard")}</p>
+                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{tr("setg.fullBillingDashboardDesc")}</p>
                     </div>
                     <ChevronRight className="size-5" style={{ color: "rgba(0,200,224,0.5)" }} />
                   </motion.button>
@@ -882,13 +882,13 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                     <div className="p-6 rounded-2xl" style={{ background: `${companyState.planConfig.color}08`, border: `1px solid ${companyState.planConfig.color}25` }}>
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: companyState.planConfig.color, letterSpacing: "1.5px" }}>CURRENT PLAN</p>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: companyState.planConfig.color, letterSpacing: "1.5px" }}>{tr("setg.currentPlan")}</p>
                           <p className="text-white mt-1" style={{ fontSize: 24, fontWeight: 900 }}>{companyState.planConfig.label}</p>
                         </div>
-                        <p style={{ fontSize: 32, fontWeight: 900, color: companyState.planConfig.color }}>${companyState.planConfig.price}<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/seat/mo</span></p>
+                        <p style={{ fontSize: 32, fontWeight: 900, color: companyState.planConfig.color }}>${companyState.planConfig.price}<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>{tr("setg.perSeatMo")}</span></p>
                       </div>
                       <div className="flex justify-between mb-2">
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Seat Usage</span>
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{tr("setg.seatUsage")}</span>
                         <span style={{ fontSize: 12, fontWeight: 700, color: employeeUsagePercent(companyState) > 80 ? "#FF2D55" : "#00C853" }}>
                           {companyState.company.employeeCount} / {companyState.planConfig.maxEmployees === -1 ? "∞" : companyState.planConfig.maxEmployees}
                         </span>
@@ -951,12 +951,12 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-white" style={{ fontSize: 12, fontWeight: 600 }}>Hybrid Mode</span>
+                  <span className="text-white" style={{ fontSize: 12, fontWeight: 600 }}>{tr("setg.hybridMode")}</span>
                   <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 7, fontWeight: 700, color: toggles.hybridMode ? "#7B5EFF" : "rgba(255,255,255,0.2)", background: toggles.hybridMode ? "rgba(123,94,255,0.12)" : "rgba(255,255,255,0.04)" }}>
-                    {toggles.hybridMode ? "MULTI-SITE" : "HQ ONLY"}
+                    {toggles.hybridMode ? tr("setg.multiSite") : tr("setg.hqOnly")}
                   </span>
                 </div>
-                <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 1 }}>Enable for companies with external field zones</p>
+                <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 1 }}>{tr("setg.hybridModeShortDesc")}</p>
               </div>
               <button onClick={() => toggle("hybridMode")} className="w-9 h-5 rounded-full relative transition-all"
                 style={{ background: toggles.hybridMode ? "rgba(123,94,255,0.5)" : "rgba(255,255,255,0.08)" }}>
@@ -966,8 +966,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
             </div>
           </div>
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
-            {renderRow(Timer, tr("st.checkin"), "30 min", "#FF9500")}
-            {renderRow(Radio, tr("st.alertChain"), "3 levels", "#FF2D55")}
+            {renderRow(Timer, tr("st.checkin"), tr("setg.val30min"), "#FF9500")}
+            {renderRow(Radio, tr("st.alertChain"), tr("setg.val3levels"), "#FF2D55")}
             {renderToggle("geofencing", tr("st.geo"), MapPin, "#00C8E0", tr("st.autoZoneTrack"))}
             {renderToggle("sosHold", tr("st.sos"), Shield, "#FF2D55", tr("st.holdToTrigger"))}
             {renderToggle("autoEscalation", tr("st.autoEsc"), Zap, "#FF9500", tr("st.autoEscDesc"))}
@@ -975,7 +975,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
           {lang && onLangChange && (
             <div>
               <p className="mb-2" style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1px" }}>
-                {tr("st.lang").toUpperCase()} — 12 LANGUAGES
+                {tr("st.lang").toUpperCase()} — {tr("setg.langCount")}
               </p>
               <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
                 {(Object.keys(LANG_META) as Lang[]).map((l, i, arr) => (
@@ -1002,15 +1002,15 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
             <button onClick={() => setShowInviteUser(true)}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl"
               style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", fontSize: 11, fontWeight: 600, color: "#00C8E0" }}>
-              <Send className="size-3.5" /> Invite User
+              <Send className="size-3.5" /> {tr("setg.inviteUser")}
             </button>
             <button onClick={() => setAccessSubPage("createRole")}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl"
               style={{ background: "rgba(175,82,222,0.08)", border: "1px solid rgba(175,82,222,0.15)", fontSize: 11, fontWeight: 600, color: "#AF52DE" }}>
-              <Plus className="size-3.5" /> Create Role
+              <Plus className="size-3.5" /> {tr("setg.createRole")}
             </button>
           </div>
-          <SectionHeader title={`Role — Role Management`} icon={Users} color="#AF52DE" />
+          <SectionHeader title={tr("setg.roleManagement")} icon={Users} color="#AF52DE" />
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
             {(Object.keys(ROLE_CONFIG) as Role[]).map((role, i, arr) => {
               const cfg = ROLE_CONFIG[role];
@@ -1021,7 +1021,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                   <div className="size-2 rounded-full flex-shrink-0" style={{ background: cfg.color, boxShadow: isActive ? `0 0 6px ${cfg.color}60` : "none" }} />
                   <div className="flex-1 text-left">
                     <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? cfg.color : "rgba(255,255,255,0.6)" }}>{cfg.label}</span>
-                    <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", marginLeft: 6 }}>Tier {cfg.tier}</span>
+                    <span style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", marginLeft: 6 }}>{tr("setg.tier")} {cfg.tier}</span>
                   </div>
                   {isActive && <CheckCircle2 className="size-3.5 flex-shrink-0" style={{ color: cfg.color }} />}
                 </button>
@@ -1030,7 +1030,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
           </div>
           {authState && (
             <>
-              <SectionHeader title="Permissions" icon={Lock} color="#FF9500" />
+              <SectionHeader title={tr("setg.permissions")} icon={Lock} color="#FF9500" />
               <DSCard padding={12}>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
                   {authState.permissions.map(p => (
@@ -1041,21 +1041,21 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                   ))}
                 </div>
                 <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{authState.permissions.length} permissions granted</span>
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{authState.permissions.length} {tr("setg.permissionsGranted")}</span>
                 </div>
               </DSCard>
             </>
           )}
           {companyState && (
             <>
-              <SectionHeader title="Plan & Billing" icon={BarChart3} color="#00C8E0" />
+              <SectionHeader title={tr("setg.planAndBilling")} icon={BarChart3} color="#00C8E0" />
               <DSCard padding={12}>
                 <div className="flex items-center justify-between mb-2">
                   <span style={{ fontSize: 12, fontWeight: 700, color: companyState.planConfig.color }}>{companyState.planConfig.label}</span>
                   <Badge color={companyState.planConfig.color}>${companyState.planConfig.price}/mo</Badge>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {[{ label: "EMPLOYEES", value: companyState.company.employeeCount, color: "#00C8E0" }, { label: "MAX ZONES", value: companyState.planConfig.maxZones === -1 ? "∞" : companyState.planConfig.maxZones, color: "#FF9500" }, { label: "FEATURES", value: companyState.planConfig.features.length, color: "#34C759" }].map(s => (
+                  {[{ label: tr("setg.statEmployees"), value: companyState.company.employeeCount, color: "#00C8E0" }, { label: tr("setg.statMaxZones"), value: companyState.planConfig.maxZones === -1 ? "∞" : companyState.planConfig.maxZones, color: "#FF9500" }, { label: tr("setg.statFeatures"), value: companyState.planConfig.features.length, color: "#34C759" }].map(s => (
                     <div key={s.label} className="text-center px-2 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
                       <p style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</p>
                       <p style={{ fontSize: 7, color: "rgba(255,255,255,0.25)" }}>{s.label}</p>
@@ -1070,7 +1070,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
 
       {/* Access Tab — Create Custom Role */}
       {activeTab === "access" && accessSubPage === "createRole" && (
-        <CreateCustomRolePage onBack={() => setAccessSubPage("list")} />
+        <CreateCustomRolePage t={tr} onBack={() => setAccessSubPage("list")} />
       )}
 
       {/* Security Tab */}
@@ -1080,7 +1080,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
             {/* P1-fix (2026-05-27): replaced cosmetic twoFA toggle with real MFA
                 control that reads server state via mfaListFactors and drives
                 enrollment/unenrollment through the actual Supabase MFA API. */}
-            <MobileMFAControl />
+            <MobileMFAControl t={tr} />
             {renderToggle("auditLog", tr("st.auditLogging"), FileText, "#00C8E0", tr("st.auditDesc"))}
             {renderRow(Shield, tr("st.sessionTimeout"), sessionTimeout, "#FF9500")}
           </div>
@@ -1113,8 +1113,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                   <Gauge className="size-4" style={{ color: "#00C8E0" }} />
                 </div>
                 <div className="text-left">
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>Full Billing Dashboard</p>
-                  <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)" }}>Invoices · Plans · Payment Methods</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{tr("setg.fullBillingDashboard")}</p>
+                  <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)" }}>{tr("setg.invoicesPlansPayment")}</p>
                 </div>
               </div>
               <ChevronRight className="size-4" style={{ color: "rgba(0,200,224,0.4)" }} />
@@ -1130,10 +1130,10 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
             <DSCard padding={16}>
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="size-4" style={{ color: planColor }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: planColor }}>{planLabel} Plan</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: planColor }}>{planLabel} {tr("setg.planSuffix")}</span>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                {[{ label: "per emp/mo", value: planPrice > 0 ? `$${planPrice.toFixed(2)}` : "Custom", color: "rgba(255,255,255,0.9)" }, { label: "employees", value: String(empCount), color: "#00C8E0" }, { label: "monthly", value: totalMonthly > 0 ? `$${totalMonthly}` : "Custom", color: "#00C853" }].map(s => (
+                {[{ label: tr("setg.perEmpMo"), value: planPrice > 0 ? `$${planPrice.toFixed(2)}` : tr("setg.custom"), color: "rgba(255,255,255,0.9)" }, { label: tr("setg.employeesLabel"), value: String(empCount), color: "#00C8E0" }, { label: tr("setg.monthly"), value: totalMonthly > 0 ? `$${totalMonthly}` : tr("setg.custom"), color: "#00C853" }].map(s => (
                   <div key={s.label}>
                     <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
                     <div style={{ fontSize: 8, color: "rgba(255,255,255,0.25)" }}>{s.label}</div>
@@ -1146,7 +1146,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
           <DSCard padding={16}>
             <div className="flex items-center gap-2 mb-3">
               <Zap className="size-4" style={{ color: "#00C8E0" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>No Plan Data</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>{tr("setg.noPlanData")}</span>
             </div>
           </DSCard>
           )}
@@ -1157,7 +1157,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
       {activeTab === "reports" && (
         <div className="space-y-3">
           {/* SUPABASE_MIGRATION_POINT: mobileDeliveryLog → supabase.from('email_deliveries').select('*').eq('company_id', companyId).order('sent_at', { ascending: false }).limit(4) */}
-          <SectionHeader title="Email Delivery Log" icon={Send} color="#00C8E0" />
+          <SectionHeader title={tr("setg.emailDeliveryLog")} icon={Send} color="#00C8E0" />
           {[
             { id: "DEL-A1", report: "Compliance Q1", to: "admin@co.com", date: "Mar 12", ok: true },
             { id: "DEL-B2", report: "Audit Export", to: "owner@co.com", date: "Mar 10", ok: true },
@@ -1178,7 +1178,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
             </DSCard>
           ))}
           {/* SUPABASE_MIGRATION_POINT: mobileScheduledReports → supabase.from('report_schedules').select('*').eq('company_id', companyId) */}
-          <SectionHeader title="Scheduled Reports" icon={Timer} color="#FF9500" />
+          <SectionHeader title={tr("setg.scheduledReports")} icon={Timer} color="#FF9500" />
           <DSCard padding={12}>
             <div className="space-y-2">
               {[
@@ -1190,7 +1190,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
                     <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{s.name}</p>
                     <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>{s.freq}</p>
                   </div>
-                  <Badge color={s.active ? "#00C853" : "rgba(255,255,255,0.3)"}>{s.active ? "ACTIVE" : "PAUSED"}</Badge>
+                  <Badge color={s.active ? "#00C853" : "rgba(255,255,255,0.3)"}>{s.active ? tr("setg.active") : tr("setg.paused")}</Badge>
                 </div>
               ))}
             </div>
@@ -1200,7 +1200,7 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
 
       {/* ── Invite User Modal ── */}
       <AnimatePresence>
-        {showInviteUser && <InviteUserModal onClose={() => setShowInviteUser(false)} />}
+        {showInviteUser && <InviteUserModal t={tr} onClose={() => setShowInviteUser(false)} />}
       </AnimatePresence>
     </div>
   );
@@ -1209,7 +1209,8 @@ export function SettingsPage({ companyName, t, lang, onLangChange, activeRole, o
 // ═══════════════════════════════════════════════════════════════
 // Invite User Modal
 // ═══════════════════════════════════════════════════════════════
-export function InviteUserModal({ onClose }: { onClose: () => void }) {
+export function InviteUserModal({ onClose, t }: { onClose: () => void; t?: (k: string) => string }) {
+  const tr = t || ((k: string) => k);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Employee");
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
@@ -1230,9 +1231,9 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <Send className="size-4" style={{ color: "#00C8E0" }} />
-              <h3 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Invite User</h3>
+              <h3 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{tr("setg.inviteUser")}</h3>
             </div>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>Send an invitation to a new employee</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{tr("setg.sendInvitationDesc")}</p>
           </div>
           <button onClick={onClose} className="size-7 rounded-lg flex items-center justify-center"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1241,27 +1242,27 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="px-5 pb-5 space-y-4">
           <div>
-            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>Email Address</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com"
+            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>{tr("setg.emailAddress")}</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={tr("setg.emailPlaceholder")}
               className="w-full mt-1.5 px-3 py-2.5 rounded-xl text-white outline-none"
               style={{ fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,200,224,0.2)" }} />
           </div>
           <div>
-            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>Role</label>
+            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>{tr("setg.roleLabel")}</label>
             <select value={role} onChange={e => setRole(e.target.value)}
               className="w-full mt-1.5 px-3 py-2.5 rounded-xl text-white outline-none"
               style={{ fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <option value="Employee">Employee</option>
-              <option value="Supervisor">Supervisor</option>
-              <option value="Safety Officer">Safety Officer</option>
-              <option value="Operations Manager">Operations Manager</option>
-              <option value="Company Admin">Company Admin</option>
+              <option value="Employee">{tr("setg.roleEmployee")}</option>
+              <option value="Supervisor">{tr("setg.roleSupervisor")}</option>
+              <option value="Safety Officer">{tr("setg.roleSafetyOfficer")}</option>
+              <option value="Operations Manager">{tr("setg.roleOpsManager")}</option>
+              <option value="Company Admin">{tr("setg.roleCompanyAdmin")}</option>
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>Assigned Zone(s)</label>
+            <label style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.8px", textTransform: "uppercase" }}>{tr("setg.assignedZones")}</label>
             <p style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", marginTop: 2, marginBottom: 6 }}>
-              Employee will see "Attend" button when they enter the zone radius
+              {tr("setg.assignedZonesHint")}
             </p>
             <div className="flex flex-wrap gap-2">
               {zones.map(z => {
@@ -1283,14 +1284,14 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
                 style={{ background: "rgba(0,200,83,0.04)", border: "1px solid rgba(0,200,83,0.1)" }}>
                 <MapPin className="size-3" style={{ color: "#00C853" }} />
                 <span style={{ fontSize: 8, color: "rgba(0,200,83,0.7)" }}>
-                  GPS proximity attend enabled for: {selectedZones.join(", ")}
+                  {tr("setg.gpsProximityEnabled")}: {selectedZones.join(", ")}
                 </span>
               </div>
             )}
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl"
-              style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>Cancel</button>
+              style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>{tr("setg.cancel")}</button>
             <button className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5"
               style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: email.trim() ? "linear-gradient(135deg, #00C8E0 0%, #0088A0 100%)" : "rgba(255,255,255,0.05)", opacity: email.trim() ? 1 : 0.5 }}
               onClick={() => {
@@ -1303,7 +1304,7 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
                   onClose();
                 }
               }}>
-              <Send className="size-3.5" /> Send Invitation
+              <Send className="size-3.5" /> {tr("setg.sendInvitation")}
             </button>
           </div>
         </div>
@@ -1317,28 +1318,29 @@ export function InviteUserModal({ onClose }: { onClose: () => void }) {
 // ═══════════════════════════════════════════════════════════════
 const PERMISSION_MODULES = [
   {
-    id: "dashboard", label: "Dashboard", tag: "WEB APP",
+    id: "dashboard", labelKey: "setg.modDashboard", tag: "WEB APP",
     perms: [
-      { id: "users", label: "Users", total: 5 },
-      { id: "invitations", label: "Invitations", total: 3 },
-      { id: "zones", label: "Zones", total: 4 },
-      { id: "attendance", label: "Attendance", total: 2 },
-      { id: "emergencies", label: "Emergencies", total: 3 },
-      { id: "settings", label: "Settings", total: 3 },
+      { id: "users", labelKey: "setg.permUsers", total: 5 },
+      { id: "invitations", labelKey: "setg.permInvitations", total: 3 },
+      { id: "zones", labelKey: "setg.permZones", total: 4 },
+      { id: "attendance", labelKey: "setg.permAttendance", total: 2 },
+      { id: "emergencies", labelKey: "setg.permEmergencies", total: 3 },
+      { id: "settings", labelKey: "setg.permSettings", total: 3 },
     ],
   },
   {
-    id: "mobile", label: "Mobile App", tag: "MOBILE",
+    id: "mobile", labelKey: "setg.modMobileApp", tag: "MOBILE",
     perms: [
-      { id: "sos", label: "SOS Trigger", total: 2 },
-      { id: "checkin", label: "Check-in", total: 2 },
-      { id: "map", label: "Map View", total: 2 },
-      { id: "reports", label: "Reports", total: 3 },
+      { id: "sos", labelKey: "setg.permSosTrigger", total: 2 },
+      { id: "checkin", labelKey: "setg.permCheckin", total: 2 },
+      { id: "map", labelKey: "setg.permMapView", total: 2 },
+      { id: "reports", labelKey: "setg.permReports", total: 3 },
     ],
   },
 ];
 
-export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
+export function CreateCustomRolePage({ onBack, t }: { onBack: () => void; t?: (k: string) => string }) {
+  const tr = t || ((k: string) => k);
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [cloneFrom, setCloneFrom] = useState("none");
@@ -1385,18 +1387,18 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
           <ChevronLeft className="size-4" style={{ color: "rgba(255,255,255,0.5)" }} />
         </button>
         <div>
-          <h2 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Create Custom Role</h2>
-          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Define role name, permissions, and platform access</p>
+          <h2 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{tr("setg.createCustomRole")}</h2>
+          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{tr("setg.createCustomRoleDesc")}</p>
         </div>
       </div>
 
       {/* Role Info */}
       <div>
-        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 8 }}>ROLE INFO</p>
+        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 8 }}>{tr("setg.roleInfo")}</p>
         <div className="rounded-xl overflow-hidden space-y-px" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           {[
-            { label: "Role Name", value: roleName, onChange: setRoleName, placeholder: "e.g. Field Supervisor" },
-            { label: "Description", value: description, onChange: setDescription, placeholder: "Brief description..." },
+            { label: tr("setg.roleName"), value: roleName, onChange: setRoleName, placeholder: tr("setg.roleNamePlaceholder") },
+            { label: tr("setg.description"), value: description, onChange: setDescription, placeholder: tr("setg.descriptionPlaceholder") },
           ].map(f => (
             <div key={f.label} className="px-3 py-3" style={{ background: "rgba(255,255,255,0.02)" }}>
               <label style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{f.label}</label>
@@ -1406,14 +1408,14 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
             </div>
           ))}
           <div className="px-3 py-3" style={{ background: "rgba(255,255,255,0.02)" }}>
-            <label style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>Clone from (optional)</label>
+            <label style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{tr("setg.cloneFrom")}</label>
             <select value={cloneFrom} onChange={e => setCloneFrom(e.target.value)}
               className="w-full mt-1.5 bg-transparent text-white outline-none" style={{ fontSize: 12 }}>
-              <option value="none">— None —</option>
-              <option value="employee">Employee</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="safety_officer">Safety Officer</option>
-              <option value="company_admin">Company Admin</option>
+              <option value="none">{tr("setg.cloneNone")}</option>
+              <option value="employee">{tr("setg.roleEmployee")}</option>
+              <option value="supervisor">{tr("setg.roleSupervisor")}</option>
+              <option value="safety_officer">{tr("setg.roleSafetyOfficer")}</option>
+              <option value="company_admin">{tr("setg.roleCompanyAdmin")}</option>
             </select>
           </div>
         </div>
@@ -1421,33 +1423,33 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
 
       {/* Access Configuration */}
       <div>
-        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 8 }}>ACCESS CONFIGURATION</p>
+        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 8 }}>{tr("setg.accessConfiguration")}</p>
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(0,200,224,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
             <Globe className="size-3.5" style={{ color: "#00C8E0" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0" }}>Platform Access</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#00C8E0" }}>{tr("setg.platformAccess")}</span>
           </div>
           <div className="flex items-center gap-3 px-3 py-3" style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
             <LayoutDashboard className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>Web Dashboard</span>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>{tr("setg.webDashboard")}</span>
             <ToggleSwitch on={webDashboard} onToggle={() => setWebDashboard(v => !v)} color="#00C8E0" />
           </div>
           <div className="flex items-center gap-3 px-3 py-3" style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
             <Phone className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>Mobile App</span>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>{tr("setg.mobileAppLabel")}</span>
             <ToggleSwitch on={mobileApp} onToggle={() => setMobileApp(v => !v)} color="#00C853" />
           </div>
           <div className="px-3 py-3" style={{ background: "rgba(255,255,255,0.02)" }}>
             <div className="flex items-center gap-2 mb-2">
               <MapPin className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Zone Scope</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{tr("setg.zoneScope")}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {(["all", "assigned"] as const).map(scope => (
                 <button key={scope} onClick={() => setZoneScope(scope)} className="py-2 rounded-lg"
                   style={{ fontSize: 10, fontWeight: 600, background: zoneScope === scope ? "rgba(0,200,224,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${zoneScope === scope ? "rgba(0,200,224,0.3)" : "rgba(255,255,255,0.06)"}`, color: zoneScope === scope ? "#00C8E0" : "rgba(255,255,255,0.35)" }}>
-                  {scope === "all" ? "All Zones" : "Assigned Zones"}<br />
-                  <span style={{ fontSize: 8, fontWeight: 400, opacity: 0.7 }}>{scope === "all" ? "Full access" : "Restricted"}</span>
+                  {scope === "all" ? tr("setg.allZones") : tr("setg.assignedZonesScope")}<br />
+                  <span style={{ fontSize: 8, fontWeight: 400, opacity: 0.7 }}>{scope === "all" ? tr("setg.fullAccess") : tr("setg.restricted")}</span>
                 </button>
               ))}
             </div>
@@ -1457,14 +1459,14 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
 
       {/* Permissions */}
       <div>
-        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 4 }}>PERMISSIONS</p>
+        <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", letterSpacing: "1px", marginBottom: 4 }}>{tr("setg.permissionsHeader")}</p>
         {!webDashboard && (
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl mb-3"
             style={{ background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.15)" }}>
             <TriangleAlert className="size-3.5 flex-shrink-0 mt-0.5" style={{ color: "#FF9500" }} />
             <div>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "#FF9500" }}>Dashboard Permissions Disabled</p>
-              <p style={{ fontSize: 8, color: "rgba(255,149,0,0.7)", marginTop: 1 }}>Enable Web Dashboard Access to manage dashboard permissions</p>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#FF9500" }}>{tr("setg.dashboardPermsDisabled")}</p>
+              <p style={{ fontSize: 8, color: "rgba(255,149,0,0.7)", marginTop: 1 }}>{tr("setg.dashboardPermsDisabledDesc")}</p>
             </div>
           </div>
         )}
@@ -1483,7 +1485,7 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
                     <ChevronRight className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
                   </motion.div>
                   <Layers className="size-3.5" style={{ color: "#00C8E0" }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.8)", flex: 1, textAlign: "left" }}>{mod.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.8)", flex: 1, textAlign: "left" }}>{tr(mod.labelKey)}</span>
                   <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 7, fontWeight: 700, background: "rgba(0,200,224,0.1)", color: "#00C8E0" }}>{mod.tag}</span>
                   <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{granted}/{total}</span>
                 </button>
@@ -1502,11 +1504,11 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
                               style={{ background: isOn ? "rgba(0,200,224,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${isOn ? "#00C8E0" : "rgba(255,255,255,0.1)"}` }}>
                               {isOn && <Check className="size-2.5" style={{ color: "#00C8E0" }} strokeWidth={3} />}
                             </button>
-                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>{perm.label}</span>
+                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", flex: 1 }}>{tr(perm.labelKey)}</span>
                             <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>({permGranted}/{perm.total})</span>
                             <button onClick={() => selectAll(mod.id)} className="px-2 py-0.5 rounded"
                               style={{ fontSize: 8, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>
-                              Select all
+                              {tr("setg.selectAll")}
                             </button>
                           </div>
                         );
@@ -1523,10 +1525,10 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
       {/* Actions */}
       <div className="flex gap-2 pt-2 pb-4">
         <button onClick={onBack} className="flex-1 py-2.5 rounded-xl"
-          style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>Cancel</button>
+          style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>{tr("setg.cancel")}</button>
         <button className="flex-1 py-2.5 rounded-xl"
           style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: roleName.trim() ? "linear-gradient(135deg, #AF52DE 0%, #7B2FBE 100%)" : "rgba(255,255,255,0.05)", opacity: roleName.trim() ? 1 : 0.5 }}
-          onClick={() => { if (roleName.trim()) onBack(); }}>Create Role</button>
+          onClick={() => { if (roleName.trim()) onBack(); }}>{tr("setg.createRole")}</button>
       </div>
     </div>
   );
@@ -1540,7 +1542,8 @@ export function CreateCustomRolePage({ onBack }: { onBack: () => void }) {
 //   • verified      → ACTIVE badge + Disable + recovery code summary
 //   • enrolling     → modal mounted (MFAEnrollmentModal)
 // ═══════════════════════════════════════════════════════════════
-function MFAControlSection() {
+function MFAControlSection({ t }: { t?: (k: string) => string }) {
+  const tr = t || ((k: string) => k);
   const [status, setStatus]   = useState<"loading" | "off" | "on">("loading");
   const [factorId, setFactorId] = useState<string | null>(null);
   const [showEnroll, setShowEnroll] = useState(false);
@@ -1565,32 +1568,32 @@ function MFAControlSection() {
 
   const handleDisable = async () => {
     if (!factorId) return;
-    if (!window.confirm("Disable two-factor authentication?\n\nYour account will be protected by password only — significantly less secure. Continue?")) return;
+    if (!window.confirm(tr("setg.confirmDisable2fa"))) return;
     setBusy(true);
     const { error } = await mfaUnenroll(factorId);
     setBusy(false);
     if (error) {
-      toast.error("Could not disable", { description: error.message });
+      toast.error(tr("setg.couldNotDisable"), { description: error.message });
       return;
     }
-    toast.success("Two-factor authentication disabled");
+    toast.success(tr("setg.twoFaDisabled"));
     await refresh();
   };
 
   const handleRegenerate = async () => {
-    if (!window.confirm("Generate new recovery codes?\n\nYour current codes will stop working immediately.")) return;
+    if (!window.confirm(tr("setg.confirmRegenCodes"))) return;
     setBusy(true);
     const { data, error } = await mfaGenerateRecoveryCodes();
     setBusy(false);
     if (error || !data) {
-      toast.error("Could not generate codes", { description: error?.message });
+      toast.error(tr("setg.couldNotGenerateCodes"), { description: error?.message });
       return;
     }
     // Simple alert — for full UX this would route through the modal too.
-    toast.success("8 new codes generated", { description: "Check the modal — copy or download immediately." });
+    toast.success(tr("setg.newCodesGenerated"), { description: tr("setg.checkModalCopyDownload") });
     // Show the modal in a state where user can see codes? For brevity here we
     // open the system clipboard with codes joined.
-    try { await navigator.clipboard.writeText(data.codes.join("\n")); toast.success("Copied to clipboard"); } catch (_) { /* */ }
+    try { await navigator.clipboard.writeText(data.codes.join("\n")); toast.success(tr("setg.copiedToClipboard")); } catch (_) { /* */ }
     await refresh();
   };
 
@@ -1598,42 +1601,42 @@ function MFAControlSection() {
     <>
       {showEnroll && (
         <MFAEnrollmentModal
-          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success("Two-factor authentication enabled"); }}
+          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success(tr("setg.twoFaEnabled")); }}
           onCancel  ={async () => { setShowEnroll(false); await refresh(); }}
         />
       )}
       <div className="flex items-center justify-between py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Two-Factor Authentication (2FA)</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{tr("setg.twoFactorAuthFull")}</p>
             {status === "on" && (
-              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(0,200,83,0.12)", color: "#00C853", border: "1px solid rgba(0,200,83,0.25)", letterSpacing: 0.5 }}>ACTIVE</span>
+              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(0,200,83,0.12)", color: "#00C853", border: "1px solid rgba(0,200,83,0.25)", letterSpacing: 0.5 }}>{tr("setg.active")}</span>
             )}
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>
-            {status === "loading" && "Checking status…"}
-            {status === "off" && "Add a 6-digit code from your authenticator app at every sign-in."}
+            {status === "loading" && tr("setg.checkingStatus")}
+            {status === "off" && tr("setg.mfaOffDesc")}
             {status === "on" && (recoveryRemaining > 0
-              ? `${recoveryRemaining} unused recovery code${recoveryRemaining === 1 ? "" : "s"}.`
-              : "No recovery codes — generate a fresh set so you can sign in if you lose your device.")}
+              ? `${recoveryRemaining} ${recoveryRemaining === 1 ? tr("setg.unusedRecoveryCode") : tr("setg.unusedRecoveryCodes")}`
+              : tr("setg.noRecoveryCodes"))}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {status === "off" && (
             <button onClick={() => setShowEnroll(true)} disabled={busy}
               style={{ padding: "8px 14px", borderRadius: 12, background: "linear-gradient(135deg, #00C8E0, #00A5C0)", color: "#03131A", fontSize: 12, fontWeight: 800, border: "none", cursor: busy ? "default" : "pointer" }}>
-              Set up
+              {tr("setg.setUp")}
             </button>
           )}
           {status === "on" && (
             <>
               <button onClick={handleRegenerate} disabled={busy}
                 style={{ padding: "8px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.7)", fontSize: 11, fontWeight: 700, border: "1px solid rgba(255,255,255,0.06)", cursor: busy ? "default" : "pointer" }}>
-                {recoveryRemaining > 0 ? "Regenerate codes" : "Generate codes"}
+                {recoveryRemaining > 0 ? tr("setg.regenerateCodes") : tr("setg.generateCodes")}
               </button>
               <button onClick={handleDisable} disabled={busy}
                 style={{ padding: "8px 12px", borderRadius: 12, background: "rgba(255,45,85,0.06)", color: "#FF2D55", fontSize: 11, fontWeight: 700, border: "1px solid rgba(255,45,85,0.2)", cursor: busy ? "default" : "pointer" }}>
-                Disable
+                {tr("setg.disable")}
               </button>
             </>
           )}
@@ -1648,8 +1651,9 @@ function MFAControlSection() {
 // Compact version of MFAControlSection for the mobile security tab.
 // Reads real MFA state from Supabase and drives enroll/unenroll.
 // ═══════════════════════════════════════════════════════════════
-function MobileMFAControl() {
-  const [status, setStatus]   = useState<"loading" | "off" | "on">("loading");
+function MobileMFAControl({ t }: { t?: (k: string) => string }) {
+  const tr = t || ((k: string) => k);
+  const [status, setStatus] = useState<"loading" | "off" | "on">("loading");
   const [factorId, setFactorId] = useState<string | null>(null);
   const [showEnroll, setShowEnroll] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1674,16 +1678,16 @@ function MobileMFAControl() {
       return;
     }
     // Status is "on" — confirm disable
-    if (!window.confirm("Disable 2FA?\n\nYour account will be protected by password only.")) return;
+    if (!window.confirm(tr("setg.confirmDisable2faShort"))) return;
     if (!factorId) return;
     setBusy(true);
     const { error } = await mfaUnenroll(factorId);
     setBusy(false);
     if (error) {
-      toast.error("Could not disable 2FA", { description: error.message });
+      toast.error(tr("setg.couldNotDisable2fa"), { description: error.message });
       return;
     }
-    toast.success("Two-factor authentication disabled");
+    toast.success(tr("setg.twoFaDisabled"));
     await refresh();
   };
 
@@ -1693,7 +1697,7 @@ function MobileMFAControl() {
     <>
       {showEnroll && (
         <MFAEnrollmentModal
-          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success("2FA enabled"); }}
+          onComplete={async () => { setShowEnroll(false); await refresh(); toast.success(tr("setg.twoFaEnabledShort")); }}
           onCancel  ={async () => { setShowEnroll(false); await refresh(); }}
         />
       )}
@@ -1703,13 +1707,13 @@ function MobileMFAControl() {
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-white" style={{ fontSize: 12, fontWeight: 500 }}>Two-Factor Auth</span>
+            <span className="text-white" style={{ fontSize: 12, fontWeight: 500 }}>{tr("setg.twoFactorAuth")}</span>
             {status === "on" && (
-              <span style={{ fontSize: 7, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: "rgba(0,200,83,0.12)", color: "#00C853" }}>ACTIVE</span>
+              <span style={{ fontSize: 7, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: "rgba(0,200,83,0.12)", color: "#00C853" }}>{tr("setg.active")}</span>
             )}
           </div>
           <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 1 }}>
-            {status === "loading" ? "Checking…" : isOn ? "TOTP authenticator enrolled" : "Tap to set up authenticator app"}
+            {status === "loading" ? tr("setg.checkingShort") : isOn ? tr("setg.totpEnrolled") : tr("setg.tapToSetupAuth")}
           </p>
         </div>
         <button onClick={handleToggle} disabled={busy || status === "loading"} className="w-9 h-5 rounded-full relative transition-all"
@@ -1721,4 +1725,3 @@ function MobileMFAControl() {
     </>
   );
 }
-

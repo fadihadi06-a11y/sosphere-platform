@@ -49,6 +49,8 @@ import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { safeRpc } from "./api/safe-rpc";
 // PR (E) 2026-05-26 — global Math.random sweep.
 import { secureRandomString } from "./utils/secure-random";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ── Types ─────────────────────────────────────────────────────
 type JobStatus =
@@ -77,36 +79,36 @@ interface AsyncJob {
 
 type StatusFilter = "all" | "active" | "completed" | "failed";
 
-const STATUS_META: Record<JobStatus, { label: string; color: string; bg: string; icon: any }> = {
-  pending:   { label: "Pending",   color: "#FF9500", bg: "rgba(255,149,0,0.10)",  icon: Clock },
-  running:   { label: "Running",   color: "#00C8E0", bg: "rgba(0,200,224,0.10)",  icon: Loader2 },
-  paused:    { label: "Paused",    color: "#9B59B6", bg: "rgba(155,89,182,0.10)", icon: Clock },
-  completed: { label: "Completed", color: "#00C853", bg: "rgba(0,200,83,0.10)",   icon: CheckCircle2 },
-  failed:    { label: "Failed",    color: "#FF2D55", bg: "rgba(255,45,85,0.10)",  icon: XCircle },
-  cancelled: { label: "Cancelled", color: "#7A7A7A", bg: "rgba(122,122,122,0.10)", icon: Ban },
+const STATUS_META: Record<JobStatus, { labelKey: string; color: string; bg: string; icon: any }> = {
+  pending:   { labelKey: "jobs.status_pending",   color: "#FF9500", bg: "rgba(255,149,0,0.10)",  icon: Clock },
+  running:   { labelKey: "jobs.status_running",   color: "#00C8E0", bg: "rgba(0,200,224,0.10)",  icon: Loader2 },
+  paused:    { labelKey: "jobs.status_paused",    color: "#9B59B6", bg: "rgba(155,89,182,0.10)", icon: Clock },
+  completed: { labelKey: "jobs.status_completed", color: "#00C853", bg: "rgba(0,200,83,0.10)",   icon: CheckCircle2 },
+  failed:    { labelKey: "jobs.status_failed",    color: "#FF2D55", bg: "rgba(255,45,85,0.10)",  icon: XCircle },
+  cancelled: { labelKey: "jobs.status_cancelled", color: "#7A7A7A", bg: "rgba(122,122,122,0.10)", icon: Ban },
 };
 
 const JOB_TYPE_LABEL: Record<string, string> = {
-  bulk_invite: "Bulk Employee Invite",
-  csv_import:  "CSV Employee Import",
-  scim_sync:   "SCIM Directory Sync",
-  data_export: "Data Export",
+  bulk_invite: "jobs.type_bulk_invite",
+  csv_import:  "jobs.type_csv_import",
+  scim_sync:   "jobs.type_scim_sync",
+  data_export: "jobs.type_data_export",
 };
 
 
 // ── Helpers ───────────────────────────────────────────────────
-function relativeTime(iso: string | null): string {
+function relativeTime(iso: string | null, t: (k: string) => string): string {
   if (!iso) return "—";
   const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 0) return "just now";
+  if (ms < 0) return t("jobs.time_just_now");
   const sec = Math.floor(ms / 1000);
-  if (sec < 60)   return `${sec}s ago`;
+  if (sec < 60)   return `${sec}${t("jobs.time_seconds_ago")}`;
   const min = Math.floor(sec / 60);
-  if (min < 60)   return `${min}m ago`;
+  if (min < 60)   return `${min}${t("jobs.time_minutes_ago")}`;
   const hr = Math.floor(min / 60);
-  if (hr  < 24)   return `${hr}h ago`;
+  if (hr  < 24)   return `${hr}${t("jobs.time_hours_ago")}`;
   const day = Math.floor(hr / 24);
-  if (day < 7)    return `${day}d ago`;
+  if (day < 7)    return `${day}${t("jobs.time_days_ago")}`;
   return new Date(iso).toLocaleDateString();
 }
 
@@ -119,6 +121,8 @@ function pct(progress: AsyncJob["progress"]): number {
 // Component
 // ═════════════════════════════════════════════════════════════
 export function DashboardJobsPage() {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading,   setLoading]   = useState(true);
   const [jobs,      setJobs]      = useState<AsyncJob[]>([]);
@@ -139,11 +143,11 @@ export function DashboardJobsPage() {
       { timeoutMs: 8000 },
     );
     if (error) {
-      toast.error(`Failed to load jobs: ${error.message}`);
+      toast.error(`${t("jobs.toast_load_failed")}: ${error.message}`);
       return;
     }
     setJobs(Array.isArray(data?.jobs) ? data!.jobs! : []);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // PR (E) 2026-05-26 — global Math.random sweep. runId is used for
@@ -229,7 +233,7 @@ export function DashboardJobsPage() {
     setRefreshing(true);
     try {
       await loadJobs(companyId);
-      toast.success("Jobs refreshed");
+      toast.success(t("jobs.toast_refreshed"));
     } finally {
       setRefreshing(false);
     }
@@ -245,14 +249,14 @@ export function DashboardJobsPage() {
         { timeoutMs: 8000 },
       );
       if (error) {
-        toast.error(`Cancel failed: ${error.message}`);
+        toast.error(`${t("jobs.toast_cancel_failed")}: ${error.message}`);
         return;
       }
       if (!data?.ok) {
-        toast.error(`Cancel failed: ${data?.error ?? "unknown"}`);
+        toast.error(`${t("jobs.toast_cancel_failed")}: ${data?.error ?? t("jobs.unknown")}`);
         return;
       }
-      toast.success("Job cancelled");
+      toast.success(t("jobs.toast_cancelled"));
       // Realtime will patch it in; optimistic update for snappiness:
       setJobs(prev => prev.map(j => j.id === jobId
         ? { ...j, status: "cancelled" as JobStatus }
@@ -285,6 +289,13 @@ export function DashboardJobsPage() {
     failed:    jobs.filter(j => j.status === "failed" || j.status === "cancelled").length,
   }), [jobs]);
 
+  const filterLabel: Record<StatusFilter, string> = {
+    all:       t("jobs.filter_all"),
+    active:    t("jobs.filter_active"),
+    completed: t("jobs.filter_completed"),
+    failed:    t("jobs.filter_failed"),
+  };
+
   // ── Render ──────────────────────────────────────────────────
   return (
     <div className="px-5 py-4">
@@ -292,10 +303,10 @@ export function DashboardJobsPage() {
       <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.4px" }}>
-            Background Jobs
+            {t("jobs.header_title")}
           </h1>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 4 }}>
-            Bulk operations queued for processing — invite batches, CSV imports, directory syncs. Updates live.
+            {t("jobs.header_subtitle")}
           </p>
         </div>
         <motion.button
@@ -312,7 +323,7 @@ export function DashboardJobsPage() {
             opacity: refreshing || !companyId ? 0.5 : 1,
           }}>
           <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
+          {t("jobs.refresh")}
         </motion.button>
       </div>
 
@@ -332,9 +343,8 @@ export function DashboardJobsPage() {
                 color: isActive ? "#00C8E0" : "rgba(255,255,255,0.65)",
                 fontSize: 11,
                 fontWeight: 700,
-                textTransform: "capitalize",
               }}>
-              {f}
+              {filterLabel[f]}
               <span style={{
                 fontSize: 10,
                 fontWeight: 800,
@@ -355,15 +365,15 @@ export function DashboardJobsPage() {
         <LoadingState />
       ) : !companyId ? (
         <EmptyState
-          title="No active company"
-          description="Sign in as a company owner to view background jobs."
+          title={t("jobs.empty_no_company_title")}
+          description={t("jobs.empty_no_company_desc")}
         />
       ) : filteredJobs.length === 0 ? (
         <EmptyState
-          title={filter === "all" ? "No jobs yet" : `No ${filter} jobs`}
+          title={filter === "all" ? t("jobs.empty_no_jobs_title") : `${t("jobs.empty_no_filtered_prefix")} ${filterLabel[filter]}`}
           description={filter === "all"
-            ? "Bulk invitations and CSV imports will appear here as they run."
-            : "Try switching the filter to see other jobs."}
+            ? t("jobs.empty_no_jobs_desc")
+            : t("jobs.empty_no_filtered_desc")}
         />
       ) : (
         <div className="space-y-2">
@@ -372,6 +382,7 @@ export function DashboardJobsPage() {
               <JobCard
                 key={job.id}
                 job={job}
+                t={t}
                 expanded={expanded.has(job.id)}
                 onToggle={() => setExpanded(prev => {
                   const next = new Set(prev);
@@ -393,13 +404,14 @@ export function DashboardJobsPage() {
 // JobCard
 // ═════════════════════════════════════════════════════════════
 function JobCard({
-  job, expanded, onToggle, onCancel, cancelling,
+  job, expanded, onToggle, onCancel, cancelling, t,
 }: {
   job: AsyncJob;
   expanded: boolean;
   onToggle: () => void;
   onCancel: () => void;
   cancelling: boolean;
+  t: (k: string) => string;
 }) {
   const meta    = STATUS_META[job.status] || STATUS_META.pending;
   const Icon    = meta.icon;
@@ -409,7 +421,7 @@ function JobCard({
   const failed  = job.progress?.failed ?? 0;
   const percent = pct(job.progress);
   const cancellable = job.status === "pending" || job.status === "running" || job.status === "paused";
-  const typeLabel  = JOB_TYPE_LABEL[job.job_type] || job.job_type;
+  const typeLabel  = JOB_TYPE_LABEL[job.job_type] ? t(JOB_TYPE_LABEL[job.job_type]) : job.job_type;
 
   return (
     <motion.div
@@ -446,7 +458,7 @@ function JobCard({
               background: meta.bg, color: meta.color, fontSize: 10, fontWeight: 800,
               letterSpacing: "0.3px", textTransform: "uppercase",
             }}>
-              {meta.label}
+              {t(meta.labelKey)}
             </span>
             {job.attempt_count > 1 && (
               <span className="px-2 py-0.5 rounded-md flex items-center gap-1" style={{
@@ -454,22 +466,22 @@ function JobCard({
                 fontSize: 10, fontWeight: 700,
               }}>
                 <RefreshCw className="size-2.5" />
-                Retry #{job.attempt_count}
+                {t("jobs.retry")} #{job.attempt_count}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-0.5" style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
             <span className="flex items-center gap-1">
               <Users className="size-3" />
-              {total.toLocaleString()} total
+              {total.toLocaleString()} {t("jobs.total")}
             </span>
             {(sent > 0 || failed > 0) && (
               <>
-                <span style={{ color: "#00C853" }}>{sent.toLocaleString()} sent</span>
-                {failed > 0 && <span style={{ color: "#FF2D55" }}>{failed.toLocaleString()} failed</span>}
+                <span style={{ color: "#00C853" }}>{sent.toLocaleString()} {t("jobs.sent")}</span>
+                {failed > 0 && <span style={{ color: "#FF2D55" }}>{failed.toLocaleString()} {t("jobs.failed")}</span>}
               </>
             )}
-            <span>· {relativeTime(job.created_at)}</span>
+            <span>· {relativeTime(job.created_at, t)}</span>
           </div>
         </div>
 
@@ -488,7 +500,7 @@ function JobCard({
               opacity: cancelling ? 0.5 : 1,
             }}>
             <Ban className="size-3" />
-            {cancelling ? "Cancelling…" : "Cancel"}
+            {cancelling ? t("jobs.cancelling") : t("jobs.cancel")}
           </motion.button>
         )}
 
@@ -520,7 +532,7 @@ function JobCard({
             />
           </div>
           <div className="flex items-center justify-between mt-1.5" style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
-            <span>{done.toLocaleString()} / {total.toLocaleString()} processed</span>
+            <span>{done.toLocaleString()} / {total.toLocaleString()} {t("jobs.processed")}</span>
             <span>{percent}%</span>
           </div>
         </div>
@@ -536,11 +548,11 @@ function JobCard({
             transition={{ duration: 0.18 }}
             className="overflow-hidden">
             <div className="px-4 pb-4 pt-1 space-y-2" style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
-              <DetailRow label="Job ID"     value={<code style={{ fontFamily: "monospace", fontSize: 10 }}>{job.id}</code>} />
-              <DetailRow label="Source"     value={job.payload_summary?.source ?? "—"} />
-              <DetailRow label="Created"    value={new Date(job.created_at).toLocaleString()} />
-              <DetailRow label="Started"    value={job.started_at ? new Date(job.started_at).toLocaleString() : "—"} />
-              <DetailRow label="Completed"  value={job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"} />
+              <DetailRow label={t("jobs.detail_job_id")}    value={<code style={{ fontFamily: "monospace", fontSize: 10 }}>{job.id}</code>} />
+              <DetailRow label={t("jobs.detail_source")}    value={job.payload_summary?.source ?? "—"} />
+              <DetailRow label={t("jobs.detail_created")}   value={new Date(job.created_at).toLocaleString()} />
+              <DetailRow label={t("jobs.detail_started")}   value={job.started_at ? new Date(job.started_at).toLocaleString() : "—"} />
+              <DetailRow label={t("jobs.detail_completed")} value={job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"} />
               {job.error_message && (
                 <div className="mt-2 p-2.5 rounded-lg flex items-start gap-2"
                   style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)" }}>

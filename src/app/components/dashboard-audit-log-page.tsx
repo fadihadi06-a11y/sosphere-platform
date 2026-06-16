@@ -74,37 +74,37 @@ interface AuditEntry {
 
 // ── Category Config ───────────────────────────────────────────
 const CATEGORY_CONFIG: Record<AuditCategory, {
-  label: string; icon: React.ElementType; color: string; bg: string;
+  labelKey: string; icon: React.ElementType; color: string; bg: string;
 }> = {
-  permission_change: { label: "Permission Change", icon: Key,       color: "#FF9500", bg: "rgba(255,150,0,0.1)"   },
-  role_change:       { label: "Role Change",       icon: Shield,    color: "#00C8E0", bg: "rgba(0,200,224,0.1)"  },
-  zone_assignment:   { label: "Zone Assignment",   icon: MapPin,    color: "#34C759", bg: "rgba(52,199,89,0.1)"  },
-  user_added:        { label: "User Added",        icon: UserPlus,  color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
-  user_removed:      { label: "User Removed",      icon: UserX,     color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
-  user_suspended:    { label: "User Suspended",    icon: Lock,      color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
-  "2fa_event":       { label: "2FA / PIN",         icon: Fingerprint,color:"#9B59B6", bg: "rgba(155,89,182,0.1)" },
-  login:             { label: "Login",              icon: LogIn,     color: "#4A90D9", bg: "rgba(74,144,217,0.1)" },
-  logout:            { label: "Logout",             icon: LogOut,    color: "#4A90D9", bg: "rgba(74,144,217,0.08)"},
-  emergency:         { label: "Emergency Action",  icon: Siren,     color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
-  settings:          { label: "Settings Change",   icon: Settings,  color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
-  csv_import:        { label: "CSV Import",        icon: FileText,  color: "#34C759", bg: "rgba(52,199,89,0.08)" },
-  file_access:       { label: "File Accessed",     icon: Eye,       color: "#8090A5", bg: "rgba(128,144,165,0.08)" },
-  data_modify:       { label: "Data Modified",     icon: Edit2,     color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
-  data_delete:       { label: "Data Deleted",      icon: Trash2,    color: "#FF2D55", bg: "rgba(255,45,85,0.08)" },
-  report_export:     { label: "Report Exported",   icon: Download,  color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
-  investigation:     { label: "Investigation",     icon: Activity,  color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  permission_change: { labelKey: "audit.cat.permission_change", icon: Key,       color: "#FF9500", bg: "rgba(255,150,0,0.1)"   },
+  role_change:       { labelKey: "audit.cat.role_change",       icon: Shield,    color: "#00C8E0", bg: "rgba(0,200,224,0.1)"  },
+  zone_assignment:   { labelKey: "audit.cat.zone_assignment",   icon: MapPin,    color: "#34C759", bg: "rgba(52,199,89,0.1)"  },
+  user_added:        { labelKey: "audit.cat.user_added",        icon: UserPlus,  color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
+  user_removed:      { labelKey: "audit.cat.user_removed",      icon: UserX,     color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
+  user_suspended:    { labelKey: "audit.cat.user_suspended",    icon: Lock,      color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
+  "2fa_event":       { labelKey: "audit.cat.2fa_event",         icon: Fingerprint,color:"#9B59B6", bg: "rgba(155,89,182,0.1)" },
+  login:             { labelKey: "audit.cat.login",             icon: LogIn,     color: "#4A90D9", bg: "rgba(74,144,217,0.1)" },
+  logout:            { labelKey: "audit.cat.logout",            icon: LogOut,    color: "#4A90D9", bg: "rgba(74,144,217,0.08)"},
+  emergency:         { labelKey: "audit.cat.emergency",         icon: Siren,     color: "#FF2D55", bg: "rgba(255,45,85,0.1)"  },
+  settings:          { labelKey: "audit.cat.settings",          icon: Settings,  color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  csv_import:        { labelKey: "audit.cat.csv_import",        icon: FileText,  color: "#34C759", bg: "rgba(52,199,89,0.08)" },
+  file_access:       { labelKey: "audit.cat.file_access",       icon: Eye,       color: "#8090A5", bg: "rgba(128,144,165,0.08)" },
+  data_modify:       { labelKey: "audit.cat.data_modify",       icon: Edit2,     color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  data_delete:       { labelKey: "audit.cat.data_delete",       icon: Trash2,    color: "#FF2D55", bg: "rgba(255,45,85,0.08)" },
+  report_export:     { labelKey: "audit.cat.report_export",     icon: Download,  color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
+  investigation:     { labelKey: "audit.cat.investigation",     icon: Activity,  color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
   // 2026-06-03: "auth" covers MFA enroll/disable/fail + SSO + recovery-code
   // events. Same icon as login (LogIn) — both represent identity/access
   // operations, easier visual scan in the dashboard list.
-  auth:              { label: "Authentication",    icon: LogIn,     color: "#4A90D9", bg: "rgba(74,144,217,0.08)" },
+  auth:              { labelKey: "audit.cat.auth",              icon: LogIn,     color: "#4A90D9", bg: "rgba(74,144,217,0.08)" },
 };
 
-const LEVEL_CONFIG: Record<AuditLevel, { label: string; color: string; icon: React.ElementType }> = {
-  owner:      { label: "Owner",        color: "#FF2D55", icon: Crown      },
-  main_admin: { label: "Main Admin",   color: "#FF9500", icon: Key        },
-  zone_admin: { label: "Zone Admin",   color: "#00C8E0", icon: ShieldCheck },
-  worker:     { label: "Field Worker", color: "#34C759", icon: UserCheck  },
-  system:     { label: "System",       color: "#9B59B6", icon: Zap        },
+const LEVEL_CONFIG: Record<AuditLevel, { labelKey: string; color: string; icon: React.ElementType }> = {
+  owner:      { labelKey: "audit.level.owner",      color: "#FF2D55", icon: Crown      },
+  main_admin: { labelKey: "audit.level.main_admin", color: "#FF9500", icon: Key        },
+  zone_admin: { labelKey: "audit.level.zone_admin", color: "#00C8E0", icon: ShieldCheck },
+  worker:     { labelKey: "audit.level.worker",     color: "#34C759", icon: UserCheck  },
+  system:     { labelKey: "audit.level.system",     color: "#9B59B6", icon: Zap        },
 };
 
 const SEVERITY_CONFIG = {
@@ -362,15 +362,15 @@ const MOCK_AUDIT: AuditEntry[] = [
 ];
 
 // ── Helper Functions ──────────────────────────────────────────
-function formatTime(date: Date): string {
+function formatTime(date: Date, t: (k: string) => string): string {
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days = Math.floor(hours / 24);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${days}d ago`;
+  if (mins < 1) return t("audit.time.justNow");
+  if (mins < 60) return `${mins}${t("audit.time.minAgo")}`;
+  if (hours < 24) return `${hours}${t("audit.time.hourAgo")}`;
+  return `${days}${t("audit.time.dayAgo")}`;
 }
 
 function formatFullDate(date: Date): string {
@@ -542,7 +542,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       } catch (encErr) {
         console.warn("[SOSphere] Encryption failed, generating unprotected PDF:", encErr);
         doc = new jsPDF(baseOpts);
-        toast.warning("Encryption Not Applied", { description: "PDF generated without password protection.", duration: 5000 });
+        toast.warning(t("audit.toast.encNotApplied"), { description: t("audit.toast.encNotAppliedDesc"), duration: 5000 });
       }
     } else {
       doc = new jsPDF(baseOpts);
@@ -707,7 +707,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     const twoFAPct = filtered.length > 0 ? Math.round((twoFACount / filtered.length) * 100) : 0;
     const permChanges = filtered.filter(e => e.category === "permission_change").length;
     const catStats = Object.entries(CATEGORY_CONFIG).map(([k, v]) => ({
-      key: k, label: v.label, count: filtered.filter(e => e.category === k).length,
+      key: k, label: t(v.labelKey), count: filtered.filter(e => e.category === k).length,
     })).filter(c => c.count > 0).sort((a, b) => b.count - a.count);
     const actorStats: Record<string, { count: number; level: AuditLevel }> = {};
     filtered.forEach(e => {
@@ -718,10 +718,10 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
 
     // Active filters
     const activeFilters: string[] = [];
-    if (filterCategory !== "all") activeFilters.push(`Category: ${CATEGORY_CONFIG[filterCategory].label}`);
-    if (filterLevel !== "all") activeFilters.push(`Level: ${LEVEL_CONFIG[filterLevel].label}`);
-    if (filterSeverity !== "all") activeFilters.push(`Severity: ${filterSeverity}`);
-    if (search) activeFilters.push(`Search: "${search}"`);
+    if (filterCategory !== "all") activeFilters.push(`${t("audit.filter.category")}: ${t(CATEGORY_CONFIG[filterCategory].labelKey)}`);
+    if (filterLevel !== "all") activeFilters.push(`${t("audit.filter.level")}: ${t(LEVEL_CONFIG[filterLevel].labelKey)}`);
+    if (filterSeverity !== "all") activeFilters.push(`${t("audit.filter.severity")}: ${filterSeverity}`);
+    if (search) activeFilters.push(`${t("audit.filter.search")}: "${search}"`);
 
 
     // ====================================================================
@@ -1035,7 +1035,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         return [
           String(i + 1),
           safe(name),
-          LEVEL_CONFIG[data.level]?.label || data.level,
+          t(LEVEL_CONFIG[data.level]?.labelKey) || data.level,
           String(data.count),
           `${((data.count / filtered.length) * 100).toFixed(1)}%`,
           actor2FA > 0 ? `${actor2FA}/${data.count} (${Math.round((actor2FA / data.count) * 100)}%)` : "None",
@@ -1084,7 +1084,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         String(i + 1),
         formatFullDate(e.timestamp),
         safe(e.actor.name),
-        LEVEL_CONFIG[e.actor.level].label,
+        t(LEVEL_CONFIG[e.actor.level].labelKey),
         safe(e.action),
         safe(e.target?.name || "--"),
         e.severity.toUpperCase(),
@@ -1177,7 +1177,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         doc.setTextColor(130);
         doc.text("Actor:", 23, detailY);
         doc.setTextColor(50);
-        doc.text(safe(`${e.actor.name} (${LEVEL_CONFIG[e.actor.level].label})`), 42, detailY);
+        doc.text(safe(`${e.actor.name} (${t(LEVEL_CONFIG[e.actor.level].labelKey)})`), 42, detailY);
 
         doc.setTextColor(130);
         doc.text("Time:", 23, detailY + 6);
@@ -1305,7 +1305,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         const aPct = data.count > 0 ? Math.round((a2fa / data.count) * 100) : 0;
         return [
           safe(name),
-          LEVEL_CONFIG[data.level]?.label || data.level,
+          t(LEVEL_CONFIG[data.level]?.labelKey) || data.level,
           String(data.count),
           String(a2fa),
           `${aPct}%`,
@@ -1576,21 +1576,21 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
     setShowPasswordModal(false);
     setLastEncPassword(encConfig?.password);
     try {
-      toast.loading("Generating PDF report...", { id: "audit-pdf", duration: 10000 });
+      toast.loading(t("audit.toast.generatingPdf"), { id: "audit-pdf", duration: 10000 });
       await handleExportPDF(encConfig);
       setLastAuditEncrypted(!!encConfig);
-      const encLabel = encConfig ? " | Password Protected" : "";
-      toast.success("Audit PDF Generated", { id: "audit-pdf", description: `${filtered.length} entries exported${encLabel}` });
+      const encLabel = encConfig ? ` | ${t("audit.toast.passwordProtected")}` : "";
+      toast.success(t("audit.toast.pdfGenerated"), { id: "audit-pdf", description: `${filtered.length} ${t("audit.toast.entriesExported")}${encLabel}` });
       setTimeout(() => {
-        toast("Email this audit report?", {
-          description: "Send the generated PDF to team members via secure email",
-          action: { label: "Email Report", onClick: () => setShowEmailModal(true) },
+        toast(t("audit.toast.emailReportQ"), {
+          description: t("audit.toast.emailReportDesc"),
+          action: { label: t("audit.toast.emailReport"), onClick: () => setShowEmailModal(true) },
           duration: 8000,
         });
       }, 1500);
     } catch (err) {
       console.error("Audit PDF error:", err);
-      toast.error("PDF Generation Failed", { id: "audit-pdf", description: "An error occurred while generating the audit PDF." });
+      toast.error(t("audit.toast.pdfFailed"), { id: "audit-pdf", description: t("audit.toast.pdfFailedDesc") });
     }
   };
 
@@ -1607,9 +1607,9 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       <div className="px-6 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <div className="flex items-center justify-between mb-1">
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>Audit Log</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>{t("audit.title")}</h1>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-              Complete trail — who changed what, when, and why
+              {t("audit.subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1618,21 +1618,21 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
               className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all"
               style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.15)", fontSize: 11, fontWeight: 600, color: "#8B5CF6" }}
             >
-              <Mail className="size-3.5" /> Email
+              <Mail className="size-3.5" /> {t("audit.btn.email")}
             </button>
             <button
               onClick={handleExportWithPassword}
               className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all"
               style={{ background: "rgba(0,200,224,0.15)", border: "1px solid rgba(0,200,224,0.3)", fontSize: 12, fontWeight: 700, color: "#00C8E0" }}
             >
-              <FileText className="size-3.5" /> Export PDF
+              <FileText className="size-3.5" /> {t("audit.btn.exportPdf")}
             </button>
             <button
               onClick={handleExport}
               className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all"
               style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.45)" }}
             >
-              <Download className="size-3" /> CSV
+              <Download className="size-3" /> {t("audit.btn.csv")}
             </button>
           </div>
         </div>
@@ -1641,11 +1641,11 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       {/* ── Stats Row ────────────────────────────────────────── */}
       <div className="px-6 py-4 grid grid-cols-5 gap-2">
         {[
-          { label: "Total Events", value: stats.total,       color: "rgba(255,255,255,0.7)", icon: Activity   },
-          { label: "Critical",     value: stats.critical,    color: "#FF2D55",               icon: AlertTriangle },
-          { label: "Warnings",     value: stats.warning,     color: "#FF9500",               icon: Shield     },
-          { label: "Perm Changes", value: stats.permChanges, color: "#00C8E0",               icon: Key        },
-          { label: "2FA Verified", value: stats.with2FA,     color: "#34C759",               icon: Fingerprint },
+          { label: t("audit.stat.totalEvents"), value: stats.total,       color: "rgba(255,255,255,0.7)", icon: Activity   },
+          { label: t("audit.stat.critical"),     value: stats.critical,    color: "#FF2D55",               icon: AlertTriangle },
+          { label: t("audit.stat.warnings"),     value: stats.warning,     color: "#FF9500",               icon: Shield     },
+          { label: t("audit.stat.permChanges"), value: stats.permChanges, color: "#00C8E0",               icon: Key        },
+          { label: t("audit.stat.twoFaVerified"), value: stats.with2FA,     color: "#34C759",               icon: Fingerprint },
         ].map(s => {
           const SIcon = s.icon;
           return (
@@ -1667,7 +1667,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search actions, actors, targets…"
+            placeholder={t("audit.searchPlaceholder")}
             className="bg-transparent flex-1 outline-none"
             style={{ fontSize: 13, color: "#fff" }}
           />
@@ -1685,7 +1685,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
           }}
         >
           <Filter className="size-4" />
-          Filters
+          {t("audit.btn.filters")}
           {activeFilterCount > 0 && (
             <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full flex items-center justify-center"
               style={{ background: "#FF2D55", fontSize: 9, fontWeight: 700, color: "#fff" }}>
@@ -1709,7 +1709,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
               {/* Category Filter */}
               <div>
                 <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                  Category
+                  {t("audit.filter.category")}
                 </label>
                 <select
                   value={filterCategory}
@@ -1717,16 +1717,16 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
                   className="w-full mt-1.5 px-3 py-2 rounded-xl outline-none"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.7)", fontSize: 12 }}
                 >
-                  <option value="all">All Categories</option>
+                  <option value="all">{t("audit.opt.allCategories")}</option>
                   {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>{t(v.labelKey)}</option>
                   ))}
                 </select>
               </div>
               {/* Level Filter */}
               <div>
                 <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                  Actor Level
+                  {t("audit.filter.actorLevel")}
                 </label>
                 <select
                   value={filterLevel}
@@ -1734,18 +1734,18 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
                   className="w-full mt-1.5 px-3 py-2 rounded-xl outline-none"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.7)", fontSize: 12 }}
                 >
-                  <option value="all">All Levels</option>
-                  <option value="owner">Owner</option>
-                  <option value="main_admin">Main Admin</option>
-                  <option value="zone_admin">Zone Admin</option>
-                  <option value="worker">Field Worker</option>
-                  <option value="system">System</option>
+                  <option value="all">{t("audit.opt.allLevels")}</option>
+                  <option value="owner">{t("audit.level.owner")}</option>
+                  <option value="main_admin">{t("audit.level.main_admin")}</option>
+                  <option value="zone_admin">{t("audit.level.zone_admin")}</option>
+                  <option value="worker">{t("audit.level.worker")}</option>
+                  <option value="system">{t("audit.level.system")}</option>
                 </select>
               </div>
               {/* Severity Filter */}
               <div>
                 <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                  Severity
+                  {t("audit.filter.severity")}
                 </label>
                 <select
                   value={filterSeverity}
@@ -1753,11 +1753,11 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
                   className="w-full mt-1.5 px-3 py-2 rounded-xl outline-none"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.7)", fontSize: 12 }}
                 >
-                  <option value="all">All Severities</option>
-                  <option value="critical">Critical</option>
-                  <option value="warning">Warning</option>
-                  <option value="success">Success</option>
-                  <option value="info">Info</option>
+                  <option value="all">{t("audit.opt.allSeverities")}</option>
+                  <option value="critical">{t("audit.sev.critical")}</option>
+                  <option value="warning">{t("audit.sev.warning")}</option>
+                  <option value="success">{t("audit.sev.success")}</option>
+                  <option value="info">{t("audit.sev.info")}</option>
                 </select>
               </div>
               {/* Clear Filters */}
@@ -1767,7 +1767,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
                   className="col-span-3 flex items-center justify-center gap-2 py-2 rounded-xl"
                   style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", color: "#FF2D55", fontSize: 12, fontWeight: 600 }}
                 >
-                  <X className="size-3.5" /> Clear {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""}
+                  <X className="size-3.5" /> {t("audit.btn.clear")} {activeFilterCount} {activeFilterCount > 1 ? t("audit.btn.filtersLower") : t("audit.btn.filterLower")}
                 </button>
               )}
             </div>
@@ -1778,12 +1778,12 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
       {/* ── Results count ─────────────────────────────────────── */}
       <div className="px-6 mb-3 flex items-center gap-2">
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-          {filtered.length} event{filtered.length !== 1 ? "s" : ""}
-          {filtered.length < allEntries.length ? ` of ${allEntries.length}` : ""}
+          {filtered.length} {filtered.length !== 1 ? t("audit.events") : t("audit.event")}
+          {filtered.length < allEntries.length ? ` ${t("audit.of")} ${allEntries.length}` : ""}
         </span>
         {filtered.length < allEntries.length && (
           <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 700, color: "#FF9500", background: "rgba(255,150,0,0.1)" }}>
-            FILTERED
+            {t("audit.filtered")}
           </span>
         )}
       </div>
@@ -1798,8 +1798,8 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Search className="size-10 mb-4" style={{ color: "rgba(255,255,255,0.1)" }} />
-                <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.3)" }}>No events found</p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>Try adjusting your filters</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.3)" }}>{t("audit.empty.title")}</p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>{t("audit.empty.hint")}</p>
               </div>
             ) : filtered.map((entry, i) => (
               <AuditRow
@@ -1807,6 +1807,7 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
                 entry={entry}
                 expanded={expandedId === entry.id}
                 onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+                t={t}
               />
             ))}
           </div>
@@ -1818,21 +1819,21 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
         open={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
         onConfirm={handlePasswordConfirm}
-        title="Audit PDF Security"
-        description="Protect this audit report with encryption"
+        title={t("audit.modal.pdfSecurityTitle")}
+        description={t("audit.modal.pdfSecurityDesc")}
       />
 
       {/* Email Delivery Simulation Modal */}
       <PdfEmailModal
         open={showEmailModal}
         onClose={() => setShowEmailModal(false)}
-        reportTitle="Audit Log Report"
+        reportTitle={t("audit.modal.reportTitle")}
         reportSize="1.8 MB"
         isEncrypted={lastAuditEncrypted}
         encryptionPassword={lastEncPassword}
         onSent={(emails) => {
-          toast.success("Audit Report Emailed", {
-            description: `Sent to ${emails.length} recipient${emails.length > 1 ? "s" : ""} via secure channel`,
+          toast.success(t("audit.toast.reportEmailed"), {
+            description: `${t("audit.toast.sentTo")} ${emails.length} ${emails.length > 1 ? t("audit.toast.recipients") : t("audit.toast.recipient")} ${t("audit.toast.viaSecure")}`,
             duration: 5000,
           });
         }}
@@ -1842,10 +1843,11 @@ export function AuditLogPage({ t, webMode = false }: AuditLogPageProps) {
 }
 
 // ── Audit Row Component ───────────────────────────────────────
-function AuditRow({ entry, expanded, onToggle }: {
+function AuditRow({ entry, expanded, onToggle, t }: {
   entry: AuditEntry;
   expanded: boolean;
   onToggle: () => void;
+  t: (k: string) => string;
 }) {
   const catCfg  = CATEGORY_CONFIG[entry.category];
   const sevCfg  = SEVERITY_CONFIG[entry.severity];
@@ -1888,13 +1890,13 @@ function AuditRow({ entry, expanded, onToggle }: {
               {/* Category badge */}
               <span className="px-1.5 py-0.5 rounded-md flex-shrink-0"
                 style={{ fontSize: 9, fontWeight: 700, background: catCfg.bg, color: catCfg.color }}>
-                {catCfg.label.toUpperCase()}
+                {t(catCfg.labelKey).toUpperCase()}
               </span>
               {/* 2FA badge */}
               {entry.verified2FA && (
                 <span className="px-1.5 py-0.5 rounded-md flex items-center gap-0.5 flex-shrink-0"
                   style={{ fontSize: 9, fontWeight: 700, background: "rgba(52,199,89,0.1)", color: "#34C759" }}>
-                  <Fingerprint style={{ width: 8, height: 8 }} /> 2FA
+                  <Fingerprint style={{ width: 8, height: 8 }} /> {t("audit.badge.2fa")}
                 </span>
               )}
             </div>
@@ -1910,7 +1912,7 @@ function AuditRow({ entry, expanded, onToggle }: {
                 </>
               )}
               <span style={{ color: "rgba(255,255,255,0.15)", fontSize: 11 }}>·</span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{formatTime(entry.timestamp)}</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{formatTime(entry.timestamp, t)}</span>
             </div>
 
             {/* Detail */}
@@ -1953,7 +1955,7 @@ function AuditRow({ entry, expanded, onToggle }: {
                         style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)" }}>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <div className="size-1.5 rounded-full" style={{ background: "#FF2D55" }} />
-                          <span style={{ fontSize: 9, fontWeight: 700, color: "#FF2D55", letterSpacing: "0.5px" }}>BEFORE</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: "#FF2D55", letterSpacing: "0.5px" }}>{t("audit.beforeLabel")}</span>
                         </div>
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>{entry.before}</p>
                       </div>
@@ -1963,7 +1965,7 @@ function AuditRow({ entry, expanded, onToggle }: {
                         style={{ background: "rgba(52,199,89,0.06)", border: "1px solid rgba(52,199,89,0.12)" }}>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <div className="size-1.5 rounded-full" style={{ background: "#34C759" }} />
-                          <span style={{ fontSize: 9, fontWeight: 700, color: "#34C759", letterSpacing: "0.5px" }}>AFTER</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: "#34C759", letterSpacing: "0.5px" }}>{t("audit.afterLabel")}</span>
                         </div>
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>{entry.after}</p>
                       </div>
@@ -1982,7 +1984,7 @@ function AuditRow({ entry, expanded, onToggle }: {
                   {entry.ipAddress && (
                     <div className="flex items-center gap-1.5">
                       <Hash className="size-3" style={{ color: "rgba(255,255,255,0.2)" }} />
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>IP: {entry.ipAddress}</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{t("audit.ipLabel")}: {entry.ipAddress}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5">
@@ -1993,7 +1995,7 @@ function AuditRow({ entry, expanded, onToggle }: {
                     <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md"
                       style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)" }}>
                       <Lock className="size-3" style={{ color: "#FF9500" }} />
-                      <span style={{ fontSize: 9, fontWeight: 700, color: "#FF9500" }}>NO 2FA</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#FF9500" }}>{t("audit.badge.no2fa")}</span>
                     </div>
                   )}
                 </div>

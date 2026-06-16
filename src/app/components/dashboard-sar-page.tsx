@@ -63,13 +63,15 @@ import { supabase } from "./api/supabase-client";
 import {
   Card as DSCard, TOKENS, TYPOGRAPHY, PageHeader,
 } from "./design-system";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ── Scenario Presets for Demo ──────────────────────────────────
 
 interface SARScenario {
   id: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: React.ElementType;
   employeeId: string;
   employeeName: string;
@@ -82,29 +84,29 @@ interface SARScenario {
 
 const SAR_SCENARIOS: SARScenario[] = [
   {
-    id: "S1", title: "Mine Worker — Underground",
-    description: "Khalid Omar lost signal 35 minutes ago in Mine Shaft B-7. Last check-in was normal. Rescue team sent to last GPS — not found.",
+    id: "S1", titleKey: "sar.scenarioS1Title",
+    descriptionKey: "sar.scenarioS1Desc",
     icon: HardHat,
     employeeId: "EMP-003", employeeName: "Khalid Omar", employeeRole: "Operator",
     workerType: "underground", zone: "Zone D - Warehouse", terrain: "underground", elapsedMin: 35,
   },
   {
-    id: "S2", title: "Driver — Desert Route",
-    description: "Faisal Qasim delivering to remote site. GPS stopped 28 minutes ago on Desert Highway 15. Vehicle tracking offline.",
+    id: "S2", titleKey: "sar.scenarioS2Title",
+    descriptionKey: "sar.scenarioS2Desc",
     icon: Car,
     employeeId: "EMP-017", employeeName: "Faisal Qasim", employeeRole: "Driver",
     workerType: "driver", zone: "Route DH-15", terrain: "desert", elapsedMin: 28,
   },
   {
-    id: "S3", title: "Solo Inspector — Remote Site",
-    description: "Ali Mansour sent alone to inspect Tower 7-Alpha. No check-in for 22 minutes. Area has poor coverage.",
+    id: "S3", titleKey: "sar.scenarioS3Title",
+    descriptionKey: "sar.scenarioS3Desc",
     icon: Footprints,
     employeeId: "EMP-013", employeeName: "Ali Mansour", employeeRole: "Welder",
     workerType: "solo_remote", zone: "Tower 7-Alpha", terrain: "industrial", elapsedMin: 22,
   },
   {
-    id: "S4", title: "Field Worker — Mountain Area",
-    description: "Hassan Jaber conducting survey in mountainous terrain. Signal lost 45 minutes ago. Weather deteriorating.",
+    id: "S4", titleKey: "sar.scenarioS4Title",
+    descriptionKey: "sar.scenarioS4Desc",
     icon: Compass,
     employeeId: "EMP-011", employeeName: "Hassan Jaber", employeeRole: "Crane Operator",
     workerType: "walker", zone: "Survey Grid M-12", terrain: "mountain", elapsedMin: 45,
@@ -173,8 +175,8 @@ const pulseCSS = `
 
 // ── SAR PDF Report Export ──────────────────────────────────────
 
-async function exportSARReportPDF(mission: SARMission, totalElapsed: number) {
-  toast.loading("Generating SAR Report PDF...", { id: "sar-pdf" });
+async function exportSARReportPDF(mission: SARMission, totalElapsed: number, t: (k: string) => string) {
+  toast.loading(t("sar.toastGeneratingPdf"), { id: "sar-pdf" });
 
   try {
     const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
@@ -488,10 +490,10 @@ async function exportSARReportPDF(mission: SARMission, totalElapsed: number) {
     }
 
     doc.save(`SAR-Report-${mission.id}-${mission.employeeName.replace(/\s/g, "_")}.pdf`);
-    toast.success("SAR Report exported!", { id: "sar-pdf", description: "PDF includes search cone diagram, trail analysis, escalation timeline, and all mission data." });
+    toast.success(t("sar.toastPdfExported"), { id: "sar-pdf", description: t("sar.toastPdfExportedDesc") });
   } catch (err) {
     console.error("PDF Error:", err);
-    toast.error("Failed to generate PDF", { id: "sar-pdf" });
+    toast.error(t("sar.toastPdfFailed"), { id: "sar-pdf" });
   }
 }
 
@@ -500,6 +502,8 @@ async function exportSARReportPDF(mission: SARMission, totalElapsed: number) {
 // ═══════════════════════════════════════════════════════════════
 
 export function SARProtocolPage() {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [activeMission, setActiveMission] = useState<SARMission | null>(null);
   const [showScenarioPicker, setShowScenarioPicker] = useState(true);
   const [elapsedTimer, setElapsedTimer] = useState(0);
@@ -524,10 +528,10 @@ export function SARProtocolPage() {
       const isClusterMission = latest.id.startsWith("SAR-CLU-");
       toast.success(
         isClusterMission
-          ? "Cluster SAR Mission Loaded"
-          : "Active SAR Mission Resumed",
+          ? t("sar.toastClusterLoaded")
+          : t("sar.toastActiveResumed"),
         {
-          description: `Tracking ${latest.employeeName} in ${latest.zone}`,
+          description: `${t("sar.toastTracking")} ${latest.employeeName} ${t("sar.toastIn")} ${latest.zone}`,
           duration: 4000,
         }
       );
@@ -564,8 +568,8 @@ export function SARProtocolPage() {
       setActiveMission(mission);
       setShowScenarioPicker(false);
       setElapsedTimer(0);
-      toast.success("SAR Mission Created from Emergency", {
-        description: `Tracking ${prefill.employeeName} in ${prefill.zone} — ${prefill.elapsedMinutes}+ min elapsed`,
+      toast.success(t("sar.toastCreatedFromEmergency"), {
+        description: `${t("sar.toastTracking")} ${prefill.employeeName} ${t("sar.toastIn")} ${prefill.zone} — ${prefill.elapsedMinutes}+ ${t("sar.toastMinElapsed")}`,
         duration: 5000,
       });
     } catch {}
@@ -605,7 +609,7 @@ export function SARProtocolPage() {
     setElapsedTimer(0);
     saveSARMission(mission);
     void emitAdminSignal("SAR_ACTIVATED", c.employee_id, { employeeName: c.name, zone: "", zoneIds: [], missionId: mission.id });
-    toast.success("Live SAR launched", { description: `${c.name} — last seen ${c.minutes_since}m ago` });
+    toast.success(t("sar.toastLiveLaunched"), { description: `${c.name} — ${t("sar.toastLastSeen")} ${c.minutes_since}${t("sar.toastMinutesAgo")}` });
   }, []);
 
 
@@ -638,7 +642,7 @@ export function SARProtocolPage() {
         zone: scenario.zone,
         targetId: mission.id,
         targetName: `SAR ${mission.id} — ${scenario.employeeName}`,
-        detail: `SAR scenario "${scenario.title}" started for ${scenario.employeeName} (worker type: ${scenario.workerType}, terrain: ${scenario.terrain}).`,
+        detail: `SAR scenario "${t(scenario.titleKey)}" started for ${scenario.employeeName} (worker type: ${scenario.workerType}, terrain: ${scenario.terrain}).`,
       });
     } catch { /* audit-log failures must never block a life-safety mission */ }
 
@@ -675,7 +679,7 @@ export function SARProtocolPage() {
           p_actor_level:  "dispatcher",
           p_operation:    "LOAD_SCENARIO",
           p_target:       scenario.id,
-          p_target_name:  scenario.title,
+          p_target_name:  t(scenario.titleKey),
           p_metadata: {
             mode:          "training",
             category:      "training",   // preserves the original intent
@@ -693,8 +697,8 @@ export function SARProtocolPage() {
       }
     })();
 
-    toast.success("Training scenario started", {
-      description: `Simulated search for ${scenario.employeeName} in ${scenario.zone}. No real alert was sent to workers (training mode).`,
+    toast.success(t("sar.toastTrainingStarted"), {
+      description: `${t("sar.toastSimulatedSearchFor")} ${scenario.employeeName} ${t("sar.toastIn")} ${scenario.zone}. ${t("sar.toastNoRealAlert")}`,
     });
   }, []);
 
@@ -705,8 +709,8 @@ export function SARProtocolPage() {
       // Notify mobile workers that the search is over
       if (status === "found_safe" || status === "found_injured") {
         if (activeMission.isTraining) {
-          toast.success("Training scenario concluded", {
-            description: `Simulated outcome: ${status === "found_safe" ? "found safe" : "found injured"}. No real notification was sent.`,
+          toast.success(t("sar.toastTrainingConcluded"), {
+            description: `${t("sar.toastSimulatedOutcome")}: ${status === "found_safe" ? t("sar.toastFoundSafe") : t("sar.toastFoundInjured")}. ${t("sar.toastNoRealNotification")}`,
           });
         } else {
           void emitAdminSignal("SAR_WORKER_FOUND", activeMission.employeeId, {
@@ -714,8 +718,8 @@ export function SARProtocolPage() {
             status,
             missionId: activeMission.id,
           });
-          toast.success(status === "found_safe" ? "Worker found safe!" : "Worker found — medical attention needed", {
-            description: `${activeMission.employeeName} — SAR mission concluded`,
+          toast.success(status === "found_safe" ? t("sar.toastWorkerFoundSafe") : t("sar.toastWorkerFoundInjured"), {
+            description: `${activeMission.employeeName} — ${t("sar.toastMissionConcluded")}`,
           });
         }
       }
@@ -753,11 +757,11 @@ export function SARProtocolPage() {
         event.employeeId === activeMission.employeeId;
 
       if (isSafeReport || isCancelled) {
-        toast.success(`${activeMission.employeeName} reported safe!`, {
-          description: "Worker self-verified via mobile device. Close SAR mission?",
+        toast.success(`${activeMission.employeeName} ${t("sar.toastReportedSafe")}`, {
+          description: t("sar.toastSelfVerified"),
           duration: 15000,
           action: {
-            label: "Mark Found Safe",
+            label: t("sar.toastMarkFoundSafe"),
             onClick: () => handleEndMission("found_safe"),
           },
         });
@@ -834,9 +838,7 @@ export function SARProtocolPage() {
               marginBottom: 4,
             }}
           >
-            This Search &amp; Rescue console is a planning &amp; training tool. Actions taken here
-            (dispatch teams, escalate, send rescue) are saved locally and do <strong>NOT</strong> reach
-            real rescue services, emergency authorities, or your workers&apos; phones.
+            This Search & Rescue console is a planning & training tool. Actions taken here (dispatch teams, escalate, send rescue) are saved locally and do NOT reach real rescue services, emergency authorities, or your workers' phones.
           </div>
           <div
             dir="rtl"
@@ -888,7 +890,7 @@ export function SARProtocolPage() {
         <button
           type="button"
           aria-pressed="true"
-          aria-label="Training mode (active)"
+          aria-label={t("sar.ariaTrainingActive")}
           style={{
             padding: "8px 16px",
             borderRadius: 8,
@@ -904,14 +906,14 @@ export function SARProtocolPage() {
           }}
         >
           <CheckCircle size={12} />
-          Training
+          {t("sar.toggleTraining")}
         </button>
         <button
           type="button"
           aria-pressed="false"
           aria-disabled="true"
           disabled
-          aria-label="Live mode (requires backend wiring — see Task #54 roadmap)"
+          aria-label={t("sar.ariaLiveDisabled")}
           title="Blocked on: (1) Supabase gps_trail realtime subscription, (2) sos_outbox dispatch table + edge function, (3) Twilio bridge for rescue dispatch. Training mode is fully functional now."
           style={{
             padding: "8px 16px",
@@ -934,7 +936,7 @@ export function SARProtocolPage() {
 
       {/* Header */}
       <PageHeader
-        title="SAR Protocol"
+        title={t("sar.pageTitle")}
         description="Search & Rescue — Intelligent Missing Worker System (Demo / Training Mode)"
         color="#FF2D55"
       />
@@ -961,7 +963,7 @@ export function SARProtocolPage() {
               >
                 <Siren style={{ width: 14, height: 14, color: "#FF2D55", flexShrink: 0 }} />
                 <p style={{ fontSize: 10, fontWeight: 700, color: "#FF2D55" }}>
-                  CLUSTER-SOURCED — auto-generated from zone cluster event
+                  {t("sar.clusterSourced")}
                 </p>
               </div>
             )}
@@ -979,7 +981,7 @@ export function SARProtocolPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <AlertTriangle style={{ width: 12, height: 12, color: "#FF9500", flexShrink: 0 }} />
                   <span style={{ fontSize: 9, fontWeight: 800, color: "#FF9500", letterSpacing: "0.5px" }}>
-                    {allActive.length} ACTIVE SAR MISSIONS — SWITCH BELOW
+                    {allActive.length} {t("sar.activeMissionsSwitch")}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -994,8 +996,8 @@ export function SARProtocolPage() {
                             setActiveMission(m);
                             setShowScenarioPicker(false);
                             setElapsedTimer(0);
-                            toast.info(`Switched to ${m.employeeName}`, {
-                              description: `${m.zone} — ${isCluster ? "Cluster Mission" : "Standard SAR"}`,
+                            toast.info(`${t("sar.toastSwitchedTo")} ${m.employeeName}`, {
+                              description: `${m.zone} — ${isCluster ? t("sar.missionTypeCluster") : t("sar.missionTypeStandard")}`,
                             });
                           }
                         }}
@@ -1032,8 +1034,8 @@ export function SARProtocolPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <LiveSarCandidates onLaunch={handleStartLiveMission} />
-            <ScenarioPicker scenarios={SAR_SCENARIOS} onStart={handleStartMission} />
+            <LiveSarCandidates onLaunch={handleStartLiveMission} t={t} />
+            <ScenarioPicker scenarios={SAR_SCENARIOS} onStart={handleStartMission} t={t} />
           </motion.div>
         ) : currentMission ? (
           <motion.div
@@ -1043,6 +1045,7 @@ export function SARProtocolPage() {
             exit={{ opacity: 0, y: -20 }}
           >
             <MissionDashboard
+              t={t}
               mission={currentMission}
               elapsedTimer={elapsedTimer}
               isPaused={isPaused}
@@ -1069,9 +1072,11 @@ export function SARProtocolPage() {
 function ScenarioPicker({
   scenarios,
   onStart,
+  t,
 }: {
   scenarios: SARScenario[];
   onStart: (s: SARScenario) => void;
+  t: (k: string) => string;
 }) {
   return (
     <div style={{ padding: "0 24px 24px" }}>
@@ -1086,9 +1091,9 @@ function ScenarioPicker({
             <Radar size={28} color="#FF2D55" />
           </div>
           <div>
-            <div style={{ ...TYPOGRAPHY.h2, color: "white" }}>Search & Rescue Protocol</div>
+            <div style={{ ...TYPOGRAPHY.h2, color: "white" }}>{t("sar.introTitle")}</div>
             <div style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
-              When a worker is missing and NOT at their last GPS point — SOSphere calculates WHERE to look next
+              {t("sar.introSubtitle")}
             </div>
           </div>
         </div>
@@ -1098,14 +1103,14 @@ function ScenarioPicker({
           background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: 16,
         }}>
           {[
-            { icon: Target, label: "Search Cone", desc: "AI-predicted location area" },
-            { icon: Route, label: "Trail Analysis", desc: "Full GPS breadcrumb path" },
-            { icon: Siren, label: "Auto-Escalation", desc: "6-phase rescue protocol" },
+            { icon: Target, labelKey: "sar.featCone", descKey: "sar.featConeDesc" },
+            { icon: Route, labelKey: "sar.featTrail", descKey: "sar.featTrailDesc" },
+            { icon: Siren, labelKey: "sar.featEscalation", descKey: "sar.featEscalationDesc" },
           ].map((f, i) => (
             <div key={i} style={{ textAlign: "center" }}>
               <f.icon size={20} color="#00C8E0" style={{ marginBottom: 6 }} />
-              <div style={{ ...TYPOGRAPHY.caption, color: "white" }}>{f.label}</div>
-              <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{f.desc}</div>
+              <div style={{ ...TYPOGRAPHY.caption, color: "white" }}>{t(f.labelKey)}</div>
+              <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{t(f.descKey)}</div>
             </div>
           ))}
         </div>
@@ -1113,7 +1118,7 @@ function ScenarioPicker({
 
       {/* Scenario Cards */}
       <div style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12, paddingLeft: 4 }}>
-        SELECT SCENARIO TO SIMULATE
+        {t("sar.selectScenario")}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
@@ -1137,17 +1142,17 @@ function ScenarioPicker({
                   <s.icon size={20} color="#FF2D55" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ ...TYPOGRAPHY.h4, color: "white" }}>{s.title}</div>
+                  <div style={{ ...TYPOGRAPHY.h4, color: "white" }}>{t(s.titleKey)}</div>
                   <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{s.zone}</div>
                 </div>
               </div>
 
               <div style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.5)", marginBottom: 16, minHeight: 48 }}>
-                {s.description}
+                {t(s.descriptionKey)}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <MiniTag color="#FF2D55" label={`${s.elapsedMin} min ago`} />
+                <MiniTag color="#FF2D55" label={`${s.elapsedMin} ${t("sar.minAgo")}`} />
                 <MiniTag color="#FF9500" label={s.terrain} />
                 <MiniTag color="#00C8E0" label={s.workerType.replace("_", " ")} />
               </div>
@@ -1161,7 +1166,7 @@ function ScenarioPicker({
                 }}
                 whileHover={{ background: "rgba(255,45,85,0.2)" }}
               >
-                ▶ Launch SAR Mission
+                ▶ {t("sar.launchMission")}
               </motion.div>
             </DSCard>
           </motion.div>
@@ -1169,7 +1174,7 @@ function ScenarioPicker({
       </div>
 
       {/* Past Missions */}
-      <PastMissions />
+      <PastMissions t={t} />
     </div>
   );
 }
@@ -1185,13 +1190,13 @@ function MiniTag({ color, label }: { color: string; label: string }) {
   );
 }
 
-function PastMissions() {
+function PastMissions({ t }: { t: (k: string) => string }) {
   const missions = getAllSARMissions().filter(m => m.status !== "active");
   if (missions.length === 0) return null;
   return (
     <div style={{ marginTop: 32 }}>
       <div style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12, paddingLeft: 4 }}>
-        PAST MISSIONS
+        {t("sar.pastMissions")}
       </div>
       {missions.slice(0, 5).map(m => (
         <DSCard key={m.id} style={{ padding: 12, marginBottom: 8 }}>
@@ -1211,7 +1216,7 @@ function PastMissions() {
               background: m.status === "found_safe" ? "rgba(0,200,83,0.15)" : "rgba(255,255,255,0.05)",
               color: m.status === "found_safe" ? "#00C853" : "rgba(255,255,255,0.4)",
             }}>
-              {m.status.replace(/_/g, " ").toUpperCase()}
+              {t(`sar.status_${m.status}`)}
             </div>
           </div>
         </DSCard>
@@ -1225,6 +1230,7 @@ function PastMissions() {
 // ═══════════════════════════════════════════════════════════════
 
 interface MissionDashboardProps {
+  t: (k: string) => string;
   mission: SARMission;
   elapsedTimer: number;
   isPaused: boolean;
@@ -1239,7 +1245,7 @@ interface MissionDashboardProps {
 }
 
 function MissionDashboard({
-  mission, elapsedTimer, isPaused, onTogglePause, onEndMission,
+  t, mission, elapsedTimer, isPaused, onTogglePause, onEndMission,
   selectedTab, onTabChange, showMapLayers, onToggleLayer,
   expandedEscalation, onToggleEscalation,
 }: MissionDashboardProps) {
@@ -1250,6 +1256,7 @@ function MissionDashboard({
     <div style={{ padding: "0 24px 24px" }}>
       {/* Mission Header Bar */}
       <MissionHeader
+        t={t}
         mission={mission}
         totalElapsed={totalElapsed}
         isPaused={isPaused}
@@ -1259,11 +1266,11 @@ function MissionDashboard({
 
       {/* KPI Strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
-        <KPIChip icon={<Clock size={14} />} label="Elapsed" value={formatElapsed(totalElapsed)} color="#FF2D55" />
-        <KPIChip icon={<Target size={14} />} label="Search Radius" value={formatDistance(mission.searchCone.maxRadius)} color="#FF9500" />
-        <KPIChip icon={<Gauge size={14} />} label="Confidence" value={`${mission.searchCone.confidence}%`} color={mission.searchCone.confidence > 50 ? "#00C853" : "#FF9500"} />
-        <KPIChip icon={<Users size={14} />} label="Nearby" value={`${mission.nearbyWorkers.length}`} color="#00C8E0" />
-        <KPIChip icon={<AlertTriangle size={14} />} label="Hazards" value={`${mission.hazardZones.length}`} color="#FF9500" />
+        <KPIChip icon={<Clock size={14} />} label={t("sar.kpiElapsed")} value={formatElapsed(totalElapsed)} color="#FF2D55" />
+        <KPIChip icon={<Target size={14} />} label={t("sar.kpiSearchRadius")} value={formatDistance(mission.searchCone.maxRadius)} color="#FF9500" />
+        <KPIChip icon={<Gauge size={14} />} label={t("sar.kpiConfidence")} value={`${mission.searchCone.confidence}%`} color={mission.searchCone.confidence > 50 ? "#00C853" : "#FF9500"} />
+        <KPIChip icon={<Users size={14} />} label={t("sar.kpiNearby")} value={`${mission.nearbyWorkers.length}`} color="#00C8E0" />
+        <KPIChip icon={<AlertTriangle size={14} />} label={t("sar.kpiHazards")} value={`${mission.hazardZones.length}`} color="#FF9500" />
       </div>
 
       {/* 29th pattern app integration A: weather forensics at launch */}
@@ -1283,27 +1290,27 @@ function MissionDashboard({
           display: "flex", alignItems: "center", gap: 14,
         }}>
           <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
-            FORENSIC SNAPSHOT
+            {t("sar.forensicSnapshot")}
           </div>
           <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 16, ...TYPOGRAPHY.bodySm }}>
             <span style={{ color: "white", fontWeight: 600 }}>{mission.weatherAtLaunch.condition}</span>
             <span style={{ color: "rgba(255,255,255,0.7)" }}>
               {formatTempC(mission.weatherAtLaunch.temp_c)}
               {mission.weatherAtLaunch.feels_like_c != null && mission.weatherAtLaunch.feels_like_c !== mission.weatherAtLaunch.temp_c
-                ? ` (feels ${formatTempC(mission.weatherAtLaunch.feels_like_c)})` : ""}
+                ? ` (${t("sar.feels")} ${formatTempC(mission.weatherAtLaunch.feels_like_c)})` : ""}
             </span>
             {mission.weatherAtLaunch.wind_speed_ms != null && (
               <span style={{ color: "rgba(255,255,255,0.7)" }}>
-                wind {mission.weatherAtLaunch.wind_speed_ms.toFixed(1)} m/s
+                {t("sar.wind")} {mission.weatherAtLaunch.wind_speed_ms.toFixed(1)} m/s
                 {mission.weatherAtLaunch.wind_gust_ms != null && mission.weatherAtLaunch.wind_gust_ms > mission.weatherAtLaunch.wind_speed_ms
-                  ? ` (gust ${mission.weatherAtLaunch.wind_gust_ms.toFixed(1)})` : ""}
+                  ? ` (${t("sar.gust")} ${mission.weatherAtLaunch.wind_gust_ms.toFixed(1)})` : ""}
               </span>
             )}
             {mission.weatherAtLaunch.humidity_pct != null && (
-              <span style={{ color: "rgba(255,255,255,0.7)" }}>RH {mission.weatherAtLaunch.humidity_pct}%</span>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>{t("sar.humidity")} {mission.weatherAtLaunch.humidity_pct}%</span>
             )}
             {mission.weatherAtLaunch.visibility_m != null && (
-              <span style={{ color: "rgba(255,255,255,0.7)" }}>vis {(mission.weatherAtLaunch.visibility_m / 1000).toFixed(1)} km</span>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>{t("sar.visibility")} {(mission.weatherAtLaunch.visibility_m / 1000).toFixed(1)} {t("sar.km")}</span>
             )}
           </div>
           <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
@@ -1318,10 +1325,10 @@ function MissionDashboard({
         background: "rgba(255,255,255,0.03)", borderRadius: 12,
       }}>
         {[
-          { id: "map" as const, label: "Search Map", icon: MapIcon },
-          { id: "timeline" as const, label: "Escalation", icon: Timer },
-          { id: "teams" as const, label: "Teams & Workers", icon: Users },
-          { id: "log" as const, label: "Mission Log", icon: MessageSquare },
+          { id: "map" as const, label: t("sar.tabMap"), icon: MapIcon },
+          { id: "timeline" as const, label: t("sar.tabTimeline"), icon: Timer },
+          { id: "teams" as const, label: t("sar.tabTeams"), icon: Users },
+          { id: "log" as const, label: t("sar.tabLog"), icon: MessageSquare },
         ].map(tab => (
           <button
             key={tab.id}
@@ -1352,6 +1359,7 @@ function MissionDashboard({
         >
           {selectedTab === "map" && (
             <SearchMapPanel
+              t={t}
               mission={mission}
               showLayers={showMapLayers}
               onToggleLayer={onToggleLayer}
@@ -1359,6 +1367,7 @@ function MissionDashboard({
           )}
           {selectedTab === "timeline" && (
             <EscalationPanel
+              t={t}
               escalation={mission.escalation}
               currentPhase={mission.currentPhase}
               totalElapsed={totalElapsed}
@@ -1368,13 +1377,14 @@ function MissionDashboard({
           )}
           {selectedTab === "teams" && (
             <TeamsPanel
+              t={t}
               nearbyWorkers={mission.nearbyWorkers}
               searchTeams={mission.searchTeams}
               hazardZones={mission.hazardZones}
             />
           )}
           {selectedTab === "log" && (
-            <LogPanel log={mission.log} />
+            <LogPanel t={t} log={mission.log} />
           )}
         </motion.div>
       </AnimatePresence>
@@ -1385,8 +1395,9 @@ function MissionDashboard({
 // ── Mission Header ─────────────────────────────────────────────
 
 function MissionHeader({
-  mission, totalElapsed, isPaused, onTogglePause, onEndMission,
+  t, mission, totalElapsed, isPaused, onTogglePause, onEndMission,
 }: {
+  t: (k: string) => string;
   mission: SARMission; totalElapsed: number; isPaused: boolean;
   onTogglePause: () => void; onEndMission: (s: SARMission["status"]) => void;
 }) {
@@ -1430,7 +1441,7 @@ function MissionHeader({
             background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.3)",
             textAlign: "center",
           }}>
-            <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>SIGNAL LOST</div>
+            <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{t("sar.signalLost")}</div>
             <div style={{ ...TYPOGRAPHY.kpiValueSm, color: "#FF2D55", marginTop: 2 }}>
               {formatElapsed(totalElapsed)}
             </div>
@@ -1463,21 +1474,21 @@ function MissionHeader({
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
             title={isPaused
-              ? "Resume visual timer"
-              : "Freeze visual timer only — escalation algorithm keeps running"}
+              ? t("sar.titleResumeTimer")
+              : t("sar.titleFreezeTimer")}
           >
             {isPaused ? <Play size={16} color="#00C853" /> : <Pause size={16} color="rgba(255,255,255,0.5)" />}
           </button>
 
           {/* Export PDF */}
           <button
-            onClick={() => exportSARReportPDF(mission, totalElapsed)}
+            onClick={() => exportSARReportPDF(mission, totalElapsed, t)}
             style={{
               width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(0,200,224,0.2)",
               background: "rgba(0,200,224,0.08)", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
-            title="Export SAR Report as PDF"
+            title={t("sar.titleExportPdf")}
           >
             <Download size={16} color="#00C8E0" />
           </button>
@@ -1492,8 +1503,8 @@ function MissionHeader({
           <button
             onClick={() => {
               if (mission.isTraining) {
-                toast.info("Training mode — no real alert sent", {
-                  description: "This is a simulated mission. Workers' phones are not contacted.",
+                toast.info(t("sar.toastTrainingNoAlert"), {
+                  description: t("sar.toastTrainingNoAlertDesc"),
                 });
                 return;
               }
@@ -1505,12 +1516,12 @@ function MissionHeader({
                 reAlert: true,
               }).then(({ delivered }) => {
                 if (delivered) {
-                  toast.success("SAR Alert delivered to mobile workers", {
-                    description: `Field workers near ${mission.zone} will see the alert on their phones.`,
+                  toast.success(t("sar.toastAlertDelivered"), {
+                    description: `${t("sar.toastAlertDeliveredDescA")} ${mission.zone} ${t("sar.toastAlertDeliveredDescB")}`,
                   });
                 } else {
-                  toast.warning("Mobile alert queued (offline)", {
-                    description: "Workers will be notified when the dashboard reconnects to Realtime.",
+                  toast.warning(t("sar.toastAlertQueued"), {
+                    description: t("sar.toastAlertQueuedDesc"),
                   });
                 }
                 try {
@@ -1531,9 +1542,9 @@ function MissionHeader({
               background: "rgba(255,149,0,0.1)", cursor: "pointer", color: "#FF9500",
               ...TYPOGRAPHY.caption, display: "flex", alignItems: "center", gap: 6,
             }}
-            title="Send SAR alert to all nearby mobile workers — toast shows delivery status"
+            title={t("sar.titleAlertWorkers")}
           >
-            <Bell size={14} /> Alert Workers
+            <Bell size={14} /> {t("sar.btnAlertWorkers")}
           </button>
 
           {/* End Mission */}
@@ -1546,7 +1557,7 @@ function MissionHeader({
                 ...TYPOGRAPHY.caption, display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <Check size={14} /> End Mission
+              <Check size={14} /> {t("sar.btnEndMission")}
             </button>
 
             <AnimatePresence>
@@ -1563,9 +1574,9 @@ function MissionHeader({
                   }}
                 >
                   {[
-                    { status: "found_safe" as const, label: "Found Safe", color: "#00C853" },
-                    { status: "found_injured" as const, label: "Found Injured", color: "#FF9500" },
-                    { status: "cancelled" as const, label: "Cancel Mission", color: "rgba(255,255,255,0.4)" },
+                    { status: "found_safe" as const, label: t("sar.optFoundSafe"), color: "#00C853" },
+                    { status: "found_injured" as const, label: t("sar.optFoundInjured"), color: "#FF9500" },
+                    { status: "cancelled" as const, label: t("sar.optCancelMission"), color: "rgba(255,255,255,0.4)" },
                   ].map(opt => (
                     <button
                       key={opt.status}
@@ -1600,7 +1611,7 @@ function MissionHeader({
             <Compass size={16} color="#00C8E0" />
             <div>
               <span style={{ ...TYPOGRAPHY.caption, color: "#00C8E0" }}>
-                Recommended: {rec.pattern.replace(/_/g, " ").toUpperCase()}
+                {t("sar.recommended")}: {rec.pattern.replace(/_/g, " ").toUpperCase()}
               </span>
               <span style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.35)", marginLeft: 8 }}>
                 — {rec.reason}
@@ -1632,9 +1643,11 @@ function KPIChip({ icon, label, value, color }: { icon: React.ReactNode; label: 
 // ── Direct Leaflet Map (no react-leaflet) ──────────────────────
 
 function DirectLeafletMap({
+  t,
   mission,
   showLayers,
 }: {
+  t: (k: string) => string;
   mission: SARMission;
   showLayers: Record<string, boolean>;
 }) {
@@ -1716,7 +1729,7 @@ function DirectLeafletMap({
     // Last Known Position
     if (lastPoint) {
       L.marker([lastPoint.lat, lastPoint.lng], { icon: sosIcon })
-        .bindPopup(`<div style="color:#333;font-size:12px"><strong>Last Known Position</strong><br/>${mission.employeeName}<br/>${new Date(lastPoint.timestamp).toLocaleTimeString()}<br/>Accuracy: ${Math.round(lastPoint.accuracy)}m</div>`)
+        .bindPopup(`<div style="color:#333;font-size:12px"><strong>${t("sar.popupLastKnown")}</strong><br/>${mission.employeeName}<br/>${new Date(lastPoint.timestamp).toLocaleTimeString()}<br/>${t("sar.popupAccuracy")}: ${Math.round(lastPoint.accuracy)}m</div>`)
         .addTo(lg);
     }
 
@@ -1724,7 +1737,7 @@ function DirectLeafletMap({
     if (showLayers.workers) {
       mission.nearbyWorkers.forEach(w => {
         L.marker([w.lat, w.lng], { icon: workerIcon })
-          .bindPopup(`<div style="color:#333;font-size:12px"><strong>${w.name}</strong><br/>${w.role}<br/>${formatDistance(w.distanceMeters)} away<br/>ETA: ~${w.estimatedArrivalMin} min</div>`)
+          .bindPopup(`<div style="color:#333;font-size:12px"><strong>${w.name}</strong><br/>${w.role}<br/>${formatDistance(w.distanceMeters)} ${t("sar.popupAway")}<br/>${t("sar.popupEta")}: ~${w.estimatedArrivalMin} ${t("sar.min")}</div>`)
           .addTo(lg);
       });
     }
@@ -1738,11 +1751,11 @@ function DirectLeafletMap({
           fillOpacity: 0.15, weight: 2, dashArray: "4,4",
         }).addTo(lg);
         L.marker([h.lat, h.lng], { icon: hazardIcon })
-          .bindPopup(`<div style="color:#333;font-size:12px"><strong>⚠ ${h.name}</strong><br/>Type: ${h.type.replace(/_/g, " ")}<br/>Severity: ${h.severity}<br/>Overlap: ${h.overlapPercent}%</div>`)
+          .bindPopup(`<div style="color:#333;font-size:12px"><strong>⚠ ${h.name}</strong><br/>${t("sar.popupType")}: ${h.type.replace(/_/g, " ")}<br/>${t("sar.popupSeverity")}: ${h.severity}<br/>${t("sar.popupOverlap")}: ${h.overlapPercent}%</div>`)
           .addTo(lg);
       });
     }
-  }, [mission, showLayers]);
+  }, [mission, showLayers, t]);
 
   return (
     <div
@@ -1755,10 +1768,12 @@ function DirectLeafletMap({
 // ── Search Map Panel ───────────────────────────────────────────
 
 function SearchMapPanel({
+  t,
   mission,
   showLayers,
   onToggleLayer,
 }: {
+  t: (k: string) => string;
   mission: SARMission;
   showLayers: Record<string, boolean>;
   onToggleLayer: (l: string) => void;
@@ -1773,7 +1788,7 @@ function SearchMapPanel({
       {/* Map */}
       <DSCard style={{ overflow: "hidden", borderRadius: 16 }}>
         <div style={{ height: 520, position: "relative" }}>
-          <DirectLeafletMap mission={mission} showLayers={showLayers} />
+          <DirectLeafletMap t={t} mission={mission} showLayers={showLayers} />
 
           {/* Map Layer Controls */}
           <div style={{
@@ -1782,10 +1797,10 @@ function SearchMapPanel({
             border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(10px)",
           }}>
             {[
-              { key: "trail", label: "GPS Trail", color: "#00C8E0" },
-              { key: "cone", label: "Search Cone", color: "#FF2D55" },
-              { key: "hazards", label: "Hazards", color: "#FF9500" },
-              { key: "workers", label: "Workers", color: "#00C853" },
+              { key: "trail", label: t("sar.layerTrail"), color: "#00C8E0" },
+              { key: "cone", label: t("sar.layerCone"), color: "#FF2D55" },
+              { key: "hazards", label: t("sar.layerHazards"), color: "#FF9500" },
+              { key: "workers", label: t("sar.layerWorkers"), color: "#00C853" },
             ].map(layer => (
               <button
                 key={layer.key}
@@ -1813,15 +1828,15 @@ function SearchMapPanel({
             background: "rgba(10,18,32,0.9)", borderRadius: 10, padding: 10,
             border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(10px)",
           }}>
-            <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>PROBABILITY</div>
+            <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>{t("sar.probability")}</div>
             {[
-              { label: "High (60%)", color: "#FF2D55" },
-              { label: "Medium (25%)", color: "#FF9500" },
-              { label: "Low (15%)", color: "#FFD60A" },
+              { labelKey: "sar.probHigh", color: "#FF2D55" },
+              { labelKey: "sar.probMedium", color: "#FF9500" },
+              { labelKey: "sar.probLow", color: "#FFD60A" },
             ].map(z => (
-              <div key={z.label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+              <div key={z.labelKey} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                 <div style={{ width: 10, height: 10, borderRadius: 2, background: z.color, opacity: 0.6 }} />
-                <span style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{z.label}</span>
+                <span style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)" }}>{t(z.labelKey)}</span>
               </div>
             ))}
           </div>
@@ -1834,18 +1849,18 @@ function SearchMapPanel({
         <DSCard style={{ padding: 16 }}>
           <div style={{ ...TYPOGRAPHY.h4, color: "white", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <Route size={14} color="#00C8E0" />
-            Trail Analysis
+            {t("sar.trailAnalysis")}
           </div>
           {[
-            { label: "Total Points", value: `${mission.trailAnalysis.totalPoints}` },
-            { label: "Trail Distance", value: formatDistance(mission.trailAnalysis.totalDistance) },
-            { label: "Average Speed", value: `${mission.trailAnalysis.averageSpeed.toFixed(1)} m/s` },
-            { label: "Last Speed", value: `${mission.trailAnalysis.lastSpeed.toFixed(1)} m/s` },
-            { label: "Movement", value: mission.trailAnalysis.movementPattern },
-            { label: "Heading", value: `${Math.round(mission.trailAnalysis.lastHeading)}°` },
-            { label: "Stops Found", value: `${mission.trailAnalysis.stopsDetected.length}` },
-            { label: "Dead Reckoning", value: `${mission.trailAnalysis.deadReckoningPoints} pts` },
-            { label: "GPS Quality", value: mission.trailAnalysis.gpsQuality },
+            { label: t("sar.taTotalPoints"), value: `${mission.trailAnalysis.totalPoints}` },
+            { label: t("sar.taTrailDistance"), value: formatDistance(mission.trailAnalysis.totalDistance) },
+            { label: t("sar.taAverageSpeed"), value: `${mission.trailAnalysis.averageSpeed.toFixed(1)} m/s` },
+            { label: t("sar.taLastSpeed"), value: `${mission.trailAnalysis.lastSpeed.toFixed(1)} m/s` },
+            { label: t("sar.taMovement"), value: mission.trailAnalysis.movementPattern },
+            { label: t("sar.taHeading"), value: `${Math.round(mission.trailAnalysis.lastHeading)}°` },
+            { label: t("sar.taStopsFound"), value: `${mission.trailAnalysis.stopsDetected.length}` },
+            { label: t("sar.taDeadReckoning"), value: `${mission.trailAnalysis.deadReckoningPoints} ${t("sar.pts")}` },
+            { label: t("sar.taGpsQuality"), value: mission.trailAnalysis.gpsQuality },
           ].map((item, i) => (
             <div key={i} style={{
               display: "flex", justifyContent: "space-between", padding: "6px 0",
@@ -1861,16 +1876,16 @@ function SearchMapPanel({
         <DSCard style={{ padding: 16 }}>
           <div style={{ ...TYPOGRAPHY.h4, color: "white", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <Target size={14} color="#FF2D55" />
-            Search Cone
+            {t("sar.searchCone")}
           </div>
           <div style={{
             display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,
           }}>
             {[
-              { label: "Radius", value: formatDistance(mission.searchCone.maxRadius), color: "#FF2D55" },
-              { label: "Heading", value: mission.searchCone.isCircular ? "360°" : `${Math.round(mission.searchCone.heading)}°`, color: "#00C8E0" },
-              { label: "Spread", value: `±${Math.round(mission.searchCone.spreadAngle)}°`, color: "#FF9500" },
-              { label: "Confidence", value: `${mission.searchCone.confidence}%`, color: mission.searchCone.confidence > 50 ? "#00C853" : "#FF9500" },
+              { label: t("sar.scRadius"), value: formatDistance(mission.searchCone.maxRadius), color: "#FF2D55" },
+              { label: t("sar.scHeading"), value: mission.searchCone.isCircular ? "360°" : `${Math.round(mission.searchCone.heading)}°`, color: "#00C8E0" },
+              { label: t("sar.scSpread"), value: `±${Math.round(mission.searchCone.spreadAngle)}°`, color: "#FF9500" },
+              { label: t("sar.scConfidence"), value: `${mission.searchCone.confidence}%`, color: mission.searchCone.confidence > 50 ? "#00C853" : "#FF9500" },
             ].map((s, i) => (
               <div key={i} style={{
                 padding: "10px 8px", borderRadius: 8,
@@ -1889,7 +1904,7 @@ function SearchMapPanel({
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <AlertTriangle size={18} color="#FF2D55" />
               <div>
-                <div style={{ ...TYPOGRAPHY.caption, color: "#FF2D55" }}>LETHAL HAZARD IN SEARCH ZONE</div>
+                <div style={{ ...TYPOGRAPHY.caption, color: "#FF2D55" }}>{t("sar.lethalHazard")}</div>
                 <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
                   {mission.hazardZones.filter(h => h.severity === "lethal").map(h => h.name).join(", ")}
                 </div>
@@ -1905,8 +1920,9 @@ function SearchMapPanel({
 // ── Escalation Timeline Panel ──────────────────────────────────
 
 function EscalationPanel({
-  escalation, currentPhase, totalElapsed, expanded, onToggle,
+  t, escalation, currentPhase, totalElapsed, expanded, onToggle,
 }: {
+  t: (k: string) => string;
   escalation: EscalationStep[];
   currentPhase: SARPhase;
   totalElapsed: number;
@@ -1919,7 +1935,7 @@ function EscalationPanel({
       <DSCard style={{ padding: 20 }}>
         <div style={{ ...TYPOGRAPHY.h3, color: "white", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
           <Timer size={18} color="#FF2D55" />
-          Escalation Protocol
+          {t("sar.escalationProtocol")}
         </div>
 
         <div style={{ position: "relative" }}>
@@ -1977,12 +1993,12 @@ function EscalationPanel({
                             ...TYPOGRAPHY.micro, padding: "1px 6px", borderRadius: 4,
                             background: `${step.color}30`, color: step.color,
                           }}>
-                            ACTIVE
+                            {t("sar.active")}
                           </span>
                         )}
                       </div>
                       <div style={{ ...TYPOGRAPHY.micro, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
-                        Triggers at +{step.triggerMinutes} min
+                        {t("sar.triggersAt")} +{step.triggerMinutes} {t("sar.min")}
                       </div>
                     </div>
                     <ChevronDown
@@ -2038,15 +2054,15 @@ function EscalationPanel({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Current Phase Card */}
         <DSCard glow={getPhaseColor(currentPhase)} style={{ padding: 20 }}>
-          <div style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>CURRENT PHASE</div>
+          <div style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>{t("sar.currentPhase")}</div>
           <div style={{ ...TYPOGRAPHY.h1, color: getPhaseColor(currentPhase), marginBottom: 4 }}>
             {getPhaseLabel(currentPhase)}
           </div>
           <div style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.4)" }}>
-            {totalElapsed < 10 && "Device ping sent. Waiting for response. Buddy notified."}
-            {totalElapsed >= 10 && totalElapsed < 20 && "Nearby workers alerted. Search cone calculated. Zone Admin notified."}
-            {totalElapsed >= 20 && totalElapsed < 40 && "Rescue team dispatched to search cone area. Expanding search pattern."}
-            {totalElapsed >= 40 && "External SAR activated. Full emergency protocol in effect. All resources mobilized."}
+            {totalElapsed < 10 && t("sar.phaseSummary1")}
+            {totalElapsed >= 10 && totalElapsed < 20 && t("sar.phaseSummary2")}
+            {totalElapsed >= 20 && totalElapsed < 40 && t("sar.phaseSummary3")}
+            {totalElapsed >= 40 && t("sar.phaseSummary4")}
           </div>
         </DSCard>
 
@@ -2054,21 +2070,21 @@ function EscalationPanel({
         <DSCard style={{ padding: 16 }}>
           <div style={{ ...TYPOGRAPHY.h4, color: "white", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <Zap size={14} color="#00C8E0" />
-            Smart Tips
+            {t("sar.smartTips")}
           </div>
           {[
-            { tip: "Check the trail for stops — the worker may have returned to a previous stop location", icon: "📍" },
-            { tip: "Cross-reference with buddy's last position — they may have been near the missing worker", icon: "👥" },
-            { tip: "If signal was lost suddenly (not gradually), suspect equipment failure, not movement", icon: "📡" },
-            { tip: "Send drone to search cone center if available — 10x faster than ground search", icon: "🛸" },
-            { tip: "Check if worker's phone battery was low — they may have powered down to conserve", icon: "🔋" },
-          ].map((t, i) => (
+            { tipKey: "sar.tip1", icon: "📍" },
+            { tipKey: "sar.tip2", icon: "👥" },
+            { tipKey: "sar.tip3", icon: "📡" },
+            { tipKey: "sar.tip4", icon: "🛸" },
+            { tipKey: "sar.tip5", icon: "🔋" },
+          ].map((item, i) => (
             <div key={i} style={{
               display: "flex", gap: 10, padding: "8px 0",
               borderBottom: i < 4 ? "1px solid rgba(255,255,255,0.03)" : "none",
             }}>
-              <span>{t.icon}</span>
-              <span style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.4)" }}>{t.tip}</span>
+              <span>{item.icon}</span>
+              <span style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.4)" }}>{t(item.tipKey)}</span>
             </div>
           ))}
         </DSCard>
@@ -2080,8 +2096,9 @@ function EscalationPanel({
 // ── Teams & Workers Panel ──────────────────────────────────────
 
 function TeamsPanel({
-  nearbyWorkers, searchTeams, hazardZones,
+  t, nearbyWorkers, searchTeams, hazardZones,
 }: {
+  t: (k: string) => string;
   nearbyWorkers: NearbyWorker[];
   searchTeams: SARMission["searchTeams"];
   hazardZones: HazardZone[];
@@ -2092,7 +2109,7 @@ function TeamsPanel({
       <DSCard style={{ padding: 20 }}>
         <div style={{ ...TYPOGRAPHY.h3, color: "white", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
           <Shield size={18} color="#00C8E0" />
-          Search Teams
+          {t("sar.searchTeams")}
         </div>
         {searchTeams.map(team => (
           <div key={team.id} style={{
@@ -2106,14 +2123,14 @@ function TeamsPanel({
                 background: team.status === "searching" ? "rgba(255,45,85,0.15)" : "rgba(255,255,255,0.05)",
                 color: team.status === "searching" ? "#FF2D55" : "rgba(255,255,255,0.4)",
               }}>
-                {team.status.toUpperCase()}
+                {t(`sar.teamStatus_${team.status}`)}
               </span>
             </div>
             <div style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.3)" }}>
-              Members: {team.members.join(", ")}
+              {t("sar.members")}: {team.members.join(", ")}
             </div>
             <div style={{ ...TYPOGRAPHY.bodySm, color: "rgba(255,255,255,0.3)" }}>
-              Zone: {team.assignedZone} • Pattern: {team.pattern.replace(/_/g, " ")}
+              {t("sar.zone")}: {team.assignedZone} • {t("sar.pattern")}: {team.pattern.replace(/_/g, " ")}
             </div>
           </div>
         ))}
@@ -2124,7 +2141,7 @@ function TeamsPanel({
         <DSCard style={{ padding: 20 }}>
           <div style={{ ...TYPOGRAPHY.h3, color: "white", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
             <Users size={18} color="#00C853" />
-            Nearby Workers ({nearbyWorkers.length})
+            {t("sar.nearbyWorkers")} ({nearbyWorkers.length})
           </div>
           <div style={{ maxHeight: 260, overflowY: "auto" }}>
             {nearbyWorkers.map((w, i) => (
@@ -2163,7 +2180,7 @@ function TeamsPanel({
         <DSCard style={{ padding: 16 }}>
           <div style={{ ...TYPOGRAPHY.h4, color: "white", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <AlertTriangle size={14} color="#FF9500" />
-            Hazards in Search Zone ({hazardZones.length})
+            {t("sar.hazardsInZone")} ({hazardZones.length})
           </div>
           {hazardZones.map(h => (
             <div key={h.id} style={{
@@ -2184,7 +2201,7 @@ function TeamsPanel({
                 background: h.severity === "lethal" ? "rgba(255,45,85,0.15)" : "rgba(255,149,0,0.15)",
                 color: h.severity === "lethal" ? "#FF2D55" : "#FF9500",
               }}>
-                {h.overlapPercent}% overlap
+                {h.overlapPercent}% {t("sar.overlap")}
               </div>
             </div>
           ))}
@@ -2196,14 +2213,14 @@ function TeamsPanel({
 
 // ── Mission Log Panel ──────────────────────────────────────────
 
-function LogPanel({ log }: { log: MissionLogEntry[] }) {
+function LogPanel({ t, log }: { t: (k: string) => string; log: MissionLogEntry[] }) {
   const sortedLog = [...log].sort((a, b) => b.timestamp - a.timestamp);
 
   return (
     <DSCard style={{ padding: 20 }}>
       <div style={{ ...TYPOGRAPHY.h3, color: "white", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
         <MessageSquare size={18} color="#00C8E0" />
-        Mission Log
+        {t("sar.missionLog")}
       </div>
 
       <div style={{ position: "relative" }}>
@@ -2261,7 +2278,7 @@ function LogPanel({ log }: { log: MissionLogEntry[] }) {
 }
 
 // ── M2: live "missing worker" candidates from real gps_trail ──
-function LiveSarCandidates({ onLaunch }: { onLaunch: (c: SarCandidate) => void }) {
+function LiveSarCandidates({ onLaunch, t }: { onLaunch: (c: SarCandidate) => void; t: (k: string) => string }) {
   const [list, setList] = useState<SarCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -2276,15 +2293,15 @@ function LiveSarCandidates({ onLaunch }: { onLaunch: (c: SarCandidate) => void }
     <div style={{ marginBottom: 16, borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,45,85,0.25)" }}>
       <div style={{ padding: "12px 16px", background: "rgba(255,45,85,0.08)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: 999, background: "#FF2D55", boxShadow: "0 0 8px #FF2D55" }} />
-        <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Live — workers with quiet GPS ({list.length})</span>
+        <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{t("sar.liveQuietGps")} ({list.length})</span>
       </div>
       {list.map((c) => (
         <div key={c.employee_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           <div>
             <div style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{c.name}</div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{c.role} · GPS quiet {c.minutes_since}m · last {Number(c.last_lat).toFixed(4)}, {Number(c.last_lng).toFixed(4)}</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{c.role} · {t("sar.gpsQuiet")} {c.minutes_since}m · {t("sar.last")} {Number(c.last_lat).toFixed(4)}, {Number(c.last_lng).toFixed(4)}</div>
           </div>
-          <button onClick={() => onLaunch(c)} style={{ padding: "8px 12px", borderRadius: 12, fontSize: 12, fontWeight: 700, color: "#fff", background: "#FF2D55", border: "none", cursor: "pointer" }}>Launch live SAR</button>
+          <button onClick={() => onLaunch(c)} style={{ padding: "8px 12px", borderRadius: 12, fontSize: 12, fontWeight: 700, color: "#fff", background: "#FF2D55", border: "none", cursor: "pointer" }}>{t("sar.launchLiveSar")}</button>
         </div>
       ))}
     </div>

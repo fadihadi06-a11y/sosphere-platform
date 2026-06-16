@@ -19,6 +19,8 @@ import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
 import { useDashboardStore, useDashboardAutoRefresh } from "./stores/dashboard-store";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 const MAX_OTP_ATTEMPTS = 3;
 const LOCKOUT_SECONDS = 60;
@@ -48,10 +50,10 @@ interface ToastState { message: string; type: ToastType; id: number }
 // Demo accounts removed — dashboard uses real Supabase auth
 
 const STATS = [
-  { label: "Active Field Workers", value: "12,847", delta: "+3.2%", up: true,  color: "#00C8E0", icon: Users },
-  { label: "SOS Events Today",     value: "3",       delta: "-67%",  up: false, color: "#FF2D55", icon: AlertTriangle },
-  { label: "Zones Monitored",      value: "284",     delta: "+12",   up: true,  color: "#00C853", icon: Globe },
-  { label: "System Uptime",        value: "99.97%",  delta: "30d",   up: true,  color: "#7B5EFF", icon: Wifi },
+  { labelKey: "web.stat_active_workers", value: "12,847", delta: "+3.2%", up: true,  color: "#00C8E0", icon: Users },
+  { labelKey: "web.stat_sos_today", value: "3",       delta: "-67%",  up: false, color: "#FF2D55", icon: AlertTriangle },
+  { labelKey: "web.stat_zones_monitored", value: "284",     delta: "+12",   up: true,  color: "#00C853", icon: Globe },
+  { labelKey: "web.stat_system_uptime", value: "99.97%",  delta: "30d",   up: true,  color: "#7B5EFF", icon: Wifi },
 ];
 
 // ── Animated grid background ─────────────────────────────────
@@ -108,7 +110,7 @@ function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void 
 }
 
 // ── Country picker dropdown (adapted for web) ─────────────────
-function WebCountryPicker({ selected, onChange }: { selected: Country; onChange: (c: Country) => void }) {
+function WebCountryPicker({ selected, onChange, t }: { selected: Country; onChange: (c: Country) => void; t: (k: string) => string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -164,7 +166,7 @@ function WebCountryPicker({ selected, onChange }: { selected: Country; onChange:
                   autoFocus
                   value={query}
                   onChange={e => setQuery(e.target.value)}
-                  placeholder="Search country..."
+                  placeholder={t("web.search_country_placeholder")}
                   className="flex-1 bg-transparent outline-none text-white"
                   style={{ fontSize: 13, fontFamily: "inherit" }}
                 />
@@ -195,7 +197,7 @@ function WebCountryPicker({ selected, onChange }: { selected: Country; onChange:
 }
 
 // ── OTP Input (6 boxes) — uses hidden input to prevent autocomplete popups
-function OTPInput({ value, onChange, disabled = false }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+function OTPInput({ value, onChange, disabled = false, t }: { value: string; onChange: (v: string) => void; disabled?: boolean; t: (k: string) => string }) {
   const hiddenRef = useRef<HTMLInputElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -226,7 +228,7 @@ function OTPInput({ value, onChange, disabled = false }: { value: string; onChan
         onInput={handleInput}
         inputMode="numeric"
         autoComplete="one-time-code"
-        aria-label="OTP code"
+        aria-label={t("web.otp_code_aria")}
         style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }}
         tabIndex={-1}
       />
@@ -271,6 +273,8 @@ function OTPInput({ value, onChange, disabled = false }: { value: string; onChan
 // ═══════════════════════════════════════════════════════════════
 export function DashboardWebPage() {
   const navigate = useNavigate();
+  const { lang } = useLang();
+  const t = useT(lang);
   // Auto-refresh dashboard data every 30 seconds when logged in
   useDashboardAutoRefresh(30_000);
   const mountedRef = useRef(true);
@@ -845,12 +849,12 @@ export function DashboardWebPage() {
         },
       });
       if (error) {
-        showToast("Sign-in failed: " + (error.message || "please try again"));
+        showToast(t("web.signin_failed") + ": " + (error.message || t("web.please_try_again")));
         setOauthLoading(false);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "unknown error";
-      showToast("Sign-in failed: " + msg);
+      const msg = e instanceof Error ? e.message : t("web.unknown_error");
+      showToast(t("web.signin_failed") + ": " + msg);
       setOauthLoading(false);
     }
   };
@@ -873,17 +877,17 @@ export function DashboardWebPage() {
       });
       if (rl && (rl as any).allowed === false) {
         const wait = (rl as any).retry_after_s || 60;
-        showToast("Too many attempts — try again in " + Math.ceil(wait / 60) + " minute(s)");
+        showToast(t("web.too_many_attempts_minutes_a") + Math.ceil(wait / 60) + t("web.too_many_attempts_minutes_b"));
         return;
       }
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: { shouldCreateUser: true },
       });
-      if (error) { showToast("Failed to send code: " + error.message); return; }
+      if (error) { showToast(t("web.failed_send_code") + ": " + error.message); return; }
       setEmailOtp(""); setOtpAttempts(0); setLockedUntil(null);
       setStep("email-otp");
-      showToast("Code sent to " + normalizedEmail, "success");
+      showToast(t("web.code_sent_to") + " " + normalizedEmail, "success");
     } finally {
       if (mountedRef.current) setEmailOtpLoading(false);
     }
@@ -905,10 +909,10 @@ export function DashboardWebPage() {
         if (newAttempts >= MAX_OTP_ATTEMPTS) {
           setLockedUntil(Date.now() + LOCKOUT_SECONDS * 1000);
           setEmailOtp("");
-          showToast(`Too many attempts. Try again in ${LOCKOUT_SECONDS}s.`);
+          showToast(t("web.too_many_attempts_seconds_a") + LOCKOUT_SECONDS + t("web.too_many_attempts_seconds_b"));
         } else {
           const left = MAX_OTP_ATTEMPTS - newAttempts;
-          showToast(`Incorrect code. ${left} attempt${left === 1 ? "" : "s"} remaining.`);
+          showToast(t("web.incorrect_code_a") + " " + left + " " + (left === 1 ? t("web.attempt_singular") : t("web.attempt_plural")) + " " + t("web.remaining"));
         }
         return;
       }
@@ -947,14 +951,14 @@ export function DashboardWebPage() {
     });
     if (rl && (rl as any).allowed === false) {
       const wait = (rl as any).retry_after_s || 60;
-      showToast("Too many attempts — try again in " + Math.ceil(wait / 60) + " minute(s)");
+      showToast(t("web.too_many_attempts_minutes_a") + Math.ceil(wait / 60) + t("web.too_many_attempts_minutes_b"));
       return;
     }
     setEmailResendTimer(RESEND_COOLDOWN);
     setEmailOtp(""); setOtpAttempts(0); setLockedUntil(null);
     const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
-    if (error) showToast("Failed to resend: " + error.message);
-    else showToast("New code sent to " + normalizedEmail, "success");
+    if (error) showToast(t("web.failed_resend") + ": " + error.message);
+    else showToast(t("web.new_code_sent_to") + " " + normalizedEmail, "success");
   };
 
   // ── Render: Loading (only shown during init) ──
@@ -965,7 +969,7 @@ export function DashboardWebPage() {
           <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Shield className="size-6" style={{ color: "#00C8E0" }} />
           </div>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0 }}>Loading SOSphere...</p>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0 }}>{t("web.loading_sosphere")}</p>
         </motion.div>
       </div>
     );
@@ -984,10 +988,10 @@ export function DashboardWebPage() {
               <Lock className="size-7" style={{ color: "#00C8E0" }} />
             </div>
             <h2 style={{ color: "#fff", fontSize: 22, fontWeight: 700, margin: 0 }}>
-              {pinStage === "enter" ? "Set Dashboard PIN" : "Confirm PIN"}
+              {pinStage === "enter" ? t("web.set_dashboard_pin") : t("web.confirm_pin")}
             </h2>
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, textAlign: "center", margin: 0 }}>
-              {pinStage === "enter" ? "Choose a 6-digit PIN to secure your dashboard" : "Enter the same PIN again to confirm"}
+              {pinStage === "enter" ? t("web.choose_pin_subtitle") : t("web.confirm_pin_subtitle")}
             </p>
           </div>
           <div className="flex gap-3">
@@ -1045,7 +1049,7 @@ export function DashboardWebPage() {
                             }
                           })();
                         } else {
-                          setPinError("PINs do not match. Try again.");
+                          setPinError(t("web.pins_no_match"));
                           setPinInput(""); setPinConfirm(""); setPinStage("enter");
                           setTimeout(() => {
                             if (!mountedRef.current) return;
@@ -1062,7 +1066,7 @@ export function DashboardWebPage() {
             ))}
           </div>
           <p style={{ color: "rgba(255,255,255,0.2)", fontSize: 11, textAlign: "center" }}>
-            This PIN protects your dashboard from unauthorized access
+            {t("web.pin_protects")}
           </p>
         </motion.div>
       </div>
@@ -1109,8 +1113,8 @@ export function DashboardWebPage() {
             <div style={{ width: 64, height: 64, borderRadius: 20, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Lock className="size-7" style={{ color: "#00C8E0" }} />
             </div>
-            <h2 style={{ color: "#fff", fontSize: 22, fontWeight: 700, margin: 0 }}>Welcome back, {loginName.split(" ")[0]}</h2>
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, textAlign: "center", margin: 0 }}>Enter your 6-digit PIN to continue</p>
+            <h2 style={{ color: "#fff", fontSize: 22, fontWeight: 700, margin: 0 }}>{t("web.welcome_back_name")}{loginName.split(" ")[0]}</h2>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, textAlign: "center", margin: 0 }}>{t("web.enter_pin_continue")}</p>
           </div>
           <div className="flex gap-3">
             {Array.from({ length: 6 }).map((_, i) => {
@@ -1154,7 +1158,7 @@ export function DashboardWebPage() {
                           const pending = pendingLoginRef.current;
                           if (pending) doLogin(pending.name, pending.company);
                         } else {
-                          setPinError("Incorrect PIN. Try again.");
+                          setPinError(t("web.incorrect_pin"));
                           setTimeout(() => {
                             if (!mountedRef.current) return;
                             setPinInput(""); setPinError("");
@@ -1174,11 +1178,7 @@ export function DashboardWebPage() {
               PIN". The Supabase session is untouched, so the user lands on
               PIN-setup not the email/password form. */}
           <button onClick={() => {
-              const ok = window.confirm(
-                "Reset your dashboard PIN?\n\n" +
-                "You'll be asked to choose a new 6-digit PIN. " +
-                "Your account, data, and login session are not affected."
-              );
+              const ok = window.confirm(t("web.reset_pin_confirm"));
               if (!ok) return;
               try {
                 const k = pinKeyFor(authUserId);
@@ -1192,11 +1192,11 @@ export function DashboardWebPage() {
                 setPinStage("enter");
                 setStep("pin-setup");
               } catch (_) {
-                setPinError("Could not reset PIN. Try 'Sign in with different account'.");
+                setPinError(t("web.reset_pin_failed"));
               }
             }}
             style={{ color: "rgba(0,200,224,0.7)", fontSize: 12, background: "none", border: "none", cursor: "pointer", marginBottom: 8 }}>
-            Forgot PIN? Reset
+            {t("web.forgot_pin_reset")}
           </button>
           <button onClick={async () => {
               // Audit 2026-05-01: explicitly close the PIN gate on
@@ -1208,7 +1208,7 @@ export function DashboardWebPage() {
               setStep("form"); setPinInput("");
             }}
             style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
-            Sign in with different account
+            {lang === "ar" ? "تسجيل الدخول بحساب مختلف" : "Sign in with different account"}
           </button>
         </motion.div>
       </div>
@@ -1274,14 +1274,14 @@ export function DashboardWebPage() {
             </div>
             <div>
               <p className="text-white" style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.3px" }}>SOSphere</p>
-              <p style={{ fontSize: 8, color: "rgba(0,200,224,0.45)", fontWeight: 700, letterSpacing: "2px" }}>FREE TRIAL</p>
+              <p style={{ fontSize: 8, color: "rgba(0,200,224,0.45)", fontWeight: 700, letterSpacing: "2px" }}>{t("web.free_trial")}</p>
             </div>
           </motion.div>
           <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.97 }}
             onClick={() => setStep("form")}
             className="flex items-center gap-2 px-4 py-2 rounded-xl"
             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>
-            <ArrowRight className="size-4 rotate-180" /> Back to Login
+            <ArrowRight className="size-4 rotate-180" /> {t("web.back_to_login")}
           </motion.button>
         </div>
         <div className="flex-1 flex items-center justify-center overflow-y-auto pt-20 pb-10 relative z-10" style={{ scrollbarWidth: "thin" }}>
@@ -1376,7 +1376,7 @@ export function DashboardWebPage() {
                 </motion.div>
               </motion.div>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.7 }}>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginBottom: 8, letterSpacing: "2.5px", textTransform: "uppercase" }}>Welcome back</p>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginBottom: 8, letterSpacing: "2.5px", textTransform: "uppercase" }}>{t("web.welcome_back")}</p>
                 <h1 style={{ fontSize: 56, fontWeight: 800, letterSpacing: "-1.5px", background: "linear-gradient(135deg, #fff 0%, rgba(0,200,224,0.9) 50%, rgba(123,94,255,0.8) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", lineHeight: 1.1 }}>
                   {loginName}
                 </h1>
@@ -1390,7 +1390,7 @@ export function DashboardWebPage() {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="mt-7">
                 <div className="flex items-center gap-2 justify-center mb-6">
                   <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
-                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>Loading your enterprise dashboard…</span>
+                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>{t("web.loading_enterprise_dashboard")}</span>
                 </div>
                 <div className="rounded-full overflow-hidden" style={{ width: 300, height: 2, background: "rgba(255,255,255,0.05)" }}>
                   <motion.div initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 2.8, delay: 0.3, ease: "easeInOut" }}
@@ -1420,30 +1420,30 @@ export function DashboardWebPage() {
                   </div>
                   <div>
                     <p className="text-white" style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px" }}>SOSphere</p>
-                    <p style={{ fontSize: 9, color: "rgba(0,200,224,0.45)", fontWeight: 700, letterSpacing: "2.5px" }}>ENTERPRISE PLATFORM</p>
+                    <p style={{ fontSize: 9, color: "rgba(0,200,224,0.45)", fontWeight: 700, letterSpacing: "2.5px" }}>{t("web.enterprise_platform")}</p>
                   </div>
                 </motion.div>
                 <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.7 }}>
                   <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-1px", lineHeight: 1.15, color: "white", marginBottom: 14 }}>
-                    Real-time Safety<br />
-                    <span style={{ background: "linear-gradient(135deg, #00C8E0, #7B5EFF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Intelligence</span>
+                    {t("web.realtime_safety")}<br />
+                    <span style={{ background: "linear-gradient(135deg, #00C8E0, #7B5EFF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>{t("web.intelligence")}</span>
                   </h1>
                   <p style={{ fontSize: 15, color: "rgba(255,255,255,0.3)", lineHeight: 1.75, maxWidth: 310 }}>
-                    Enterprise-grade safety platform for managing field workers, responding to emergencies, and monitoring high-risk zones.
+                    {t("web.enterprise_safety_desc")}
                   </p>
                 </motion.div>
                 <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-wrap gap-2 mt-8">
-                  {["SOS Response", "Live Tracking", "Risk Mapping", "Attendance AI", "Incident Reports", "Command Center"].map((f, i) => (
-                    <motion.span key={f} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.35 + i * 0.055 }}
+                  {[{key:"web.feat_sos_response"},{key:"web.feat_live_tracking"},{key:"web.feat_risk_mapping"},{key:"web.feat_attendance_ai"},{key:"web.feat_incident_reports"},{key:"web.feat_command_center"}].map((f, i) => (
+                    <motion.span key={f.key} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.35 + i * 0.055 }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
                       style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>
-                      <div className="size-1.5 rounded-full" style={{ background: "#00C8E0" }} /> {f}
+                      <div className="size-1.5 rounded-full" style={{ background: "#00C8E0" }} /> {t(f.key)}
                     </motion.span>
                   ))}
                 </motion.div>
               </div>
               <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="relative z-10 p-12 pb-14">
-                <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.18)", letterSpacing: "2px", marginBottom: 12 }}>LIVE PLATFORM METRICS</p>
+                <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.18)", letterSpacing: "2px", marginBottom: 12 }}>{t("web.live_platform_metrics")}</p>
                 <AnimatePresence mode="wait">
                   <motion.div key={statsIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
                     className="flex items-center gap-4 p-4 rounded-2xl"
@@ -1456,7 +1456,7 @@ export function DashboardWebPage() {
                         </div>
                         <div>
                           <p className="text-white" style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.5px" }}>{s.value}</p>
-                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{s.label}</p>
+                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t(s.labelKey)}</p>
                         </div>
                         <div className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: `${s.color}10`, border: `1px solid ${s.color}20` }}>
                           <span style={{ fontSize: 11, color: s.color, fontWeight: 700 }}>{s.delta}</span>
@@ -1479,7 +1479,7 @@ export function DashboardWebPage() {
                     ))}
                   </div>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-                    Trusted by <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>400+</span> enterprises worldwide
+                    {t("web.trusted_by")} <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>400+</span> {t("web.enterprises_worldwide")}
                   </p>
                 </div>
               </motion.div>
@@ -1490,7 +1490,7 @@ export function DashboardWebPage() {
               <div className="absolute top-5 right-6">
                 <button onClick={() => navigate("/")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
                   style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                  ← Field App
+                  ← {t("web.field_app")}
                 </button>
               </div>
               <div style={{ width: "100%", maxWidth: 420 }}>
@@ -1499,23 +1499,23 @@ export function DashboardWebPage() {
                     <motion.div key="email-otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.35 }}>
                       <button onClick={() => { setStep("form"); setEmailOtp(""); setOtpAttempts(0); setLockedUntil(null); }}
                         className="flex items-center gap-2 mb-8" style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>
-                        <ArrowRight className="size-4 rotate-180" /> Back
+                        <ArrowRight className="size-4 rotate-180" /> {t("web.back")}
                       </button>
                       <div className="mb-8">
                         <div className="size-14 rounded-[18px] flex items-center justify-center mb-5"
                           style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.18)" }}>
                           <Mail className="size-6" style={{ color: "#00C8E0" }} />
                         </div>
-                        <h2 className="text-white" style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.6px" }}>Verify Your Email</h2>
+                        <h2 className="text-white" style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.6px" }}>{t("web.verify_your_email")}</h2>
                         <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)", marginTop: 6, lineHeight: 1.6 }}>
-                          6-digit code sent to<br /><span style={{ color: "#00C8E0", fontWeight: 600 }}>{email}</span>
+                          {t("web.code_sent_to_label")}<br /><span style={{ color: "#00C8E0", fontWeight: 600 }}>{email}</span>
                         </p>
                       </div>
                       <div className="flex items-start gap-3 p-3.5 rounded-[14px] mb-5"
                         style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.1)" }}>
                         <Shield className="size-4 shrink-0 mt-0.5" style={{ color: "rgba(0,200,224,0.5)" }} />
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>
-                          Expires in 10 minutes. SOSphere will never ask for your code via phone or chat.
+                          {t("web.code_expires_notice")}
                         </p>
                       </div>
                       <AnimatePresence>
@@ -1525,9 +1525,9 @@ export function DashboardWebPage() {
                             style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.2)" }}>
                             <Lock className="size-4 shrink-0" style={{ color: "#FF2D55" }} />
                             <div>
-                              <p style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55" }}>Too many attempts</p>
+                              <p style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55" }}>{t("web.too_many_attempts")}</p>
                               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                                Try again in <span style={{ color: "#FF2D55", fontWeight: 600 }}>{lockTimer}s</span>
+                                {t("web.try_again_in")} <span style={{ color: "#FF2D55", fontWeight: 600 }}>{lockTimer}s</span>
                               </p>
                             </div>
                           </motion.div>
@@ -1542,11 +1542,11 @@ export function DashboardWebPage() {
                         </div>
                       )}
                       <div className="mb-8">
-                        <OTPInput value={emailOtp} onChange={v => { setEmailOtp(v); setEmailOtpError(false); }} disabled={isLocked} />
+                        <OTPInput value={emailOtp} onChange={v => { setEmailOtp(v); setEmailOtpError(false); }} disabled={isLocked} t={t} />
                         {emailOtpError && !isLocked && (
                           <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
                             className="text-center mt-3" style={{ fontSize: 13, color: "#FF2D55" }}>
-                            Incorrect code. Please try again.
+                            {t("web.incorrect_code_retry")}
                           </motion.p>
                         )}
                       </div>
@@ -1564,13 +1564,13 @@ export function DashboardWebPage() {
                         {emailOtpLoading
                           ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                               style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%" }} />
-                          : <><Lock className="size-4" /> Verify & Sign In</>}
+                          : <><Lock className="size-4" /> {t("web.verify_sign_in")}</>}
                       </motion.button>
                       <div className="text-center mt-5">
                         {emailResendTimer > 0
-                          ? <p style={{ fontSize: 13, color: "rgba(255,255,255,0.2)" }}>Resend in <span style={{ color: "#00C8E0" }}>{emailResendTimer}s</span></p>
+                          ? <p style={{ fontSize: 13, color: "rgba(255,255,255,0.2)" }}>{t("web.resend_in")} <span style={{ color: "#00C8E0" }}>{emailResendTimer}s</span></p>
                           : <button onClick={handleEmailResend} style={{ fontSize: 13, color: "#00C8E0", fontWeight: 600 }} className="flex items-center gap-1.5 mx-auto">
-                              <RefreshCw className="size-3.5" /> Resend Code
+                              <RefreshCw className="size-3.5" /> {t("web.resend_code")}
                             </button>}
                       </div>
                     </motion.div>
@@ -1583,12 +1583,12 @@ export function DashboardWebPage() {
                           <div className="flex items-center gap-2 px-3 py-1 rounded-full"
                             style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.14)" }}>
                             <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: "#00C853" }} />
-                            <span style={{ fontSize: 9, color: "#00C853", fontWeight: 700, letterSpacing: "1.5px" }}>SYSTEM ONLINE</span>
+                            <span style={{ fontSize: 9, color: "#00C853", fontWeight: 700, letterSpacing: "1.5px" }}>{t("web.system_online")}</span>
                           </div>
                           <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.04)" }} />
                         </div>
-                        <h2 className="text-white" style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.7px" }}>Dashboard Access</h2>
-                        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)", marginTop: 5, lineHeight: 1.65 }}>Sign in to manage your safety operations</p>
+                        <h2 className="text-white" style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.7px" }}>{t("web.dashboard_access")}</h2>
+                        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)", marginTop: 5, lineHeight: 1.65 }}>{t("web.signin_manage_ops")}</p>
                       </div>
                       <motion.button whileTap={{ scale: oauthLoading ? 1 : 0.97 }} onClick={handleGoogleSignIn}
                         disabled={oauthLoading}
@@ -1600,11 +1600,11 @@ export function DashboardWebPage() {
                           <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                           <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                         </svg>
-                        Continue with Google
+                        {t("web.continue_with_google")}
                       </motion.button>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>or sign in with work email</span>
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("web.or_signin_work_email")}</span>
                         <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
                       </div>
                       <div className="space-y-4">
@@ -1618,7 +1618,7 @@ export function DashboardWebPage() {
                               onChange={e => setEmail(e.target.value)}
                               onFocus={() => setEmailFocused(true)}
                               onBlur={() => setEmailFocused(false)}
-                              placeholder="your.name@company.com" maxLength={150}
+                              placeholder={t("web.email_placeholder")} maxLength={150}
                               className="flex-1 bg-transparent text-white outline-none px-2"
                               style={{ fontSize: 15, fontFamily: "inherit", caretColor: "#00C8E0" }}
                               onKeyDown={e => e.key === "Enter" && handleEmailSend()} />
@@ -1634,7 +1634,7 @@ export function DashboardWebPage() {
                         <div className="flex items-start gap-2.5 p-3 rounded-[12px]" style={{ background: "rgba(255,149,0,0.04)", border: "1px solid rgba(255,149,0,0.1)" }}>
                           <Shield className="size-3.5 shrink-0 mt-0.5" style={{ color: "rgba(255,149,0,0.5)" }} />
                           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.55 }}>
-                            Use your <span style={{ color: "rgba(255,149,0,0.7)", fontWeight: 600 }}>business email</span> to sign in. A verification code will be sent to confirm your identity.
+                            {t("web.use_business_email_a")} <span style={{ color: "rgba(255,149,0,0.7)", fontWeight: 600 }}>{t("web.business_email")}</span> {t("web.use_business_email_b")}
                           </p>
                         </div>
                         <motion.button whileTap={{ scale: 0.97 }} onClick={handleEmailSend}
@@ -1651,34 +1651,34 @@ export function DashboardWebPage() {
                           {emailOtpLoading
                             ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                                 style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%" }} />
-                            : <>Send Verification Code <ArrowRight className="size-4" /></>}
+                            : <>{t("web.send_verification_code")} <ArrowRight className="size-4" /></>}
                         </motion.button>
                       </div>
                       <div className="mt-8 text-center space-y-3">
                         <div className="flex items-center gap-3">
                           <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.05)" }} />
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>New to SOSphere?</span>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("web.new_to_sosphere")}</span>
                           <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.05)" }} />
                         </div>
                         <div className="flex gap-3">
                           <motion.button whileTap={{ scale: 0.97 }} onClick={() => setStep("register")}
                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px]"
                             style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.12), rgba(0,200,224,0.04))", border: "1px solid rgba(0,200,224,0.2)", fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>
-                            Start Free Trial
+                            {t("web.start_free_trial")}
                           </motion.button>
                           <motion.button whileTap={{ scale: 0.97 }}
                             onClick={() => window.open("mailto:sales@sosphere.co?subject=Demo Request", "_blank")}
                             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-[14px]"
                             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>
-                            Request Demo
+                            {t("web.request_demo")}
                           </motion.button>
                         </div>
-                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", lineHeight: 1.5 }}>14-day free trial · No credit card required</p>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", lineHeight: 1.5 }}>{t("web.trial_no_card")}</p>
                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                           onClick={() => navigate("/demo")}
                           className="mt-3 flex items-center justify-center gap-2 w-full py-2 rounded-xl"
                           style={{ background: "rgba(175,82,222,0.06)", border: "1px solid rgba(175,82,222,0.12)", fontSize: 12, fontWeight: 600, color: "rgba(175,82,222,0.7)" }}>
-                          <Eye className="size-3.5" /> Watch 60s Live Demo
+                          <Eye className="size-3.5" /> {t("web.watch_live_demo")}
                         </motion.button>
                       </div>
                     </motion.div>
