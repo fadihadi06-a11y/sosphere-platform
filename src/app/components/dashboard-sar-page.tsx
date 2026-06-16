@@ -930,7 +930,7 @@ export function SARProtocolPage() {
           }}
         >
           <Lock style={{ width: 12, height: 12 }} />
-          Live (coming soon)
+          {lang === "ar" ? "مباشر (قريباً)" : "Live (coming soon)"}
         </button>
       </div>
 

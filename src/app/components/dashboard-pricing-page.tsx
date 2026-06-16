@@ -15,6 +15,8 @@ import {
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, annualSavings } from "../constants/pricing";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ═══════════════════════════════════════════════════════════
 //  SOSphere — Hybrid Pricing & Subscription Engine
@@ -71,67 +73,67 @@ type AccountStatus =
 
 const LIFECYCLE_STEPS = [
   {
-    phase: "Trial Start",
+    phaseKey: "pp.lifecycle_trial_start_phase",
     icon: CirclePlay,
     color: "#00C8E0",
-    description: "Card saved (not charged). Full access for 14 days.",
+    descKey: "pp.lifecycle_trial_start_desc",
   },
   {
-    phase: "Day 7",
+    phaseKey: "pp.lifecycle_day7_phase",
     icon: Bell,
     color: "#FF9500",
-    description: "Email + in-app reminder: 7 days remaining in trial.",
+    descKey: "pp.lifecycle_day7_desc",
   },
   {
-    phase: "Day 11",
+    phaseKey: "pp.lifecycle_day11_phase",
     icon: AlertTriangle,
     color: "#FF9500",
-    description: "Urgent in-app alert: 3 days remaining. Review plan.",
+    descKey: "pp.lifecycle_day11_desc",
   },
   {
-    phase: "Day 14",
+    phaseKey: "pp.lifecycle_day14_phase",
     icon: Clock,
     color: "#FF2D55",
-    description: "Last day. Cancel before midnight or auto-charge begins.",
+    descKey: "pp.lifecycle_day14_desc",
   },
   {
-    phase: "Day 15",
+    phaseKey: "pp.lifecycle_day15_phase",
     icon: CreditCard,
     color: "#00C853",
-    description: "Card charged. Subscription active. Full access continues.",
+    descKey: "pp.lifecycle_day15_desc",
   },
 ];
 
 const EXPIRY_STEPS = [
   {
-    phase: "7 Days Before",
+    phaseKey: "pp.expiry_7days_phase",
     icon: CalendarDays,
     color: "#00C8E0",
-    description: "Renewal reminder via email + dashboard banner.",
+    descKey: "pp.expiry_7days_desc",
   },
   {
-    phase: "3 Days Before",
+    phaseKey: "pp.expiry_3days_phase",
     icon: AlertCircle,
     color: "#FF9500",
-    description: "Urgent action required: confirm or cancel renewal.",
+    descKey: "pp.expiry_3days_desc",
   },
   {
-    phase: "Renewal Day",
+    phaseKey: "pp.expiry_renewal_phase",
     icon: CreditCard,
     color: "#00C853",
-    description: "Auto-charge processed. Subscription renewed seamlessly.",
+    descKey: "pp.expiry_renewal_desc",
   },
   {
-    phase: "If Payment Fails",
+    phaseKey: "pp.expiry_fail_phase",
     icon: XCircle,
     color: "#FF2D55",
-    description: "7-day grace period. Limited features. Update card urgently.",
+    descKey: "pp.expiry_fail_desc",
   },
   {
-    phase: "After 7-Day Grace",
+    phaseKey: "pp.expiry_aftergrace_phase",
     icon: TimerOff,
     color: "#FF2D55",
-    description: "Account suspended. Data preserved 30 days, then deleted.",
+    descKey: "pp.expiry_aftergrace_desc",
   },
 ];
 
@@ -146,6 +148,8 @@ interface PricingPageProps {
 //  Main Component
 // ═══════════════════════════════════════════════════════════
 export function PricingPage({ webMode = false, currentStatus = "trial_active", trialDays: trialDaysProp }: PricingPageProps) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [selectedPlan, setSelectedPlan] = useState<PlanTier["id"] | null>(null);
   const [employeeCount, setEmployeeCount] = useState(30);
@@ -178,41 +182,41 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
   const STATUS_CONFIG: Record<AccountStatus, {
     label: string; color: string; bg: string; border: string; icon: typeof Check; desc: string;
   }> = {
-    trial_active:  { label: "Trial Active",     color: "#00C8E0", bg: "rgba(0,200,224,0.08)",  border: "rgba(0,200,224,0.2)",  icon: Clock,         desc: `${trialDays} days remaining` },
-    trial_ending:  { label: "Trial Ending Soon", color: "#FF9500", bg: "rgba(255,149,0,0.08)", border: "rgba(255,149,0,0.2)",  icon: AlertTriangle, desc: "2 days left — add card now" },
-    trial_expired: { label: "Trial Expired",     color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.2)",  icon: XCircle,       desc: "Select plan to continue" },
-    active:        { label: "Active",            color: "#00C853", bg: "rgba(0,200,83,0.08)",  border: "rgba(0,200,83,0.2)",   icon: CheckCircle2,  desc: "Renews Apr 1, 2026" },
-    payment_failed:{ label: "Payment Failed",    color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.2)",  icon: AlertTriangle, desc: "Update card within 48h" },
-    grace_period:  { label: "Grace Period",      color: "#FF9500", bg: "rgba(255,149,0,0.08)", border: "rgba(255,149,0,0.2)",  icon: Clock,         desc: "5 days to restore access" },
-    suspended:     { label: "Suspended",         color: "#FF2D55", bg: "rgba(255,45,85,0.1)",  border: "rgba(255,45,85,0.25)", icon: TimerOff,      desc: "Data retained 30 days" },
+    trial_active:  { label: t("pp.status_trial_active_label"),     color: "#00C8E0", bg: "rgba(0,200,224,0.08)",  border: "rgba(0,200,224,0.2)",  icon: Clock,         desc: `${trialDays} ${t("pp.days_remaining")}` },
+    trial_ending:  { label: t("pp.status_trial_ending_label"), color: "#FF9500", bg: "rgba(255,149,0,0.08)", border: "rgba(255,149,0,0.2)",  icon: AlertTriangle, desc: t("pp.status_trial_ending_desc") },
+    trial_expired: { label: t("pp.status_trial_expired_label"),     color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.2)",  icon: XCircle,       desc: t("pp.status_trial_expired_desc") },
+    active:        { label: t("pp.status_active_label"),            color: "#00C853", bg: "rgba(0,200,83,0.08)",  border: "rgba(0,200,83,0.2)",   icon: CheckCircle2,  desc: t("pp.status_active_desc") },
+    payment_failed:{ label: t("pp.status_payment_failed_label"),    color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.2)",  icon: AlertTriangle, desc: t("pp.status_payment_failed_desc") },
+    grace_period:  { label: t("pp.status_grace_label"),      color: "#FF9500", bg: "rgba(255,149,0,0.08)", border: "rgba(255,149,0,0.2)",  icon: Clock,         desc: t("pp.status_grace_desc") },
+    suspended:     { label: t("pp.status_suspended_label"),         color: "#FF2D55", bg: "rgba(255,45,85,0.1)",  border: "rgba(255,45,85,0.25)", icon: TimerOff,      desc: t("pp.status_suspended_desc") },
   };
   const statusCfg = STATUS_CONFIG[currentStatus];
   const StatusIcon = statusCfg.icon;
 
   const FAQS = [
     {
-      q: "هل يتم خصم المبلغ فوراً عند التسجيل؟",
-      a: "لا. نقوم بحفظ بيانات بطاقتك بشكل آمن عبر Stripe كـ \"authorization hold\" بدون خصم فعلي. لن يتم الخصم إلا بعد انتهاء 14 يوم تجريبياً مجانياً، وبشرط عدم إلغاء الاشتراك قبلها.",
+      q: t("pp.faq1_q"),
+      a: t("pp.faq1_a"),
     },
     {
-      q: "ماذا يحدث إذا تجاوزت عدد الموظفين المسموح به في خطتي؟",
-      a: "يتم احتساب رسوم إضافية لكل موظف يتجاوز الحد المسموح. Starter: $8/موظف إضافي، Growth: $6، Business: $4. ستصلك تنبيهات عند 80% و95% من الحد.",
+      q: t("pp.faq2_q"),
+      a: t("pp.faq2_a"),
     },
     {
-      q: "ماذا يحدث إذا فشل الدفع عند التجديد؟",
-      a: "تبدأ فترة سماح 7 أيام: تظل قادراً على مشاهدة البيانات فقط (قراءة فقط). لا تعمل تنبيهات SOS الحية، ولا تتبع GPS في الوقت الفعلي. إذا لم تُحدَّث البطاقة خلال 7 أيام، يُوقف الحساب مؤقتاً وتُحفظ البيانات 30 يوماً.",
+      q: t("pp.faq3_q"),
+      a: t("pp.faq3_a"),
     },
     {
-      q: "هل يمكنني إلغاء الاشتراك في أي وقت؟",
-      a: "نعم. يمكنك الإلغاء في أي وقت من داخل لوحة التحكم. عند الإلغاء قبل انتهاء التجربة المجانية: لا يُخصم شيء. عند الإلغاء بعد الدفع: تنتهي خدمتك في نهاية دورة الفوترة الحالية ولا استرداد جزئي.",
+      q: t("pp.faq4_q"),
+      a: t("pp.faq4_a"),
     },
     {
-      q: "هل بيانات موظفينا آمنة؟",
-      a: "نعم. نخطط لاستخدام تشفير AES-256 للبيانات المخزنة وTLS 1.3 للبيانات أثناء النقل. عند إطلاق الدفع، ستُعالَج بيانات البطاقة البنكية بالكامل عبر Stripe ولن تُخزَّن لدينا مطلقاً.",
+      q: t("pp.faq5_q"),
+      a: t("pp.faq5_a"),
     },
     {
-      q: "ماذا يحدث بعد انتهاء 30 يوماً من إيقاف الحساب؟",
-      a: "يتم حذف جميع البيانات (الموظفون، الحوادث، السجلات) بشكل نهائي وغير قابل للاسترداد. تُرسَل 3 تنبيهات بالبريد الإلكتروني قبل الحذف: قبل 30 يوم، 14 يوم، و7 أيام. يُنصح بتنزيل البيانات فور الإيقاف.",
+      q: t("pp.faq6_q"),
+      a: t("pp.faq6_a"),
     },
   ];
 
@@ -243,7 +247,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
           {currentStatus === "trial_active" && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
               <Clock className="size-3.5" style={{ color: "#00C8E0" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{trialDays} days left</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>{trialDays} {t("pp.days_left")}</span>
             </div>
           )}
           {(currentStatus === "payment_failed" || currentStatus === "grace_period") && (
@@ -253,7 +257,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "#FF2D55" }}
             >
               <CreditCard className="size-3.5" />
-              Update Card Now
+              {t("pp.update_card_now")}
             </button>
           )}
         </motion.div>
@@ -270,8 +274,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               className="text-white"
               style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.8px" }}
             >
-              Subscription Plans
-              <span style={{ color: "#00C8E0" }}> & Pricing</span>
+              {t("pp.header_title")}
+              <span style={{ color: "#00C8E0" }}> {t("pp.header_title_accent")}</span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 8 }}
@@ -279,7 +283,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               transition={{ delay: 0.06 }}
               style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 5 }}
             >
-              Flat-rate pricing · Extra employees billed separately · Cancel anytime
+              {t("pp.header_subtitle")}
             </motion.p>
           </div>
 
@@ -316,13 +320,13 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 <Users className="size-5" style={{ color: "#00C8E0" }} />
               </div>
               <div>
-                <p className="text-white" style={{ fontSize: 15, fontWeight: 800 }}>Smart Plan Calculator</p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>Drag to find your perfect plan instantly</p>
+                <p className="text-white" style={{ fontSize: 15, fontWeight: 800 }}>{t("pp.calc_title")}</p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{t("pp.calc_subtitle")}</p>
               </div>
               <div className="flex-1" />
               <div className="px-4 py-2 rounded-xl" style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)" }}>
                 <span style={{ fontSize: 24, fontWeight: 900, color: "#00C8E0" }}>{employeeCount}</span>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>employees</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginLeft: 4 }}>{t("pp.employees")}</span>
               </div>
             </div>
 
@@ -366,13 +370,13 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-white" style={{ fontSize: 20, fontWeight: 900 }}>{recommendedPlan.name}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: recommendedPlan.color, background: `${recommendedPlan.color}15`, border: `1px solid ${recommendedPlan.color}25`, borderRadius: 8, padding: "2px 8px" }}>
-                    RECOMMENDED
+                    {t("pp.recommended")}
                   </span>
                 </div>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{recommendedPlan.description}</p>
                 {recommendedPlan.maxEmployees > 0 && employeeCount > recommendedPlan.maxEmployees && (
                   <p style={{ fontSize: 11, color: "#F59E0B", marginTop: 4 }}>
-                    +{employeeCount - recommendedPlan.maxEmployees} extra employees × ${recommendedPlan.extraEmployeePrice}/mo each
+                    +{employeeCount - recommendedPlan.maxEmployees} {t("pp.extra_employees")} × ${recommendedPlan.extraEmployeePrice}{t("pp.per_mo_each")}
                   </p>
                 )}
               </div>
@@ -381,16 +385,16 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   <span className="contents">
                     <p style={{ fontSize: 36, fontWeight: 900, color: recommendedPlan.color, letterSpacing: "-1px" }}>
                       ${billing === "monthly" ? recommendedPlan.monthlyPrice : recommendedPlan.annualMonthly}
-                      <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(255,255,255,0.35)" }}>/mo</span>
+                      <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(255,255,255,0.35)" }}>{t("pp.per_mo")}</span>
                     </p>
                     {billing === "annual" && (
                       <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                        ${recommendedPlan.annualPrice}/yr · Save ${annualSavings(recommendedPlan as any)}/yr
+                        ${recommendedPlan.annualPrice}{t("pp.per_yr")} · {t("pp.save")} ${annualSavings(recommendedPlan as any)}{t("pp.per_yr")}
                       </p>
                     )}
                   </span>
                 ) : (
-                  <p style={{ fontSize: 26, fontWeight: 900, color: recommendedPlan.color }}>Custom</p>
+                  <p style={{ fontSize: 26, fontWeight: 900, color: recommendedPlan.color }}>{t("pp.custom")}</p>
                 )}
               </div>
             </motion.div>
@@ -413,7 +417,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 className="relative z-10 flex items-center gap-2 px-6 py-2.5"
               >
                 <span style={{ fontSize: 13, fontWeight: 700, color: billing === b ? "#00C8E0" : "rgba(255,255,255,0.3)" }}>
-                  {b === "monthly" ? "Monthly" : "Annual"}
+                  {b === "monthly" ? t("pp.monthly") : t("pp.annual")}
                 </span>
               </button>
             ))}
@@ -427,7 +431,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
             >
               <TrendingUp className="size-3.5" style={{ color: "#00C853" }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: "#00C853" }}>
-                Save up to ${annualSavings(UNIFIED_PLANS[2])}/year on Business
+                {t("pp.save_up_to")} ${annualSavings(UNIFIED_PLANS[2])}{t("pp.per_year_on_business")}
               </span>
             </motion.div>
           )}
@@ -467,7 +471,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 {/* Popular badge */}
                 {plan.popular && (
                   <div className="absolute top-4 right-4 px-2.5 py-1 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}35`, fontSize: 9, fontWeight: 800, color: plan.color, letterSpacing: "0.5px" }}>
-                    MOST POPULAR
+                    {t("pp.most_popular")}
                   </div>
                 )}
 
@@ -482,18 +486,18 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   {/* Price */}
                   <div className="mb-4">
                     {isEnterprise ? (
-                      <p style={{ fontSize: 28, fontWeight: 900, color: plan.color, letterSpacing: "-0.5px" }}>Custom</p>
+                      <p style={{ fontSize: 28, fontWeight: 900, color: plan.color, letterSpacing: "-0.5px" }}>{t("pp.custom")}</p>
                     ) : (
                       <span className="contents">
                         <div className="flex items-baseline gap-1">
                           <span style={{ fontSize: 34, fontWeight: 900, color: plan.color, letterSpacing: "-1px" }}>${price}</span>
-                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>/month</span>
+                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{t("pp.per_month")}</span>
                         </div>
                         {billing === "annual" && savings > 0 && (
-                          <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600, marginTop: 2 }}>Save ${savings}/year</p>
+                          <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600, marginTop: 2 }}>{t("pp.save")} ${savings}{t("pp.per_year")}</p>
                         )}
                         {plan.extraEmployeePrice > 0 && (
-                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 4 }}>+${plan.extraEmployeePrice}/extra employee</p>
+                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 4 }}>+${plan.extraEmployeePrice}{t("pp.per_extra_employee")}</p>
                         )}
                       </span>
                     )}
@@ -512,7 +516,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                     ))}
                     {plan.features.length > 6 && (
                       <p style={{ fontSize: 11, color: plan.color, fontWeight: 600, paddingLeft: 22 }}>
-                        +{plan.features.length - 6} more features
+                        +{plan.features.length - 6} {t("pp.more_features")}
                       </p>
                     )}
                   </div>
@@ -520,12 +524,12 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   {/* CTA */}
                   {isEnterprise ? (
                     <button
-                      onClick={(e) => { e.stopPropagation(); hapticLight(); toast("Contact Sales", { description: "Our enterprise team will reach out within 24 hours" }); }}
+                      onClick={(e) => { e.stopPropagation(); hapticLight(); toast(t("pp.contact_sales"), { description: t("pp.contact_sales_toast_desc") }); }}
                       className="w-full py-3 rounded-xl flex items-center justify-center gap-2"
                       style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1.5px solid ${plan.color}30`, cursor: "pointer" }}
                     >
                       <PhoneCall className="size-4" />
-                      Contact Sales
+                      {t("pp.contact_sales")}
                     </button>
                   ) : isSelected ? (
                     <button
@@ -538,7 +542,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                       style={{ fontSize: 13, fontWeight: 700, color: "#05070E", background: plan.color, boxShadow: `0 4px 20px ${plan.glowColor}` }}
                     >
                       <Sparkles className="size-4" />
-                      {currentStatus === "active" ? "Switch Plan" : "Start 14-Day Trial"}
+                      {currentStatus === "active" ? t("pp.switch_plan") : t("pp.start_trial")}
                     </button>
                   ) : (
                     <button
@@ -546,7 +550,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                       className="w-full py-3 rounded-xl"
                       style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}08`, border: `1px solid ${plan.color}20` }}
                     >
-                      Select Plan
+                      {t("pp.select_plan")}
                     </button>
                   )}
                 </div>
@@ -568,8 +572,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               <BadgeCheck className="size-5" style={{ color: "#00C8E0" }} />
             </div>
             <div>
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 800 }}>14-Day Free Trial — What You Need to Know</p>
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Complete transparency. No surprises.</p>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 800 }}>{t("pp.trial_promise_title")}</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{t("pp.trial_promise_subtitle")}</p>
             </div>
           </div>
 
@@ -578,20 +582,20 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               {
                 icon: CreditCard,
                 color: "#00C8E0",
-                title: "Card Required, Not Charged",
-                desc: "We save your card securely via Stripe. Zero charge during trial. It's only used to auto-start your plan after 14 days.",
+                title: t("pp.promise1_title"),
+                desc: t("pp.promise1_desc"),
               },
               {
                 icon: Clock,
                 color: "#00C853",
-                title: "Full Access, Zero Limits",
-                desc: "During trial you get 100% of your plan's features — SOS alerts, GPS, command center, everything. No crippled demo.",
+                title: t("pp.promise2_title"),
+                desc: t("pp.promise2_desc"),
               },
               {
                 icon: X,
                 color: "#FF9500",
-                title: "Cancel Before Day 14, Pay Nothing",
-                desc: "Cancel any time before 11:59 PM on day 14 and you are never charged. No questions asked. Data exported if needed.",
+                title: t("pp.promise3_title"),
+                desc: t("pp.promise3_desc"),
               },
             ].map((item, i) => (
               <div key={i} className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -624,7 +628,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
                 <CirclePlay className="size-4" style={{ color: "#00C8E0" }} />
               </div>
-              <p className="text-white flex-1 text-left" style={{ fontSize: 14, fontWeight: 700 }}>Trial Period Lifecycle</p>
+              <p className="text-white flex-1 text-left" style={{ fontSize: 14, fontWeight: 700 }}>{t("pp.trial_lifecycle_title")}</p>
               {showLifecycle === "trial" ? <ChevronUp className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} />}
             </button>
 
@@ -647,8 +651,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                           <step.icon className="size-4" style={{ color: step.color }} />
                         </div>
                         <div className="pb-5 flex-1">
-                          <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{step.phase}</p>
-                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, marginTop: 2 }}>{step.description}</p>
+                          <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t(step.phaseKey)}</p>
+                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, marginTop: 2 }}>{t(step.descKey)}</p>
                         </div>
                       </div>
                     ))}
@@ -674,7 +678,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.2)" }}>
                 <RefreshCw className="size-4" style={{ color: "#FF9500" }} />
               </div>
-              <p className="text-white flex-1 text-left" style={{ fontSize: 14, fontWeight: 700 }}>Subscription Renewal Lifecycle</p>
+              <p className="text-white flex-1 text-left" style={{ fontSize: 14, fontWeight: 700 }}>{t("pp.renewal_lifecycle_title")}</p>
               {showLifecycle === "renewal" ? <ChevronUp className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} />}
             </button>
 
@@ -696,8 +700,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                           <step.icon className="size-4" style={{ color: step.color }} />
                         </div>
                         <div className="pb-5 flex-1">
-                          <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{step.phase}</p>
-                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, marginTop: 2 }}>{step.description}</p>
+                          <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t(step.phaseKey)}</p>
+                          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, marginTop: 2 }}>{t(step.descKey)}</p>
                         </div>
                       </div>
                     ))}
@@ -725,8 +729,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               <TimerOff className="size-4" style={{ color: "#FF2D55" }} />
             </div>
             <div className="flex-1 text-left">
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>What Happens During Suspension?</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Feature restrictions & data retention policy</p>
+              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("pp.suspension_title")}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{t("pp.suspension_subtitle")}</p>
             </div>
             {showSuspensionDetail ? <ChevronUp className="size-4 flex-shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown className="size-4 flex-shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} />}
           </button>
@@ -742,12 +746,12 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 <div className="p-6">
                   <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 20 }}>
                     {[
-                      { label: "SOS Alerts (Real-time)", suspended: true, color: "#FF2D55", note: "DISABLED — critical safety risk" },
-                      { label: "Live GPS Tracking", suspended: true, color: "#FF2D55", note: "DISABLED" },
-                      { label: "Admin Dashboard", suspended: false, color: "#FF9500", note: "READ-ONLY mode" },
-                      { label: "Historical Reports", suspended: false, color: "#00C8E0", note: "View allowed" },
-                      { label: "Data Export", suspended: false, color: "#00C853", note: "Full export available" },
-                      { label: "Employee Login", suspended: true, color: "#FF2D55", note: "App access blocked" },
+                      { label: t("pp.susp_sos_label"), suspended: true, color: "#FF2D55", note: t("pp.susp_sos_note") },
+                      { label: t("pp.susp_gps_label"), suspended: true, color: "#FF2D55", note: t("pp.susp_gps_note") },
+                      { label: t("pp.susp_admin_label"), suspended: false, color: "#FF9500", note: t("pp.susp_admin_note") },
+                      { label: t("pp.susp_reports_label"), suspended: false, color: "#00C8E0", note: t("pp.susp_reports_note") },
+                      { label: t("pp.susp_export_label"), suspended: false, color: "#00C853", note: t("pp.susp_export_note") },
+                      { label: t("pp.susp_login_label"), suspended: true, color: "#FF2D55", note: t("pp.susp_login_note") },
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-3 p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.05)" }}>
                         <div className="size-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${item.color}15` }}>
@@ -763,14 +767,14 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
 
                   {/* Data retention timeline */}
                   <div className="p-4 rounded-2xl" style={{ background: "rgba(255,45,85,0.05)", border: "1px solid rgba(255,45,85,0.12)" }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55", marginBottom: 12 }}>⚠️ Data Retention Timeline After Suspension</p>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#FF2D55", marginBottom: 12 }}>⚠️ {t("pp.retention_title")}</p>
                     <div className="flex items-center gap-0">
                       {[
-                        { day: "Day 0", label: "Suspended", color: "#FF9500" },
-                        { day: "Day 7", label: "Grace ends", color: "#FF2D55" },
-                        { day: "Day 30", label: "Warning sent", color: "#FF2D55" },
-                        { day: "Day 37", label: "Final warning", color: "#FF2D55" },
-                        { day: "Day 60", label: "Data deleted", color: "#FF2D55" },
+                        { day: t("pp.retention_day0"), label: t("pp.retention_day0_label"), color: "#FF9500" },
+                        { day: t("pp.retention_day7"), label: t("pp.retention_day7_label"), color: "#FF2D55" },
+                        { day: t("pp.retention_day30"), label: t("pp.retention_day30_label"), color: "#FF2D55" },
+                        { day: t("pp.retention_day37"), label: t("pp.retention_day37_label"), color: "#FF2D55" },
+                        { day: t("pp.retention_day60"), label: t("pp.retention_day60_label"), color: "#FF2D55" },
                       ].map((t, i, arr) => (
                         <div key={i} className="flex items-center flex-1">
                           <div className="flex flex-col items-center">
@@ -803,11 +807,11 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 not externally audited; SLA targets are operational, not
                 contractual until a published SLA exists. */}
             {[
-              { icon: Lock, label: "TLS 1.3", sublabel: "Transport Encryption" },
-              { icon: BadgeCheck, label: "PCI DSS via Stripe", sublabel: "Payments handled by Stripe" },
-              { icon: ShieldCheck, label: "At-Rest Encryption", sublabel: "AES-256 via Supabase platform" },
-              { icon: Globe, label: "GDPR-Aligned", sublabel: "Data Sovereignty Controls" },
-              { icon: LifeBuoy, label: "99.9% Uptime Target", sublabel: "Operational Goal" },
+              { icon: Lock, label: t("pp.trust_tls_label"), sublabel: t("pp.trust_tls_sub") },
+              { icon: BadgeCheck, label: t("pp.trust_pci_label"), sublabel: t("pp.trust_pci_sub") },
+              { icon: ShieldCheck, label: t("pp.trust_atrest_label"), sublabel: t("pp.trust_atrest_sub") },
+              { icon: Globe, label: t("pp.trust_gdpr_label"), sublabel: t("pp.trust_gdpr_sub") },
+              { icon: LifeBuoy, label: t("pp.trust_uptime_label"), sublabel: t("pp.trust_uptime_sub") },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-2.5">
                 <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.12)" }}>
@@ -829,7 +833,7 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
           transition={{ delay: 0.4 }}
         >
           <p className="text-white mb-4" style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.4px" }}>
-            Frequently Asked Questions
+            {t("pp.faq_title")}
           </p>
           <div className="space-y-2.5">
             {FAQS.map((faq, i) => (
@@ -895,8 +899,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
               {/* ── Secure Payment Placeholder ── */}
               <div className="flex items-center justify-between px-6 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                 <div>
-                  <p className="text-white" style={{ fontSize: 18, fontWeight: 900 }}>Secure Payment</p>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>Stripe integration coming soon</p>
+                  <p className="text-white" style={{ fontSize: 18, fontWeight: 900 }}>{t("pp.secure_payment")}</p>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{t("pp.stripe_coming_soon")}</p>
                 </div>
                 <button onClick={() => setShowPaymentForm(false)} className="size-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.05)", cursor: "pointer" }}>
                   <X className="size-4" style={{ color: "rgba(255,255,255,0.4)" }} />
@@ -908,13 +912,13 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                 <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: displayPlan.gradient, border: `1px solid ${displayPlan.border}` }}>
                   <displayPlan.icon className="size-5 flex-shrink-0" style={{ color: displayPlan.color }} />
                   <div className="flex-1">
-                    <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{displayPlan.name} Plan · {billing === "monthly" ? "Monthly" : "Annual"}</p>
+                    <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{displayPlan.name} {t("pp.plan_word")} · {billing === "monthly" ? t("pp.monthly") : t("pp.annual")}</p>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-                      14-day free trial then ${billing === "monthly" ? displayPlan.monthlyPrice : displayPlan.annualPrice}/{billing === "monthly" ? "mo" : "yr"}
+                      {t("pp.trial_then")} ${billing === "monthly" ? displayPlan.monthlyPrice : displayPlan.annualPrice}/{billing === "monthly" ? t("pp.mo") : t("pp.yr")}
                     </p>
                   </div>
                   <div className="px-3 py-1.5 rounded-xl" style={{ background: "rgba(0,200,83,0.1)", border: "1px solid rgba(0,200,83,0.2)" }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: "#00C853" }}>FREE today</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#00C853" }}>{t("pp.free_today")}</span>
                   </div>
                 </div>
 
@@ -925,13 +929,13 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   </div>
                   <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ background: "rgba(123,94,255,0.06)", border: "1px solid rgba(123,94,255,0.15)" }}>
                     <Lock className="size-3.5" style={{ color: "#7B5EFF" }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF" }}>Powered by Stripe</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#7B5EFF" }}>{t("pp.powered_by_stripe")}</span>
                   </div>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
-                    Payment processing coming soon. Your card details will be handled securely by Stripe.
+                    {t("pp.payment_coming_desc")}
                   </p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", lineHeight: 1.5 }}>
-                    No card information is collected or stored by this application.
+                    {t("pp.no_card_stored")}
                   </p>
                 </div>
 
@@ -940,8 +944,8 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     console.log("[SUPABASE_READY] plan_selected: " + JSON.stringify({ planId: displayPlan.id, billingCycle: billing, totalMonthly: billing === "monthly" ? displayPlan.monthlyPrice : displayPlan.annualMonthly }));
-                    toast.success("We'll contact you to complete setup", {
-                      description: "Our team will reach out when Stripe payments are live.",
+                    toast.success(t("pp.notify_toast_title"), {
+                      description: t("pp.notify_toast_desc"),
                     });
                     setShowPaymentForm(false);
                   }}
@@ -955,11 +959,11 @@ export function PricingPage({ webMode = false, currentStatus = "trial_active", t
                   }}
                 >
                   <Bell className="size-4" />
-                  Notify Me When Available
+                  {t("pp.notify_me")}
                 </motion.button>
 
                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", textAlign: "center", lineHeight: 1.6 }}>
-                  14-day free trial · Cancel anytime · No card required now
+                  {t("pp.modal_footer")}
                 </p>
               </div>
             </motion.div>
