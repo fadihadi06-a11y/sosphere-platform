@@ -2634,6 +2634,7 @@ export function MobileApp() {
               <EmergencyContacts
                 onBack={() => navigate(sourceScreen, -1)}
                 userPlan={userPlan}
+                lang={lang}
                 onUpgrade={() => navigate("subscription")}
               />
             )}

@@ -29,21 +29,28 @@ import {
 // is satisfied.
 import { COUNTRIES, CountrySheet, type Country } from "./country-picker";
 import { pushContacts, pullSafetyProfile } from "./safety-profile-service";
+import type { Lang } from "./dashboard-i18n";
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function fmtTime(ts: number): string {
-  if (!ts) return "Never";
+function fmtTime(ts: number, lang: Lang = "en"): string {
+  const ar = lang === "ar";
+  if (!ts) return ar ? "أبداً" : "Never";
   const diff = Date.now() - ts;
-  if (diff < 60000) return "Just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+  if (diff < 60000) return ar ? "الآن" : "Just now";
+  if (diff < 3600000) return ar ? `قبل ${Math.floor(diff / 60000)} د` : `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return ar ? `قبل ${Math.floor(diff / 3600000)} س` : `${Math.floor(diff / 3600000)}h ago`;
+  return ar ? `قبل ${Math.floor(diff / 86400000)} ي` : `${Math.floor(diff / 86400000)}d ago`;
 }
 
 // ── Relations Config ──────────────────────────────────────────
 
 const RELATIONS = ["Spouse", "Parent", "Sibling", "Child", "Friend", "Colleague", "Other"];
+
+const RELATION_LABELS_AR: Record<string, string> = {
+  Spouse: "الزوج/الزوجة", Parent: "أحد الوالدين", Sibling: "شقيق/شقيقة",
+  Child: "ابن/ابنة", Friend: "صديق", Colleague: "زميل", Other: "أخرى",
+};
 
 const relationIcons: Record<string, typeof User> = {
   Spouse: Heart,
@@ -69,9 +76,11 @@ interface EmergencyContactsProps {
   onBack: () => void;
   userPlan: "free" | "pro" | "employee";
   onUpgrade?: () => void;
+  lang?: Lang;
 }
 
-export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyContactsProps) {
+export function EmergencyContacts({ onBack, userPlan, onUpgrade, lang = "en" }: EmergencyContactsProps) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const [contacts, setContacts] = useState<SafetyContact[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingContact, setEditingContact] = useState<SafetyContact | null>(null);
@@ -133,7 +142,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
     setContacts(updated);
     saveSafetyContacts(updated);
     setDeleteConfirm(null);
-    toast.success("Contact removed");
+    toast.success(tr("Contact removed", "تمت إزالة جهة الاتصال"));
   };
 
   const toggleFavorite = (id: string) => {
@@ -147,7 +156,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
     setContacts(updated);
     saveSafetyContacts(updated);
     const contact = updated.find(c => c.id === id);
-    toast.success(contact?.locationSharingEnabled ? "Tracking enabled" : "Tracking paused");
+    toast.success(contact?.locationSharingEnabled ? tr("Tracking enabled", "تم تفعيل التتبّع") : tr("Tracking paused", "تم إيقاف التتبّع"));
   };
 
   const handleCopyLink = (contact: SafetyContact) => {
@@ -157,12 +166,14 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
     navigator.clipboard?.writeText(link);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
-    toast.success("Safety Link copied!");
+    toast.success(tr("Safety Link copied!", "تم نسخ رابط الأمان!"));
   };
 
   const resendInvite = (contact: SafetyContact) => {
     // Open the device SMS app with a prefilled invite — the user actually sends it.
-    const text = `Hi ${contact.name}, I added you as my emergency contact on SOSphere. Get the app: https://sosphere.co`;
+    const text = lang === "ar"
+      ? `مرحباً ${contact.name}، أضفتك كجهة اتصال للطوارئ في SOSphere. حمّل التطبيق: https://sosphere.co`
+      : `Hi ${contact.name}, I added you as my emergency contact on SOSphere. Get the app: https://sosphere.co`;
     try { window.location.href = `sms:${contact.phone}?&body=${encodeURIComponent(text)}`; } catch { /* sms unavailable */ }
   };
 
@@ -183,9 +194,11 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
                 <ChevronLeft className="size-[18px]" style={{ color: "rgba(255,255,255,0.5)" }} />
               </button>
               <div>
-                <h1 className="text-white" style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px" }}>Safety Contacts</h1>
+                <h1 className="text-white" style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px" }}>{tr("Safety Contacts", "جهات الأمان")}</h1>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
-                  {stats.total} contacts · {stats.online} online · {stats.tracking} tracking
+                  {lang === "ar"
+                    ? `${stats.total} جهة · ${stats.online} متصل · ${stats.tracking} قيد التتبّع`
+                    : `${stats.total} contacts · ${stats.online} online · ${stats.tracking} tracking`}
                 </p>
               </div>
             </div>
@@ -242,9 +255,9 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
                   <Zap className="size-4" style={{ color: "#FF2D55" }} />
                 </div>
                 <div>
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Emergency Ripple</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{tr("Emergency Ripple", "موجة الطوارئ")}</p>
                   <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.25)" }}>
-                    3-wave alert system · Tap to preview
+                    {tr("3-wave alert system · Tap to preview", "نظام تنبيه من 3 موجات · اضغط للمعاينة")}
                   </p>
                 </div>
               </div>
@@ -257,6 +270,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
               {filtered.sort((a, b) => a.priority - b.priority).map((contact, i) => (
                 <ContactCard
                   key={contact.id}
+                  lang={lang}
                   contact={contact}
                   index={i}
                   isExpanded={expandedId === contact.id}
@@ -292,7 +306,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
                 }}
               >
                 <Plus className="size-4" />
-                Add Safety Contact
+                {tr("Add Safety Contact", "إضافة جهة أمان")}
               </motion.button>
             ) : (
               <motion.button
@@ -309,11 +323,11 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
                 <div className="flex items-center justify-center gap-2">
                   <Crown className="size-4" style={{ color: "#00C8E0" }} />
                   <span style={{ fontSize: 14, fontWeight: 600, color: "#00C8E0" }}>
-                    Upgrade for unlimited contacts
+                    {tr("Upgrade for unlimited contacts", "ترقية لجهات اتصال غير محدودة")}
                   </span>
                 </div>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-                  Free plan: 1 tracking + 1 ghost contact
+                  {tr("Free plan: 1 tracking + 1 ghost contact", "الخطة المجانية: تتبّع واحد + جهة شبح واحدة")}
                 </p>
               </motion.button>
             )}
@@ -323,13 +337,13 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
           <div className="px-5 mt-5">
             <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.03)" }}>
               <p className="mb-3" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.15)", letterSpacing: "0.5px" }}>
-                HOW TRACKING WORKS
+                {tr("HOW TRACKING WORKS", "كيف يعمل التتبّع")}
               </p>
               <div className="space-y-3">
                 {[
-                  { icon: Eye, label: "Watcher", desc: "You track them — requires your paid plan", color: "#00C8E0" },
-                  { icon: Radio, label: "Beacon", desc: "They track you — free for them (with consent)", color: "#00C853" },
-                  { icon: Link, label: "Ghost", desc: "No app needed — SMS + Safety Link in emergencies", color: "#FF9500" },
+                  { icon: Eye, label: tr("Watcher", "مراقِب"), desc: tr("You track them — requires your paid plan", "أنت تتتبّعهم — يتطلّب خطتك المدفوعة"), color: "#00C8E0" },
+                  { icon: Radio, label: tr("Beacon", "منارة"), desc: tr("They track you — free for them (with consent)", "هم يتتبّعونك — مجاني لهم (بموافقتك)"), color: "#00C853" },
+                  { icon: Link, label: tr("Ghost", "شبح"), desc: tr("No app needed — SMS + Safety Link in emergencies", "لا حاجة للتطبيق — رسالة + رابط أمان في الطوارئ"), color: "#FF9500" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-2.5">
                     <div className="size-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${item.color}08` }}>
@@ -351,6 +365,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
       <AnimatePresence>
         {showForm && (
           <AddEditContactForm
+            lang={lang}
             contact={editingContact}
             isPro={isPro}
             onClose={() => { setShowForm(false); setEditingContact(null); }}
@@ -379,7 +394,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
               saveSafetyContacts(updated);
               setShowForm(false);
               setEditingContact(null);
-              toast.success(editingContact ? "Contact updated" : "Contact added");
+              toast.success(editingContact ? tr("Contact updated", "تم تحديث جهة الاتصال") : tr("Contact added", "تمت إضافة جهة الاتصال"));
             }}
           />
         )}
@@ -389,6 +404,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
       <AnimatePresence>
         {showRipple && (
           <EmergencyRippleModal
+            lang={lang}
             contacts={contacts}
             isPro={isPro}
             onClose={() => setShowRipple(false)}
@@ -401,6 +417,7 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
       <AnimatePresence>
         {showSafetyLink && (
           <SafetyLinkModal
+            lang={lang}
             contact={showSafetyLink}
             onClose={() => setShowSafetyLink(null)}
             onCopy={() => handleCopyLink(showSafetyLink)}
@@ -416,7 +433,8 @@ export function EmergencyContacts({ onBack, userPlan, onUpgrade }: EmergencyCont
 // Contact Card
 // ═══════════════════════════════════════════════════════════════
 
-function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onToggleFavorite, onToggleTracking, onEdit, onDelete, onCopyLink, onResendInvite, onShowSafetyLink, deleteConfirm, onCancelDelete, onConfirmDelete }: {
+function ContactCard({ lang, contact, index, isExpanded, isPro, onToggleExpand, onToggleFavorite, onToggleTracking, onEdit, onDelete, onCopyLink, onResendInvite, onShowSafetyLink, deleteConfirm, onCancelDelete, onConfirmDelete }: {
+  lang: Lang;
   contact: SafetyContact;
   index: number;
   isExpanded: boolean;
@@ -433,6 +451,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const cfg = CONTACT_TYPE_CONFIG[contact.type];
   const RelIcon = relationIcons[contact.relation] || User;
   const TypeIcon = typeIcons[contact.type];
@@ -495,7 +514,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                 <p className="text-white truncate" style={{ fontSize: 15, fontWeight: 600 }}>{contact.name}</p>
                 {contact.isFavorite && (
                   <div className="px-1.5 py-0.5" style={{ borderRadius: 5, background: "rgba(0,200,224,0.1)" }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>PRIMARY</span>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: "#00C8E0" }}>{tr("PRIMARY", "أساسي")}</span>
                   </div>
                 )}
               </div>
@@ -505,7 +524,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                   <span style={{ fontSize: 10, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
                 </div>
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.1)" }}>·</span>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{contact.relation}</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{lang === "ar" ? (RELATION_LABELS_AR[contact.relation] || contact.relation) : contact.relation}</span>
                 {contact.hasApp && contact.batteryLevel !== null && (
                   <>
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.1)" }}>·</span>
@@ -521,7 +540,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                 {contact.type === "ghost"
                   ? `SMS · ${contact.phone}`
                   : contact.lastKnownLocation
-                    ? `${contact.lastKnownLocation.lat.toFixed(3)}, ${contact.lastKnownLocation.lng.toFixed(3)} · ${fmtTime(contact.lastKnownLocation.timestamp)}`
+                    ? `${contact.lastKnownLocation.lat.toFixed(3)}, ${contact.lastKnownLocation.lng.toFixed(3)} · ${fmtTime(contact.lastKnownLocation.timestamp, lang)}`
                     : contact.phone
                 }
               </p>
@@ -590,11 +609,11 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                         : <EyeOff className="size-3.5" style={{ color: "rgba(255,255,255,0.15)" }} />
                       }
                       <span style={{ fontSize: 11, fontWeight: 600, color: contact.locationSharingEnabled ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)" }}>
-                        Location {contact.locationSharingEnabled ? "sharing" : "paused"}
+                        {contact.locationSharingEnabled ? tr("Location sharing", "مشاركة الموقع") : tr("Location paused", "الموقع متوقف")}
                       </span>
                       {contact.locationSharingEnabled && (
                         <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>
-                          · every {contact.locationUpdateFrequency}s
+                          {lang === "ar" ? `· كل ${contact.locationUpdateFrequency} ث` : `· every ${contact.locationUpdateFrequency}s`}
                         </span>
                       )}
                     </div>
@@ -608,7 +627,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                         color: contact.locationSharingEnabled ? "#FF2D55" : "#00C853",
                       }}
                     >
-                      {contact.locationSharingEnabled ? "Pause" : "Enable"}
+                      {contact.locationSharingEnabled ? tr("Pause", "إيقاف") : tr("Enable", "تفعيل")}
                     </button>
                   </div>
                 )}
@@ -618,10 +637,12 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                   <div className="rounded-xl p-3" style={{ background: "rgba(255,150,0,0.04)", border: "1px solid rgba(255,150,0,0.08)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <Globe className="size-3.5" style={{ color: "#FF9500" }} />
-                      <p style={{ fontSize: 11, fontWeight: 700, color: "#FF9500" }}>Safety Link</p>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#FF9500" }}>{tr("Safety Link", "رابط الأمان")}</p>
                     </div>
                     <p className="mb-2.5" style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", lineHeight: 1.4 }}>
-                      During emergencies, {contact.name} receives an SMS with this link to see your live location.
+                      {lang === "ar"
+                        ? `أثناء الطوارئ، يتلقّى ${contact.name} رسالة نصية بهذا الرابط لرؤية موقعك المباشر.`
+                        : `During emergencies, ${contact.name} receives an SMS with this link to see your live location.`}
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -629,14 +650,14 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg"
                         style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)", fontSize: 11, fontWeight: 600, color: "#FF9500" }}
                       >
-                        <Copy className="size-3" /> Copy Link
+                        <Copy className="size-3" /> {tr("Copy Link", "نسخ الرابط")}
                       </button>
                       <button
                         onClick={onShowSafetyLink}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg"
                         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}
                       >
-                        <Eye className="size-3" /> Preview
+                        <Eye className="size-3" /> {tr("Preview", "معاينة")}
                       </button>
                     </div>
                   </div>
@@ -650,7 +671,7 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                     style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)", fontSize: 11, fontWeight: 600, color: "#00C8E0" }}
                   >
                     <SmartphoneNfc className="size-3.5" />
-                    Invite to Download SOSphere
+                    {tr("Invite to Download SOSphere", "ادعُهم لتحميل SOSphere")}
                   </button>
                 )}
 
@@ -658,9 +679,9 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                 {contact.totalAlertsReceived > 0 && (
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { label: "Alerts", value: contact.totalAlertsReceived, color: "#FF2D55" },
-                      { label: "Responded", value: contact.totalAlertsResponded, color: "#00C853" },
-                      { label: "Avg Time", value: `${contact.avgResponseTime}s`, color: "#00C8E0" },
+                      { label: tr("Alerts", "تنبيهات"), value: contact.totalAlertsReceived, color: "#FF2D55" },
+                      { label: tr("Responded", "استجابوا"), value: contact.totalAlertsResponded, color: "#00C853" },
+                      { label: tr("Avg Time", "متوسط الوقت"), value: `${contact.avgResponseTime}s`, color: "#00C8E0" },
                     ].map(s => (
                       <div key={s.label} className="text-center rounded-lg py-2" style={{ background: "rgba(255,255,255,0.02)" }}>
                         <p className="text-white" style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</p>
@@ -674,11 +695,11 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                 <div className="flex gap-2">
                   <button onClick={onToggleFavorite} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl"
                     style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", fontSize: 10, fontWeight: 600, color: contact.isFavorite ? "#FFD700" : "rgba(255,255,255,0.25)" }}>
-                    <Star className="size-3" style={{ fill: contact.isFavorite ? "#FFD700" : "none" }} /> {contact.isFavorite ? "Primary" : "Set Primary"}
+                    <Star className="size-3" style={{ fill: contact.isFavorite ? "#FFD700" : "none" }} /> {contact.isFavorite ? tr("Primary", "أساسي") : tr("Set Primary", "تعيين كأساسي")}
                   </button>
                   <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl"
                     style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.25)" }}>
-                    <Edit3 className="size-3" /> Edit
+                    <Edit3 className="size-3" /> {tr("Edit", "تعديل")}
                   </button>
                   <button onClick={onDelete} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl"
                     style={{ background: "rgba(255,45,85,0.04)", border: "1px solid rgba(255,45,85,0.08)", fontSize: 10, fontWeight: 600, color: "rgba(255,45,85,0.5)" }}>
@@ -696,14 +717,14 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
                       className="overflow-hidden"
                     >
                       <div className="flex items-center gap-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                        <p style={{ fontSize: 12, color: "rgba(255,45,85,0.6)", flex: 1 }}>Remove from safety contacts?</p>
+                        <p style={{ fontSize: 12, color: "rgba(255,45,85,0.6)", flex: 1 }}>{tr("Remove from safety contacts?", "إزالة من جهات الأمان؟")}</p>
                         <button onClick={onCancelDelete} className="px-3 py-1.5 rounded-lg"
                           style={{ background: "rgba(255,255,255,0.04)", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>
-                          Cancel
+                          {tr("Cancel", "إلغاء")}
                         </button>
                         <button onClick={onConfirmDelete} className="px-3 py-1.5 rounded-lg"
                           style={{ background: "rgba(255,45,85,0.1)", fontSize: 11, fontWeight: 600, color: "#FF2D55" }}>
-                          Remove
+                          {tr("Remove", "إزالة")}
                         </button>
                       </div>
                     </motion.div>
@@ -722,12 +743,14 @@ function ContactCard({ contact, index, isExpanded, isPro, onToggleExpand, onTogg
 // Add/Edit Contact Form
 // ═══════════════════════════════════════════════════════════════
 
-function AddEditContactForm({ contact, isPro, onClose, onSave }: {
+function AddEditContactForm({ lang, contact, isPro, onClose, onSave }: {
+  lang: Lang;
   contact: SafetyContact | null;
   isPro: boolean;
   onClose: () => void;
   onSave: (data: Partial<SafetyContact>) => void;
 }) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const [name, setName] = useState(contact?.name || "");
   // R-76 (MOBILE_AUDIT_FINDINGS, 2026-05-19): pre-fill the phone input
   // with the user's country dial code (R-49 detection). Before R-76 the
@@ -861,7 +884,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
 
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>
-              {contact ? "Edit Contact" : "Add Safety Contact"}
+              {contact ? tr("Edit Contact", "تعديل جهة الاتصال") : tr("Add Safety Contact", "إضافة جهة أمان")}
             </h2>
             <button onClick={onClose} className="size-8 rounded-full flex items-center justify-center"
               style={{ background: "rgba(255,255,255,0.04)" }}>
@@ -872,12 +895,12 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
           {/* Has App? */}
           <div className="mb-4">
             <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>
-              DO THEY HAVE SOSPHERE?
+              {tr("DO THEY HAVE SOSPHERE?", "هل لديهم SOSphere؟")}
             </label>
             <div className="flex gap-2 mt-2">
               {[
-                { val: true, label: "Yes, has the app", icon: Smartphone, color: "#00C853" },
-                { val: false, label: "No app (Ghost)", icon: Link, color: "#FF9500" },
+                { val: true, label: tr("Yes, has the app", "نعم، لديه التطبيق"), icon: Smartphone, color: "#00C853" },
+                { val: false, label: tr("No app (Ghost)", "بدون تطبيق (شبح)"), icon: Link, color: "#FF9500" },
               ].map(opt => (
                 <button
                   key={String(opt.val)}
@@ -901,12 +924,12 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
           {hasApp && (
             <div className="mb-4">
               <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>
-                THEIR PLAN
+                {tr("THEIR PLAN", "خطتهم")}
               </label>
               <div className="flex gap-2 mt-2">
                 {[
-                  { val: "free" as const, label: "Free (Lite)", color: "#00C8E0" },
-                  { val: "pro" as const, label: "Pro (Full)", color: "#00C853" },
+                  { val: "free" as const, label: tr("Free (Lite)", "مجاني (لايت)"), color: "#00C8E0" },
+                  { val: "pro" as const, label: tr("Pro (Full)", "برو (كامل)"), color: "#00C853" },
                 ].map(opt => (
                   <button
                     key={opt.val}
@@ -937,10 +960,10 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
 
           {/* Name */}
           <div className="mb-4">
-            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>FULL NAME</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{tr("FULL NAME", "الاسم الكامل")}</label>
             <input
               type="text" value={name} onChange={e => setName(e.target.value)}
-              placeholder="Enter full name"
+              placeholder={tr("Enter full name", "أدخل الاسم الكامل")}
               className="w-full mt-2 px-4 py-3.5 text-white outline-none"
               style={{ borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 15 }}
             />
@@ -948,7 +971,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
 
           {/* Phone — R-80 (2026-05-19): split country + local-number inputs */}
           <div className="mb-4">
-            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>PHONE NUMBER</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{tr("PHONE NUMBER", "رقم الهاتف")}</label>
             {/* R-85 (2026-05-19): force LTR so RTL UI does not flip the
                 flex order. Phone numbers are universally LTR (E.164). */}
             <div className="flex gap-2 mt-2" dir="ltr">
@@ -979,7 +1002,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
 
           {/* Relation */}
           <div className="mb-6">
-            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>RELATIONSHIP</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{tr("RELATIONSHIP", "صلة القرابة")}</label>
             <div className="flex flex-wrap gap-2 mt-2">
               {RELATIONS.map(rel => (
                 <button key={rel} onClick={() => setRelation(rel)}
@@ -991,7 +1014,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
                     fontSize: 12, fontWeight: 500,
                     color: relation === rel ? "#00C8E0" : "rgba(255,255,255,0.3)",
                   }}
-                >{rel}</button>
+                >{lang === "ar" ? (RELATION_LABELS_AR[rel] || rel) : rel}</button>
               ))}
             </div>
           </div>
@@ -1013,7 +1036,7 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
             }}
           >
             <Check className="size-4" />
-            {contact ? "Save Changes" : `Add ${cfg.label}`}
+            {contact ? tr("Save Changes", "حفظ التغييرات") : (lang === "ar" ? `إضافة ${cfg.label}` : `Add ${cfg.label}`)}
           </motion.button>
 
           <div className="h-6" />
@@ -1027,12 +1050,14 @@ function AddEditContactForm({ contact, isPro, onClose, onSave }: {
 // Emergency Ripple Modal
 // ═══════════════════════════════════════════════════════════════
 
-function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
+function EmergencyRippleModal({ lang, contacts, isPro, onClose, onUpgrade }: {
+  lang: Lang;
   contacts: SafetyContact[];
   isPro: boolean;
   onClose: () => void;
   onUpgrade?: () => void;
 }) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const [activeWave, setActiveWave] = useState(0);
   const [simRunning, setSimRunning] = useState(false);
 
@@ -1074,8 +1099,8 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
                 <Radio className="size-5" style={{ color: "#FF2D55" }} />
               </div>
               <div>
-                <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>Emergency Ripple</h2>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>3-wave escalating alert system</p>
+                <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>{tr("Emergency Ripple", "موجة الطوارئ")}</h2>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{tr("3-wave escalating alert system", "نظام تنبيه تصاعدي من 3 موجات")}</p>
               </div>
             </div>
             <button onClick={onClose} className="size-8 rounded-full flex items-center justify-center"
@@ -1156,7 +1181,7 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
                         </div>
                         <div className="text-right">
                           <p style={{ fontSize: 10, color: wave.color, fontWeight: 700 }}>
-                            {wave.delay === 0 ? "Instant" : `+${wave.delay}s`}
+                            {wave.delay === 0 ? tr("Instant", "فوري") : `+${wave.delay}s`}
                           </p>
                         </div>
                       </div>
@@ -1173,7 +1198,7 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
                           );
                         })}
                         {affectedContacts.length === 0 && (
-                          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>No contacts of this type</span>
+                          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>{tr("No contacts of this type", "لا جهات من هذا النوع")}</span>
                         )}
                       </div>
                     </div>
@@ -1201,12 +1226,12 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                   <Timer className="size-4" />
                 </motion.div>
-                Simulating...
+                {tr("Simulating...", "جارٍ المحاكاة...")}
               </>
             ) : (
               <>
                 <Zap className="size-4" />
-                Simulate Emergency Ripple
+                {tr("Simulate Emergency Ripple", "محاكاة موجة الطوارئ")}
               </>
             )}
           </motion.button>
@@ -1219,7 +1244,7 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
               style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)", fontSize: 12, fontWeight: 600, color: "#00C8E0" }}
             >
               <Crown className="size-3.5" />
-              Upgrade to Pro for Wave 3 (Auto-Call + Emergency Services)
+              {tr("Upgrade to Pro for Wave 3 (Auto-Call + Emergency Services)", "ترقية إلى برو للموجة 3 (اتصال تلقائي + خدمات الطوارئ)")}
             </button>
           )}
 
@@ -1234,12 +1259,14 @@ function EmergencyRippleModal({ contacts, isPro, onClose, onUpgrade }: {
 // Safety Link Preview Modal
 // ═══════════════════════════════════════════════════════════════
 
-function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
+function SafetyLinkModal({ lang, contact, onClose, onCopy, copied }: {
+  lang: Lang;
   contact: SafetyContact;
   onClose: () => void;
   onCopy: () => void;
   copied: boolean;
 }) {
+  const tr = (en: string, ar: string) => (lang === "ar" ? ar : en);
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1267,8 +1294,8 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
                 <Globe className="size-5" style={{ color: "#FF9500" }} />
               </div>
               <div>
-                <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>Safety Link Preview</h2>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>What {contact.name} sees</p>
+                <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>{tr("Safety Link Preview", "معاينة رابط الأمان")}</h2>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{lang === "ar" ? `ما يراه ${contact.name}` : `What ${contact.name} sees`}</p>
               </div>
             </div>
             <button onClick={onClose} className="size-8 rounded-full flex items-center justify-center"
@@ -1299,9 +1326,9 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
                 <AlertTriangle className="size-7" style={{ color: "#FF2D55" }} />
               </motion.div>
 
-              <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 800 }}>Emergency Alert</p>
+              <p className="text-white mb-1" style={{ fontSize: 16, fontWeight: 800 }}>{tr("Emergency Alert", "تنبيه طوارئ")}</p>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-                Ahmed needs help. Live location below.
+                {tr("Ahmed needs help. Live location below.", "أحمد يحتاج المساعدة. الموقع المباشر بالأسفل.")}
               </p>
 
               {/* Mock map */}
@@ -1309,7 +1336,7 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
                     <MapPin className="size-8 mx-auto mb-1" style={{ color: "#FF2D55" }} />
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>Live Location Map</p>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{tr("Live Location Map", "خريطة الموقع المباشر")}</p>
                     <p style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>24.7136, 46.6753</p>
                   </div>
                 </div>
@@ -1320,17 +1347,17 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
                 <div className="flex items-center justify-center gap-2 py-3 rounded-xl"
                   style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)" }}>
                   <Navigation className="size-4" style={{ color: "#00C853" }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#00C853" }}>I'm Coming</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#00C853" }}>{tr("I'm Coming", "أنا قادم")}</span>
                 </div>
                 <div className="flex items-center justify-center gap-2 py-3 rounded-xl"
                   style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)" }}>
                   <Phone className="size-4" style={{ color: "#00C8E0" }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>Call Ahmed</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>{tr("Call Ahmed", "اتصل بأحمد")}</span>
                 </div>
                 <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl"
                   style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.1)" }}>
                   <Phone className="size-3.5" style={{ color: "#FF2D55" }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>Call 911</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>{tr("Call 911", "اتصل بـ911")}</span>
                 </div>
               </div>
 
@@ -1338,7 +1365,7 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
               <div className="mt-3 flex items-center justify-center gap-1.5">
                 <Timer className="size-3" style={{ color: "rgba(255,255,255,0.15)" }} />
                 <p style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>
-                  Link expires in 23h 58m
+                  {tr("Link expires in 23h 58m", "تنتهي صلاحية الرابط خلال 23س 58د")}
                 </p>
               </div>
             </div>
@@ -1356,7 +1383,7 @@ function SafetyLinkModal({ contact, onClose, onCopy, copied }: {
               color: copied ? "#00C853" : "#FF9500",
             }}
           >
-            {copied ? <><CheckCircle2 className="size-4" /> Copied!</> : <><Copy className="size-4" /> Copy Safety Link</>}
+            {copied ? <><CheckCircle2 className="size-4" /> {tr("Copied!", "تم النسخ!")}</> : <><Copy className="size-4" /> {tr("Copy Safety Link", "نسخ رابط الأمان")}</>}
           </motion.button>
 
           <div className="h-6" />
