@@ -86,21 +86,21 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span style={{ ...TYPOGRAPHY.h2, color: tierMeta.color }}>
-                {adminRating?.tier || "ROOKIE"} RESPONDER
+                {adminRating?.tier || "ROOKIE"} {t("lead.responder")}
               </span>
               {/* SUPABASE_MIGRATION_POINT: admin_rankings — self-calculated rank, needs server-side RANK() OVER (ORDER BY avg_score DESC) */}
-              <Badge color={tierMeta.color}>Rank #{adminRating ? Math.max(1, 9 - Math.floor(adminRating.avgScore / 12)) : 8}</Badge>
+              <Badge color={tierMeta.color}>{t("lead.rank")}{adminRating ? Math.max(1, 9 - Math.floor(adminRating.avgScore / 12)) : 8}</Badge>
             </div>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>
-              {adminRating?.insights[0] || "Complete your first IRE response to start building your rating."}
+              {adminRating?.insights[0] || t("lead.insightFallback")}
             </p>
             {/* Quick stats */}
             <div className="flex items-center gap-4">
               {[
-                { label: "Avg Score", value: adminRating?.avgScore || 0, color: tierMeta.color },
-                { label: "Incidents", value: adminRating?.totalIncidents || 0, color: "#00C8E0" },
-                { label: "Streak", value: adminRating?.currentStreak || 0, color: "#FF9500" },
-                { label: "Top %", value: `${adminRating?.percentile || 50}`, color: "#8B5CF6" },
+                { label: t("lead.avgScore"), value: adminRating?.avgScore || 0, color: tierMeta.color },
+                { label: t("lead.incidents"), value: adminRating?.totalIncidents || 0, color: "#00C8E0" },
+                { label: t("lead.streak"), value: adminRating?.currentStreak || 0, color: "#FF9500" },
+                { label: t("lead.topPct"), value: `${adminRating?.percentile || 50}`, color: "#8B5CF6" },
               ].map(s => (
                 <div key={s.label}>
                   <p style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value}</p>
@@ -127,8 +127,8 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
                 <GraduationCap className="size-5" style={{ color: "#00C8E0" }} />
               </div>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>Training & Drill Center</p>
-                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>18 scenarios -- Practice makes perfect response</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>{t("lead.trainingCenter")}</p>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{t("lead.trainingDesc")}</p>
               </div>
             </div>
             <ExternalLink className="size-4" style={{ color: "rgba(0,200,224,0.5)" }} />
@@ -139,9 +139,9 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.02)" }}>
         {[
-          { id: "ranking" as const, label: "Rankings", icon: Trophy },
-          { id: "performance" as const, label: "My Performance", icon: TrendingUp },
-          { id: "history" as const, label: "Response History", icon: Clock },
+          { id: "ranking" as const, label: t("lead.tabRankings"), icon: Trophy },
+          { id: "performance" as const, label: t("lead.tabPerformance"), icon: TrendingUp },
+          { id: "history" as const, label: t("lead.tabHistory"), icon: Clock },
         ].map(tab => (
           <button key={tab.id} onClick={() => {
               setActiveTab(tab.id);
@@ -165,7 +165,7 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
           {/* Score trend */}
           {adminRating && adminRating.recentScores.length > 1 && (
             <DSCard>
-              <SectionHeader title={`Score Trend (Last ${adminRating.recentScores.length} Responses)`} />
+              <SectionHeader title={`${t("lead.scoreTrend")} · ${adminRating.recentScores.length}`} />
               <div className="flex items-end gap-2 h-32 mt-4 px-2">
                 {adminRating.recentScores.map((score, i) => (
                   <motion.div
@@ -189,16 +189,16 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
                 ))}
               </div>
               <div className="flex items-center justify-between mt-3 px-2">
-                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Oldest</span>
+                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{t("lead.oldest")}</span>
                 <div className="flex items-center gap-1">
                   {adminRating.trend === "improving" ? <TrendingUp className="size-3" style={{ color: "#00C853" }} /> :
                    adminRating.trend === "declining" ? <TrendingDown className="size-3" style={{ color: "#FF2D55" }} /> :
                    <Activity className="size-3" style={{ color: "rgba(255,255,255,0.3)" }} />}
                   <span style={{ fontSize: 9, fontWeight: 600, color: adminRating.trend === "improving" ? "#00C853" : adminRating.trend === "declining" ? "#FF2D55" : "rgba(255,255,255,0.3)" }}>
-                    {adminRating.trend === "improving" ? "Improving" : adminRating.trend === "declining" ? "Declining" : "Stable"}
+                    {adminRating.trend === "improving" ? t("lead.improving") : adminRating.trend === "declining" ? t("lead.declining") : t("lead.stable")}
                   </span>
                 </div>
-                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Latest</span>
+                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{t("lead.latest")}</span>
               </div>
             </DSCard>
           )}
@@ -206,7 +206,7 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
           {/* AI Insights */}
           {adminRating && adminRating.insights.length > 0 && (
             <DSCard>
-              <SectionHeader title="AI Performance Insights" />
+              <SectionHeader title={t("lead.aiInsights")} />
               <div className="space-y-2 mt-3">
                 {adminRating.insights.map((insight, i) => (
                   <div key={i} className="flex items-start gap-2 p-3 rounded-xl"
@@ -223,9 +223,9 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
           {(!adminRating || adminRating.totalIncidents === 0) && (
             <div className="text-center py-16">
               <Trophy className="size-14 mx-auto mb-4" style={{ color: "rgba(255,255,255,0.06)" }} />
-              <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>No Performance Data Yet</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>{t("lead.noDataTitle")}</p>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)", marginTop: 4 }}>
-                Complete IRE responses to build your performance profile
+                {t("lead.noDataDesc")}
               </p>
             </div>
           )}
@@ -253,7 +253,7 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>TIME</p>
+                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>{t("lead.time")}</p>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>
                     {Math.floor(record.responseTimeSec / 60)}:{(record.responseTimeSec % 60).toString().padStart(2, "0")}
                   </p>
@@ -269,9 +269,9 @@ export function LeaderboardPage({ t, webMode, onNavigateToTraining }: {
           )) : (
             <div className="text-center py-16">
               <Clock className="size-14 mx-auto mb-4" style={{ color: "rgba(255,255,255,0.06)" }} />
-              <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>No Response History</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>{t("lead.noHistoryTitle")}</p>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)", marginTop: 4 }}>
-                IRE responses will appear here after completion
+                {t("lead.noHistoryDesc")}
               </p>
             </div>
           )}
