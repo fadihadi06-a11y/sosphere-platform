@@ -32,15 +32,15 @@ export interface CheckinWarningData {
 }
 
 // ── Tab Bar ──────────────────────────────────────────────────────
-type Tab = { id: string; label: string; icon: React.ElementType; desc: string };
+type Tab = { id: string; labelKey: string; icon: React.ElementType; descKey: string };
 
 const TABS: Tab[] = [
-  { id: "attendance", label: "Attendance",   icon: UserCheck,   desc: "Real-time check-in status, late arrivals & missed check-ins" },
-  { id: "checkins",   label: "Check-in Monitor", icon: Timer, desc: "Live check-in timer status — overdue workers flagged automatically" },
-  { id: "shifts",     label: "Shift Schedule", icon: Clock,     desc: "Weekly shift planner — drag to assign, detect conflicts" },
+  { id: "attendance", labelKey: "wf.tab.attendance",   icon: UserCheck,   descKey: "wf.tab.attendance.desc" },
+  { id: "checkins",   labelKey: "wf.tab.checkins", icon: Timer, descKey: "wf.tab.checkins.desc" },
+  { id: "shifts",     labelKey: "wf.tab.shifts", icon: Clock,     descKey: "wf.tab.shifts.desc" },
 ];
 
-function WorkforceTabBar({ active, onSelect, warningCount }: { active: string; onSelect: (id: string) => void; warningCount: number }) {
+function WorkforceTabBar({ active, onSelect, warningCount, t }: { active: string; onSelect: (id: string) => void; warningCount: number; t: (k: string) => string }) {
   return (
     <div
       className="flex items-center gap-1 mx-4 mt-4 p-1 rounded-2xl"
@@ -80,7 +80,7 @@ function WorkforceTabBar({ active, onSelect, warningCount }: { active: string; o
                 letterSpacing: "-0.1px",
               }}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </span>
             {showBadge && (
               <motion.div
@@ -103,7 +103,7 @@ function WorkforceTabBar({ active, onSelect, warningCount }: { active: string; o
   );
 }
 
-function ContextBanner({ tabId, warningCount }: { tabId: string; warningCount: number }) {
+function ContextBanner({ tabId, warningCount, t }: { tabId: string; warningCount: number; t: (k: string) => string }) {
   const tab = TABS.find(t => t.id === tabId);
   if (!tab) return null;
   const Icon = tab.icon;
@@ -120,7 +120,7 @@ function ContextBanner({ tabId, warningCount }: { tabId: string; warningCount: n
       }}
     >
       <Icon style={{ width: 12, height: 12, color: isWarning ? "#FF9500" : "#00C8E0", flexShrink: 0 }} />
-      <span style={{ fontSize: 10, color: isWarning ? "rgba(255,150,0,0.7)" : "rgba(0,200,224,0.7)", fontWeight: 500 }}>{tab.desc}</span>
+      <span style={{ fontSize: 10, color: isWarning ? "rgba(255,150,0,0.7)" : "rgba(0,200,224,0.7)", fontWeight: 500 }}>{t(tab.descKey)}</span>
     </motion.div>
   );
 }
@@ -129,7 +129,7 @@ function ContextBanner({ tabId, warningCount }: { tabId: string; warningCount: n
 // FIX FATAL-3: This panel shows admin all employee check-in timer statuses
 // Before this fix, admin had a 30+ minute blind spot
 
-function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings: CheckinWarningData[]; employees: Array<{ id: string; name: string; zone?: string; status?: string }> }) {
+function CheckinMonitorPanel({ warnings, employees: storeEmployees, t }: { warnings: CheckinWarningData[]; employees: Array<{ id: string; name: string; zone?: string; status?: string }>; t: (k: string) => string }) {
   // 2026-06-02 Attendance Phase C: load REAL check-in feed instead of
   // Math.random-fabricating lastCheckin / nextDue. The previous code was
   // a real production bug — admins saw fake "last seen" timestamps that
@@ -169,7 +169,7 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
     return {
       id: emp.id,
       name: emp.name,
-      zone: emp.zone || "Unknown Zone",
+      zone: emp.zone || t("wf.unknownZone"),
       status: "ok" as const,
       lastCheckin: lastMs,
       nextDue: lastMs > 0 ? lastMs + CHECKIN_CYCLE_MS : 0,
@@ -226,29 +226,29 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
   const okCount = sorted.filter(e => e.status === "ok").length;
 
   const statusConfig = {
-    ok: { label: "OK", color: "#00C853", bg: "rgba(0,200,83,0.06)", border: "rgba(0,200,83,0.12)", icon: CheckCircle2 },
-    due_soon: { label: "Due Soon", color: "#FF9500", bg: "rgba(255,150,0,0.06)", border: "rgba(255,150,0,0.15)", icon: Clock },
-    overdue: { label: "OVERDUE", color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.18)", icon: AlertTriangle },
+    ok: { label: t("wf.status.ok"), color: "#00C853", bg: "rgba(0,200,83,0.06)", border: "rgba(0,200,83,0.12)", icon: CheckCircle2 },
+    due_soon: { label: t("wf.status.dueSoon"), color: "#FF9500", bg: "rgba(255,150,0,0.06)", border: "rgba(255,150,0,0.15)", icon: Clock },
+    overdue: { label: t("wf.status.overdue"), color: "#FF2D55", bg: "rgba(255,45,85,0.08)", border: "rgba(255,45,85,0.18)", icon: AlertTriangle },
   };
 
   function fmtAgo(ms: number): string {
     // 2026-06-02 Attendance Phase C: explicit "Never" state when no real
     // check-in exists (replaces silent garbage time from Math.random).
-    if (!ms || ms <= 0) return "Never";
+    if (!ms || ms <= 0) return t("wf.never");
     const mins = Math.floor((Date.now() - ms) / 60000);
-    if (mins < 1) return "Just now";
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t("wf.justNow");
+    if (mins < 60) return `${mins}${t("wf.minAgo")}`;
     const hrs = Math.floor(mins / 60);
-    return `${hrs}h ${mins % 60}m ago`;
+    return `${hrs}${t("wf.hr")} ${mins % 60}${t("wf.minAgo")}`;
   }
 
   function fmtUntil(ms: number): string {
     const mins = Math.floor((ms - Date.now()) / 60000);
-    if (mins < 0) return "Overdue";
-    if (mins < 1) return "< 1m";
-    if (mins < 60) return `${mins}m`;
+    if (mins < 0) return t("wf.overdueShort");
+    if (mins < 1) return t("wf.lessThanMin");
+    if (mins < 60) return `${mins}${t("wf.minShort")}`;
     const hrs = Math.floor(mins / 60);
-    return `${hrs}h ${mins % 60}m`;
+    return `${hrs}${t("wf.hr")} ${mins % 60}${t("wf.minShort")}`;
   }
 
   return (
@@ -256,9 +256,9 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
       {/* Summary row */}
       <div className="flex gap-2">
         {[
-          { label: "Overdue", count: overdueCount, color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
-          { label: "Due Soon", count: dueSoonCount, color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
-          { label: "On Track", count: okCount, color: "#00C853", bg: "rgba(0,200,83,0.06)" },
+          { label: t("wf.summary.overdue"), count: overdueCount, color: "#FF2D55", bg: "rgba(255,45,85,0.06)" },
+          { label: t("wf.summary.dueSoon"), count: dueSoonCount, color: "#FF9500", bg: "rgba(255,150,0,0.06)" },
+          { label: t("wf.summary.onTrack"), count: okCount, color: "#00C853", bg: "rgba(0,200,83,0.06)" },
         ].map(s => (
           <div
             key={s.label}
@@ -322,10 +322,10 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
 
               {/* Timing */}
               <div className="text-right shrink-0">
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>Last check-in</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{t("wf.lastCheckin")}</div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{fmtAgo(emp.lastCheckin)}</div>
                 <div style={{ fontSize: 9, color: cfg.color, fontWeight: 600, marginTop: 2 }}>
-                  {emp.status === "overdue" ? "SOS imminent" : emp.status === "due_soon" ? `Due: ${fmtUntil(emp.nextDue)}` : `Next: ${fmtUntil(emp.nextDue)}`}
+                  {emp.status === "overdue" ? t("wf.sosImminent") : emp.status === "due_soon" ? `${t("wf.due")} ${fmtUntil(emp.nextDue)}` : `${t("wf.next")} ${fmtUntil(emp.nextDue)}`}
                 </div>
               </div>
             </motion.div>
@@ -336,8 +336,8 @@ function CheckinMonitorPanel({ warnings, employees: storeEmployees }: { warnings
       {sorted.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12">
           <Timer style={{ width: 32, height: 32, color: "rgba(255,255,255,0.06)", marginBottom: 12 }} />
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.15)" }}>No active check-in timers</span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.08)", marginTop: 4 }}>Workers will appear here when they start a check-in timer</span>
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.15)" }}>{t("wf.empty.title")}</span>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.08)", marginTop: 4 }}>{t("wf.empty.subtitle")}</span>
         </div>
       )}
     </div>
@@ -357,8 +357,8 @@ export function WorkforcePage({ t, webMode = false, checkinWarnings = [] }: Work
 
   return (
     <div className="flex flex-col h-full">
-      <WorkforceTabBar active={activeTab} onSelect={setActiveTab} warningCount={checkinWarnings.length} />
-      <ContextBanner tabId={activeTab} warningCount={checkinWarnings.length} />
+      <WorkforceTabBar active={activeTab} onSelect={setActiveTab} warningCount={checkinWarnings.length} t={t} />
+      <ContextBanner tabId={activeTab} warningCount={checkinWarnings.length} t={t} />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -374,7 +374,7 @@ export function WorkforcePage({ t, webMode = false, checkinWarnings = [] }: Work
             <AttendancePage employees={employees} t={t} webMode={webMode} />
           )}
           {activeTab === "checkins" && (
-            <CheckinMonitorPanel warnings={checkinWarnings} employees={employees} />
+            <CheckinMonitorPanel warnings={checkinWarnings} employees={employees} t={t} />
           )}
           {activeTab === "shifts" && (
             <ShiftSchedulingPage t={t} webMode={webMode} />

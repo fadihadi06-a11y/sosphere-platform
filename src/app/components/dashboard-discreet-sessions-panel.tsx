@@ -33,17 +33,19 @@ import {
   type HeartbeatHealth,
 } from "./discreet-session-service";
 import { onSyncEvent } from "./shared-store";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 interface Props {
   /** Company id — required; panel renders nothing when null. */
   companyId: string | null | undefined;
 }
 
-const HEALTH_LABEL: Record<HeartbeatHealth, string> = {
-  fresh:   "live",
-  stale:   "stale",
-  missing: "no signal",
-  expired: "expired",
+const HEALTH_LABEL_KEY: Record<HeartbeatHealth, string> = {
+  fresh:   "disc.health.live",
+  stale:   "disc.health.stale",
+  missing: "disc.health.noSignal",
+  expired: "disc.health.expired",
 };
 const HEALTH_COLOR: Record<HeartbeatHealth, string> = {
   fresh:   "#00C853",
@@ -53,6 +55,8 @@ const HEALTH_COLOR: Record<HeartbeatHealth, string> = {
 };
 
 export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [rows, setRows] = useState<ActiveDiscreetRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [endingId, setEndingId] = useState<string | null>(null);
@@ -115,7 +119,7 @@ export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
   }, [companyId, refresh]);
 
   const handleMarkSafe = async (sessionId: string) => {
-    if (!confirm("Mark this discreet session as safe? The worker will be notified.")) return;
+    if (!confirm(t("disc.confirmMarkSafe"))) return;
     setEndingId(sessionId);
     const ok = await endDiscreetSession({ sessionId, reason: "admin_cleared" });
     setEndingId(null);
@@ -136,7 +140,7 @@ export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
         <div className="flex items-center gap-2">
           <EyeOff className="size-4" style={{ color: "#FF2D55" }} />
           <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>
-            Active Discreet Sessions
+            {t("disc.activeSessions")}
           </p>
         </div>
         <span
@@ -155,7 +159,7 @@ export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
           {rows.map((row) => {
             const health = classifyHeartbeat(row.heartbeat_age_sec, row.auto_timeout_at);
             const healthColor = HEALTH_COLOR[health];
-            const healthLabel = HEALTH_LABEL[health];
+            const healthLabel = t(HEALTH_LABEL_KEY[health]);
             const sColor = statusColor(row.status);
             const startedMin = Math.round((Date.now() - new Date(row.started_at).getTime()) / 60_000);
             return (
@@ -193,7 +197,7 @@ export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
                   </div>
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>
                     <Clock className="inline size-2.5 mr-1" />
-                    Started {startedMin}m ago · mode: {row.mode}
+                    {t("disc.started")} {startedMin}{t("disc.minAgo")} · {t("disc.mode")}: {row.mode}
                     {row.last_lat != null && row.last_lng != null && (
                       <span className="ml-2">
                         <MapPin className="inline size-2.5 mr-0.5" />
@@ -214,7 +218,7 @@ export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
                     cursor: endingId === row.id ? "wait" : "pointer",
                   }}>
                   <CheckCircle2 className="size-3" />
-                  {endingId === row.id ? "Clearing…" : "Mark Safe"}
+                  {endingId === row.id ? t("disc.clearing") : t("disc.markSafe")}
                 </button>
               </motion.div>
             );
