@@ -267,44 +267,42 @@ const MOCK_INVESTIGATIONS: Investigation[] = [
 ];
 
 // ── Configs ──────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<InvestigationStatus, { label: string; color: string; bg: string }> = {
-  open: { label: "Open", color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
-  investigating: { label: "Investigating", color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
-  pending_capa: { label: "Pending CAPA", color: "#FFD60A", bg: "rgba(255,214,10,0.08)" },
-  capa_in_progress: { label: "CAPA In Progress", color: "#BF5AF2", bg: "rgba(191,90,242,0.08)" },
-  closed: { label: "Closed", color: "#00C853", bg: "rgba(0,200,83,0.08)" },
-  overdue: { label: "Overdue", color: "#FF2D55", bg: "rgba(255,45,85,0.08)" },
+const STATUS_CONFIG: Record<InvestigationStatus, { labelKey: string; color: string; bg: string }> = {
+  open: { labelKey: "inv.statusOpen", color: "#00C8E0", bg: "rgba(0,200,224,0.08)" },
+  investigating: { labelKey: "inv.statusInvestigating", color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  pending_capa: { labelKey: "inv.statusPendingCapa", color: "#FFD60A", bg: "rgba(255,214,10,0.08)" },
+  capa_in_progress: { labelKey: "inv.statusCapaInProgress", color: "#BF5AF2", bg: "rgba(191,90,242,0.08)" },
+  closed: { labelKey: "inv.statusClosed", color: "#00C853", bg: "rgba(0,200,83,0.08)" },
+  overdue: { labelKey: "inv.statusOverdue", color: "#FF2D55", bg: "rgba(255,45,85,0.08)" },
 };
 
-const SEVERITY_CONFIG: Record<Severity, { label: string; color: string }> = {
-  critical: { label: "Critical", color: "#FF2D55" },
-  high: { label: "High", color: "#FF9500" },
-  medium: { label: "Medium", color: "#FFD60A" },
-  low: { label: "Low", color: "#00C8E0" },
+const SEVERITY_CONFIG: Record<Severity, { labelKey: string; color: string }> = {
+  critical: { labelKey: "inv.sevCritical", color: "#FF2D55" },
+  high: { labelKey: "inv.sevHigh", color: "#FF9500" },
+  medium: { labelKey: "inv.sevMedium", color: "#FFD60A" },
+  low: { labelKey: "inv.sevLow", color: "#00C8E0" },
 };
 
-const CAUSE_CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  human: { label: "Human Factor", color: "#FF9500", icon: "H" },
-  equipment: { label: "Equipment", color: "#00C8E0", icon: "E" },
-  process: { label: "Process", color: "#BF5AF2", icon: "P" },
-  environment: { label: "Environment", color: "#00C853", icon: "N" },
-  management: { label: "Management", color: "#FFD60A", icon: "M" },
+const CAUSE_CATEGORY_CONFIG: Record<string, { labelKey: string; color: string; icon: string }> = {
+  human: { labelKey: "inv.catHuman", color: "#FF9500", icon: "H" },
+  equipment: { labelKey: "inv.catEquipment", color: "#00C8E0", icon: "E" },
+  process: { labelKey: "inv.catProcess", color: "#BF5AF2", icon: "P" },
+  environment: { labelKey: "inv.catEnvironment", color: "#00C853", icon: "N" },
+  management: { labelKey: "inv.catManagement", color: "#FFD60A", icon: "M" },
 };
 
-const CAPA_STATUS_CONFIG: Record<CAPAStatus, { label: string; color: string }> = {
-  planned: { label: "Planned", color: "#00C8E0" },
-  in_progress: { label: "In Progress", color: "#FF9500" },
-  completed: { label: "Completed", color: "#00C853" },
-  overdue: { label: "Overdue", color: "#FF2D55" },
-  verified: { label: "Verified", color: "#BF5AF2" },
+const CAPA_STATUS_CONFIG: Record<CAPAStatus, { labelKey: string; color: string }> = {
+  planned: { labelKey: "inv.capaPlanned", color: "#00C8E0" },
+  in_progress: { labelKey: "inv.capaInProgress", color: "#FF9500" },
+  completed: { labelKey: "inv.capaCompleted", color: "#00C853" },
+  overdue: { labelKey: "inv.capaOverdue", color: "#FF2D55" },
+  verified: { labelKey: "inv.capaVerified", color: "#BF5AF2" },
 };
 
 // ── PDF Export ───────────────────────────────────────────────────
-
-function exportInvestigationPDF(inv: Investigation) {
+function exportInvestigationPDF(inv: Investigation, t: (k: string) => string) {
   console.log("[SUPABASE_READY] pdf_export_investigation: " + inv.id);
-  toast.loading("Generating Investigation Report...", { id: "inv-pdf" });
+  toast.loading(t("inv.generatingReport"), { id: "inv-pdf" });
 
   try {
     const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
@@ -318,34 +316,34 @@ function exportInvestigationPDF(inv: Investigation) {
     doc.rect(0, 0, pw, 32, "F");
     doc.setTextColor(0, 200, 224);
     doc.setFontSize(18);
-    doc.text("INCIDENT INVESTIGATION REPORT", 14, 14);
+    doc.text(t("inv.pdfTitle"), 14, 14);
     doc.setFontSize(9);
     doc.setTextColor(200, 200, 200);
     doc.text(`${inv.id} | ${inv.incidentId} | ${inv.isoReference}`, 14, 22);
-    doc.text(`Status: ${STATUS_CONFIG[inv.status].label.toUpperCase()}`, pw - 14, 14, { align: "right" });
-    doc.text(`Severity: ${sevCfg.label.toUpperCase()}`, pw - 14, 22, { align: "right" });
+    doc.text(`${t("inv.statusLabel")}: ${t(STATUS_CONFIG[inv.status].labelKey).toUpperCase()}`, pw - 14, 14, { align: "right" });
+    doc.text(`${t("inv.severityLabel")}: ${t(sevCfg.labelKey).toUpperCase()}`, pw - 14, 22, { align: "right" });
     doc.setFontSize(7);
     doc.setTextColor(0, 200, 224);
-    doc.text("SOSphere Safety Intelligence Platform", 14, 29);
+    doc.text(t("inv.platformName"), 14, 29);
     y = 38;
 
     // Incident Summary
     doc.setTextColor(40, 40, 40);
     doc.setFontSize(12);
-    doc.text("1. INCIDENT SUMMARY", 14, y);
+    doc.text(t("inv.pdfSection1"), 14, y);
     y += 6;
 
     autoTable(doc, {
       startY: y,
-      head: [["Field", "Details"]],
+      head: [[t("inv.colField"), t("inv.colDetails")]],
       body: [
-        ["Title", inv.title],
-        ["Date & Time", inv.incidentDate.toLocaleString()],
-        ["Location", inv.zone],
-        ["Reported By", inv.reportedBy],
-        ["Lead Investigator", inv.investigator],
-        ["Affected Workers", inv.affectedWorkers.join(", ")],
-        ["Description", inv.description],
+        [t("inv.fieldTitle"), inv.title],
+        [t("inv.fieldDateTime"), inv.incidentDate.toLocaleString()],
+        [t("inv.fieldLocation"), inv.zone],
+        [t("inv.fieldReportedBy"), inv.reportedBy],
+        [t("inv.fieldLeadInvestigator"), inv.investigator],
+        [t("inv.fieldAffectedWorkers"), inv.affectedWorkers.join(", ")],
+        [t("inv.fieldDescription"), inv.description],
       ],
       theme: "striped",
       headStyles: { fillColor: [0, 200, 224], fontSize: 8, fontStyle: "bold" },
@@ -359,17 +357,17 @@ function exportInvestigationPDF(inv: Investigation) {
     if (y + 20 > ph) { doc.addPage(); y = 15; }
     doc.setFontSize(12);
     doc.setTextColor(255, 45, 85);
-    doc.text("2. ROOT CAUSE ANALYSIS", 14, y);
+    doc.text(t("inv.pdfSection2"), 14, y);
     y += 6;
 
     if (inv.rootCauses.length > 0) {
       autoTable(doc, {
         startY: y,
-        head: [["ID", "Category", "Type", "Description", "Evidence"]],
+        head: [[t("inv.colId"), t("inv.colCategory"), t("inv.colType"), t("inv.colDescription"), t("inv.colEvidence")]],
         body: inv.rootCauses.map(rc => [
           rc.id,
-          CAUSE_CATEGORY_CONFIG[rc.category]?.label || rc.category,
-          rc.contributing ? "Contributing Factor" : "Root Cause",
+          CAUSE_CATEGORY_CONFIG[rc.category] ? t(CAUSE_CATEGORY_CONFIG[rc.category].labelKey) : rc.category,
+          rc.contributing ? t("inv.contributingFactor") : t("inv.rootCause"),
           rc.description,
           rc.evidence.join("; "),
         ]),
@@ -386,20 +384,20 @@ function exportInvestigationPDF(inv: Investigation) {
     if (y + 20 > ph) { doc.addPage(); y = 15; }
     doc.setFontSize(12);
     doc.setTextColor(191, 90, 242);
-    doc.text("3. CORRECTIVE & PREVENTIVE ACTIONS (CAPA)", 14, y);
+    doc.text(t("inv.pdfSection3"), 14, y);
     y += 6;
 
     if (inv.actions.length > 0) {
       autoTable(doc, {
         startY: y,
-        head: [["ID", "Type", "Action", "Assigned To", "Due Date", "Status", "Notes"]],
+        head: [[t("inv.colId"), t("inv.colType"), t("inv.colAction"), t("inv.colAssignedTo"), t("inv.colDueDate"), t("inv.colStatus"), t("inv.colNotes")]],
         body: inv.actions.map(a => [
           a.id,
-          a.type === "corrective" ? "Corrective" : "Preventive",
+          a.type === "corrective" ? t("inv.corrective") : t("inv.preventive"),
           a.description,
           a.assignedTo,
           a.dueDate.toLocaleDateString(),
-          CAPA_STATUS_CONFIG[a.status]?.label || a.status,
+          CAPA_STATUS_CONFIG[a.status] ? t(CAPA_STATUS_CONFIG[a.status].labelKey) : a.status,
           a.notes,
         ]),
         theme: "striped",
@@ -415,16 +413,16 @@ function exportInvestigationPDF(inv: Investigation) {
     if (y + 20 > ph) { doc.addPage(); y = 15; }
     doc.setFontSize(12);
     doc.setTextColor(0, 150, 180);
-    doc.text("4. INVESTIGATION TIMELINE", 14, y);
+    doc.text(t("inv.pdfSection4"), 14, y);
     y += 6;
 
     autoTable(doc, {
       startY: y,
-      head: [["Date/Time", "Event", "By"]],
-      body: inv.timeline.map(t => [
-        t.date.toLocaleString(),
-        t.event,
-        t.by,
+      head: [[t("inv.colDateTime"), t("inv.colEvent"), t("inv.colBy")]],
+      body: inv.timeline.map(tl => [
+        tl.date.toLocaleString(),
+        tl.event,
+        tl.by,
       ]),
       theme: "striped",
       headStyles: { fillColor: [0, 150, 180], fontSize: 8, fontStyle: "bold" },
@@ -438,13 +436,13 @@ function exportInvestigationPDF(inv: Investigation) {
     if (y + 40 > ph) { doc.addPage(); y = 15; }
     doc.setFontSize(12);
     doc.setTextColor(40, 40, 40);
-    doc.text("5. SIGN-OFF", 14, y);
+    doc.text(t("inv.pdfSection5"), 14, y);
     y += 8;
-    const roles = ["Lead Investigator", "HSE Manager", "Site Manager", "General Manager"];
+    const roles = [t("inv.roleLeadInvestigator"), t("inv.roleHseManager"), t("inv.roleSiteManager"), t("inv.roleGeneralManager")];
     roles.forEach((role, i) => {
       doc.setFontSize(8);
       doc.text(`${role}: ___________________________`, 14, y + i * 12);
-      doc.text("Date: ______________", pw - 60, y + i * 12);
+      doc.text(`${t("inv.pdfDate")}: ______________`, pw - 60, y + i * 12);
     });
 
     // Footer + Watermark
@@ -453,27 +451,27 @@ function exportInvestigationPDF(inv: Investigation) {
       doc.setPage(i);
       doc.setFontSize(36);
       doc.setTextColor(240, 240, 240);
-      doc.text("CONFIDENTIAL", pw / 2, ph / 2, { align: "center", angle: 45 });
+      doc.text(t("inv.confidential"), pw / 2, ph / 2, { align: "center", angle: 45 });
       doc.setFontSize(7);
       doc.setTextColor(150, 150, 150);
-      doc.text(`SOSphere Investigation Report — ${inv.id} — ${inv.title}`, 14, ph - 8);
-      doc.text(`Page ${i}/${pageCount}`, pw - 14, ph - 8, { align: "right" });
+      doc.text(`${t("inv.pdfFooter")} — ${inv.id} — ${inv.title}`, 14, ph - 8);
+      doc.text(`${t("inv.page")} ${i}/${pageCount}`, pw - 14, ph - 8, { align: "right" });
       doc.setDrawColor(200, 200, 200);
       doc.line(14, ph - 12, pw - 14, ph - 12);
     }
 
     doc.save(`Investigation-${inv.id}.pdf`);
-    toast.success("Investigation Report exported!", { id: "inv-pdf" });
+    toast.success(t("inv.reportExported"), { id: "inv-pdf" });
   } catch (err) {
     console.error(err);
-    toast.error("Failed to generate PDF", { id: "inv-pdf" });
+    toast.error(t("inv.pdfFailed"), { id: "inv-pdf" });
   }
 }
 
 // ── Main Page Component ──────────────────────────────────────────
 
 // ── Field Evidence Section (from Evidence Vault) ─────────────────
-function FieldEvidenceSection({ investigationId, zone }: { investigationId: string; zone: string }) {
+function FieldEvidenceSection({ investigationId, zone, t }: { investigationId: string; zone: string; t: (k: string) => string }) {
   const allEvd = getAllEvidence();
   // Show evidence linked to this investigation OR from the same zone
   const linked = allEvd.filter(e => e.linkedInvestigationId === investigationId);
@@ -487,8 +485,8 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
       linkToInvestigation(evdId, investigationId, adminName);
       console.log("[SUPABASE_READY] link_evidence: " + JSON.stringify({ evidenceId: evdId, investigationId }));
       setLinking(null);
-      toast.success("Evidence linked to investigation", {
-        description: `${evdId} is now attached to ${investigationId}`,
+      toast.success(t("inv.evidenceLinked"), {
+        description: `${evdId} ${t("inv.nowAttachedTo")} ${investigationId}`,
       });
     }, 800);
   };
@@ -496,9 +494,9 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
   return (
     <div>
       <h3 style={{ ...TYPOGRAPHY.overline, color: "#7B5EFF", marginBottom: 10 }}>
-        FIELD EVIDENCE
+        {t("inv.fieldEvidence")}
         {linked.length > 0 && (
-          <span style={{ color: "rgba(255,255,255,0.3)", fontWeight: 400 }}> ({linked.length} linked)</span>
+          <span style={{ color: "rgba(255,255,255,0.3)", fontWeight: 400 }}> ({linked.length} {t("inv.linked")})</span>
         )}
       </h3>
 
@@ -513,7 +511,7 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
                   <Camera className="size-3.5" style={{ color: "#7B5EFF" }} />
                   <span style={{ fontSize: 10, fontWeight: 700, color: "#7B5EFF" }}>{evd.id}</span>
                   <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>
-                    from {evd.submittedBy} · {evd.incidentType}
+                    {t("inv.from")} {evd.submittedBy} · {evd.incidentType}
                   </span>
                 </div>
 
@@ -566,10 +564,10 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
             style={{ background: "rgba(123,94,255,0.03)", border: "1px dashed rgba(123,94,255,0.12)" }}>
             <Camera className="size-6 mx-auto mb-2" style={{ color: "rgba(123,94,255,0.3)" }} />
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>
-              No field evidence linked yet
+              {t("inv.noEvidenceLinked")}
             </p>
             <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-              Link evidence from the Evidence Vault to support this investigation
+              {t("inv.linkEvidenceHint")}
             </p>
           </div>
 
@@ -577,7 +575,7 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
           {zoneMatch.length > 0 && (
             <div>
               <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>
-                AVAILABLE EVIDENCE FROM {zone.split(" - ")[0].toUpperCase()}
+                {t("inv.availableEvidenceFrom")} {zone.split(" - ")[0].toUpperCase()}
               </p>
               {zoneMatch.slice(0, 3).map(evd => (
                 <div key={evd.id} className="flex items-center gap-3 p-3 rounded-xl mb-2"
@@ -585,7 +583,7 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
                   <Camera className="size-4 flex-shrink-0" style={{ color: "rgba(123,94,255,0.5)" }} />
                   <div className="flex-1 min-w-0">
                     <p style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>
-                      {evd.submittedBy} · {evd.photos.length} photos{evd.audioMemo ? " + audio" : ""}
+                      {evd.submittedBy} · {evd.photos.length} {t("inv.photos")}{evd.audioMemo ? ` + ${t("inv.audio")}` : ""}
                     </p>
                     <p style={{ fontSize: 8, color: "rgba(255,255,255,0.25)" }}>{evd.incidentType} · {evd.zone}</p>
                   </div>
@@ -600,7 +598,7 @@ function FieldEvidenceSection({ investigationId, zone }: { investigationId: stri
                       color: "#7B5EFF",
                       fontSize: 9, fontWeight: 700,
                     }}>
-                    {linking === evd.id ? "Linking..." : "Link"}
+                    {linking === evd.id ? t("inv.linking") : t("inv.link")}
                   </motion.button>
                 </div>
               ))}
@@ -708,7 +706,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
             if (prev.some(p => p.incidentId === emgData.id)) return prev;
             return [newInv, ...prev];
           });
-          toast.success(`New investigation created: ${newInv.title}`);
+          toast.success(`${t("inv.newInvestigationCreated")}: ${newInv.title}`);
         } catch {}
       }
     };
@@ -738,7 +736,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         : inv
     ));
     console.log("[SUPABASE_READY] investigation_mutation: " + JSON.stringify({ id, action: "update_status", status }));
-    toast.success(`Investigation ${id} → ${status}`);
+    toast.success(`${t("inv.investigation")} ${id} → ${status}`);
   };
 
   const closeInvestigation = (id: string, resolution: string) => {
@@ -754,7 +752,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         : inv
     ));
     console.log("[SUPABASE_READY] investigation_mutation: " + JSON.stringify({ id, action: "close", resolution }));
-    toast.success(`Investigation ${id} closed`);
+    toast.success(`${t("inv.investigation")} ${id} ${t("inv.closedToast")}`);
 
     // Cross-update related risk by zone match
     if (inv && onRiskUpdate) {
@@ -782,7 +780,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         : inv
     ));
     console.log("[SUPABASE_READY] investigation_mutation: " + JSON.stringify({ id: investigationId, action: "add_capa", capaId: newAction.id }));
-    toast.success("CAPA action added");
+    toast.success(t("inv.capaAdded"));
   };
 
   // ── Filters ────────────────────────────────────────────────────
@@ -818,10 +816,10 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Total Investigations", value: stats.total, color: "#00C8E0", icon: FileText },
-          { label: "Open / Active", value: stats.open, color: "#FF9500", icon: AlertTriangle },
-          { label: "Overdue CAPAs", value: stats.overdue, color: "#FF2D55", icon: Clock },
-          { label: "Closed", value: stats.closed, color: "#00C853", icon: CheckCircle2 },
+          { label: t("inv.totalInvestigations"), value: stats.total, color: "#00C8E0", icon: FileText },
+          { label: t("inv.openActive"), value: stats.open, color: "#FF9500", icon: AlertTriangle },
+          { label: t("inv.overdueCapas"), value: stats.overdue, color: "#FF2D55", icon: Clock },
+          { label: t("inv.closed"), value: stats.closed, color: "#00C853", icon: CheckCircle2 },
         ].map(s => {
           const I = s.icon;
           return (
@@ -841,10 +839,10 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)" }}>
           <Filter className="size-3.5" style={{ color: "#FF2D55" }} />
           <span style={{ fontSize: 11, fontWeight: 600, color: "#FF2D55" }}>
-            Filtered by source: {sourceFilter}
+            {t("inv.filteredBySource")}: {sourceFilter}
           </span>
           <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginLeft: 4 }}>
-            ({filtered.length} result{filtered.length !== 1 ? "s" : ""})
+            ({filtered.length} {filtered.length !== 1 ? t("inv.results") : t("inv.result")})
           </span>
           <button
             onClick={() => setSourceFilter(null)}
@@ -852,7 +850,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
             style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)", cursor: "pointer" }}
           >
             <X className="size-3" style={{ color: "#FF2D55" }} />
-            <span style={{ fontSize: 9, fontWeight: 700, color: "#FF2D55" }}>Clear Filter</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#FF2D55" }}>{t("inv.clearFilter")}</span>
           </button>
         </div>
       )}
@@ -861,7 +859,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
           <Search className="size-4" style={{ color: "rgba(255,255,255,0.25)" }} />
           <input
             type="text"
-            placeholder="Search investigations..."
+            placeholder={t("inv.searchPlaceholder")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none text-white"
@@ -878,7 +876,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                 fontSize: 10, fontWeight: 600,
                 color: filterStatus === f ? "#00C8E0" : "rgba(255,255,255,0.4)",
               }}>
-              {f === "all" ? "All" : STATUS_CONFIG[f]?.label || f}
+              {f === "all" ? t("inv.all") : STATUS_CONFIG[f] ? t(STATUS_CONFIG[f].labelKey) : f}
             </button>
           ))}
         </div>
@@ -890,7 +888,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
         <div className="col-span-2 space-y-2 overflow-y-auto" style={{ maxHeight: 620, scrollbarWidth: "none" }}>
           <div className="flex items-center gap-1.5 mb-1">
             <Zap className="size-3" style={{ color: "rgba(0,200,224,0.4)" }} />
-            <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(0,200,224,0.4)" }}>Auto-sorted by priority</span>
+            <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(0,200,224,0.4)" }}>{t("inv.autoSorted")}</span>
           </div>
           {sortedInvestigations.map(inv => {
             const stCfg = STATUS_CONFIG[inv.status];
@@ -921,7 +919,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                     <div className="flex items-center gap-2 mb-1">
                       <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>{inv.id}</span>
                       <div className="px-1.5 py-0.5 rounded" style={{ background: stCfg.bg, border: `1px solid ${stCfg.color}20` }}>
-                        <span style={{ fontSize: 7.5, fontWeight: 800, color: stCfg.color }}>{stCfg.label.toUpperCase()}</span>
+                        <span style={{ fontSize: 7.5, fontWeight: 800, color: stCfg.color }}>{t(stCfg.labelKey).toUpperCase()}</span>
                       </div>
                     </div>
                     <p className="text-white truncate" style={{ fontSize: 12, fontWeight: 700 }}>{inv.title}</p>
@@ -935,7 +933,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                           <div className="h-full rounded-full" style={{ width: `${capaProgress}%`, background: capaProgress === 100 ? "#00C853" : "#BF5AF2", transition: "width 0.3s" }} />
                         </div>
                         <span style={{ fontSize: 8, fontWeight: 700, color: capaProgress === 100 ? "#00C853" : "#BF5AF2" }}>
-                          CAPA {capaProgress}%
+                          {t("inv.capa")} {capaProgress}%
                         </span>
                       </div>
                     )}
@@ -956,24 +954,24 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                   <div className="flex items-center gap-2 mb-2">
                     <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)" }}>{selected.id}</span>
                     <div className="px-2 py-0.5 rounded" style={{ background: STATUS_CONFIG[selected.status].bg, border: `1px solid ${STATUS_CONFIG[selected.status].color}20` }}>
-                      <span style={{ fontSize: 8, fontWeight: 800, color: STATUS_CONFIG[selected.status].color }}>{STATUS_CONFIG[selected.status].label.toUpperCase()}</span>
+                      <span style={{ fontSize: 8, fontWeight: 800, color: STATUS_CONFIG[selected.status].color }}>{t(STATUS_CONFIG[selected.status].labelKey).toUpperCase()}</span>
                     </div>
                     <div className="px-2 py-0.5 rounded" style={{ background: `${SEVERITY_CONFIG[selected.severity].color}10` }}>
-                      <span style={{ fontSize: 8, fontWeight: 800, color: SEVERITY_CONFIG[selected.severity].color }}>{SEVERITY_CONFIG[selected.severity].label.toUpperCase()}</span>
+                      <span style={{ fontSize: 8, fontWeight: 800, color: SEVERITY_CONFIG[selected.severity].color }}>{t(SEVERITY_CONFIG[selected.severity].labelKey).toUpperCase()}</span>
                     </div>
                   </div>
                   <h2 className="text-white" style={{ fontSize: 18, fontWeight: 800 }}>{selected.title}</h2>
                   <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>
-                    {selected.zone} &bull; {selected.incidentDate.toLocaleString()} &bull; Investigator: {selected.investigator}
+                    {selected.zone} &bull; {selected.incidentDate.toLocaleString()} &bull; {t("inv.investigatorLabel")}: {selected.investigator}
                   </p>
                   <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)", marginTop: 2 }}>{selected.isoReference}</p>
                 </div>
                 <button
-                  onClick={() => exportInvestigationPDF(selected)}
+                  onClick={() => exportInvestigationPDF(selected, t)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
                   style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
                   <Download className="size-3.5" style={{ color: "#00C8E0" }} />
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>Export PDF</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>{t("inv.exportPdf")}</span>
                 </button>
               </div>
 
@@ -984,7 +982,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
 
               {/* Root Cause Analysis */}
               <div>
-                <h3 style={{ ...TYPOGRAPHY.overline, color: "#FF2D55", marginBottom: 10 }}>ROOT CAUSE ANALYSIS</h3>
+                <h3 style={{ ...TYPOGRAPHY.overline, color: "#FF2D55", marginBottom: 10 }}>{t("inv.rootCauseAnalysis")}</h3>
                 <div className="space-y-2">
                   {selected.rootCauses.map(rc => {
                     const catCfg = CAUSE_CATEGORY_CONFIG[rc.category];
@@ -997,9 +995,9 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span style={{ fontSize: 9, fontWeight: 700, color: catCfg.color }}>{catCfg.label}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: catCfg.color }}>{t(catCfg.labelKey)}</span>
                             <span style={{ fontSize: 8, fontWeight: 700, color: rc.contributing ? "rgba(255,255,255,0.3)" : "#FF2D55" }}>
-                              {rc.contributing ? "Contributing Factor" : "ROOT CAUSE"}
+                              {rc.contributing ? t("inv.contributingFactor") : t("inv.rootCauseUpper")}
                             </span>
                           </div>
                           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>{rc.description}</p>
@@ -1021,7 +1019,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
 
               {/* CAPA Table */}
               <div>
-                <h3 style={{ ...TYPOGRAPHY.overline, color: "#BF5AF2", marginBottom: 10 }}>CORRECTIVE & PREVENTIVE ACTIONS</h3>
+                <h3 style={{ ...TYPOGRAPHY.overline, color: "#BF5AF2", marginBottom: 10 }}>{t("inv.correctivePreventiveActions")}</h3>
                 {selected.actions.length > 0 ? (
                   <div className="space-y-2">
                     {selected.actions.map(action => {
@@ -1032,21 +1030,21 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                             <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.2)" }}>{action.id}</span>
                             <div className="px-1.5 py-0.5 rounded" style={{ background: action.type === "corrective" ? "rgba(255,150,0,0.08)" : "rgba(0,200,224,0.08)" }}>
                               <span style={{ fontSize: 7.5, fontWeight: 800, color: action.type === "corrective" ? "#FF9500" : "#00C8E0" }}>
-                                {action.type === "corrective" ? "CORRECTIVE" : "PREVENTIVE"}
+                                {action.type === "corrective" ? t("inv.correctiveUpper") : t("inv.preventiveUpper")}
                               </span>
                             </div>
                             <div className="px-1.5 py-0.5 rounded" style={{ background: `${stCfg.color}10` }}>
-                              <span style={{ fontSize: 7.5, fontWeight: 800, color: stCfg.color }}>{stCfg.label.toUpperCase()}</span>
+                              <span style={{ fontSize: 7.5, fontWeight: 800, color: stCfg.color }}>{t(stCfg.labelKey).toUpperCase()}</span>
                             </div>
                             <span className="ml-auto" style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>
-                              Due: {action.dueDate.toLocaleDateString()}
+                              {t("inv.due")}: {action.dueDate.toLocaleDateString()}
                             </span>
                           </div>
                           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>{action.description}</p>
                           <div className="flex items-center gap-3 mt-2" style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>
-                            <span>Assigned: {action.assignedTo}</span>
-                            {action.completedDate && <span>&bull; Completed: {action.completedDate.toLocaleDateString()}</span>}
-                            {action.verifiedBy && <span>&bull; Verified by: {action.verifiedBy}</span>}
+                            <span>{t("inv.assigned")}: {action.assignedTo}</span>
+                            {action.completedDate && <span>&bull; {t("inv.completed")}: {action.completedDate.toLocaleDateString()}</span>}
+                            {action.verifiedBy && <span>&bull; {t("inv.verifiedBy")}: {action.verifiedBy}</span>}
                           </div>
                           {action.notes && (
                             <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontStyle: "italic", marginTop: 4 }}>{action.notes}</p>
@@ -1059,8 +1057,8 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                   <div className="flex items-center justify-center py-8 rounded-xl" style={{ background: "rgba(255,214,10,0.04)", border: "1px dashed rgba(255,214,10,0.15)" }}>
                     <div className="text-center">
                       <Flag className="size-6 mx-auto mb-2" style={{ color: "rgba(255,214,10,0.4)" }} />
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "#FFD60A" }}>CAPA Plan Pending</p>
-                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>Root cause analysis is complete. Awaiting corrective action plan approval.</p>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#FFD60A" }}>{t("inv.capaPlanPending")}</p>
+                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>{t("inv.capaPendingHint")}</p>
                     </div>
                   </div>
                 )}
@@ -1068,7 +1066,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
 
               {/* Timeline */}
               <div>
-                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>INVESTIGATION TIMELINE</h3>
+                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>{t("inv.investigationTimeline")}</h3>
                 <div className="relative pl-5">
                   <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: "linear-gradient(180deg, rgba(0,200,224,0.2), rgba(0,200,224,0.03))" }} />
                   {/* F-E (2026-04-25): show count of unsigned entries above the list. */}
@@ -1085,7 +1083,7 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                         fontSize: 10,
                         color: "rgba(255,149,0,0.9)",
                       }}>
-                        ⚠ {unsignedCount} unsigned event{unsignedCount === 1 ? "" : "s"} below — recorded in fallback mode without crypto.subtle. Excluded from any tamper-evidence claim.
+                        ⚠ {unsignedCount} {unsignedCount === 1 ? t("inv.unsignedEvent") : t("inv.unsignedEvents")} {t("inv.unsignedWarning")}
                       </div>
                     );
                   })()}
@@ -1112,8 +1110,8 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
                                 color: "#FF9500",
                                 fontWeight: 700,
                                 letterSpacing: 0.5,
-                              }} title="Recorded without cryptographic signature — not part of the tamper-evidence chain.">
-                                UNSIGNED
+                              }} title={t("inv.unsignedTooltip")}>
+                                {t("inv.unsigned")}
                               </span>
                             )}
                           </div>
@@ -1128,14 +1126,14 @@ export function IncidentInvestigationPage({ t, webMode, initialSourceFilter, pen
               </div>
 
               {/* ── Field Evidence (from Evidence Vault) ── */}
-              <FieldEvidenceSection investigationId={selected.id} zone={selected.zone} />
+              <FieldEvidenceSection investigationId={selected.id} zone={selected.zone} t={t} />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <Eye className="size-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.08)" }} />
-                <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.15)" }}>Select an investigation</p>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.08)", marginTop: 4 }}>Click on any item to view full details, RCA, and CAPA plan</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.15)" }}>{t("inv.selectInvestigation")}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.08)", marginTop: 4 }}>{t("inv.selectHint")}</p>
               </div>
             </div>
           )}

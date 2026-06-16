@@ -169,35 +169,35 @@ const MOCK_TRAINING: TrainingRecord[] = [
 
 // ── Configs ──────────────────────────────────────────────────────
 
-const RISK_LEVEL_CONFIG: Record<RiskLevel, { label: string; color: string; bg: string }> = {
-  extreme: { label: "Extreme", color: "#FF2D55", bg: "rgba(255,45,85,0.1)" },
-  high: { label: "High", color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
-  medium: { label: "Medium", color: "#FFD60A", bg: "rgba(255,214,10,0.08)" },
-  low: { label: "Low", color: "#00C853", bg: "rgba(0,200,83,0.06)" },
-  negligible: { label: "Negligible", color: "rgba(255,255,255,0.3)", bg: "rgba(255,255,255,0.03)" },
+const RISK_LEVEL_CONFIG: Record<RiskLevel, { labelKey: string; color: string; bg: string }> = {
+  extreme: { labelKey: "rr.levelExtreme", color: "#FF2D55", bg: "rgba(255,45,85,0.1)" },
+  high: { labelKey: "rr.levelHigh", color: "#FF9500", bg: "rgba(255,150,0,0.08)" },
+  medium: { labelKey: "rr.levelMedium", color: "#FFD60A", bg: "rgba(255,214,10,0.08)" },
+  low: { labelKey: "rr.levelLow", color: "#00C853", bg: "rgba(0,200,83,0.06)" },
+  negligible: { labelKey: "rr.levelNegligible", color: "rgba(255,255,255,0.3)", bg: "rgba(255,255,255,0.03)" },
 };
 
-const CONTROL_STATUS_CONFIG: Record<ControlStatus, { label: string; color: string }> = {
-  effective: { label: "Effective", color: "#00C853" },
-  partially_effective: { label: "Partially Effective", color: "#FF9500" },
-  ineffective: { label: "Ineffective", color: "#FF2D55" },
-  not_implemented: { label: "Not Implemented", color: "#FF2D55" },
+const CONTROL_STATUS_CONFIG: Record<ControlStatus, { labelKey: string; color: string }> = {
+  effective: { labelKey: "rr.ctrlEffective", color: "#00C853" },
+  partially_effective: { labelKey: "rr.ctrlPartiallyEffective", color: "#FF9500" },
+  ineffective: { labelKey: "rr.ctrlIneffective", color: "#FF2D55" },
+  not_implemented: { labelKey: "rr.ctrlNotImplemented", color: "#FF2D55" },
 };
 
-const TRAINING_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  valid: { label: "Valid", color: "#00C853" },
-  expiring_soon: { label: "Expiring Soon", color: "#FF9500" },
-  expired: { label: "Expired", color: "#FF2D55" },
+const TRAINING_STATUS_CONFIG: Record<string, { labelKey: string; color: string }> = {
+  valid: { labelKey: "rr.trValid", color: "#00C853" },
+  expiring_soon: { labelKey: "rr.trExpiringSoon", color: "#FF9500" },
+  expired: { labelKey: "rr.trExpired", color: "#FF2D55" },
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  physical: "Physical", chemical: "Chemical", biological: "Biological",
-  ergonomic: "Ergonomic", psychosocial: "Psychosocial", environmental: "Environmental",
+const CATEGORY_LABEL_KEYS: Record<string, string> = {
+  physical: "rr.catPhysical", chemical: "rr.catChemical", biological: "rr.catBiological",
+  ergonomic: "rr.catErgonomic", psychosocial: "rr.catPsychosocial", environmental: "rr.catEnvironmental",
 };
 
 // ── Risk Matrix Component ────────────────────────────────────────
 
-function RiskMatrix({ risks }: { risks: RiskEntry[] }) {
+function RiskMatrix({ risks, t }: { risks: RiskEntry[]; t: (k: string) => string }) {
   const getColor = (l: number, c: number): string => {
     const score = l * c;
     if (score >= 15) return "rgba(255,45,85,0.6)";
@@ -211,13 +211,13 @@ function RiskMatrix({ risks }: { risks: RiskEntry[] }) {
 
   return (
     <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-      <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>RISK MATRIX (5x5)</h3>
+      <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>{t("rr.matrixTitle")}</h3>
       <div className="flex gap-1">
         <div className="flex flex-col items-center justify-between py-1 mr-1" style={{ width: 20 }}>
           {[5, 4, 3, 2, 1].map(l => (
             <span key={l} style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", fontWeight: 700 }}>{l}</span>
           ))}
-          <span style={{ fontSize: 7, color: "rgba(255,255,255,0.15)", writingMode: "vertical-rl", transform: "rotate(180deg)", marginTop: 4 }}>LIKELIHOOD</span>
+          <span style={{ fontSize: 7, color: "rgba(255,255,255,0.15)", writingMode: "vertical-rl", transform: "rotate(180deg)", marginTop: 4 }}>{t("rr.likelihood")}</span>
         </div>
         <div className="flex-1">
           <div className="grid grid-cols-5 gap-1">
@@ -242,17 +242,17 @@ function RiskMatrix({ risks }: { risks: RiskEntry[] }) {
             ))}
           </div>
           <div className="text-center mt-1">
-            <span style={{ fontSize: 7, color: "rgba(255,255,255,0.15)" }}>CONSEQUENCE</span>
+            <span style={{ fontSize: 7, color: "rgba(255,255,255,0.15)" }}>{t("rr.consequence")}</span>
           </div>
         </div>
       </div>
       {/* Legend */}
       <div className="flex items-center justify-center gap-3 mt-3">
         {[
-          { label: "Extreme (15-25)", color: "rgba(255,45,85,0.6)" },
-          { label: "High (10-14)", color: "rgba(255,150,0,0.5)" },
-          { label: "Medium (6-9)", color: "rgba(255,214,10,0.4)" },
-          { label: "Low (1-5)", color: "rgba(0,200,83,0.3)" },
+          { label: t("rr.legendExtreme"), color: "rgba(255,45,85,0.6)" },
+          { label: t("rr.legendHigh"), color: "rgba(255,150,0,0.5)" },
+          { label: t("rr.legendMedium"), color: "rgba(255,214,10,0.4)" },
+          { label: t("rr.legendLow"), color: "rgba(0,200,83,0.3)" },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1.5">
             <div className="size-2.5 rounded-sm" style={{ background: l.color }} />
@@ -266,9 +266,9 @@ function RiskMatrix({ risks }: { risks: RiskEntry[] }) {
 
 // ── PDF Export ────────────────────────────────────────────────────
 
-function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[]) {
+function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[], t: (k: string) => string) {
   console.log("[SUPABASE_READY] pdf_export_risk_register");
-  toast.loading("Generating Risk Register PDF...", { id: "risk-pdf" });
+  toast.loading(t("rr.pdfGenerating"), { id: "risk-pdf" });
   try {
     const doc = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
     const pw = doc.internal.pageSize.getWidth();
@@ -279,23 +279,23 @@ function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[]) {
     doc.rect(0, 0, pw, 25, "F");
     doc.setTextColor(0, 200, 224);
     doc.setFontSize(16);
-    doc.text("RISK REGISTER — SOSphere", 14, 12);
+    doc.text(t("rr.pdfHeader"), 14, 12);
     doc.setFontSize(8);
     doc.setTextColor(200, 200, 200);
-    doc.text(`Generated: ${new Date().toLocaleString()} | ISO 45001 §6.1 Compliance`, 14, 19);
-    doc.text(`Total Risks: ${risks.length} | Extreme: ${risks.filter(r => r.riskLevel === "extreme").length} | High: ${risks.filter(r => r.riskLevel === "high").length}`, pw - 14, 12, { align: "right" });
+    doc.text(`${t("rr.pdfGenerated")}: ${new Date().toLocaleString()} | ${t("rr.pdfCompliance")}`, 14, 19);
+    doc.text(`${t("rr.pdfTotalRisks")}: ${risks.length} | ${t("rr.levelExtreme")}: ${risks.filter(r => r.riskLevel === "extreme").length} | ${t("rr.levelHigh")}: ${risks.filter(r => r.riskLevel === "high").length}`, pw - 14, 12, { align: "right" });
 
     // Risk Register Table
     let y = 30;
     autoTable(doc, {
       startY: y,
-      head: [["ID", "Zone", "Hazard", "Category", "L", "C", "Score", "Level", "Controls Status", "Review Date", "Owner"]],
+      head: [[t("rr.colId"), t("rr.colZone"), t("rr.colHazard"), t("rr.colCategory"), t("rr.colL"), t("rr.colC"), t("rr.colScore"), t("rr.colLevel"), t("rr.colControlsStatus"), t("rr.colReviewDate"), t("rr.colOwner")]],
       body: risks.map(r => [
         r.id, r.zone, r.hazard,
-        CATEGORY_LABELS[r.category] || r.category,
+        t(CATEGORY_LABEL_KEYS[r.category]) || r.category,
         `${r.likelihood}`, `${r.consequence}`, `${r.riskScore}`,
-        RISK_LEVEL_CONFIG[r.riskLevel].label,
-        CONTROL_STATUS_CONFIG[r.controlStatus].label,
+        t(RISK_LEVEL_CONFIG[r.riskLevel].labelKey),
+        t(CONTROL_STATUS_CONFIG[r.controlStatus].labelKey),
         r.reviewDate.toLocaleDateString(),
         r.responsiblePerson,
       ]),
@@ -311,19 +311,19 @@ function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[]) {
     doc.rect(0, 0, pw, 25, "F");
     doc.setTextColor(191, 90, 242);
     doc.setFontSize(16);
-    doc.text("TRAINING & CERTIFICATION RECORDS", 14, 12);
+    doc.text(t("rr.pdfTrainingHeader"), 14, 12);
     doc.setFontSize(8);
     doc.setTextColor(200, 200, 200);
-    doc.text(`Expired: ${training.filter(t => t.status === "expired").length} | Expiring Soon: ${training.filter(t => t.status === "expiring_soon").length}`, 14, 19);
+    doc.text(`${t("rr.trExpired")}: ${training.filter(tr => tr.status === "expired").length} | ${t("rr.trExpiringSoon")}: ${training.filter(tr => tr.status === "expiring_soon").length}`, 14, 19);
 
     autoTable(doc, {
       startY: 30,
-      head: [["Employee", "Certification", "Provider", "Issue Date", "Expiry Date", "Status", "Zone"]],
-      body: training.map(t => [
-        t.employeeName, t.certification, t.provider,
-        t.issueDate.toLocaleDateString(), t.expiryDate.toLocaleDateString(),
-        TRAINING_STATUS_CONFIG[t.status]?.label || t.status,
-        t.zone,
+      head: [[t("rr.colEmployee"), t("rr.colCertification"), t("rr.colProvider"), t("rr.colIssueDate"), t("rr.colExpiryDate"), t("rr.colStatus"), t("rr.colZone")]],
+      body: training.map(tr => [
+        tr.employeeName, tr.certification, tr.provider,
+        tr.issueDate.toLocaleDateString(), tr.expiryDate.toLocaleDateString(),
+        TRAINING_STATUS_CONFIG[tr.status] ? t(TRAINING_STATUS_CONFIG[tr.status].labelKey) : tr.status,
+        tr.zone,
       ]),
       theme: "striped",
       headStyles: { fillColor: [191, 90, 242], fontSize: 7, fontStyle: "bold" },
@@ -337,15 +337,15 @@ function exportRiskRegisterPDF(risks: RiskEntry[], training: TrainingRecord[]) {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(150, 150, 150);
-      doc.text(`SOSphere Risk Register — ISO 45001 Compliant`, 10, ph - 6);
-      doc.text(`Page ${i}/${pageCount}`, pw - 10, ph - 6, { align: "right" });
+      doc.text(t("rr.pdfFooter"), 10, ph - 6);
+      doc.text(`${t("rr.pdfPage")} ${i}/${pageCount}`, pw - 10, ph - 6, { align: "right" });
     }
 
     doc.save(`Risk-Register-${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast.success("Risk Register exported!", { id: "risk-pdf" });
+    toast.success(t("rr.pdfExported"), { id: "risk-pdf" });
   } catch (err) {
     console.error(err);
-    toast.error("Failed to generate PDF", { id: "risk-pdf" });
+    toast.error(t("rr.pdfFailed"), { id: "risk-pdf" });
   }
 }
 
@@ -438,7 +438,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       r.id === riskId ? { ...r, ...controls, lastReviewedBy: "Admin", reviewDate: new Date() } : r
     ));
     console.log("[SUPABASE_READY] risk_register_mutation: " + JSON.stringify({ riskId, action: "update_controls" }));
-    toast.success(`Risk ${riskId} controls updated`);
+    toast.success(`${t("rr.toastControlsPrefix")} ${riskId} ${t("rr.toastControlsUpdated")}`);
   };
 
   const updateRiskScore = (riskId: string, newScore: { likelihood: Likelihood; consequence: Consequence }) => {
@@ -448,7 +448,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       r.id === riskId ? { ...r, likelihood: newScore.likelihood, consequence: newScore.consequence, riskScore: score, riskLevel: level, lastReviewedBy: "Admin", reviewDate: new Date() } : r
     ));
     console.log("[SUPABASE_READY] risk_register_mutation: " + JSON.stringify({ riskId, action: "update_score", score, level }));
-    toast.success(`Risk ${riskId} score → ${score} (${level})`);
+    toast.success(`${t("rr.toastControlsPrefix")} ${riskId} ${t("rr.toastScore")} → ${score} (${level})`);
   };
 
   const markTrainingComplete = (recordId: string, employeeId: string) => {
@@ -456,7 +456,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       tr.id === recordId ? { ...tr, status: "valid" as const, issueDate: new Date(), expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } : tr
     ));
     console.log("[SUPABASE_READY] risk_register_mutation: " + JSON.stringify({ riskId: recordId, action: "training_complete", employeeId }));
-    toast.success(`Training ${recordId} marked complete`);
+    toast.success(`${t("rr.toastTraining")} ${recordId} ${t("rr.toastMarkedComplete")}`);
   };
 
   // ── Apply external risk updates from Investigation close ────────
@@ -534,11 +534,11 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       {/* Stats */}
       <div className="grid grid-cols-5 gap-3">
         {[
-          { label: "Extreme Risks", value: riskStats.extreme, color: "#FF2D55", icon: TriangleAlert },
-          { label: "High Risks", value: riskStats.high, color: "#FF9500", icon: AlertTriangle },
-          { label: "Medium Risks", value: riskStats.medium, color: "#FFD60A", icon: Shield },
-          { label: "Expired Certs", value: trainingStats.expired, color: "#FF2D55", icon: Award },
-          { label: "Expiring Soon", value: trainingStats.expiringSoon, color: "#FF9500", icon: Clock },
+          { label: t("rr.statExtremeRisks"), value: riskStats.extreme, color: "#FF2D55", icon: TriangleAlert },
+          { label: t("rr.statHighRisks"), value: riskStats.high, color: "#FF9500", icon: AlertTriangle },
+          { label: t("rr.statMediumRisks"), value: riskStats.medium, color: "#FFD60A", icon: Shield },
+          { label: t("rr.statExpiredCerts"), value: trainingStats.expired, color: "#FF2D55", icon: Award },
+          { label: t("rr.statExpiringSoon"), value: trainingStats.expiringSoon, color: "#FF9500", icon: Clock },
         ].map(s => {
           const I = s.icon;
           return (
@@ -557,9 +557,9 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
       <div className="flex items-center justify-between">
         <div className="flex gap-1.5">
           {([
-            { id: "risks" as TabType, label: "Risk Register", icon: Shield },
-            { id: "training" as TabType, label: "Training & Certs", icon: GraduationCap },
-            { id: "matrix" as TabType, label: "Risk Matrix", icon: Layers },
+            { id: "risks" as TabType, label: t("rr.tabRiskRegister"), icon: Shield },
+            { id: "training" as TabType, label: t("rr.tabTrainingCerts"), icon: GraduationCap },
+            { id: "matrix" as TabType, label: t("rr.tabRiskMatrix"), icon: Layers },
           ]).map(tab => {
             const TI = tab.icon;
             return (
@@ -585,14 +585,14 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
             onChange={e => setZoneFilter(e.target.value)}
             className="bg-transparent rounded-lg px-3 py-2 text-white"
             style={{ fontSize: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
-            {zones.map(z => <option key={z} value={z} style={{ background: "#0A1220" }}>{z === "all" ? "All Zones" : z}</option>)}
+            {zones.map(z => <option key={z} value={z} style={{ background: "#0A1220" }}>{z === "all" ? t("rr.allZones") : z}</option>)}
           </select>
           <button
-            onClick={() => exportRiskRegisterPDF(risks, training)}
+            onClick={() => exportRiskRegisterPDF(risks, training, t)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg"
             style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", cursor: "pointer" }}>
             <Download className="size-3.5" style={{ color: "#00C8E0" }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>Export PDF</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>{t("rr.exportPdf")}</span>
           </button>
         </div>
       </div>
@@ -620,15 +620,15 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
                       <div className="flex items-center gap-2 mb-1">
                         <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.2)" }}>{risk.id}</span>
                         <div className="px-1.5 py-0.5 rounded" style={{ background: `${rlCfg.color}15` }}>
-                          <span style={{ fontSize: 7.5, fontWeight: 800, color: rlCfg.color }}>{rlCfg.label.toUpperCase()}</span>
+                          <span style={{ fontSize: 7.5, fontWeight: 800, color: rlCfg.color }}>{t(rlCfg.labelKey).toUpperCase()}</span>
                         </div>
                         <div className="px-1.5 py-0.5 rounded" style={{ background: `${csCfg.color}10` }}>
-                          <span style={{ fontSize: 7.5, fontWeight: 800, color: csCfg.color }}>{csCfg.label}</span>
+                          <span style={{ fontSize: 7.5, fontWeight: 800, color: csCfg.color }}>{t(csCfg.labelKey)}</span>
                         </div>
                       </div>
                       <p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{risk.hazard}</p>
                       <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
-                        {risk.zone} &bull; L={risk.likelihood} × C={risk.consequence} &bull; {CATEGORY_LABELS[risk.category]}
+                        {risk.zone} &bull; L={risk.likelihood} × C={risk.consequence} &bull; {t(CATEGORY_LABEL_KEYS[risk.category])}
                       </p>
                     </div>
                     <ChevronRight className="size-4 mt-1" style={{ color: "rgba(255,255,255,0.15)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
@@ -642,7 +642,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
 
                           {/* Existing Controls */}
                           <div>
-                            <span style={{ ...TYPOGRAPHY.overline, color: "#00C853" }}>EXISTING CONTROLS</span>
+                            <span style={{ ...TYPOGRAPHY.overline, color: "#00C853" }}>{t("rr.existingControls")}</span>
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {risk.existingControls.map((ctrl, i) => (
                                 <span key={i} className="px-2.5 py-1 rounded-lg" style={{ fontSize: 9, color: "rgba(0,200,83,0.7)", background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.1)" }}>
@@ -654,7 +654,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
 
                           {/* Preventive Measures */}
                           <div>
-                            <span style={{ ...TYPOGRAPHY.overline, color: "#BF5AF2" }}>PREVENTIVE MEASURES</span>
+                            <span style={{ ...TYPOGRAPHY.overline, color: "#BF5AF2" }}>{t("rr.preventiveMeasures")}</span>
                             <div className="space-y-1.5 mt-2">
                               {risk.preventiveMeasures.map((pm, i) => (
                                 <div key={i} className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -666,9 +666,9 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
                           </div>
 
                           <div className="flex items-center gap-4 pt-1" style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>
-                            <span>Owner: {risk.responsiblePerson}</span>
-                            <span>Next Review: {risk.reviewDate.toLocaleDateString()}</span>
-                            <span>Last Reviewed: {risk.lastReviewedBy}</span>
+                            <span>{t("rr.owner")}: {risk.responsiblePerson}</span>
+                            <span>{t("rr.nextReview")}: {risk.reviewDate.toLocaleDateString()}</span>
+                            <span>{t("rr.lastReviewed")}: {risk.lastReviewedBy}</span>
                             <span style={{ color: "rgba(0,200,224,0.4)" }}>{risk.isoReference}</span>
                           </div>
                         </div>
@@ -688,10 +688,10 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
               <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.12)" }}>
                 <Bell className="size-4" style={{ color: "#FF2D55" }} />
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#FF2D55" }}>
-                  {trainingStats.expired} certifications have expired!
+                  {trainingStats.expired} {t("rr.alertExpiredCerts")}
                 </span>
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
-                  Workers with expired certifications must not perform related tasks per ISO 45001 §7.2.
+                  {t("rr.alertExpiredDetail")}
                 </span>
               </div>
             )}
@@ -699,7 +699,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
             {/* Training Table */}
             <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
               <div className="grid grid-cols-7 gap-0 px-4 py-2.5" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                {["Employee", "Certification", "Provider", "Issued", "Expires", "Status", "Zone"].map(h => (
+                {[t("rr.thEmployee"), t("rr.thCertification"), t("rr.thProvider"), t("rr.thIssued"), t("rr.thExpires"), t("rr.thStatus"), t("rr.thZone")].map(h => (
                   <span key={h} style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.3)" }}>{h}</span>
                 ))}
               </div>
@@ -717,7 +717,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
                     <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{tr.issueDate.toLocaleDateString()}</span>
                     <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{tr.expiryDate.toLocaleDateString()}</span>
                     <div className="px-2 py-0.5 rounded w-fit" style={{ background: `${stCfg.color}10` }}>
-                      <span style={{ fontSize: 8, fontWeight: 800, color: stCfg.color }}>{stCfg.label.toUpperCase()}</span>
+                      <span style={{ fontSize: 8, fontWeight: 800, color: stCfg.color }}>{t(stCfg.labelKey).toUpperCase()}</span>
                     </div>
                     <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{tr.zone}</span>
                   </div>
@@ -730,19 +730,19 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
         {activeTab === "matrix" && (
           <motion.div key="matrix" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="grid grid-cols-2 gap-4">
-              <RiskMatrix risks={filteredRisks} />
+              <RiskMatrix risks={filteredRisks} t={t} />
               {/* Risk Distribution by Category */}
               <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>RISK DISTRIBUTION BY CATEGORY</h3>
+                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>{t("rr.distByCategory")}</h3>
                 <div className="space-y-3">
-                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
+                  {Object.entries(CATEGORY_LABEL_KEYS).map(([key, labelKey]) => {
                     const count = filteredRisks.filter(r => r.category === key).length;
                     const pct = filteredRisks.length > 0 ? (count / filteredRisks.length) * 100 : 0;
                     if (count === 0) return null;
                     return (
                       <div key={key}>
                         <div className="flex items-center justify-between mb-1">
-                          <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{label}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{t(labelKey)}</span>
                           <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>{count} ({Math.round(pct)}%)</span>
                         </div>
                         <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
@@ -759,7 +759,7 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
                 </div>
 
                 {/* Risk by Zone */}
-                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginTop: 20, marginBottom: 12 }}>RISKS PER ZONE</h3>
+                <h3 style={{ ...TYPOGRAPHY.overline, color: "rgba(255,255,255,0.4)", marginTop: 20, marginBottom: 12 }}>{t("rr.risksPerZone")}</h3>
                 <div className="space-y-2">
                   {[...new Set(risks.map(r => r.zone))].map(zone => {
                     const zoneRisks = risks.filter(r => r.zone === zone);
@@ -775,8 +775,8 @@ export function RiskRegisterPage({ t, webMode, pendingRiskUpdates = [] }: { t: (
                           <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{zone}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span style={{ fontSize: 10, fontWeight: 700, color: levelCfg.color }}>{zoneRisks.length} risks</span>
-                          <span style={{ fontSize: 8, fontWeight: 800, color: levelCfg.color }}>MAX: {maxScore}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: levelCfg.color }}>{zoneRisks.length} {t("rr.risksLabel")}</span>
+                          <span style={{ fontSize: 8, fontWeight: 800, color: levelCfg.color }}>{t("rr.max")}: {maxScore}</span>
                         </div>
                       </div>
                     );

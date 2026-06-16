@@ -327,9 +327,9 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
   } : { safe: 0, evacuating: 0, acknowledged: 0, notified: 0 };
 
   const TABS = [
-    { id: "control" as const, label: "Control", icon: Zap, color: "#FF2D55" },
-    { id: "setup" as const, label: "Assembly Points", icon: MapPin, color: "#00C8E0" },
-    { id: "history" as const, label: "History", icon: History, color: "rgba(255,255,255,0.4)" },
+    { id: "control" as const, label: t("evac.tabControl"), icon: Zap, color: "#FF2D55" },
+    { id: "setup" as const, label: t("evac.tabAssemblyPoints"), icon: MapPin, color: "#00C8E0" },
+    { id: "history" as const, label: t("evac.tabHistory"), icon: History, color: "rgba(255,255,255,0.4)" },
   ];
 
   return (
@@ -338,10 +338,10 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
       <div className="px-6 pt-6 pb-4 flex items-center justify-between flex-shrink-0">
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.5px" }}>
-            Emergency Evacuation
+            {t("evac.title")}
           </h2>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-            Manage assembly points, trigger and monitor evacuations
+            {t("evac.subtitle")}
           </p>
         </div>
         {activeEvacuation?.status === "active" && (
@@ -352,7 +352,7 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
             style={{ background: "rgba(255,45,85,0.15)", border: "1.5px solid rgba(255,45,85,0.4)" }}
           >
             <div className="size-2 rounded-full" style={{ background: "#FF2D55" }} />
-            <span style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>LIVE EVACUATION</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>{t("evac.liveEvacuation")}</span>
           </motion.div>
         )}
       </div>
@@ -405,17 +405,18 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
                     onComplete={handleComplete}
                     onCancel={handleCancel}
                     evacPoints={evacPoints}
+                    t={t}
                   />
                   {/* Employee Status List */}
                   {evacStatuses.length > 0 && (
                     <div className="rounded-2xl overflow-hidden"
                       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                       <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                        <p style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Employee Status</p>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{t("evac.employeeStatus")}</p>
                       </div>
                       <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.03)" }}>
                         {evacStatuses.map(s => (
-                          <EmployeeStatusRow key={s.employeeId} status={s} />
+                          <EmployeeStatusRow key={s.employeeId} status={s} t={t} />
                         ))}
                       </div>
                     </div>
@@ -424,9 +425,9 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
                     <div className="rounded-2xl p-8 text-center"
                       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                       <Users className="size-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.15)" }} />
-                      <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>Waiting for employee acknowledgements…</p>
+                      <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>{t("evac.waitingAcks")}</p>
                       <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-                        Status updates appear here as employees respond
+                        {t("evac.statusUpdatesHint")}
                       </p>
                     </div>
                   )}
@@ -434,6 +435,7 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
               ) : (
                 /* No Active Evacuation — Trigger Panel */
                 <TriggerPanel
+                  t={t}
                   zones={zones}
                   zonesWithPoints={zonesWithPoints}
                   evacPoints={evacPoints}
@@ -463,6 +465,7 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
               className="space-y-4"
             >
               <AssemblyPointsSetup
+                t={t}
                 zones={zones}
                 evacPoints={evacPoints}
                 onSave={points => { saveEvacuationPoints(points); setEvacPoints(points); }}
@@ -480,7 +483,7 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
               className="space-y-3"
             >
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>
-                PAST EVACUATIONS ({evacHistory.length})
+                {t("evac.pastEvacuations")} ({evacHistory.length})
               </p>
               {evacHistory.map(ev => (
                 <div key={ev.id} className="rounded-2xl p-5"
@@ -494,23 +497,23 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
                       style={{ fontSize: 11, fontWeight: 700,
                         color: ev.status === "completed" ? "#00C853" : "#FF453A",
                         background: ev.status === "completed" ? "rgba(0,200,83,0.1)" : "rgba(255,69,58,0.1)" }}>
-                      {ev.status === "completed" ? "Completed" : "Cancelled"}
+                      {ev.status === "completed" ? t("evac.completed") : t("evac.cancelled")}
                     </span>
                   </div>
                   <div className="flex items-center gap-4" style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
                     <span className="flex items-center gap-1.5">
                       <Clock className="size-3" />
-                      {new Date(ev.triggeredAt).toLocaleDateString()} {ev.duration ? `· ${ev.duration}min` : ""}
+                      {new Date(ev.triggeredAt).toLocaleDateString()} {ev.duration ? `· ${ev.duration}${t("evac.minSuffix")}` : ""}
                     </span>
                     {ev.employeesEvacuated != null && (
                       <span className="flex items-center gap-1.5">
                         <Users className="size-3" />
-                        {ev.employeesEvacuated} evacuated
+                        {ev.employeesEvacuated} {t("evac.evacuatedSuffix")}
                       </span>
                     )}
                     <span className="flex items-center gap-1.5">
                       <Shield className="size-3" />
-                      By {ev.triggeredBy}
+                      {t("evac.by")} {ev.triggeredBy}
                     </span>
                   </div>
                 </div>
@@ -519,7 +522,7 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
                 <div className="rounded-2xl p-12 text-center"
                   style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <History className="size-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.1)" }} />
-                  <p style={{ color: "rgba(255,255,255,0.3)" }}>No past evacuations</p>
+                  <p style={{ color: "rgba(255,255,255,0.3)" }}>{t("evac.noPastEvacuations")}</p>
                 </div>
               )}
             </motion.div>
@@ -532,13 +535,14 @@ export function DashboardEvacuationPage({ t, webMode = false }: DashboardEvacuat
 
 // ── Active Evacuation Banner ────────────────────────────────────
 function ActiveEvacuationBanner({
-  evacuation, statusCounts, onComplete, onCancel, evacPoints,
+  evacuation, statusCounts, onComplete, onCancel, evacPoints, t,
 }: {
   evacuation: ActiveEvacuation;
   statusCounts: { safe: number; evacuating: number; acknowledged: number; notified: number };
   onComplete: () => void;
   onCancel: () => void;
   evacPoints: EvacuationPoint[];
+  t: (k: string) => string;
 }) {
   const [elapsed, setElapsed] = useState(Math.floor((Date.now() - evacuation.triggeredAt) / 1000));
   useEffect(() => {
@@ -562,7 +566,7 @@ function ActiveEvacuationBanner({
           <AlertTriangle className="size-6" style={{ color: "#FF2D55" }} />
         </motion.div>
         <div className="flex-1">
-          <p style={{ fontSize: 16, fontWeight: 800, color: "#FF2D55" }}>ACTIVE EVACUATION</p>
+          <p style={{ fontSize: 16, fontWeight: 800, color: "#FF2D55" }}>{t("evac.activeEvacuation")}</p>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 1 }}>
             <strong>{evacuation.zoneName}</strong> — {evacuation.reason}
           </p>
@@ -571,21 +575,21 @@ function ActiveEvacuationBanner({
           <p style={{ fontSize: 28, fontWeight: 800, color: "#FF2D55", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
             {fmtTime(elapsed)}
           </p>
-          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>ELAPSED</p>
+          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{t("evac.elapsed")}</p>
         </div>
       </div>
 
       {/* Status grid */}
       <div className="grid grid-cols-4 divide-x" style={{ borderBottom: "1px solid rgba(255,45,85,0.1)", borderColor: "rgba(255,255,255,0.04)" }}>
         {[
-          { label: "Safe", count: statusCounts.safe, color: "#00C853" },
-          { label: "Evacuating", count: statusCounts.evacuating, color: "#FF9500" },
-          { label: "Acknowledged", count: statusCounts.acknowledged, color: "#FFD60A" },
-          { label: "Notified", count: statusCounts.notified, color: "rgba(255,255,255,0.4)" },
+          { key: "safe", label: t("evac.statSafe"), count: statusCounts.safe, color: "#00C853" },
+          { key: "evacuating", label: t("evac.statEvacuating"), count: statusCounts.evacuating, color: "#FF9500" },
+          { key: "acknowledged", label: t("evac.statAcknowledged"), count: statusCounts.acknowledged, color: "#FFD60A" },
+          { key: "notified", label: t("evac.statNotified"), count: statusCounts.notified, color: "rgba(255,255,255,0.4)" },
         ].map(s => (
-          <div key={s.label} className="px-4 py-3 text-center">
+          <div key={s.key} className="px-4 py-3 text-center">
             <p style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.count}</p>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{s.label.toUpperCase()}</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{s.label}</p>
           </div>
         ))}
       </div>
@@ -594,7 +598,7 @@ function ActiveEvacuationBanner({
       {zonePoints.length > 0 && (
         <div className="px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", marginBottom: 8, letterSpacing: "0.5px" }}>
-            ASSEMBLY POINTS FOR THIS ZONE
+            {t("evac.assemblyPointsForZone")}
           </p>
           <div className="flex flex-wrap gap-2">
             {zonePoints.map(pt => (
@@ -602,14 +606,14 @@ function ActiveEvacuationBanner({
                 style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)" }}>
                 <MapPin className="size-3" style={{ color: "#00C8E0" }} />
                 <span style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600 }}>{pt.name}</span>
-                {pt.capacity && <span style={{ fontSize: 10, color: "rgba(0,200,224,0.6)" }}>Cap: {pt.capacity}</span>}
+                {pt.capacity && <span style={{ fontSize: 10, color: "rgba(0,200,224,0.6)" }}>{t("evac.capShort")} {pt.capacity}</span>}
                 <a
                   href={buildMapsURI(pt.lat, pt.lng)}
                   target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1"
                   style={{ fontSize: 10, color: "rgba(0,200,224,0.7)" }}
                 >
-                  <ExternalLink className="size-2.5" /> Maps
+                  <ExternalLink className="size-2.5" /> {t("evac.maps")}
                 </a>
               </div>
             ))}
@@ -622,12 +626,12 @@ function ActiveEvacuationBanner({
         <button onClick={onComplete}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl"
           style={{ background: "linear-gradient(135deg, #00C8E0, #0088A8)", fontSize: 13, fontWeight: 700, color: "#fff", boxShadow: "0 4px 16px rgba(0,200,224,0.2)" }}>
-          <CheckCircle2 className="size-4" /> Mark All Safe
+          <CheckCircle2 className="size-4" /> {t("evac.markAllSafe")}
         </button>
         <button onClick={onCancel}
           className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl"
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
-          <XCircle className="size-4" /> Cancel
+          <XCircle className="size-4" /> {t("evac.cancel")}
         </button>
       </div>
     </div>
@@ -636,10 +640,11 @@ function ActiveEvacuationBanner({
 
 // ── Trigger Panel ───────────────────────────────────────────────
 function TriggerPanel({
-  zones, zonesWithPoints, evacPoints, selectedZone, setSelectedZone,
+  t, zones, zonesWithPoints, evacPoints, selectedZone, setSelectedZone,
   selectedEvacPoint, setSelectedEvacPoint, evacuationReason, setEvacuationReason,
   showEmployeePreview, setShowEmployeePreview, pointsForSelectedZone, onTrigger, onGoSetup,
 }: {
+  t: (k: string) => string;
   zones: ZoneGPSData[];
   zonesWithPoints: ZoneGPSData[];
   evacPoints: EvacuationPoint[];
@@ -667,15 +672,15 @@ function TriggerPanel({
           style={{ background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.2)" }}>
           <Info className="size-5 flex-shrink-0" style={{ color: "#FF9500" }} />
           <div className="flex-1">
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#FF9500" }}>No Assembly Points Configured</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#FF9500" }}>{t("evac.noPointsConfigured")}</p>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-              Add assembly points so employees know where to go during an evacuation.
+              {t("evac.noPointsConfiguredDesc")}
             </p>
           </div>
           <button onClick={onGoSetup}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg flex-shrink-0"
             style={{ background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.25)", fontSize: 12, fontWeight: 700, color: "#FF9500" }}>
-            Setup <ChevronRight className="size-3" />
+            {t("evac.setup")} <ChevronRight className="size-3" />
           </button>
         </motion.div>
       )}
@@ -689,8 +694,8 @@ function TriggerPanel({
             <AlertTriangle className="size-5" style={{ color: "#FF2D55" }} />
           </div>
           <div>
-            <p style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>Trigger Evacuation</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Employees will receive an immediate alert</p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{t("evac.triggerEvacuation")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{t("evac.immediateAlertHint")}</p>
           </div>
         </div>
 
@@ -698,11 +703,11 @@ function TriggerPanel({
           {/* Zone Selector */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              SELECT ZONE
+              {t("evac.selectZone")}
             </label>
             {zones.length === 0 && (
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 8, lineHeight: 1.5 }}>
-                No zones configured yet. Add zones in Location &amp; Zones before triggering an evacuation.
+                {t("evac.noZonesConfigured")}
               </p>
             )}
             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -726,7 +731,7 @@ function TriggerPanel({
                       }
                     </div>
                     <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
-                      {hasPoints ? `${evacPoints.filter(p => p.zoneId === zone.id).length} assembly pt` : "No assembly pts"}
+                      {hasPoints ? `${evacPoints.filter(p => p.zoneId === zone.id).length} ${t("evac.assemblyPtShort")}` : t("evac.noAssemblyPtsShort")}
                     </p>
                   </button>
                 );
@@ -738,14 +743,14 @@ function TriggerPanel({
           {selectedZone && pointsForSelectedZone.length > 0 && (
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-                ASSEMBLY POINT (optional override)
+                {t("evac.assemblyPointOverride")}
               </label>
               <select
                 value={selectedEvacPoint}
                 onChange={e => setSelectedEvacPoint(e.target.value)}
                 className="mt-2 w-full px-4 py-2.5 rounded-xl outline-none"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }}>
-                <option value="">Auto (nearest to each employee)</option>
+                <option value="">{t("evac.autoNearest")}</option>
                 {pointsForSelectedZone.map(pt => (
                   <option key={pt.id} value={pt.id}>{pt.name}</option>
                 ))}
@@ -756,26 +761,33 @@ function TriggerPanel({
           {/* Reason */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              EVACUATION REASON *
+              {t("evac.evacuationReasonLabel")}
             </label>
             <div className="mt-2 grid grid-cols-3 gap-2 mb-2">
-              {["Fire detected", "Gas leak", "Security threat", "Medical emergency", "Structural hazard", "Drill"].map(r => (
-                <button key={r} onClick={() => setEvacuationReason(r)}
+              {[
+                { value: "Fire detected", label: t("evac.reasonFire") },
+                { value: "Gas leak", label: t("evac.reasonGas") },
+                { value: "Security threat", label: t("evac.reasonSecurity") },
+                { value: "Medical emergency", label: t("evac.reasonMedical") },
+                { value: "Structural hazard", label: t("evac.reasonStructural") },
+                { value: "Drill", label: t("evac.reasonDrill") },
+              ].map(r => (
+                <button key={r.value} onClick={() => setEvacuationReason(r.value)}
                   className="px-2 py-1.5 rounded-lg text-center transition-all"
                   style={{
                     fontSize: 11, fontWeight: 600,
-                    color: evacuationReason === r ? "#FF2D55" : "rgba(255,255,255,0.4)",
-                    background: evacuationReason === r ? "rgba(255,45,85,0.1)" : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${evacuationReason === r ? "rgba(255,45,85,0.3)" : "rgba(255,255,255,0.06)"}`,
+                    color: evacuationReason === r.value ? "#FF2D55" : "rgba(255,255,255,0.4)",
+                    background: evacuationReason === r.value ? "rgba(255,45,85,0.1)" : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${evacuationReason === r.value ? "rgba(255,45,85,0.3)" : "rgba(255,255,255,0.06)"}`,
                   }}>
-                  {r}
+                  {r.label}
                 </button>
               ))}
             </div>
             <textarea
               value={evacuationReason}
               onChange={e => setEvacuationReason(e.target.value)}
-              placeholder="Or type a custom reason…"
+              placeholder={t("evac.customReasonPlaceholder")}
               rows={2}
               className="w-full px-4 py-2.5 rounded-xl outline-none resize-none"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }}
@@ -788,7 +800,7 @@ function TriggerPanel({
             style={{ background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.12)" }}>
             <div className="flex items-center gap-2">
               <Eye className="size-4" style={{ color: "#00C8E0" }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>Preview what employees will see</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>{t("evac.previewEmployees")}</span>
             </div>
             <ChevronRight className="size-4 transition-transform" style={{ color: "#00C8E0", transform: showEmployeePreview ? "rotate(90deg)" : "none" }} />
           </button>
@@ -802,8 +814,9 @@ function TriggerPanel({
                 className="overflow-hidden"
               >
                 <EmployeePreview
-                  zoneName={zones.find(z => z.id === selectedZone)?.name || "Selected Zone"}
-                  reason={evacuationReason || "Reason will appear here"}
+                  t={t}
+                  zoneName={zones.find(z => z.id === selectedZone)?.name || t("evac.selectedZoneFallback")}
+                  reason={evacuationReason || t("evac.reasonFallback")}
                   assemblyPoint={pointsForSelectedZone[0]}
                 />
               </motion.div>
@@ -825,7 +838,7 @@ function TriggerPanel({
             }}
           >
             <AlertTriangle className="size-5" />
-            Trigger Evacuation
+            {t("evac.triggerEvacuation")}
           </motion.button>
         </div>
       </div>
@@ -833,12 +846,12 @@ function TriggerPanel({
       {/* How it works */}
       <div className="rounded-2xl p-5 space-y-4"
         style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>HOW IT WORKS</p>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>{t("evac.howItWorks")}</p>
         {[
-          { step: "1", label: "Admin triggers", desc: "Select zone + reason → employees get instant in-app alert", icon: Zap, color: "#FF2D55" },
-          { step: "2", label: "Employees receive alert", desc: "Full-screen notification with zone name, reason & nearest assembly point", icon: Megaphone, color: "#FF9500" },
-          { step: "3", label: "Employee follows guidance", desc: "Step-by-step instructions + Google Maps link to assembly point", icon: Navigation, color: "#00C8E0" },
-          { step: "4", label: "Confirm arrival", desc: "Employee taps 'I'm Safe' — dashboard updates in real-time", icon: CheckCircle2, color: "#00C853" },
+          { step: "1", label: t("evac.step1Label"), desc: t("evac.step1Desc"), icon: Zap, color: "#FF2D55" },
+          { step: "2", label: t("evac.step2Label"), desc: t("evac.step2Desc"), icon: Megaphone, color: "#FF9500" },
+          { step: "3", label: t("evac.step3Label"), desc: t("evac.step3Desc"), icon: Navigation, color: "#00C8E0" },
+          { step: "4", label: t("evac.step4Label"), desc: t("evac.step4Desc"), icon: CheckCircle2, color: "#00C853" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -862,8 +875,9 @@ function TriggerPanel({
 
 // ── Assembly Points Setup Tab ───────────────────────────────────
 function AssemblyPointsSetup({
-  zones, evacPoints, onSave,
+  t, zones, evacPoints, onSave,
 }: {
+  t: (k: string) => string;
   zones: ZoneGPSData[];
   evacPoints: EvacuationPoint[];
   onSave: (points: EvacuationPoint[]) => void;
@@ -895,16 +909,16 @@ function AssemblyPointsSetup({
     <>
       <div className="flex items-center justify-between">
         <div>
-          <p style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>Assembly Points</p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{t("evac.assemblyPoints")}</p>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
-            Define where employees should go during evacuation
+            {t("evac.assemblyPointsDesc")}
           </p>
         </div>
         <button
           onClick={() => { setEditingPoint(null); setShowModal(true); }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl"
           style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.25)", fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>
-          <Plus className="size-4" /> Add Point
+          <Plus className="size-4" /> {t("evac.addPoint")}
         </button>
       </div>
 
@@ -912,15 +926,15 @@ function AssemblyPointsSetup({
         <div className="rounded-2xl p-12 text-center"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}>
           <MapPin className="size-12 mx-auto mb-4" style={{ color: "rgba(0,200,224,0.3)" }} />
-          <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>No Assembly Points</p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("evac.noAssemblyPoints")}</p>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 4, marginBottom: 16 }}>
-            Add at least one assembly point per zone so employees know where to evacuate to.
+            {t("evac.noAssemblyPointsDesc")}
           </p>
           <button
             onClick={() => { setEditingPoint(null); setShowModal(true); }}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl"
             style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", fontSize: 13, fontWeight: 700, color: "#00C8E0" }}>
-            <Plus className="size-4" /> Add First Assembly Point
+            <Plus className="size-4" /> {t("evac.addFirstPoint")}
           </button>
         </div>
       ) : (
@@ -937,7 +951,7 @@ function AssemblyPointsSetup({
                 <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{zone.name}</span>
                 <span className="px-2 py-0.5 rounded-full ml-auto"
                   style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.08)" }}>
-                  {points.length} point{points.length !== 1 ? "s" : ""}
+                  {points.length} {points.length !== 1 ? t("evac.pointsPlural") : t("evac.pointSingular")}
                 </span>
               </div>
               <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.03)" }}>
@@ -958,7 +972,7 @@ function AssemblyPointsSetup({
                         </span>
                         {pt.capacity && (
                           <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                            👥 Cap: {pt.capacity}
+                            👥 {t("evac.capShort")} {pt.capacity}
                           </span>
                         )}
                         {/* PR (D) 2026-05-26 — root fix for CodeQL js/xss-through-dom alert #40.
@@ -973,7 +987,7 @@ function AssemblyPointsSetup({
                               target="_blank" rel="noopener noreferrer"
                               className="flex items-center gap-1"
                               style={{ fontSize: 11, color: "#00C8E0", textDecoration: "none" }}>
-                              <ExternalLink className="size-3" /> Open in Maps
+                              <ExternalLink className="size-3" /> {t("evac.openInMaps")}
                             </a>
                           ) : null;
                         })()}
@@ -1002,7 +1016,7 @@ function AssemblyPointsSetup({
             <div className="rounded-2xl p-4"
               style={{ background: "rgba(255,149,0,0.05)", border: "1px solid rgba(255,149,0,0.15)" }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "#FF9500", marginBottom: 8 }}>
-                ⚠️ Zones without assembly points:
+                ⚠️ {t("evac.zonesWithoutPoints")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {zones.filter(z => !evacPoints.some(p => p.zoneId === z.id)).map(z => (
@@ -1023,6 +1037,7 @@ function AssemblyPointsSetup({
       <AnimatePresence>
         {showModal && (
           <AssemblyPointModal
+            t={t}
             zones={zones}
             editingPoint={editingPoint}
             onSave={handleSavePoint}
@@ -1036,8 +1051,9 @@ function AssemblyPointsSetup({
 
 // ── Assembly Point Modal (Add / Edit) ───────────────────────────
 function AssemblyPointModal({
-  zones, editingPoint, onSave, onClose,
+  t, zones, editingPoint, onSave, onClose,
 }: {
+  t: (k: string) => string;
   zones: ZoneGPSData[];
   editingPoint: EvacuationPoint | null;
   onSave: (point: EvacuationPoint) => void;
@@ -1107,9 +1123,9 @@ function AssemblyPointModal({
             </div>
             <div>
               <p style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>
-                {editingPoint ? "Edit Assembly Point" : "Add Assembly Point"}
+                {editingPoint ? t("evac.editAssemblyPoint") : t("evac.addAssemblyPoint")}
               </p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Define where employees evacuate to</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{t("evac.modalSubtitle")}</p>
             </div>
           </div>
           <button onClick={onClose} className="size-8 rounded-lg flex items-center justify-center"
@@ -1122,11 +1138,11 @@ function AssemblyPointModal({
           {/* Name */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              POINT NAME *
+              {t("evac.pointNameLabel")}
             </label>
             <input
               value={name} onChange={e => setName(e.target.value)}
-              placeholder="e.g., Assembly Point A — Main Parking"
+              placeholder={t("evac.pointNamePlaceholder")}
               className="mt-2 w-full px-4 py-2.5 rounded-xl outline-none"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }}
             />
@@ -1135,7 +1151,7 @@ function AssemblyPointModal({
           {/* Zone */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              ASSIGNED ZONE *
+              {t("evac.assignedZoneLabel")}
             </label>
             <select value={zoneId} onChange={e => setZoneId(e.target.value)}
               className="mt-2 w-full px-4 py-2.5 rounded-xl outline-none"
@@ -1147,12 +1163,12 @@ function AssemblyPointModal({
           {/* GPS Input Mode */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              LOCATION *
+              {t("evac.locationLabel")}
             </label>
             <div className="flex gap-2 mt-2 mb-3">
               {[
-                { id: "coords" as const, label: "Coordinates" },
-                { id: "link" as const, label: "Google Maps Link" },
+                { id: "coords" as const, label: t("evac.coordinates") },
+                { id: "link" as const, label: t("evac.googleMapsLink") },
               ].map(m => (
                 <button key={m.id} onClick={() => setInputMode(m.id)}
                   className="flex-1 py-2 rounded-lg"
@@ -1170,14 +1186,14 @@ function AssemblyPointModal({
             {inputMode === "coords" ? (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>LATITUDE</label>
+                  <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{t("evac.latitude")}</label>
                   <input value={lat} onChange={e => setLat(e.target.value)}
                     placeholder="24.7136"
                     className="mt-1 w-full px-3 py-2.5 rounded-lg outline-none"
                     style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>LONGITUDE</label>
+                  <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{t("evac.longitude")}</label>
                   <input value={lng} onChange={e => setLng(e.target.value)}
                     placeholder="46.6753"
                     className="mt-1 w-full px-3 py-2.5 rounded-lg outline-none"
@@ -1188,7 +1204,7 @@ function AssemblyPointModal({
               <div>
                 <input
                   value={mapsLink} onChange={e => handleParseLink(e.target.value)}
-                  placeholder="Paste Google Maps link or share location URL…"
+                  placeholder={t("evac.mapsLinkPlaceholder")}
                   className="w-full px-4 py-2.5 rounded-xl outline-none"
                   style={{
                     background: "rgba(255,255,255,0.04)",
@@ -1200,17 +1216,17 @@ function AssemblyPointModal({
                     style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.2)" }}>
                     <CheckCircle2 className="size-3.5" style={{ color: "#00C853" }} />
                     <span style={{ fontSize: 12, color: "#00C853", fontWeight: 600 }}>
-                      Parsed: {parseFloat(lat).toFixed(5)}, {parseFloat(lng).toFixed(5)}
+                      {t("evac.parsed")} {parseFloat(lat).toFixed(5)}, {parseFloat(lng).toFixed(5)}
                     </span>
                   </div>
                 )}
                 {parseError && (
                   <p style={{ fontSize: 11, color: "#FF2D55", marginTop: 4 }}>
-                    Could not parse coordinates from this link. Try a direct Google Maps URL.
+                    {t("evac.parseError")}
                   </p>
                 )}
                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 6 }}>
-                  Supported: maps.google.com, goo.gl/maps, or any URL with @lat,lng
+                  {t("evac.supportedHint")}
                 </p>
               </div>
             )}
@@ -1220,20 +1236,20 @@ function AssemblyPointModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-                CAPACITY
+                {t("evac.capacityLabel")}
               </label>
               <input value={capacity} onChange={e => setCapacity(e.target.value)}
-                placeholder="e.g. 50"
+                placeholder={t("evac.capacityPlaceholder")}
                 type="number"
                 className="mt-2 w-full px-3 py-2.5 rounded-xl outline-none"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }} />
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-                INSTRUCTIONS
+                {t("evac.instructionsLabel")}
               </label>
               <input value={description} onChange={e => setDescription(e.target.value)}
-                placeholder="e.g. Behind north building"
+                placeholder={t("evac.instructionsPlaceholder")}
                 className="mt-2 w-full px-3 py-2.5 rounded-xl outline-none"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#fff", fontSize: 13 }} />
             </div>
@@ -1250,12 +1266,12 @@ function AssemblyPointModal({
               fontSize: 14, fontWeight: 700,
             }}>
             <Save className="size-4" />
-            {editingPoint ? "Save Changes" : "Add Assembly Point"}
+            {editingPoint ? t("evac.saveChanges") : t("evac.addAssemblyPoint")}
           </button>
           <button onClick={onClose}
             className="px-5 py-3 rounded-xl"
             style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)", fontSize: 14, fontWeight: 600 }}>
-            Cancel
+            {t("evac.cancel")}
           </button>
         </div>
       </motion.div>
@@ -1264,15 +1280,15 @@ function AssemblyPointModal({
 }
 
 // ── Employee Preview Card ───────────────────────────────────────
-function EmployeePreview({ zoneName, reason, assemblyPoint }: {
-  zoneName: string; reason: string; assemblyPoint?: EvacuationPoint;
+function EmployeePreview({ t, zoneName, reason, assemblyPoint }: {
+  t: (k: string) => string; zoneName: string; reason: string; assemblyPoint?: EvacuationPoint;
 }) {
   return (
     <div className="rounded-xl overflow-hidden mt-2" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="px-3 py-2 flex items-center gap-2"
         style={{ background: "rgba(0,200,224,0.06)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <Eye className="size-3" style={{ color: "#00C8E0" }} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>EMPLOYEE VIEW PREVIEW</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>{t("evac.employeeViewPreview")}</span>
       </div>
       {/* Simulated phone notification */}
       <div className="p-3" style={{ background: "#05070E" }}>
@@ -1283,7 +1299,7 @@ function EmployeePreview({ zoneName, reason, assemblyPoint }: {
               <AlertTriangle className="size-6" style={{ color: "#FF2D55" }} />
             </motion.div>
             <div>
-              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>🚨 EVACUATION ORDER</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: "#FF2D55" }}>🚨 {t("evac.evacuationOrder")}</p>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>{zoneName}</p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>{reason}</p>
             </div>
@@ -1292,7 +1308,7 @@ function EmployeePreview({ zoneName, reason, assemblyPoint }: {
             <div className="px-3 py-2 rounded-lg"
               style={{ background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)" }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0" }}>
-                📍 Go to: {assemblyPoint.name}
+                📍 {t("evac.goTo")} {assemblyPoint.name}
               </p>
               {assemblyPoint.description && (
                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
@@ -1304,11 +1320,11 @@ function EmployeePreview({ zoneName, reason, assemblyPoint }: {
           <div className="flex gap-2 mt-3">
             <div className="flex-1 py-1.5 rounded-lg text-center"
               style={{ background: "rgba(0,200,224,0.15)", border: "1px solid rgba(0,200,224,0.3)", fontSize: 11, fontWeight: 700, color: "#00C8E0" }}>
-              Navigate ↗
+              {t("evac.navigate")} ↗
             </div>
             <div className="flex-1 py-1.5 rounded-lg text-center"
               style={{ background: "rgba(0,200,83,0.15)", border: "1px solid rgba(0,200,83,0.3)", fontSize: 11, fontWeight: 700, color: "#00C853" }}>
-              I'm Safe ✓
+              {t("evac.imSafe")} ✓
             </div>
           </div>
         </div>
@@ -1318,13 +1334,13 @@ function EmployeePreview({ zoneName, reason, assemblyPoint }: {
 }
 
 // ── Employee Status Row ─────────────────────────────────────────
-function EmployeeStatusRow({ status }: { status: EmployeeEvacuationStatus }) {
+function EmployeeStatusRow({ status, t }: { status: EmployeeEvacuationStatus; t: (k: string) => string }) {
   const STATUS_MAP = {
-    safe: { label: "Safe at Assembly", color: "#00C853" },
-    arrived: { label: "Safe at Assembly", color: "#00C853" },
-    evacuating: { label: "Evacuating", color: "#FF9500" },
-    acknowledged: { label: "Acknowledged", color: "#FFD60A" },
-    notified: { label: "Notified", color: "rgba(255,255,255,0.4)" },
+    safe: { label: t("evac.statusSafeAtAssembly"), color: "#00C853" },
+    arrived: { label: t("evac.statusSafeAtAssembly"), color: "#00C853" },
+    evacuating: { label: t("evac.statusEvacuating"), color: "#FF9500" },
+    acknowledged: { label: t("evac.statusAcknowledged"), color: "#FFD60A" },
+    notified: { label: t("evac.statusNotified"), color: "rgba(255,255,255,0.4)" },
   };
   const cfg = STATUS_MAP[status.status] || STATUS_MAP.notified;
   return (

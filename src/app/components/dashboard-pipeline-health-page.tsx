@@ -46,6 +46,8 @@ import {
 } from "lucide-react";
 import { safeRpc } from "./api/safe-rpc";
 import { captureException } from "./sentry-client";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ── Types — match the jsonb payload from get_pipeline_health_summary ──
 // IMPORTANT: keep this in sync with the synthetic_probe_health VIEW columns
@@ -100,7 +102,7 @@ interface Anomaly {
 
 const STALE_PROBE_THRESHOLD_SEC = 15 * 60; // 15 min — probe runs every 5 min
 
-function detectAnomalies(payload: HealthPayload): Anomaly[] {
+function detectAnomalies(payload: HealthPayload, t: (k: string) => string): Anomaly[] {
   const out: Anomaly[] = [];
   const s = payload.synthetic;
   const r = payload.real_24h;
@@ -110,7 +112,7 @@ function detectAnomalies(payload: HealthPayload): Anomaly[] {
     out.push({
       level: "fatal",
       signature: "probe-never-ran",
-      message: "Synthetic probe has never produced a row. Pipeline liveness is unknown.",
+      message: t("pipe.anomalyNeverRan"),
     });
     return out; // skip lesser checks — we have no data anyway
   }
@@ -120,7 +122,7 @@ function detectAnomalies(payload: HealthPayload): Anomaly[] {
     out.push({
       level: "warning",
       signature: "probe-stuck",
-      message: `Synthetic probe has not run in ${Math.round((s.seconds_since_last_probe ?? 0) / 60)} minutes (threshold ${STALE_PROBE_THRESHOLD_SEC / 60}m).`,
+      message: `${t("pipe.anomalyStuckA")} ${Math.round((s.seconds_since_last_probe ?? 0) / 60)} ${t("pipe.anomalyStuckB")} ${STALE_PROBE_THRESHOLD_SEC / 60}${t("pipe.anomalyStuckC")}`,
     });
   }
 
@@ -129,7 +131,7 @@ function detectAnomalies(payload: HealthPayload): Anomaly[] {
     out.push({
       level: "warning",
       signature: "probe-failures-last-hour",
-      message: `Synthetic probe recorded ${s.failures_last_hour} failure(s) in the last hour.`,
+      message: `${t("pipe.anomalyProbeFailA")} ${s.failures_last_hour} ${t("pipe.anomalyProbeFailB")}`,
     });
   }
 
@@ -138,7 +140,7 @@ function detectAnomalies(payload: HealthPayload): Anomaly[] {
     out.push({
       level: "error",
       signature: "real-failures-24h",
-      message: `${r.failures} real SOS pipeline failure(s) in the last 24 hours (out of ${r.total ?? 0}).`,
+      message: `${r.failures} ${t("pipe.anomalyRealFailA")} ${r.total ?? 0}${t("pipe.anomalyRealFailB")}`,
     });
   }
 
@@ -152,21 +154,23 @@ function fmtMs(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function fmtRelative(iso: string | null | undefined): string {
-  if (!iso) return "never";
+function fmtRelative(iso: string | null | undefined, t: (k: string) => string): string {
+  if (!iso) return t("pipe.never");
   const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 0) return "just now";
+  if (ms < 0) return t("pipe.justNow");
   const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}s ago`;
+  if (sec < 60) return `${sec}${t("pipe.secAgo")}`;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return `${min}${t("pipe.minAgo")}`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
+  if (hr < 24) return `${hr}${t("pipe.hrAgo")}`;
+  return `${Math.floor(hr / 24)}${t("pipe.dayAgo")}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
 export function PipelineHealthPage() {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [payload, setPayload] = useState<HealthPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +228,7 @@ export function PipelineHealthPage() {
   }, [load]);
 
   // Anomaly → Sentry alarm (de-duped per signature)
-  const anomalies = useMemo(() => (payload ? detectAnomalies(payload) : []), [payload]);
+  const anomalies = useMemo(() => (payload ? detectAnomalies(payload, t) : []), [payload, t]);
 
   useEffect(() => {
     if (!payload || anomalies.length === 0) return;
@@ -258,8 +262,8 @@ export function PipelineHealthPage() {
       <div className="px-5 pt-4 pb-10">
         <EmptyState
           icon={Lock}
-          title="Operator-only view"
-          body="The pipeline health dashboard is restricted to admins and owners. Ask an admin to share the daily snapshot, or escalate via your incident-response channel."
+          title={t("pipe.operatorOnly")}
+          body={t("pipe.operatorOnlyBody")}
         />
       </div>
     );
@@ -273,12 +277,12 @@ export function PipelineHealthPage() {
           <div className="flex items-center gap-2 mb-1">
             <Activity className="size-5" style={{ color: "#00C8E0" }} />
             <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.95)" }}>
-              Pipeline Health
+              {t("pipe.title")}
             </h1>
           </div>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
-            Layer 1 observability — synthetic probe + 24h SOS pipeline telemetry.
-            {payload?.fetched_at && <> · Fetched {fmtRelative(payload.fetched_at)}</>}
+            {t("pipe.subtitle")}
+            {payload?.fetched_at && <> · {t("pipe.fetched")} {fmtRelative(payload.fetched_at, t)}</>}
           </p>
         </div>
         <button
@@ -293,7 +297,7 @@ export function PipelineHealthPage() {
           }}
         >
           <RefreshCw className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
-          Reload
+          {t("pipe.reload")}
         </button>
       </div>
 
@@ -306,7 +310,7 @@ export function PipelineHealthPage() {
             exit={{ opacity: 0, y: -8 }}
             className="mb-4"
           >
-            {anomalies.map((a) => <AnomalyBanner key={a.signature} anomaly={a} />)}
+            {anomalies.map((a) => <AnomalyBanner key={a.signature} anomaly={a} t={t} />)}
           </motion.div>
         )}
       </AnimatePresence>
@@ -317,7 +321,7 @@ export function PipelineHealthPage() {
           style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.18)" }}>
           <XCircle className="size-5 mt-0.5" style={{ color: "#FF2D55" }} />
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#FF2D55" }}>Failed to load pipeline health</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#FF2D55" }}>{t("pipe.failedToLoad")}</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>{error}</div>
           </div>
         </div>
@@ -329,21 +333,21 @@ export function PipelineHealthPage() {
       {/* Main grid ──────────────────────────────────────────────── */}
       {payload && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
-          <SyntheticCard health={payload.synthetic} />
-          <Real24hCard real={payload.real_24h} />
+          <SyntheticCard health={payload.synthetic} t={t} />
+          <Real24hCard real={payload.real_24h} t={t} />
         </div>
       )}
 
       {/* Recent failures list ───────────────────────────────────── */}
       {payload && (
-        <RecentFailuresCard failures={payload.recent_failures} />
+        <RecentFailuresCard failures={payload.recent_failures} t={t} />
       )}
     </div>
   );
 }
 
 // ── Anomaly banner ─────────────────────────────────────────────────────────
-function AnomalyBanner({ anomaly }: { anomaly: Anomaly }) {
+function AnomalyBanner({ anomaly, t }: { anomaly: Anomaly; t: (k: string) => string }) {
   const cfg = {
     ok:      { color: "#00C853", bg: "rgba(0,200,83,0.06)",   border: "rgba(0,200,83,0.18)",  icon: CheckCircle2 },
     warning: { color: "#FF9500", bg: "rgba(255,150,0,0.06)",  border: "rgba(255,150,0,0.20)", icon: AlertTriangle },
@@ -351,13 +355,19 @@ function AnomalyBanner({ anomaly }: { anomaly: Anomaly }) {
     fatal:   { color: "#FF2D55", bg: "rgba(255,45,85,0.10)",  border: "rgba(255,45,85,0.30)", icon: ShieldAlert },
   }[anomaly.level];
   const Icon = cfg.icon;
+  const levelLabel = {
+    ok: t("pipe.levelOk"),
+    warning: t("pipe.levelWarning"),
+    error: t("pipe.levelError"),
+    fatal: t("pipe.levelFatal"),
+  }[anomaly.level];
   return (
     <div className="p-3 rounded-2xl flex items-start gap-3 mb-2"
       style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
       <Icon className="size-4 mt-0.5 shrink-0" style={{ color: cfg.color }} />
       <div className="flex-1">
         <div style={{ fontSize: 12, fontWeight: 700, color: cfg.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {anomaly.level} · {anomaly.signature}
+          {levelLabel} · {anomaly.signature}
         </div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", marginTop: 2 }}>{anomaly.message}</div>
       </div>
@@ -366,9 +376,9 @@ function AnomalyBanner({ anomaly }: { anomaly: Anomaly }) {
 }
 
 // ── Synthetic probe card (left column) ─────────────────────────────────────
-function SyntheticCard({ health }: { health: SyntheticHealth | null }) {
-  if (!health) return <Card title="Synthetic probe" subtitle="No data yet"><EmptyInline /></Card>;
-  const last = fmtRelative(health.last_probe_at);
+function SyntheticCard({ health, t }: { health: SyntheticHealth | null; t: (k: string) => string }) {
+  if (!health) return <Card title={t("pipe.syntheticProbe")} subtitle={t("pipe.noDataYet")}><EmptyInline t={t} /></Card>;
+  const last = fmtRelative(health.last_probe_at, t);
   // Derive success from (probes - failures). The view exposes failures but
   // not successes — see comment on SyntheticHealth.
   const probes24 = health.probes_last_24h ?? 0;
@@ -378,24 +388,24 @@ function SyntheticCard({ health }: { health: SyntheticHealth | null }) {
     : null;
   return (
     <Card
-      title="Synthetic probe"
-      subtitle={`Last run ${last} · ${probes24} runs / 24h`}
+      title={t("pipe.syntheticProbe")}
+      subtitle={`${t("pipe.lastRun")} ${last} · ${probes24} ${t("pipe.runs24h")}`}
       icon={Heart}
       iconColor="#00C853"
     >
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <Metric label="p50 (1h)"  value={fmtMs(health.p50_total_ms_last_hour)} />
-        <Metric label="p95 (1h)"  value={fmtMs(health.p95_total_ms_last_hour)} />
-        <Metric label="p99 (1h)"  value={fmtMs(health.p99_total_ms_last_hour)} />
+        <Metric label={t("pipe.p501h")}  value={fmtMs(health.p50_total_ms_last_hour)} />
+        <Metric label={t("pipe.p951h")}  value={fmtMs(health.p95_total_ms_last_hour)} />
+        <Metric label={t("pipe.p991h")}  value={fmtMs(health.p99_total_ms_last_hour)} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Metric
-          label="Success rate (24h)"
+          label={t("pipe.successRate24h")}
           value={successPct !== null ? `${successPct}%` : "—"}
           tone={successPct === null ? "neutral" : successPct < 100 ? "warning" : "ok"}
         />
         <Metric
-          label="Failures (1h)"
+          label={t("pipe.failures1h")}
           value={String(health.failures_last_hour ?? 0)}
           tone={(health.failures_last_hour ?? 0) > 0 ? "warning" : "ok"}
         />
@@ -405,63 +415,68 @@ function SyntheticCard({ health }: { health: SyntheticHealth | null }) {
 }
 
 // ── Real 24h card (right column) ───────────────────────────────────────────
-function Real24hCard({ real }: { real: Real24h | null }) {
-  if (!real) return <Card title="Real SOS traffic (24h)" subtitle="—"><EmptyInline /></Card>;
+function Real24hCard({ real, t }: { real: Real24h | null; t: (k: string) => string }) {
+  if (!real) return <Card title={t("pipe.realTraffic")} subtitle="—"><EmptyInline t={t} /></Card>;
   const total = real.total ?? 0;
   const success = real.success ?? 0;
   const failures = real.failures ?? 0;
   return (
     <Card
-      title="Real SOS traffic (24h)"
-      subtitle={total === 0 ? "No real SOS sessions in window" : `${total} sessions · ${success} ok · ${failures} failed`}
+      title={t("pipe.realTraffic")}
+      subtitle={total === 0 ? t("pipe.noRealSessions") : `${total} ${t("pipe.sessions")} · ${success} ${t("pipe.ok")} · ${failures} ${t("pipe.failed")}`}
       icon={Zap}
       iconColor="#FF9500"
     >
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <Metric label="Total" value={String(total)} />
+        <Metric label={t("pipe.total")} value={String(total)} />
         <Metric
-          label="Success"
+          label={t("pipe.success")}
           value={String(success)}
           tone="ok"
         />
         <Metric
-          label="Failures"
+          label={t("pipe.failures")}
           value={String(failures)}
           tone={failures > 0 ? "error" : "ok"}
         />
       </div>
-      <Metric label="p95 total (24h)" value={fmtMs(real.p95_total_ms)} />
+      <Metric label={t("pipe.p95Total24h")} value={fmtMs(real.p95_total_ms)} />
     </Card>
   );
 }
 
 // ── Recent failures card ───────────────────────────────────────────────────
-function RecentFailuresCard({ failures }: { failures: RecentFailure[] }) {
+function RecentFailuresCard({ failures, t }: { failures: RecentFailure[]; t: (k: string) => string }) {
   return (
     <Card
-      title="Recent failures"
-      subtitle={failures.length === 0 ? "No failures in the last 24 hours" : `${failures.length} most-recent failure(s)`}
+      title={t("pipe.recentFailures")}
+      subtitle={failures.length === 0 ? t("pipe.noFailures24h") : `${failures.length} ${t("pipe.mostRecentFailures")}`}
       icon={TrendingUp}
       iconColor="#FF2D55"
     >
       {failures.length === 0 ? (
         <div className="py-6 text-center" style={{ fontSize: 13, color: "rgba(255,255,255,0.45)" }}>
           <CheckCircle2 className="size-6 mx-auto mb-2" style={{ color: "#00C853" }} />
-          Pipeline is clean for the last 24h.
+          {t("pipe.pipelineClean")}
         </div>
       ) : (
         <div className="space-y-2">
-          {failures.map((f) => <FailureRow key={f.trace_id} failure={f} />)}
+          {failures.map((f) => <FailureRow key={f.trace_id} failure={f} t={t} />)}
         </div>
       )}
     </Card>
   );
 }
 
-function FailureRow({ failure }: { failure: RecentFailure }) {
+function FailureRow({ failure, t }: { failure: RecentFailure; t: (k: string) => string }) {
   const statusColor = failure.pipeline_status === "failed" ? "#FF2D55"
     : failure.pipeline_status === "partial" ? "#FF9500"
     : "#7A7A7A";
+  const statusLabel = {
+    failed: t("pipe.statusFailed"),
+    partial: t("pipe.statusPartial"),
+    cancelled: t("pipe.statusCancelled"),
+  }[failure.pipeline_status];
   return (
     <div className="p-3 rounded-xl flex items-start gap-3"
       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
@@ -472,7 +487,7 @@ function FailureRow({ failure }: { failure: RecentFailure }) {
           fontSize: 10, fontWeight: 700, color: statusColor,
           textTransform: "uppercase", letterSpacing: "0.05em",
         }}>
-        {failure.pipeline_status}
+        {statusLabel}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
@@ -481,16 +496,16 @@ function FailureRow({ failure }: { failure: RecentFailure }) {
           </span>
           {failure.is_synthetic && (
             <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(155,89,182,0.85)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              synthetic
+              {t("pipe.synthetic")}
             </span>
           )}
           <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
             <Clock className="inline size-3 mr-1 -translate-y-px" />
-            {fmtRelative(failure.created_at)}
+            {fmtRelative(failure.created_at, t)}
           </span>
         </div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-          {failure.failure_reason || "(no reason captured)"}
+          {failure.failure_reason || t("pipe.noReasonCaptured")}
         </div>
       </div>
     </div>
@@ -555,8 +570,8 @@ function Metric({
   );
 }
 
-function EmptyInline() {
-  return <div className="py-3 text-center" style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>No data</div>;
+function EmptyInline({ t }: { t: (k: string) => string }) {
+  return <div className="py-3 text-center" style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{t("pipe.noData")}</div>;
 }
 
 function EmptyState({

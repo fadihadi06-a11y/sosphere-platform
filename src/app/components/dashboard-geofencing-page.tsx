@@ -146,9 +146,9 @@ const RISK_COLORS: Record<RiskLevel, string> = {
 };
 
 const STATUS_LABELS: Record<ZoneStatus, { label: string; color: string }> = {
-  active: { label: "Active", color: "#00C853" },
-  restricted: { label: "Restricted", color: "#FF9500" },
-  evacuated: { label: "Evacuated", color: "#FF2D55" },
+  active: { label: "gfp.statusActive", color: "#00C853" },
+  restricted: { label: "gfp.statusRestricted", color: "#FF9500" },
+  evacuated: { label: "gfp.statusEvacuated", color: "#FF2D55" },
 };
 
 const INITIAL_ZONES: GeoZone[] = [
@@ -351,11 +351,11 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
       // Risk badge
       ctx.font = `700 7px 'Outfit', sans-serif`;
       ctx.fillStyle = RISK_COLORS[zone.risk];
-      ctx.fillText(zone.risk.toUpperCase() + " RISK", zone.center.x * zoom, zone.center.y * zoom + 5);
+      ctx.fillText(zone.risk.toUpperCase() + " " + t("gfp.riskBadge"), zone.center.x * zoom, zone.center.y * zoom + 5);
       // Employee count
       ctx.font = `500 8px 'Outfit', sans-serif`;
       ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.fillText(`${zone.employeeCount} workers`, zone.center.x * zoom, zone.center.y * zoom + 17);
+      ctx.fillText(`${zone.employeeCount} ${t("gfp.workers")}`, zone.center.x * zoom, zone.center.y * zoom + 17);
     });
 
     // Draw employee dots
@@ -430,7 +430,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
     if (drawMode === "circle") {
       const newZone: GeoZone = {
         id: `GZ-${Date.now()}`,
-        name: `New Zone ${zones.length + 1}`,
+        name: `${t("gfp.newZone")} ${zones.length + 1}`,
         type: "circle",
         center: { x: x / zoom, y: y / zoom },
         radius: 50,
@@ -473,7 +473,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
     const cy = drawingPoints.reduce((s, p) => s + p.y, 0) / drawingPoints.length;
     const newZone: GeoZone = {
       id: `GZ-${Date.now()}`,
-      name: `New Zone ${zones.length + 1}`,
+      name: `${t("gfp.newZone")} ${zones.length + 1}`,
       type: "polygon",
       center: { x: cx / zoom, y: cy / zoom },
       points: drawingPoints.map(p => ({ x: p.x / zoom, y: p.y / zoom })),
@@ -515,7 +515,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
     const newZone: GeoZone = {
       ...zone,
       id: `GZ-${Date.now()}`,
-      name: `${zone.name} (Copy)`,
+      name: `${zone.name} (${t("gfp.copy")})`,
       center: { x: zone.center.x + 30, y: zone.center.y + 30 },
       points: zone.points?.map(p => ({ x: p.x + 30, y: p.y + 30 })),
       locked: false,
@@ -534,10 +534,10 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
         <div>
           <h1 className="text-white flex items-center gap-2" style={{ fontSize: webMode ? 22 : 18, fontWeight: 700 }}>
             <MapPin className="size-5" style={{ color: "#00C8E0" }} />
-            Geo-fencing Editor
+            {t("gfp.title")}
           </h1>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-            Draw and manage safety zones, set alerts, and monitor boundaries
+            {t("gfp.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -546,14 +546,14 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
             style={{ fontSize: 11, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.15)", fontWeight: 600 }}
           >
-            <Navigation className="size-3" /> Create from GPS
+            <Navigation className="size-3" /> {t("gfp.createFromGPS")}
           </button>
           <button
-            onClick={() => { hapticSuccess(); toast.success("All Zones Saved", { description: `${zones.length} geofence zones saved successfully` }); }}
+            onClick={() => { hapticSuccess(); toast.success(t("gfp.allZonesSaved"), { description: `${zones.length} ${t("gfp.zonesSavedDesc")}` }); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
             style={{ fontSize: 11, color: "#00C853", background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontWeight: 600, cursor: "pointer" }}
           >
-            <Save className="size-3" /> Save All
+            <Save className="size-3" /> {t("gfp.saveAll")}
           </button>
         </div>
       </div>
@@ -561,12 +561,12 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
       {/* KPI Summary */}
       <div className={`grid ${webMode ? "grid-cols-5" : "grid-cols-3"} gap-3 mb-5`}>
         {[
-          { label: "Total Zones", value: zones.length.toString(), color: "#00C8E0", icon: Layers },
-          { label: "Active", value: zones.filter(z => z.status === "active").length.toString(), color: "#00C853", icon: Check },
-          { label: "Restricted", value: zones.filter(z => z.status === "restricted").length.toString(), color: "#FF9500", icon: AlertTriangle },
+          { label: t("gfp.kpiTotalZones"), value: zones.length.toString(), color: "#00C8E0", icon: Layers },
+          { label: t("gfp.kpiActive"), value: zones.filter(z => z.status === "active").length.toString(), color: "#00C853", icon: Check },
+          { label: t("gfp.kpiRestricted"), value: zones.filter(z => z.status === "restricted").length.toString(), color: "#FF9500", icon: AlertTriangle },
           ...(webMode ? [
-            { label: "High Risk", value: zones.filter(z => z.risk === "high").length.toString(), color: "#FF2D55", icon: Shield },
-            { label: "Workers Inside", value: zones.reduce((s, z) => s + z.employeeCount, 0).toString(), color: "#7B5EFF", icon: Users },
+            { label: t("gfp.kpiHighRisk"), value: zones.filter(z => z.risk === "high").length.toString(), color: "#FF2D55", icon: Shield },
+            { label: t("gfp.kpiWorkersInside"), value: zones.reduce((s, z) => s + z.employeeCount, 0).toString(), color: "#7B5EFF", icon: Users },
           ] : []),
         ].map((kpi, i) => (
           <motion.div
@@ -597,9 +597,9 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1">
               {([
-                { mode: "select" as DrawMode, icon: Move, label: "Select", shortcut: "V" },
-                { mode: "circle" as DrawMode, icon: Circle, label: "Circle", shortcut: "C" },
-                { mode: "polygon" as DrawMode, icon: Pentagon, label: "Polygon", shortcut: "P" },
+                { mode: "select" as DrawMode, icon: Move, label: t("gfp.toolSelect"), shortcut: "V" },
+                { mode: "circle" as DrawMode, icon: Circle, label: t("gfp.toolCircle"), shortcut: "C" },
+                { mode: "polygon" as DrawMode, icon: Pentagon, label: t("gfp.toolPolygon"), shortcut: "P" },
               ] as const).map(tool => (
                 <button
                   key={tool.mode}
@@ -623,7 +623,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                   style={{ background: "rgba(0,200,83,0.12)", border: "1px solid rgba(0,200,83,0.25)" }}
                 >
                   <Check className="size-3" style={{ color: "#00C853" }} />
-                  <span style={{ fontSize: 10, color: "#00C853", fontWeight: 600 }}>Complete ({drawingPoints.length} pts)</span>
+                  <span style={{ fontSize: 10, color: "#00C853", fontWeight: 600 }}>{t("gfp.complete")} ({drawingPoints.length} {t("gfp.pts")})</span>
                 </button>
               )}
             </div>
@@ -685,7 +685,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
               <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full"
                 style={{ background: "rgba(0,200,224,0.12)", border: "1px solid rgba(0,200,224,0.2)", backdropFilter: "blur(8px)" }}>
                 <span style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600 }}>
-                  {drawMode === "circle" ? "Click to place a circle zone" : "Click to add polygon points, then Complete"}
+                  {drawMode === "circle" ? t("gfp.hintCircle") : t("gfp.hintPolygon")}
                 </span>
               </div>
             )}
@@ -702,7 +702,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
           {/* Zone List */}
           <div className="rounded-xl overflow-hidden" style={{ background: "rgba(10,18,32,0.5)", border: "1px solid rgba(255,255,255,0.04)" }}>
             <div className="p-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700 }}>ZONES ({zones.length})</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700 }}>{t("gfp.zones")} ({zones.length})</span>
               <button
                 onClick={() => setDrawMode("circle")}
                 className="size-6 rounded-md flex items-center justify-center"
@@ -718,7 +718,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                 <input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search zones..."
+                  placeholder={t("gfp.searchZones")}
                   className="w-full pl-6 pr-2 py-1.5 rounded-md outline-none"
                   style={{ fontSize: 10, color: "white", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
                 />
@@ -741,9 +741,9 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                     <div className="flex items-center gap-2 mt-0.5">
                       <span style={{ fontSize: 8, color: RISK_COLORS[zone.risk], fontWeight: 600 }}>{zone.risk.toUpperCase()}</span>
                       <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>&middot;</span>
-                      <span style={{ fontSize: 8, color: STATUS_LABELS[zone.status].color }}>{STATUS_LABELS[zone.status].label}</span>
+                      <span style={{ fontSize: 8, color: STATUS_LABELS[zone.status].color }}>{t(STATUS_LABELS[zone.status].label)}</span>
                       <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>&middot;</span>
-                      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.25)" }}>{zone.employeeCount} ppl</span>
+                      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.25)" }}>{zone.employeeCount} {t("gfp.ppl")}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -770,7 +770,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                 <div className="p-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${selectedZone.color}10` }}>
                   <div className="flex items-center gap-2">
                     <div className="size-3 rounded-full" style={{ background: selectedZone.color }} />
-                    <span className="text-white" style={{ fontSize: 12, fontWeight: 700 }}>Properties</span>
+                    <span className="text-white" style={{ fontSize: 12, fontWeight: 700 }}>{t("gfp.properties")}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <button onClick={() => duplicateZone(selectedZone.id)}
@@ -789,7 +789,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                 <div className="p-3 space-y-3">
                   {/* Name */}
                   <div>
-                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>NAME</label>
+                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.name")}</label>
                     <input
                       value={selectedZone.name}
                       onChange={e => updateZone(selectedZone.id, { name: e.target.value })}
@@ -807,7 +807,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                     >
                       <div className="flex items-center gap-2">
                         <Navigation className="size-3" style={{ color: "#00C8E0" }} />
-                        <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0", letterSpacing: "0.3px" }}>COORDINATES & GEOMETRY</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#00C8E0", letterSpacing: "0.3px" }}>{t("gfp.coordsGeometry")}</span>
                       </div>
                       {showCoordsEditor
                         ? <ChevronUp className="size-3" style={{ color: "#00C8E0" }} />
@@ -825,7 +825,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                           <div className="p-3 space-y-3" style={{ background: "rgba(0,0,0,0.15)" }}>
                             {/* Center X / Y */}
                             <div>
-                              <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>CENTER POSITION (canvas units)</label>
+                              <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.centerPosition")}</label>
                               <div className="grid grid-cols-2 gap-2 mt-1">
                                 <div>
                                   <label style={{ fontSize: 8, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>X</label>
@@ -863,14 +863,14 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                                 </div>
                               </div>
                               <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-                                Moving center also shifts all polygon vertices
+                                {t("gfp.centerShiftNote")}
                               </p>
                             </div>
 
                             {/* Radius (circle only) */}
                             {selectedZone.type === "circle" && (
                               <div>
-                                <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>RADIUS (canvas units)</label>
+                                <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.radiusCanvas")}</label>
                                 <div className="flex items-center gap-2 mt-1">
                                   <input
                                     type="range" min={20} max={150}
@@ -894,7 +894,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                             {selectedZone.type === "polygon" && selectedZone.points && (
                               <div>
                                 <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>
-                                  POLYGON VERTICES ({selectedZone.points.length} pts)
+                                  {t("gfp.polygonVertices")} ({selectedZone.points.length} {t("gfp.pts")})
                                 </label>
                                 <div className="mt-1.5 space-y-1 max-h-36 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
                                   {selectedZone.points.map((pt, idx) => (
@@ -940,7 +940,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                               style={{ background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.2)", fontSize: 10, fontWeight: 700, color: "#7B5EFF" }}
                             >
                               <MapPin className="size-3" />
-                              Relocate via GPS / Maps Link
+                              {t("gfp.relocateViaGPS")}
                             </button>
                           </div>
                         </motion.div>
@@ -951,36 +951,36 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                   {/* Risk + Status */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>RISK</label>
+                      <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.risk")}</label>
                       <select
                         value={selectedZone.risk}
                         onChange={e => updateZone(selectedZone.id, { risk: e.target.value as RiskLevel, color: RISK_COLORS[e.target.value as RiskLevel] || selectedZone.color })}
                         className="w-full mt-1 px-2 py-1.5 rounded-md outline-none"
                         style={{ fontSize: 10, color: RISK_COLORS[selectedZone.risk], background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
                       >
-                        <option value="low" style={{ background: "#0A1220" }}>Low</option>
-                        <option value="medium" style={{ background: "#0A1220" }}>Medium</option>
-                        <option value="high" style={{ background: "#0A1220" }}>High</option>
+                        <option value="low" style={{ background: "#0A1220" }}>{t("gfp.low")}</option>
+                        <option value="medium" style={{ background: "#0A1220" }}>{t("gfp.medium")}</option>
+                        <option value="high" style={{ background: "#0A1220" }}>{t("gfp.high")}</option>
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>STATUS</label>
+                      <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.status")}</label>
                       <select
                         value={selectedZone.status}
                         onChange={e => updateZone(selectedZone.id, { status: e.target.value as ZoneStatus })}
                         className="w-full mt-1 px-2 py-1.5 rounded-md outline-none"
                         style={{ fontSize: 10, color: STATUS_LABELS[selectedZone.status].color, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
                       >
-                        <option value="active" style={{ background: "#0A1220" }}>Active</option>
-                        <option value="restricted" style={{ background: "#0A1220" }}>Restricted</option>
-                        <option value="evacuated" style={{ background: "#0A1220" }}>Evacuated</option>
+                        <option value="active" style={{ background: "#0A1220" }}>{t("gfp.statusActive")}</option>
+                        <option value="restricted" style={{ background: "#0A1220" }}>{t("gfp.statusRestricted")}</option>
+                        <option value="evacuated" style={{ background: "#0A1220" }}>{t("gfp.statusEvacuated")}</option>
                       </select>
                     </div>
                   </div>
 
                   {/* Capacity */}
                   <div>
-                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600 }}>MAX CAPACITY</label>
+                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600 }}>{t("gfp.maxCapacity")}</label>
                     <div className="flex items-center gap-2 mt-1">
                       <input
                         type="number"
@@ -1006,12 +1006,12 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
 
                   {/* Alert Rules */}
                   <div>
-                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>ALERT RULES</label>
+                    <label style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("gfp.alertRules")}</label>
                     <div className="mt-1.5 space-y-1.5">
                       {[
-                        { key: "entryAlert" as const, label: "Entry Alert", desc: "Alert when someone enters" },
-                        { key: "exitAlert" as const, label: "Exit Alert", desc: "Alert when someone exits" },
-                        { key: "dwellAlert" as const, label: "Dwell Alert", desc: `After ${selectedZone.alerts.dwellMinutes}min` },
+                        { key: "entryAlert" as const, label: t("gfp.entryAlert"), desc: t("gfp.entryAlertDesc") },
+                        { key: "exitAlert" as const, label: t("gfp.exitAlert"), desc: t("gfp.exitAlertDesc") },
+                        { key: "dwellAlert" as const, label: t("gfp.dwellAlert"), desc: `${t("gfp.after")} ${selectedZone.alerts.dwellMinutes}${t("gfp.min")}` },
                       ].map(rule => (
                         <button
                           key={rule.key}
@@ -1055,7 +1055,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                       }}
                     >
                       {selectedZone.visible ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-                      {selectedZone.visible ? "Visible" : "Hidden"}
+                      {selectedZone.visible ? t("gfp.visible") : t("gfp.hidden")}
                     </button>
                     <button
                       onClick={() => updateZone(selectedZone.id, { locked: !selectedZone.locked })}
@@ -1067,7 +1067,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
                       }}
                     >
                       {selectedZone.locked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
-                      {selectedZone.locked ? "Locked" : "Unlocked"}
+                      {selectedZone.locked ? t("gfp.locked") : t("gfp.unlocked")}
                     </button>
                   </div>
                 </div>
@@ -1081,6 +1081,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
       <AnimatePresence>
         {showRelocateModal && selectedZone && (
           <RelocateZoneModal
+            t={t}
             zone={selectedZone}
             onClose={() => setShowRelocateModal(false)}
             onRelocate={(newCenter, newRadius) => {
@@ -1106,6 +1107,7 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
       <AnimatePresence>
         {showGPSModal && (
           <GPSZoneModal
+            t={t}
             onClose={() => setShowGPSModal(false)}
             onCreate={(data) => {
               const newZone: GeoZone = {
@@ -1146,7 +1148,8 @@ export function GeofencingPage({ t, webMode = false }: { t: (k: string) => strin
 // ═══════════════════════════════════════════════════════════════
 // Relocate Zone Modal — Edit GPS coordinates of existing zone
 // ═══════════════════════════════════════════════════════════════
-function RelocateZoneModal({ zone, onClose, onRelocate }: {
+function RelocateZoneModal({ t, zone, onClose, onRelocate }: {
+  t: (k: string) => string;
   zone: GeoZone;
   onClose: () => void;
   onRelocate: (newCenter: GeoPoint, newRadius: number) => void;
@@ -1203,9 +1206,9 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
               <MapPin className="size-5" style={{ color: "#00C8E0" }} />
             </div>
             <div>
-              <h3 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Relocate Zone</h3>
+              <h3 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("gfp.relocateZone")}</h3>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                Update GPS location for <span style={{ color: zone.color, fontWeight: 700 }}>{zone.name}</span>
+                {t("gfp.updateGpsFor")} <span style={{ color: zone.color, fontWeight: 700 }}>{zone.name}</span>
               </p>
             </div>
           </div>
@@ -1219,8 +1222,8 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
           {/* Input mode toggle */}
           <div className="flex gap-2">
             {([
-              { id: "coords" as const, label: "GPS Coordinates", icon: Crosshair },
-              { id: "link" as const, label: "Google Maps Link", icon: MapPin },
+              { id: "coords" as const, label: t("gfp.gpsCoordinates"), icon: Crosshair },
+              { id: "link" as const, label: t("gfp.googleMapsLink"), icon: MapPin },
             ]).map(m => (
               <button key={m.id} onClick={() => setInputMode(m.id)}
                 className="flex-1 p-3 rounded-xl flex items-center gap-2"
@@ -1237,13 +1240,13 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
           {inputMode === "coords" ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>LATITUDE</label>
+                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.latitude")}</label>
                 <input value={lat} onChange={e => setLat(e.target.value)} placeholder="24.7136"
                   className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
                   style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontFamily: "monospace" }} />
               </div>
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>LONGITUDE</label>
+                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.longitude")}</label>
                 <input value={lng} onChange={e => setLng(e.target.value)} placeholder="46.6753"
                   className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
                   style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontFamily: "monospace" }} />
@@ -1251,29 +1254,29 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
               <div className="col-span-2 flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)" }}>
                 <MapPin className="size-3.5 shrink-0" style={{ color: "#00C8E0" }} />
                 <p style={{ fontSize: 10, color: "rgba(0,200,224,0.6)" }}>
-                  Tip: Open Google Maps → Right-click on location → Copy coordinates
+                  {t("gfp.coordsTip")}
                 </p>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>GOOGLE MAPS LINK</label>
+                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.googleMapsLinkLabel")}</label>
                 <input value={mapsLink} onChange={e => { setMapsLink(e.target.value); parseLink(e.target.value); }}
-                  placeholder="https://maps.google.com/..."
+                  placeholder={t("gfp.mapsLinkPlaceholderShort")}
                   className="w-full mt-1.5 px-3 py-2.5 rounded-xl outline-none"
                   style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }} />
               </div>
               {parsed && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}>
                   <Check className="size-3.5" style={{ color: "#00C853" }} />
-                  <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600 }}>Parsed: {lat}, {lng}</p>
+                  <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600 }}>{t("gfp.parsed")}: {lat}, {lng}</p>
                 </div>
               )}
               {mapsLink && !parsed && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.15)" }}>
                   <AlertTriangle className="size-3.5" style={{ color: "#FF2D55" }} />
-                  <p style={{ fontSize: 11, color: "#FF2D55", fontWeight: 600 }}>Could not parse coordinates from link</p>
+                  <p style={{ fontSize: 11, color: "#FF2D55", fontWeight: 600 }}>{t("gfp.couldNotParse")}</p>
                 </div>
               )}
             </div>
@@ -1282,7 +1285,7 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
           {/* Radius for circles */}
           {zone.type === "circle" && (
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>ZONE RADIUS (METERS)</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.zoneRadiusMeters")}</label>
               <div className="flex items-center gap-3 mt-1.5">
                 <input type="number" value={radius} onChange={e => setRadius(e.target.value)}
                   className="flex-1 px-3 py-2 rounded-lg outline-none"
@@ -1308,23 +1311,23 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
             <div className="flex items-start gap-2 p-3 rounded-lg" style={{ background: "rgba(255,149,0,0.06)", border: "1px solid rgba(255,149,0,0.15)" }}>
               <AlertTriangle className="size-3.5 shrink-0 mt-0.5" style={{ color: "#FF9500" }} />
               <p style={{ fontSize: 10, color: "rgba(255,149,0,0.8)", lineHeight: 1.5 }}>
-                All polygon vertices will shift by the same offset as the center move. The shape is preserved — only the position changes.
+                {t("gfp.polygonShiftNote")}
               </p>
             </div>
           )}
 
           {/* Preview */}
           <div className="p-4 rounded-xl" style={{ background: `${zone.color}06`, border: `1px solid ${zone.color}15` }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: zone.color, letterSpacing: "0.5px", marginBottom: 8 }}>NEW POSITION PREVIEW</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: zone.color, letterSpacing: "0.5px", marginBottom: 8 }}>{t("gfp.newPositionPreview")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>New Coordinates</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{t("gfp.newCoordinates")}</p>
                 <p style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", fontFamily: "monospace" }}>{lat}, {lng}</p>
               </div>
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{zone.type === "circle" ? "Radius" : "Shape"}</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{zone.type === "circle" ? t("gfp.radius") : t("gfp.shape")}</p>
                 <p className="text-white" style={{ fontSize: 12, fontWeight: 600 }}>
-                  {zone.type === "circle" ? `${radius}m` : "Polygon (shifted)"}
+                  {zone.type === "circle" ? `${radius}m` : t("gfp.polygonShifted")}
                 </p>
               </div>
             </div>
@@ -1347,7 +1350,7 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
         <div className="p-5 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl"
             style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontWeight: 600 }}>
-            Cancel
+            {t("gfp.cancel")}
           </button>
           <button
             onClick={() => {
@@ -1364,7 +1367,7 @@ function RelocateZoneModal({ zone, onClose, onRelocate }: {
               boxShadow: isValid ? `0 4px 16px ${zone.color}40` : "none",
             }}>
             <MapPin className="size-4" />
-            Apply New Location
+            {t("gfp.applyNewLocation")}
           </button>
         </div>
       </motion.div>
@@ -1389,7 +1392,8 @@ function isPointInPolygon(point: GeoPoint, polygon: GeoPoint[]): boolean {
 // GPS Zone Creation Modal — Create zone via coordinates or
 // Google Maps link / location sharing
 // ═══════════════════════════════════════════════════════════════
-function GPSZoneModal({ onClose, onCreate }: {
+function GPSZoneModal({ t, onClose, onCreate }: {
+  t: (k: string) => string;
   onClose: () => void;
   onCreate: (data: { name: string; lat: number; lng: number; radiusMeters: number; address?: string }) => void;
 }) {
@@ -1452,9 +1456,9 @@ function GPSZoneModal({ onClose, onCreate }: {
               <Navigation className="size-5" style={{ color: "#7B5EFF" }} />
             </div>
             <div>
-              <h3 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Create Zone from GPS</h3>
+              <h3 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("gfp.createZoneFromGPS")}</h3>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                Enter coordinates manually or paste a Google Maps link
+                {t("gfp.createZoneSubtitle")}
               </p>
             </div>
           </div>
@@ -1467,11 +1471,11 @@ function GPSZoneModal({ onClose, onCreate }: {
         <div className="p-5 space-y-5">
           {/* Zone Name */}
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>ZONE NAME</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.zoneName")}</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g., North Gate Site, Warehouse B..."
+              placeholder={t("gfp.zoneNamePlaceholder")}
               className="w-full mt-1.5 px-3 py-2.5 rounded-xl outline-none"
               style={{ fontSize: 13, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
             />
@@ -1479,11 +1483,11 @@ function GPSZoneModal({ onClose, onCreate }: {
 
           {/* Input Mode Toggle */}
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>LOCATION METHOD</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.locationMethod")}</label>
             <div className="flex gap-2 mt-2">
               {([
-                { id: "coords" as const, label: "GPS Coordinates", icon: Crosshair, desc: "Lat/Lng" },
-                { id: "link" as const, label: "Google Maps Link", icon: MapPin, desc: "Paste URL" },
+                { id: "coords" as const, label: t("gfp.gpsCoordinates"), icon: Crosshair, desc: t("gfp.latLng") },
+                { id: "link" as const, label: t("gfp.googleMapsLink"), icon: MapPin, desc: t("gfp.pasteUrl") },
               ]).map(mode => (
                 <button key={mode.id} onClick={() => setInputMode(mode.id)}
                   className="flex-1 p-3 rounded-xl flex items-center gap-2 text-left"
@@ -1508,7 +1512,7 @@ function GPSZoneModal({ onClose, onCreate }: {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>LATITUDE</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.latitude")}</label>
                   <input
                     value={lat}
                     onChange={e => setLat(e.target.value)}
@@ -1518,7 +1522,7 @@ function GPSZoneModal({ onClose, onCreate }: {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>LONGITUDE</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.longitude")}</label>
                   <input
                     value={lng}
                     onChange={e => setLng(e.target.value)}
@@ -1531,18 +1535,18 @@ function GPSZoneModal({ onClose, onCreate }: {
               <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "rgba(0,200,224,0.04)", border: "1px solid rgba(0,200,224,0.08)" }}>
                 <MapPin className="size-3.5 flex-shrink-0" style={{ color: "#00C8E0" }} />
                 <p style={{ fontSize: 10, color: "rgba(0,200,224,0.6)" }}>
-                  Tip: Open Google Maps → Right-click on location → Copy coordinates
+                  {t("gfp.coordsTip")}
                 </p>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>GOOGLE MAPS LINK</label>
+                <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.googleMapsLinkLabel")}</label>
                 <input
                   value={mapsLink}
                   onChange={e => { setMapsLink(e.target.value); parseGoogleMapsLink(e.target.value); }}
-                  placeholder="https://maps.google.com/... or paste coordinates"
+                  placeholder={t("gfp.mapsLinkPlaceholder")}
                   className="w-full mt-1.5 px-3 py-2.5 rounded-xl outline-none"
                   style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
                 />
@@ -1556,14 +1560,14 @@ function GPSZoneModal({ onClose, onCreate }: {
                 >
                   <Check className="size-3.5" style={{ color: "#00C853" }} />
                   <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600 }}>
-                    Parsed: {lat}, {lng}
+                    {t("gfp.parsed")}: {lat}, {lng}
                   </p>
                 </motion.div>
               )}
               {mapsLink && !parsed && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "rgba(255,45,85,0.06)", border: "1px solid rgba(255,45,85,0.15)" }}>
                   <AlertTriangle className="size-3.5" style={{ color: "#FF2D55" }} />
-                  <p style={{ fontSize: 11, color: "#FF2D55", fontWeight: 600 }}>Could not parse coordinates from link</p>
+                  <p style={{ fontSize: 11, color: "#FF2D55", fontWeight: 600 }}>{t("gfp.couldNotParse")}</p>
                 </div>
               )}
             </div>
@@ -1571,7 +1575,7 @@ function GPSZoneModal({ onClose, onCreate }: {
 
           {/* Zone Radius */}
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>ZONE RADIUS (METERS)</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.zoneRadiusMeters")}</label>
             <div className="flex items-center gap-3 mt-1.5">
               <input
                 type="number"
@@ -1596,17 +1600,17 @@ function GPSZoneModal({ onClose, onCreate }: {
               </div>
             </div>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 6 }}>
-              The Attend button will appear on employee's phone when they enter within {radius || "0"}m of the zone center.
+              {t("gfp.attendNotePre")}{radius || "0"}{t("gfp.attendNotePost")}
             </p>
           </div>
 
           {/* Address (optional) */}
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>ADDRESS (OPTIONAL)</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>{t("gfp.addressOptional")}</label>
             <input
               value={address}
               onChange={e => setAddress(e.target.value)}
-              placeholder="e.g., King Fahd Road, Industrial Area..."
+              placeholder={t("gfp.addressPlaceholder")}
               className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
               style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
             />
@@ -1614,23 +1618,23 @@ function GPSZoneModal({ onClose, onCreate }: {
 
           {/* Preview */}
           <div className="p-4 rounded-xl" style={{ background: "rgba(123,94,255,0.04)", border: "1px solid rgba(123,94,255,0.1)" }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: "#7B5EFF", letterSpacing: "0.5px", marginBottom: 8 }}>PREVIEW</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#7B5EFF", letterSpacing: "0.5px", marginBottom: 8 }}>{t("gfp.preview")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Zone Name</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{t("gfp.previewZoneName")}</p>
                 <p className="text-white" style={{ fontSize: 12, fontWeight: 600 }}>{name || "—"}</p>
               </div>
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Coordinates</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{t("gfp.coordinates")}</p>
                 <p style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", fontFamily: "monospace" }}>{lat}, {lng}</p>
               </div>
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Radius</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{t("gfp.radius")}</p>
                 <p className="text-white" style={{ fontSize: 12, fontWeight: 600 }}>{radius}m</p>
               </div>
               <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>Attend Trigger</p>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "#00C853" }}>Within {radius}m</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>{t("gfp.attendTrigger")}</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "#00C853" }}>{t("gfp.within")} {radius}m</p>
               </div>
             </div>
             {/* Mini map placeholder */}
@@ -1665,7 +1669,7 @@ function GPSZoneModal({ onClose, onCreate }: {
         <div className="p-5 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl"
             style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontWeight: 600 }}>
-            Cancel
+            {t("gfp.cancel")}
           </button>
           <button
             onClick={() => {
@@ -1684,7 +1688,7 @@ function GPSZoneModal({ onClose, onCreate }: {
               boxShadow: isValid ? "0 4px 16px rgba(123,94,255,0.3)" : "none",
             }}>
             <Navigation className="size-4" />
-            Create Zone
+            {t("gfp.createZone")}
           </button>
         </div>
       </motion.div>
