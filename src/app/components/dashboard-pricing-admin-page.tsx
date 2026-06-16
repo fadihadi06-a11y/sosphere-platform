@@ -26,6 +26,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { DollarSign, Plus, Edit3, Trash2, Save, X, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { TOKENS, TYPOGRAPHY, PageHeader } from "./design-system";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 import {
   loadPlans,
   upsertPlan,
@@ -51,8 +53,8 @@ function formatPrice(n: number | null): string {
   return `$${n.toFixed(2)}`;
 }
 
-function kindLabel(k: PlanKind): string {
-  return k === "unified" ? "Unified" : k === "individual" ? "Individual" : "Add-on";
+function kindLabelKey(k: PlanKind): string {
+  return k === "unified" ? "pradm.kind.unified" : k === "individual" ? "pradm.kind.individual" : "pradm.kind.addon";
 }
 
 const KIND_ORDER: PlanKind[] = ["unified", "individual", "addon"];
@@ -101,6 +103,8 @@ function rowToInput(r: PlanRow): PlanInput {
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -155,9 +159,9 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
     try {
       const result = await upsertPlan(normalized);
       if (!result.ok) {
-        setToast({ kind: "err", msg: result.error ?? "Save failed" });
+        setToast({ kind: "err", msg: result.error ?? t("pradm.toast.saveFailed") });
       } else {
-        setToast({ kind: "ok", msg: `Plan "${normalized.id}" saved` });
+        setToast({ kind: "ok", msg: `${t("pradm.toast.planPrefix")} "${normalized.id}" ${t("pradm.toast.savedSuffix")}` });
         setEditing(null);
         await refresh();
       }
@@ -168,16 +172,16 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
 
   async function handleDelete(id: string) {
     if (deleteTypedId !== id) {
-      setToast({ kind: "err", msg: "Typed id does not match" });
+      setToast({ kind: "err", msg: t("pradm.toast.idMismatch") });
       return;
     }
     setBusy(true);
     try {
       const result = await deletePlan(id);
       if (!result.ok) {
-        setToast({ kind: "err", msg: result.error ?? "Delete failed" });
+        setToast({ kind: "err", msg: result.error ?? t("pradm.toast.deleteFailed") });
       } else {
-        setToast({ kind: "ok", msg: `Plan "${id}" deleted` });
+        setToast({ kind: "ok", msg: `${t("pradm.toast.planPrefix")} "${id}" ${t("pradm.toast.deletedSuffix")}` });
         setConfirmDeleteId(null);
         setDeleteTypedId("");
         await refresh();
@@ -192,8 +196,8 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
     return (
       <div style={{ padding: 24 }}>
         <PageHeader
-          title="Pricing Administration"
-          description="Manage public plans & add-ons"
+          title={t("pradm.title")}
+          description={t("pradm.subtitle")}
           icon={DollarSign}
         />
         <div style={{
@@ -203,10 +207,10 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
         }}>
           <Lock size={36} color={TOKENS.accent.danger} style={{ margin: "0 auto 12px" }} />
           <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.text.primary, marginBottom: 6 }}>
-            Super Admin Only
+            {t("pradm.guard.title")}
           </div>
           <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>
-            Pricing changes affect every customer. Only platform super-admins can edit plans.
+            {t("pradm.guard.desc")}
           </div>
         </div>
       </div>
@@ -217,8 +221,8 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="Pricing Administration"
-        description="Manage public plans & add-ons (changes log to audit_log)"
+        title={t("pradm.title")}
+        description={t("pradm.subtitleMain")}
         icon={DollarSign}
       />
 
@@ -236,7 +240,7 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
             ...TYPOGRAPHY.bodySm,
           }}
         >
-          <Plus size={14} /> New Plan
+          <Plus size={14} /> {t("pradm.newPlan")}
         </button>
         <button
           onClick={refresh}
@@ -249,44 +253,44 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
             ...TYPOGRAPHY.bodySm,
           }}
         >
-          Refresh
+          {t("pradm.refresh")}
         </button>
       </div>
 
       {loadError && (
         <div style={{ padding: 12, borderRadius: TOKENS.radius.small, background: "rgba(255,45,85,0.1)", color: TOKENS.accent.danger, marginBottom: 16 }}>
           <AlertTriangle size={14} style={{ display: "inline", marginRight: 6 }} />
-          Failed to load plans: {loadError}
+          {t("pradm.loadFailed")} {loadError}
         </div>
       )}
 
       {loading && !plans.length && (
-        <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>Loading plans…</div>
+        <div style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted }}>{t("pradm.loading")}</div>
       )}
 
       {/* Grouped tables */}
       {!loading && KIND_ORDER.map(kind => (
         <div key={kind} style={{ marginBottom: 32 }}>
           <div style={{ ...TYPOGRAPHY.h4, color: TOKENS.text.primary, marginBottom: 8 }}>
-            {kindLabel(kind)} ({grouped[kind].length})
+            {t(kindLabelKey(kind))} ({grouped[kind].length})
           </div>
           <div style={{ borderRadius: TOKENS.radius.card, overflow: "hidden", border: `1px solid ${TOKENS.border.subtle}` }}>
             <table style={{ width: "100%", borderCollapse: "collapse", background: TOKENS.bg.surface }}>
               <thead>
                 <tr style={{ background: TOKENS.bg.elevated }}>
-                  <th style={thStyle}>ID</th>
-                  <th style={thStyle}>Name</th>
-                  <th style={thStyle}>Monthly</th>
-                  <th style={thStyle}>Annual</th>
-                  <th style={thStyle}>Max Emp.</th>
-                  <th style={thStyle}>Pop.</th>
-                  <th style={thStyle}>Sort</th>
-                  <th style={{ ...thStyle, width: 120 }}>Actions</th>
+                  <th style={thStyle}>{t("pradm.th.id")}</th>
+                  <th style={thStyle}>{t("pradm.th.name")}</th>
+                  <th style={thStyle}>{t("pradm.th.monthly")}</th>
+                  <th style={thStyle}>{t("pradm.th.annual")}</th>
+                  <th style={thStyle}>{t("pradm.th.maxEmp")}</th>
+                  <th style={thStyle}>{t("pradm.th.pop")}</th>
+                  <th style={thStyle}>{t("pradm.th.sort")}</th>
+                  <th style={{ ...thStyle, width: 120 }}>{t("pradm.th.actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {grouped[kind].length === 0 ? (
-                  <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: TOKENS.text.muted }}>No {kind} plans</td></tr>
+                  <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: TOKENS.text.muted }}>{t("pradm.noPlansPrefix")} {t(kindLabelKey(kind))} {t("pradm.noPlansSuffix")}</td></tr>
                 ) : grouped[kind].map(p => (
                   <tr key={p.id} style={{ borderTop: `1px solid ${TOKENS.border.subtle}` }}>
                     <td style={{ ...tdStyle, fontFamily: "monospace", color: TOKENS.text.muted }}>{p.id}</td>
@@ -301,13 +305,13 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
                         onClick={() => setEditing(rowToInput(p))}
                         disabled={busy}
                         style={iconBtnStyle}
-                        title="Edit"
+                        title={t("pradm.action.edit")}
                       ><Edit3 size={13} /></button>
                       <button
                         onClick={() => { setConfirmDeleteId(p.id); setDeleteTypedId(""); }}
                         disabled={busy}
                         style={{ ...iconBtnStyle, color: TOKENS.accent.danger, marginLeft: 6 }}
-                        title="Delete"
+                        title={t("pradm.action.delete")}
                       ><Trash2 size={13} /></button>
                     </td>
                   </tr>
@@ -324,41 +328,41 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.text.primary }}>
-                {plans.some(p => p.id === editing.id) ? "Edit Plan" : "New Plan"}
+                {plans.some(p => p.id === editing.id) ? t("pradm.modal.editPlan") : t("pradm.modal.newPlan")}
               </div>
               <button onClick={() => setEditing(null)} disabled={busy} style={iconBtnStyle}><X size={16} /></button>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="ID (lowercase)" value={editing.id} onChange={v => setEditing({ ...editing, id: v })} disabled={plans.some(p => p.id === editing.id) || busy} />
-              <Field label="Kind" value={editing.kind} onChange={v => setEditing({ ...editing, kind: (v as PlanKind) })} type="select" options={["unified", "individual", "addon"]} disabled={busy} />
-              <Field label="Name (English)" value={editing.name} onChange={v => setEditing({ ...editing, name: v })} disabled={busy} />
-              <Field label="Name (Arabic)" value={editing.name_ar ?? ""} onChange={v => setEditing({ ...editing, name_ar: v })} disabled={busy} />
-              <Field label="Description" value={editing.description ?? ""} onChange={v => setEditing({ ...editing, description: v })} disabled={busy} fullWidth />
-              <Field label="Color (hex)" value={editing.color ?? ""} onChange={v => setEditing({ ...editing, color: v })} disabled={busy} />
-              <Field label="Sort Order" value={String(editing.sort_order ?? 100)} onChange={v => setEditing({ ...editing, sort_order: Number(v) || 100 })} type="number" disabled={busy} />
-              <Field label="Monthly Price" value={editing.monthly_price == null ? "" : String(editing.monthly_price)} onChange={v => setEditing({ ...editing, monthly_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Annual Price" value={editing.annual_price == null ? "" : String(editing.annual_price)} onChange={v => setEditing({ ...editing, annual_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Annual÷12" value={editing.annual_monthly == null ? "" : String(editing.annual_monthly)} onChange={v => setEditing({ ...editing, annual_monthly: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Max Employees" value={editing.max_employees == null ? "" : String(editing.max_employees)} onChange={v => setEditing({ ...editing, max_employees: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Max Zones" value={editing.max_zones == null ? "" : String(editing.max_zones)} onChange={v => setEditing({ ...editing, max_zones: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Extra Emp. Price" value={editing.extra_employee_price == null ? "" : String(editing.extra_employee_price)} onChange={v => setEditing({ ...editing, extra_employee_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
-              <Field label="Features (one per line)" value={(editing.features ?? []).join("\n")} onChange={v => setEditing({ ...editing, features: v.split("\n").map(s => s.trim()).filter(Boolean) })} disabled={busy} fullWidth multiline />
+              <Field label={t("pradm.field.id")} value={editing.id} onChange={v => setEditing({ ...editing, id: v })} disabled={plans.some(p => p.id === editing.id) || busy} />
+              <Field label={t("pradm.field.kind")} value={editing.kind} onChange={v => setEditing({ ...editing, kind: (v as PlanKind) })} type="select" options={["unified", "individual", "addon"]} disabled={busy} />
+              <Field label={t("pradm.field.nameEn")} value={editing.name} onChange={v => setEditing({ ...editing, name: v })} disabled={busy} />
+              <Field label={t("pradm.field.nameAr")} value={editing.name_ar ?? ""} onChange={v => setEditing({ ...editing, name_ar: v })} disabled={busy} />
+              <Field label={t("pradm.field.description")} value={editing.description ?? ""} onChange={v => setEditing({ ...editing, description: v })} disabled={busy} fullWidth />
+              <Field label={t("pradm.field.color")} value={editing.color ?? ""} onChange={v => setEditing({ ...editing, color: v })} disabled={busy} />
+              <Field label={t("pradm.field.sortOrder")} value={String(editing.sort_order ?? 100)} onChange={v => setEditing({ ...editing, sort_order: Number(v) || 100 })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.monthlyPrice")} value={editing.monthly_price == null ? "" : String(editing.monthly_price)} onChange={v => setEditing({ ...editing, monthly_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.annualPrice")} value={editing.annual_price == null ? "" : String(editing.annual_price)} onChange={v => setEditing({ ...editing, annual_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.annualMonthly")} value={editing.annual_monthly == null ? "" : String(editing.annual_monthly)} onChange={v => setEditing({ ...editing, annual_monthly: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.maxEmployees")} value={editing.max_employees == null ? "" : String(editing.max_employees)} onChange={v => setEditing({ ...editing, max_employees: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.maxZones")} value={editing.max_zones == null ? "" : String(editing.max_zones)} onChange={v => setEditing({ ...editing, max_zones: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.extraEmpPrice")} value={editing.extra_employee_price == null ? "" : String(editing.extra_employee_price)} onChange={v => setEditing({ ...editing, extra_employee_price: v === "" ? null : Number(v) })} type="number" disabled={busy} />
+              <Field label={t("pradm.field.features")} value={(editing.features ?? []).join("\n")} onChange={v => setEditing({ ...editing, features: v.split("\n").map(s => s.trim()).filter(Boolean) })} disabled={busy} fullWidth multiline />
 
               <label style={{ display: "flex", alignItems: "center", gap: 8, color: TOKENS.text.primary, ...TYPOGRAPHY.bodySm }}>
                 <input type="checkbox" checked={editing.popular ?? false} onChange={e => setEditing({ ...editing, popular: e.target.checked })} disabled={busy} />
-                Mark as popular (★)
+                {t("pradm.markPopular")}
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, color: TOKENS.text.primary, ...TYPOGRAPHY.bodySm }}>
                 <input type="checkbox" checked={editing.active ?? true} onChange={e => setEditing({ ...editing, active: e.target.checked })} disabled={busy} />
-                Active (visible to public)
+                {t("pradm.activeVisible")}
               </label>
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-              <button onClick={() => setEditing(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>Cancel</button>
+              <button onClick={() => setEditing(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>{t("pradm.cancel")}</button>
               <button onClick={handleSave} disabled={busy} style={{ ...btnStyle, background: TOKENS.accent.primary, color: "#fff" }}>
-                <Save size={13} style={{ marginRight: 6 }} /> {busy ? "Saving…" : "Save"}
+                <Save size={13} style={{ marginRight: 6 }} /> {busy ? t("pradm.saving") : t("pradm.save")}
               </button>
             </div>
           </div>
@@ -371,10 +375,10 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
           <div style={{ ...modalStyle, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ ...TYPOGRAPHY.h3, color: TOKENS.accent.danger, marginBottom: 12 }}>
               <AlertTriangle size={18} style={{ display: "inline", marginRight: 6 }} />
-              Delete plan "{confirmDeleteId}"?
+              {t("pradm.deleteTitlePrefix")} "{confirmDeleteId}"?
             </div>
             <p style={{ ...TYPOGRAPHY.bodySm, color: TOKENS.text.muted, marginBottom: 16 }}>
-              This removes the plan from the public pricing page. Existing subscribers stay on their current plan but the row is gone. Type the plan id to confirm.
+              {t("pradm.deleteBody")}
             </p>
             <input
               type="text"
@@ -392,13 +396,13 @@ export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
               }}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={() => setConfirmDeleteId(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>Cancel</button>
+              <button onClick={() => setConfirmDeleteId(null)} disabled={busy} style={{ ...btnStyle, background: TOKENS.bg.elevated, color: TOKENS.text.primary }}>{t("pradm.cancel")}</button>
               <button
                 onClick={() => handleDelete(confirmDeleteId)}
                 disabled={busy || deleteTypedId !== confirmDeleteId}
                 style={{ ...btnStyle, background: TOKENS.accent.danger, color: "#fff", opacity: deleteTypedId !== confirmDeleteId ? 0.5 : 1 }}
               >
-                <Trash2 size={13} style={{ marginRight: 6 }} /> {busy ? "Deleting…" : "Delete"}
+                <Trash2 size={13} style={{ marginRight: 6 }} /> {busy ? t("pradm.deleting") : t("pradm.delete")}
               </button>
             </div>
           </div>

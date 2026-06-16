@@ -18,6 +18,8 @@ import { onSyncEvent, type SyncEvent } from "./shared-store";
 // extension cannot enumerate N-* IDs to guess upcoming notifications.
 import { secureRandomId } from "./utils/secure-random";
 import { useDashboardStore } from "./stores/dashboard-store";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ── Types ─────────────────────────────────────────────────────
 type NotifCategory =
@@ -48,16 +50,16 @@ interface Notification {
 
 // ── Category Config ───────────────────────────────────────────
 const NOTIF_CATEGORY: Record<NotifCategory, {
-  label: string; icon: React.ElementType; color: string;
+  labelKey: string; icon: React.ElementType; color: string;
 }> = {
-  sos:       { label: "SOS Alert",    icon: Siren,         color: "#FF2D55" },
-  checkin:   { label: "Check-in",     icon: UserCheck,     color: "#00C853" },
-  hazard:    { label: "Hazard",       icon: AlertTriangle, color: "#FF9500" },
-  geofence:  { label: "Geofence",     icon: MapPin,        color: "#00C8E0" },
-  system:    { label: "System",       icon: Settings,      color: "#9B59B6" },
-  audit:     { label: "Audit",        icon: Shield,        color: "#FF9500" },
-  login:     { label: "Login",        icon: LogIn,         color: "#4A90D9" },
-  broadcast: { label: "Broadcast",    icon: Radio,         color: "#9B59B6" },
+  sos:       { labelKey: "notif.cat.sos",       icon: Siren,         color: "#FF2D55" },
+  checkin:   { labelKey: "notif.cat.checkin",   icon: UserCheck,     color: "#00C853" },
+  hazard:    { labelKey: "notif.cat.hazard",    icon: AlertTriangle, color: "#FF9500" },
+  geofence:  { labelKey: "notif.cat.geofence",  icon: MapPin,        color: "#00C8E0" },
+  system:    { labelKey: "notif.cat.system",    icon: Settings,      color: "#9B59B6" },
+  audit:     { labelKey: "notif.cat.audit",     icon: Shield,        color: "#FF9500" },
+  login:     { labelKey: "notif.cat.login",     icon: LogIn,         color: "#4A90D9" },
+  broadcast: { labelKey: "notif.cat.broadcast", icon: Radio,         color: "#9B59B6" },
 };
 
 const SEVERITY_DOT: Record<NotifSeverity, string> = {
@@ -154,24 +156,25 @@ const MOCK_NOTIFS: Notification[] = [
 ];
 
 // ── Time Format ───────────────────────────────────────────────
-function timeAgo(date: Date): string {
+function timeAgo(date: Date, t: (k: string) => string): string {
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("notif.time.justNow");
+  if (mins < 60) return `${mins}${t("notif.time.mAgo")}`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return `${hrs}${t("notif.time.hAgo")}`;
+  return `${Math.floor(hrs / 24)}${t("notif.time.dAgo")}`;
 }
 
 // ── Notification Row ──────────────────────────────────────────
 function NotifRow({
-  notif, onRead, onNavigate, onDelete,
+  notif, onRead, onNavigate, onDelete, t,
 }: {
   notif: Notification;
   onRead: (id: string) => void;
   onNavigate: (page: string) => void;
   onDelete: (id: string) => void;
+  t: (k: string) => string;
 }) {
   const cfg = NOTIF_CATEGORY[notif.category];
   const Icon = cfg.icon;
@@ -226,7 +229,7 @@ function NotifRow({
             fontSize: 10, color: "rgba(255,255,255,0.25)", flexShrink: 0, marginTop: 1,
             fontWeight: 500,
           }}>
-            {timeAgo(notif.timestamp)}
+            {timeAgo(notif.timestamp, t)}
           </span>
         </div>
         <p style={{
@@ -239,7 +242,7 @@ function NotifRow({
             fontSize: 9, fontWeight: 700, color: cfg.color,
             background: `${cfg.color}15`,
           }}>
-            {cfg.label}
+            {t(cfg.labelKey)}
           </span>
           {notif.zone && (
             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
@@ -281,6 +284,8 @@ interface NotificationsPanelProps {
 export function NotificationsPanel({
   isOpen, onClose, onNavigate, unreadCount, onUnreadChange,
 }: NotificationsPanelProps) {
+  const { lang } = useLang();
+  const t = useT(lang);
   // Seed with real emergencies from store first, then fall back to mock for empty state
   const storeEmergencies = useDashboardStore(s => s.emergencies);
   const [notifs, setNotifs] = useState<Notification[]>(() => {
@@ -289,8 +294,8 @@ export function NotificationsPanel({
       id: `N-emg-${e.id}`,
       category: "sos" as NotifCategory,
       severity: (e.severity === "critical" ? "critical" : e.severity === "high" ? "high" : "medium") as any,
-      title: `🚨 SOS — ${e.employeeName}`,
-      body: `${e.type || "Emergency"} in ${e.zone || "Unknown Zone"}. Status: ${e.status}.`,
+      title: `🚨 ${t("notif.sosLabel")} — ${e.employeeName}`,
+      body: `${e.type || t("notif.emergency")} ${t("notif.in")} ${e.zone || t("notif.unknownZone")}. ${t("notif.statusLabel")}: ${e.status}.`,
       timestamp: new Date((e as { triggeredAt?: string | number }).triggeredAt || Date.now()),  // P0-ci-cleanup-strict-2: triggeredAt is optional on extended EmergencyItem
       read: e.status === "resolved",
       zone: e.zone,
@@ -312,8 +317,8 @@ export function NotificationsPanel({
       id: `N-emg-${e.id}`,
       category: "sos" as NotifCategory,
       severity: (e.severity === "critical" ? "critical" : e.severity === "high" ? "high" : "medium") as any,
-      title: `🚨 SOS — ${e.employeeName}`,
-      body: `${e.type || "Emergency"} in ${e.zone || "Unknown Zone"}. Status: ${e.status}.`,
+      title: `🚨 ${t("notif.sosLabel")} — ${e.employeeName}`,
+      body: `${e.type || t("notif.emergency")} ${t("notif.in")} ${e.zone || t("notif.unknownZone")}. ${t("notif.statusLabel")}: ${e.status}.`,
       // P0-doctrine-completion (2026-05-25): same cast as the seed branch at
       // line ~290 — triggeredAt is an extended runtime field, not in the
       // canonical EmergencyItem.
@@ -332,7 +337,7 @@ export function NotificationsPanel({
           .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
       });
     }
-  }, [storeEmergencies]);
+  }, [storeEmergencies, t]);
 
   // Sync unread count outward
   useEffect(() => {
@@ -348,8 +353,8 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "sos", severity: "critical",
-          title: `🚨 SOS — ${event.employeeName}`,
-          body: `SOS button activated in ${event.zone || "Unknown Zone"}. Immediate response required.`,
+          title: `🚨 ${t("notif.sosLabel")} — ${event.employeeName}`,
+          body: `${t("notif.sosActivatedIn")} ${event.zone || t("notif.unknownZone")}. ${t("notif.immediateResponse")}`,
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "emergencyHub",
@@ -358,8 +363,8 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "hazard", severity: "high",
-          title: `☢️ Hazard Report — ${event.employeeName}`,
-          body: `${event.data?.hazardType || "Environmental"} hazard reported in ${event.zone || "Unknown Zone"}.`,
+          title: `☢️ ${t("notif.hazardReport")} — ${event.employeeName}`,
+          body: `${event.data?.hazardType || t("notif.environmental")} ${t("notif.hazardReportedIn")} ${event.zone || t("notif.unknownZone")}.`,
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "emergencyHub",
@@ -368,8 +373,8 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "checkin", severity: "success",
-          title: `✅ Check-in — ${event.employeeName}`,
-          body: `Employee checked in at ${event.zone || "their zone"}.`,
+          title: `✅ ${t("notif.checkinLabel")} — ${event.employeeName}`,
+          body: `${t("notif.employeeCheckedInAt")} ${event.zone || t("notif.theirZone")}.`,
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "employees",
@@ -381,8 +386,8 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "hazard", severity: sev === "critical" ? "critical" : sev === "high" ? "high" : "medium",
-          title: `📋 Incident Report — ${event.employeeName}`,
-          body: `${d?.incidentType || "Incident"} report with ${photoCount} photo${photoCount !== 1 ? "s" : ""} from ${event.zone || "Unknown Zone"}. Severity: ${(sev || "medium").toUpperCase()}.${d?.comment ? ` "${d.comment.slice(0, 80)}${d.comment.length > 80 ? "…" : ""}"` : ""}`,
+          title: `📋 ${t("notif.incidentReport")} — ${event.employeeName}`,
+          body: `${d?.incidentType || t("notif.incident")} ${t("notif.reportWith")} ${photoCount} ${photoCount !== 1 ? t("notif.photos") : t("notif.photo")} ${t("notif.from")} ${event.zone || t("notif.unknownZone")}. ${t("notif.severityLabel")}: ${(sev || "medium").toUpperCase()}.${d?.comment ? ` "${d.comment.slice(0, 80)}${d.comment.length > 80 ? "…" : ""}"` : ""}`,
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "emergencyHub",
@@ -395,10 +400,10 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "sos", severity: "success",
-          title: `✅ Admin Responded — ${event.employeeName}`,
-          body: `${d?.adminName || "Safety Admin"} acknowledged SOS in ${d?.responseTimeSec || "?"}s. Response logged.`,
+          title: `✅ ${t("notif.adminResponded")} — ${event.employeeName}`,
+          body: `${d?.adminName || t("notif.safetyAdmin")} ${t("notif.acknowledgedSosIn")} ${d?.responseTimeSec || "?"}s. ${t("notif.responseLogged")}`,
           timestamp: new Date(event.timestamp),
-          read: false, zone: event.zone, actorName: d?.adminName || "Safety Admin",
+          read: false, zone: event.zone, actorName: d?.adminName || t("notif.safetyAdmin"),
           navigateTo: "auditLog",
         };
       } else if (event.type === "ADMIN_UNREACHABLE") {
@@ -406,10 +411,10 @@ export function NotificationsPanel({
         newNotif = {
           id: secureRandomId("N", 4),
           category: "sos", severity: "critical",
-          title: `⚠️ Admin ${d?.action === "declined" ? "Declined" : "Missed"} SOS — ${event.employeeName}`,
-          body: `${d?.adminName || "Safety Admin"} ${d?.action === "declined" ? "declined" : "did not answer"} SOS call after ${d?.responseTimeSec || "30"}s. ${d?.reason || "Escalation may be needed."}`,
+          title: `⚠️ ${t("notif.admin")} ${d?.action === "declined" ? t("notif.declined") : t("notif.missed")} ${t("notif.sosLabel")} — ${event.employeeName}`,
+          body: `${d?.adminName || t("notif.safetyAdmin")} ${d?.action === "declined" ? t("notif.declinedVerb") : t("notif.didNotAnswer")} ${t("notif.sosCallAfter")} ${d?.responseTimeSec || "30"}s. ${d?.reason || t("notif.escalationNeeded")}`,
           timestamp: new Date(event.timestamp),
-          read: false, zone: event.zone, actorName: d?.adminName || "Safety Admin",
+          read: false, zone: event.zone, actorName: d?.adminName || t("notif.safetyAdmin"),
           navigateTo: "emergencyHub",
         };
       }
@@ -423,8 +428,8 @@ export function NotificationsPanel({
           category: "sos",
           // P0-doctrine-completion (2026-05-25): Notification interface has `emoji?: string`, not `icon`.
           emoji: "📸",
-          title: `Field Evidence Received — ${event.employeeName}`,
-          body: `${d?.photoCount || 0} photo(s)${d?.hasRecording ? ` + ${d?.recordingDuration}s voice memo` : ""}${d?.hasComment ? " + worker comment" : ""}. Evidence stored in vault${d?.evidenceId ? ` (${d.evidenceId})` : ""}.`,
+          title: `${t("notif.fieldEvidenceReceived")} — ${event.employeeName}`,
+          body: `${d?.photoCount || 0} ${t("notif.photoParen")}${d?.hasRecording ? ` + ${d?.recordingDuration}s ${t("notif.voiceMemo")}` : ""}${d?.hasComment ? ` + ${t("notif.workerComment")}` : ""}. ${t("notif.evidenceStoredVault")}${d?.evidenceId ? ` (${d.evidenceId})` : ""}.`,
           timestamp: new Date(event.timestamp),
           read: false, zone: event.zone, actorName: event.employeeName,
           navigateTo: "incidentReports",
@@ -450,7 +455,7 @@ export function NotificationsPanel({
       }
     });
     return unsub;
-  }, [soundEnabled]);
+  }, [soundEnabled, t]);
 
   const filtered = notifs.filter(n =>
     filterCat === "all" || n.category === filterCat
@@ -476,13 +481,13 @@ export function NotificationsPanel({
   };
 
   const FILTER_OPTIONS: Array<{ id: NotifCategory | "all"; label: string; color: string }> = [
-    { id: "all",       label: "All",        color: "#00C8E0"              },
-    { id: "sos",       label: "SOS",        color: "#FF2D55"              },
-    { id: "checkin",   label: "Check-in",   color: "#00C853"              },
-    { id: "hazard",    label: "Hazard",     color: "#FF9500"              },
-    { id: "geofence",  label: "Geofence",   color: "#00C8E0"              },
-    { id: "audit",     label: "Audit",      color: "#FF9500"              },
-    { id: "system",    label: "System",     color: "#9B59B6"              },
+    { id: "all",       label: t("notif.filter.all"),       color: "#00C8E0"              },
+    { id: "sos",       label: t("notif.filter.sos"),       color: "#FF2D55"              },
+    { id: "checkin",   label: t("notif.filter.checkin"),   color: "#00C853"              },
+    { id: "hazard",    label: t("notif.filter.hazard"),    color: "#FF9500"              },
+    { id: "geofence",  label: t("notif.filter.geofence"),  color: "#00C8E0"              },
+    { id: "audit",     label: t("notif.filter.audit"),     color: "#FF9500"              },
+    { id: "system",    label: t("notif.filter.system"),    color: "#9B59B6"              },
   ];
 
   return (
@@ -529,10 +534,10 @@ export function NotificationsPanel({
                 </div>
                 <div>
                   <h2 style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>
-                    Notifications
+                    {t("notif.title")}
                   </h2>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                    {unread > 0 ? `${unread} unread` : "All caught up"}
+                    {unread > 0 ? `${unread} ${t("notif.unread")}` : t("notif.allCaughtUp")}
                   </p>
                 </div>
               </div>
@@ -546,7 +551,7 @@ export function NotificationsPanel({
                     background: soundEnabled ? "rgba(0,200,224,0.08)" : "rgba(255,255,255,0.04)",
                     border: `1px solid ${soundEnabled ? "rgba(0,200,224,0.2)" : "rgba(255,255,255,0.06)"}`,
                   }}
-                  title={soundEnabled ? "Mute alerts" : "Enable alerts"}
+                  title={soundEnabled ? t("notif.muteAlerts") : t("notif.enableAlerts")}
                 >
                   {soundEnabled
                     ? <Volume2 className="size-3.5" style={{ color: "#00C8E0" }} />
@@ -576,7 +581,7 @@ export function NotificationsPanel({
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all"
                   style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", fontSize: 11, fontWeight: 600, color: "#00C8E0" }}
                 >
-                  <Eye className="size-3.5" /> Mark all read
+                  <Eye className="size-3.5" /> {t("notif.markAllRead")}
                 </button>
               )}
               <button
@@ -584,11 +589,11 @@ export function NotificationsPanel({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}
               >
-                <Trash2 className="size-3.5" /> Clear read
+                <Trash2 className="size-3.5" /> {t("notif.clearRead")}
               </button>
               <div className="flex-1" />
               <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-                {filtered.length} total
+                {filtered.length} {t("notif.total")}
               </span>
             </div>
 
@@ -639,7 +644,7 @@ export function NotificationsPanel({
                   >
                     <Bell className="size-6" style={{ color: "rgba(0,200,224,0.4)" }} />
                   </div>
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>No notifications</p>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>{t("notif.empty")}</p>
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
@@ -657,7 +662,7 @@ export function NotificationsPanel({
                           style={{ background: "#FF2D55" }}
                         />
                         <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "1px" }}>
-                          UNREAD · {unreadFiltered}
+                          {t("notif.groupUnread")} · {unreadFiltered}
                         </span>
                       </div>
                       {filtered.filter(n => !n.read).map(n => (
@@ -667,6 +672,7 @@ export function NotificationsPanel({
                           onRead={handleRead}
                           onNavigate={(page) => { onNavigate(page); onClose(); }}
                           onDelete={handleDelete}
+                          t={t}
                         />
                       ))}
                     </div>
@@ -680,7 +686,7 @@ export function NotificationsPanel({
                         style={{ background: "rgba(10,18,32,0.95)", backdropFilter: "blur(12px)", zIndex: 1 }}
                       >
                         <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1px" }}>
-                          EARLIER
+                          {t("notif.groupEarlier")}
                         </span>
                       </div>
                       {filtered.filter(n => n.read).map(n => (
@@ -690,6 +696,7 @@ export function NotificationsPanel({
                           onRead={handleRead}
                           onNavigate={(page) => { onNavigate(page); onClose(); }}
                           onDelete={handleDelete}
+                          t={t}
                         />
                       ))}
                     </div>
@@ -717,11 +724,11 @@ export function NotificationsPanel({
                   style={{ background: soundEnabled ? "#34C759" : "rgba(255,255,255,0.2)" }}
                 />
                 <span style={{ fontSize: 9, fontWeight: 700, color: soundEnabled ? "#34C759" : "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>
-                  {soundEnabled ? "LIVE" : "MUTED"}
+                  {soundEnabled ? t("notif.live") : t("notif.muted")}
                 </span>
               </div>
               <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-                Real-time · Updates from field
+                {t("notif.realtimeUpdates")}
               </span>
             </div>
           </motion.div>

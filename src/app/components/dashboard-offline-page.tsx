@@ -33,6 +33,8 @@ import {
 import { getTrackerState, type GPSTrackerState } from "./offline-gps-tracker";
 import { getSyncProgress, getQuickSyncStats, startSync, type SyncProgress, type QuickSyncStats } from "./offline-sync-engine";
 import { useDashboardStore } from "./stores/dashboard-store";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ── Mock Fleet Data ────────────────────────────────────────────
 // In production, this comes from Supabase real-time subscriptions
@@ -125,7 +127,7 @@ function StatBox({ icon: Icon, label, value, color, sub }: { icon: any; label: s
 // Worker Row Component
 // ═══════════════════════════════════════════════════════════════
 
-function WorkerRow({ worker }: { worker: WorkerConnectivity }) {
+function WorkerRow({ worker, t }: { worker: WorkerConnectivity; t: (k: string) => string }) {
   const net = NETWORK_ICONS[worker.networkType];
   const NetIcon = net.icon;
   const isCritical = !worker.isOnline && (Date.now() - worker.lastSeen > 3600000);
@@ -158,7 +160,7 @@ function WorkerRow({ worker }: { worker: WorkerConnectivity }) {
           <span className="text-white truncate" style={{ fontSize: 12, fontWeight: 600 }}>{worker.name}</span>
           {hasSOS && (
             <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 7, fontWeight: 800, background: "rgba(255,45,85,0.1)", color: "#FF2D55" }}>
-              SOS QUEUED
+              {t("off.sosQueued")}
             </span>
           )}
         </div>
@@ -211,7 +213,7 @@ function WorkerRow({ worker }: { worker: WorkerConnectivity }) {
 // Sync History Row
 // ═══════════════════════════════════════════════════════════════
 
-function SyncHistoryRow({ event }: { event: SyncEvent }) {
+function SyncHistoryRow({ event, t }: { event: SyncEvent; t: (k: string) => string }) {
   const typeColors = { auto: "#00C8E0", manual: "#8B5CF6", background: "#00C853" };
   const color = typeColors[event.type];
 
@@ -225,7 +227,7 @@ function SyncHistoryRow({ event }: { event: SyncEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>
-            {event.type === "auto" ? "Auto Sync" : event.type === "manual" ? "Manual Sync" : "Background Sync"}
+            {event.type === "auto" ? t("off.autoSync") : event.type === "manual" ? t("off.manualSync") : t("off.backgroundSync")}
           </span>
           <span className="px-1 rounded" style={{ fontSize: 7, fontWeight: 700, background: `${color}08`, color }}>{event.type.toUpperCase()}</span>
         </div>
@@ -268,6 +270,8 @@ export function OfflineMonitoringPage() {
   const [filter, setFilter] = useState<"all" | "online" | "offline" | "critical">("all");
   const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState<"fleet" | "sync" | "system">("fleet");
+  const { lang } = useLang();
+  const t = useT(lang);
 
   // Load stats
   useEffect(() => {
@@ -369,8 +373,8 @@ export function OfflineMonitoringPage() {
     <div className="space-y-5 pb-8">
       {/* Page Header */}
       <PageHeader
-        title="Offline & Connectivity"
-        subtitle="Fleet network status, sync queues, and offline resilience monitoring"
+        title={t("off.title")}
+        subtitle={t("off.subtitle")}
       />
 
       {/* Network Resilience Score */}
@@ -383,7 +387,7 @@ export function OfflineMonitoringPage() {
             <div className="flex items-center gap-2 mb-1">
               <Shield className="size-4" style={{ color: "#00C8E0" }} />
               <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                Network Resilience Score
+                {t("off.networkResilienceScore")}
               </span>
             </div>
             <div className="flex items-baseline gap-2">
@@ -393,16 +397,16 @@ export function OfflineMonitoringPage() {
               <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>/100</span>
             </div>
             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>
-              {DISPLAY_FLEET.length === 0 ? "No worker devices connected yet" : networkScore > 70 ? "Fleet connectivity is healthy" : networkScore > 40 ? "Some workers need attention" : "Critical — multiple workers disconnected"}
+              {DISPLAY_FLEET.length === 0 ? t("off.noDevicesYet") : networkScore > 70 ? t("off.connectivityHealthy") : networkScore > 40 ? t("off.someWorkersAttention") : t("off.criticalDisconnected")}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: "Online", value: onlineCount, total: DISPLAY_FLEET.length, color: "#00C853" },
-              { label: "Offline", value: offlineCount, total: DISPLAY_FLEET.length, color: "#FF9500" },
-              { label: "Critical", value: criticalCount, total: DISPLAY_FLEET.length, color: "#FF2D55" },
-              { label: "SOS Queued", value: sosQueued, total: null, color: "#FF2D55" },
+              { label: t("off.online"), value: onlineCount, total: DISPLAY_FLEET.length, color: "#00C853" },
+              { label: t("off.offline"), value: offlineCount, total: DISPLAY_FLEET.length, color: "#FF9500" },
+              { label: t("off.critical"), value: criticalCount, total: DISPLAY_FLEET.length, color: "#FF2D55" },
+              { label: t("off.sosQueuedLabel"), value: sosQueued, total: null, color: "#FF2D55" },
             ].map(item => (
               <div key={item.label} className="px-3 py-2 rounded-lg text-center" style={{ background: `${item.color}04`, border: `1px solid ${item.color}08` }}>
                 <p style={{ fontSize: 18, fontWeight: 800, color: item.color, fontVariantNumeric: "tabular-nums" }}>{item.value}</p>
@@ -415,18 +419,18 @@ export function OfflineMonitoringPage() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-4 gap-3">
-        <StatBox icon={Upload} label="Pending Sync" value={totalPending.toLocaleString()} color="#FF9500" sub="items across fleet" />
-        <StatBox icon={Navigation} label="GPS Cached" value={totalGPS.toLocaleString()} color="#00C8E0" sub="breadcrumb points" />
-        <StatBox icon={BatteryFull} label="Avg Battery" value={`${avgBattery}%`} color={avgBattery > 50 ? "#00C853" : "#FF9500"} sub="fleet average" />
-        <StatBox icon={HardDrive} label="Local Storage" value={`${storageStats?.estimatedSizeMB || 0}MB`} color="#8B5CF6" sub={`of ${storageStats?.storageQuotaMB ? Math.round(storageStats.storageQuotaMB / 1000) + "GB" : "—"}`} />
+        <StatBox icon={Upload} label={t("off.pendingSync")} value={totalPending.toLocaleString()} color="#FF9500" sub={t("off.itemsAcrossFleet")} />
+        <StatBox icon={Navigation} label={t("off.gpsCached")} value={totalGPS.toLocaleString()} color="#00C8E0" sub={t("off.breadcrumbPoints")} />
+        <StatBox icon={BatteryFull} label={t("off.avgBattery")} value={`${avgBattery}%`} color={avgBattery > 50 ? "#00C853" : "#FF9500"} sub={t("off.fleetAverage")} />
+        <StatBox icon={HardDrive} label={t("off.localStorage")} value={`${storageStats?.estimatedSizeMB || 0}MB`} color="#8B5CF6" sub={`${t("off.of")} ${storageStats?.storageQuotaMB ? Math.round(storageStats.storageQuotaMB / 1000) + "GB" : "—"}`} />
       </div>
 
       {/* Tab Navigation */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
         {([
-          { key: "fleet", label: "Fleet Status", icon: Users },
-          { key: "sync", label: "Sync History", icon: RefreshCw },
-          { key: "system", label: "System Health", icon: Server },
+          { key: "fleet", label: t("off.fleetStatus"), icon: Users },
+          { key: "sync", label: t("off.syncHistory"), icon: RefreshCw },
+          { key: "system", label: t("off.systemHealth"), icon: Server },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -451,10 +455,10 @@ export function OfflineMonitoringPage() {
           {/* Filter pills */}
           <div className="flex items-center gap-2">
             {([
-              { key: "all", label: `All (${DISPLAY_FLEET.length})`, color: "#00C8E0" },
-              { key: "online", label: `Online (${onlineCount})`, color: "#00C853" },
-              { key: "offline", label: `Offline (${offlineCount})`, color: "#FF9500" },
-              { key: "critical", label: `Critical (${criticalCount})`, color: "#FF2D55" },
+              { key: "all", label: `${t("off.all")} (${DISPLAY_FLEET.length})`, color: "#00C8E0" },
+              { key: "online", label: `${t("off.online")} (${onlineCount})`, color: "#00C853" },
+              { key: "offline", label: `${t("off.offline")} (${offlineCount})`, color: "#FF9500" },
+              { key: "critical", label: `${t("off.critical")} (${criticalCount})`, color: "#FF2D55" },
             ] as const).map(f => (
               <button
                 key={f.key}
@@ -480,19 +484,19 @@ export function OfflineMonitoringPage() {
               style={{ background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}
             >
               <RefreshCw className={`size-3 ${syncing ? "animate-spin" : ""}`} style={{ color: "#00C8E0" }} />
-              <span style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0" }}>{syncing ? "Syncing..." : "Force Sync All"}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#00C8E0" }}>{syncing ? t("off.syncing") : t("off.forceSyncAll")}</span>
             </button>
           </div>
 
           {/* Column Headers */}
           <div className="flex items-center gap-3 px-3 py-1.5">
             <div className="w-2" />
-            <span className="flex-1" style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Worker / Zone</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>Net</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>Queue</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 55 }}>GPS</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>Batt</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 50 }}>Last Seen</span>
+            <span className="flex-1" style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{t("off.workerZone")}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>{t("off.net")}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>{t("off.queue")}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 55 }}>{t("off.gps")}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 40 }}>{t("off.batt")}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.1)", letterSpacing: "0.1em", textTransform: "uppercase", width: 50 }}>{t("off.lastSeenCol")}</span>
           </div>
 
           {/* Worker Rows */}
@@ -505,7 +509,7 @@ export function OfflineMonitoringPage() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
                 >
-                  <WorkerRow worker={worker} />
+                  <WorkerRow worker={worker} t={t} />
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -514,7 +518,7 @@ export function OfflineMonitoringPage() {
           {filteredFleet.length === 0 && (
             <div className="text-center py-10" style={{ color: "rgba(255,255,255,0.15)" }}>
               <CheckCircle2 className="size-8 mx-auto mb-2" />
-              <p style={{ fontSize: 12, fontWeight: 600 }}>No workers in this category</p>
+              <p style={{ fontSize: 12, fontWeight: 600 }}>{t("off.noWorkersCategory")}</p>
             </div>
           )}
         </div>
@@ -524,8 +528,8 @@ export function OfflineMonitoringPage() {
       {tab === "sync" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>Recent Sync Operations</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>Last 24 hours</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("off.recentSyncOps")}</span>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{t("off.last24h")}</span>
           </div>
 
           {/* Sync stats summary */}
@@ -534,41 +538,41 @@ export function OfflineMonitoringPage() {
               <p style={{ fontSize: 22, fontWeight: 800, color: "#00C853" }}>
                 {DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsSynced, 0).toLocaleString()}
               </p>
-              <p style={{ fontSize: 9, color: "rgba(0,200,83,0.5)", fontWeight: 600 }}>Items Synced</p>
+              <p style={{ fontSize: 9, color: "rgba(0,200,83,0.5)", fontWeight: 600 }}>{t("off.itemsSynced")}</p>
             </div>
             <div className="p-3 rounded-xl text-center" style={{ background: "rgba(255,45,85,0.03)", border: "1px solid rgba(255,45,85,0.06)" }}>
               <p style={{ fontSize: 22, fontWeight: 800, color: DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0) > 0 ? "#FF2D55" : "#00C853" }}>
                 {DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.itemsFailed, 0)}
               </p>
-              <p style={{ fontSize: 9, color: "rgba(255,45,85,0.5)", fontWeight: 600 }}>Failed</p>
+              <p style={{ fontSize: 9, color: "rgba(255,45,85,0.5)", fontWeight: 600 }}>{t("off.failed")}</p>
             </div>
             <div className="p-3 rounded-xl text-center" style={{ background: "rgba(0,200,224,0.03)", border: "1px solid rgba(0,200,224,0.06)" }}>
               <p style={{ fontSize: 22, fontWeight: 800, color: "#00C8E0" }}>
                 {DISPLAY_SYNC_HISTORY.length > 0 ? (DISPLAY_SYNC_HISTORY.reduce((sum, e) => sum + e.durationMs, 0) / DISPLAY_SYNC_HISTORY.length / 1000).toFixed(1) : '0.0'}s
               </p>
-              <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>Avg Duration</p>
+              <p style={{ fontSize: 9, color: "rgba(0,200,224,0.5)", fontWeight: 600 }}>{t("off.avgDuration")}</p>
             </div>
           </div>
 
           {/* History list */}
           <div className="space-y-2">
             {DISPLAY_SYNC_HISTORY.map(event => (
-              <SyncHistoryRow key={event.id} event={event} />
+              <SyncHistoryRow key={event.id} event={event} t={t} />
             ))}
           </div>
 
           {/* Data breakdown */}
           <div className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.03)" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-              Sync Priority Order
+              {t("off.syncPriorityOrder")}
             </span>
             <div className="mt-3 space-y-2">
               {[
-                { priority: "P1", label: "SOS Alerts", desc: "Life-critical — always synced first", color: "#FF2D55", icon: Zap },
-                { priority: "P2", label: "Check-ins", desc: "Safety-critical — missed check-in triggers alert", color: "#FF9500", icon: Clock },
-                { priority: "P3", label: "Incidents", desc: "Important reports with photo evidence", color: "#8B5CF6", icon: AlertTriangle },
-                { priority: "P4", label: "Messages", desc: "Emergency chat communication", color: "#00C8E0", icon: MessageSquare },
-                { priority: "P5", label: "GPS Trail", desc: "Bulk location data, synced in batches of 100", color: "#00C853", icon: Navigation },
+                { priority: "P1", label: t("off.p1Label"), desc: t("off.p1Desc"), color: "#FF2D55", icon: Zap },
+                { priority: "P2", label: t("off.p2Label"), desc: t("off.p2Desc"), color: "#FF9500", icon: Clock },
+                { priority: "P3", label: t("off.p3Label"), desc: t("off.p3Desc"), color: "#8B5CF6", icon: AlertTriangle },
+                { priority: "P4", label: t("off.p4Label"), desc: t("off.p4Desc"), color: "#00C8E0", icon: MessageSquare },
+                { priority: "P5", label: t("off.p5Label"), desc: t("off.p5Desc"), color: "#00C853", icon: Navigation },
               ].map(item => (
                 <div key={item.priority} className="flex items-center gap-3 p-2 rounded-lg" style={{ background: `${item.color}03` }}>
                   <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 8, fontWeight: 900, background: `${item.color}10`, color: item.color }}>{item.priority}</span>
@@ -592,7 +596,7 @@ export function OfflineMonitoringPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Globe className="size-4" style={{ color: "#8B5CF6" }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>Service Worker</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("off.serviceWorker")}</span>
               </div>
               <button
                 onClick={handleRegisterSW}
@@ -601,16 +605,16 @@ export function OfflineMonitoringPage() {
               >
                 <Download className="size-3" style={{ color: "#8B5CF6" }} />
                 <span style={{ fontSize: 9, fontWeight: 600, color: "#8B5CF6" }}>
-                  {swStatus.registered ? "Update" : "Register"}
+                  {swStatus.registered ? t("off.update") : t("off.register")}
                 </span>
               </button>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Status", value: swStatus.registered ? (swStatus.active ? "Active" : "Installed") : "Not Registered", color: swStatus.active ? "#00C853" : swStatus.registered ? "#FF9500" : "rgba(255,255,255,0.15)" },
-                { label: "Background Sync", value: swStatus.backgroundSyncSupported ? "Supported" : "Not Available", color: swStatus.backgroundSyncSupported ? "#00C853" : "#FF9500" },
-                { label: "Push Notifications", value: swStatus.pushSupported ? "Supported" : "Not Available", color: swStatus.pushSupported ? "#00C853" : "#FF9500" },
+                { label: t("off.status"), value: swStatus.registered ? (swStatus.active ? t("off.active") : t("off.installed")) : t("off.notRegistered"), color: swStatus.active ? "#00C853" : swStatus.registered ? "#FF9500" : "rgba(255,255,255,0.15)" },
+                { label: t("off.backgroundSyncLabel"), value: swStatus.backgroundSyncSupported ? t("off.supported") : t("off.notAvailable"), color: swStatus.backgroundSyncSupported ? "#00C853" : "#FF9500" },
+                { label: t("off.pushNotifications"), value: swStatus.pushSupported ? t("off.supported") : t("off.notAvailable"), color: swStatus.pushSupported ? "#00C853" : "#FF9500" },
               ].map(item => (
                 <div key={item.label} className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.01)" }}>
                   <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)", marginBottom: 2 }}>{item.label}</p>
@@ -630,23 +634,23 @@ export function OfflineMonitoringPage() {
           <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Database className="size-4" style={{ color: "#00C8E0" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>IndexedDB Storage</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("off.indexedDbStorage")}</span>
             </div>
 
             {storageStats ? (
               <>
                 <div className="grid grid-cols-4 gap-2 mb-3">
                   {[
-                    { store: "SOS Queue", total: storageStats.sosQueue, unsynced: storageStats.sosUnsynced, color: "#FF2D55" },
-                    { store: "Check-ins", total: storageStats.checkins, unsynced: storageStats.checkinsUnsynced, color: "#FF9500" },
-                    { store: "GPS Trail", total: storageStats.gpsPoints, unsynced: storageStats.gpsUnsynced, color: "#00C853" },
-                    { store: "Incidents", total: storageStats.incidents, unsynced: storageStats.incidentsUnsynced, color: "#8B5CF6" },
+                    { store: t("off.sosQueueStore"), total: storageStats.sosQueue, unsynced: storageStats.sosUnsynced, color: "#FF2D55" },
+                    { store: t("off.checkinsStore"), total: storageStats.checkins, unsynced: storageStats.checkinsUnsynced, color: "#FF9500" },
+                    { store: t("off.gpsTrailStore"), total: storageStats.gpsPoints, unsynced: storageStats.gpsUnsynced, color: "#00C853" },
+                    { store: t("off.incidentsStore"), total: storageStats.incidents, unsynced: storageStats.incidentsUnsynced, color: "#8B5CF6" },
                   ].map(s => (
                     <div key={s.store} className="p-2 rounded-lg text-center" style={{ background: `${s.color}03`, border: `1px solid ${s.color}06` }}>
                       <p style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.total}</p>
                       <p style={{ fontSize: 8, color: `${s.color}60`, fontWeight: 600 }}>{s.store}</p>
                       {s.unsynced > 0 && (
-                        <p style={{ fontSize: 7, color: "#FF9500", marginTop: 2 }}>{s.unsynced} unsynced</p>
+                        <p style={{ fontSize: 7, color: "#FF9500", marginTop: 2 }}>{s.unsynced} {t("off.unsynced")}</p>
                       )}
                     </div>
                   ))}
@@ -655,9 +659,9 @@ export function OfflineMonitoringPage() {
                 {/* Storage bar */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Storage Used</span>
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{t("off.storageUsed")}</span>
                     <span style={{ fontSize: 9, fontWeight: 600, color: "#00C8E0" }}>
-                      {storageStats.estimatedSizeMB}MB / {storageStats.storageQuotaMB ? `${Math.round(storageStats.storageQuotaMB / 1000)}GB` : "Unknown"}
+                      {storageStats.estimatedSizeMB}MB / {storageStats.storageQuotaMB ? `${Math.round(storageStats.storageQuotaMB / 1000)}GB` : t("off.unknown")}
                     </span>
                   </div>
                   <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
@@ -672,7 +676,7 @@ export function OfflineMonitoringPage() {
                 </div>
               </>
             ) : (
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>Loading storage stats...</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{t("off.loadingStorageStats")}</p>
             )}
           </div>
 
@@ -680,24 +684,24 @@ export function OfflineMonitoringPage() {
           <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Satellite className="size-4" style={{ color: "#00C853" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>GPS Tracker Engine</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("off.gpsTrackerEngine")}</span>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.01)" }}>
-                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>Status</p>
+                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>{t("off.status")}</p>
                 <p style={{ fontSize: 10, fontWeight: 700, color: gpsState.isTracking ? "#00C853" : "rgba(255,255,255,0.15)" }}>
-                  {gpsState.isTracking ? "Recording" : "Stopped"}
+                  {gpsState.isTracking ? t("off.recording") : t("off.stopped")}
                 </p>
               </div>
               <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.01)" }}>
-                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>Dead Reckoning</p>
+                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>{t("off.deadReckoning")}</p>
                 <p style={{ fontSize: 10, fontWeight: 700, color: gpsState.deadReckoningActive ? "#FF9500" : "rgba(255,255,255,0.15)" }}>
-                  {gpsState.deadReckoningActive ? "Active" : "Standby"}
+                  {gpsState.deadReckoningActive ? t("off.active") : t("off.standby")}
                 </p>
               </div>
               <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.01)" }}>
-                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>Interval</p>
+                <p style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.15)" }}>{t("off.interval")}</p>
                 <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)" }}>
                   {gpsState.currentInterval / 1000}s
                 </p>
@@ -708,7 +712,7 @@ export function OfflineMonitoringPage() {
               <div className="flex items-center gap-1.5 mt-2 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.01)" }}>
                 <MapPin className="size-3" style={{ color: "rgba(255,255,255,0.15)" }} />
                 <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontVariantNumeric: "tabular-nums" }}>
-                  Last: {gpsState.lastPosition.lat.toFixed(6)}, {gpsState.lastPosition.lng.toFixed(6)} (±{Math.round(gpsState.lastPosition.accuracy)}m)
+                  {t("off.lastPos")}: {gpsState.lastPosition.lat.toFixed(6)}, {gpsState.lastPosition.lng.toFixed(6)} (±{Math.round(gpsState.lastPosition.accuracy)}m)
                 </span>
               </div>
             )}
@@ -718,22 +722,22 @@ export function OfflineMonitoringPage() {
           <div className="p-4 rounded-xl" style={{ background: "rgba(0,200,83,0.02)", border: "1px solid rgba(0,200,83,0.06)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="size-4" style={{ color: "#00C853" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>Offline Safety Capabilities</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{t("off.offlineSafetyCaps")}</span>
             </div>
 
             <div className="space-y-2">
               {[
-                { label: "SOS Alert Queuing", desc: "Triggered offline → stored → synced first", ok: true },
-                { label: "GPS Continuous Recording", desc: "IndexedDB stores up to 50,000 points", ok: true },
-                { label: "Check-in Timer", desc: "Runs locally, missed check-ins queued", ok: true },
-                { label: "Incident Photo Reports", desc: "Photos stored as base64 in IndexedDB", ok: true },
-                { label: "Emergency Chat (Offline Queue)", desc: "Messages queued, delivered on reconnect", ok: true },
-                { label: "Dead Reckoning GPS", desc: "Estimates position when GPS signal lost", ok: true },
-                { label: "Battery-Aware Tracking", desc: "Reduces GPS frequency on low battery", ok: true },
-                { label: "Priority-Based Sync", desc: "SOS → Check-ins → Incidents → Messages → GPS", ok: true },
-                { label: "Service Worker Cache", desc: "App loads offline after first visit", ok: swStatus.supported },
-                { label: "Background Sync API", desc: "Syncs data even when app tab is closed", ok: swStatus.backgroundSyncSupported },
-                { label: "Push When Closed", desc: "Receive push alerts with app closed", ok: swStatus.pushSupported },
+                { label: t("off.cap1Label"), desc: t("off.cap1Desc"), ok: true },
+                { label: t("off.cap2Label"), desc: t("off.cap2Desc"), ok: true },
+                { label: t("off.cap3Label"), desc: t("off.cap3Desc"), ok: true },
+                { label: t("off.cap4Label"), desc: t("off.cap4Desc"), ok: true },
+                { label: t("off.cap5Label"), desc: t("off.cap5Desc"), ok: true },
+                { label: t("off.cap6Label"), desc: t("off.cap6Desc"), ok: true },
+                { label: t("off.cap7Label"), desc: t("off.cap7Desc"), ok: true },
+                { label: t("off.cap8Label"), desc: t("off.cap8Desc"), ok: true },
+                { label: t("off.cap9Label"), desc: t("off.cap9Desc"), ok: swStatus.supported },
+                { label: t("off.cap10Label"), desc: t("off.cap10Desc"), ok: swStatus.backgroundSyncSupported },
+                { label: t("off.cap11Label"), desc: t("off.cap11Desc"), ok: swStatus.pushSupported },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2">
                   {item.ok ? (

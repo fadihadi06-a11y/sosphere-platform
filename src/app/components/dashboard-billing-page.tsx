@@ -14,6 +14,8 @@ import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, ca
 import { useDashboardStore } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import { startCheckout, openBillingPortal, isPaidPlan } from "./stripe-service";
+import { useT } from "./dashboard-i18n";
+import { useLang } from "./useLang";
 
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
@@ -26,18 +28,18 @@ const ADDON_COLOR_MAP: Record<string, string> = { extra_reports: "#7B5EFF", twil
 
 // ── Customer Rights Data ────────────────────────────────────────
 const CUSTOMER_RIGHTS = [
-  { emoji: "💰", title: "Full Refund", description: "Not satisfied within the first 7 days of your subscription? We refund you in full, no questions asked.", badge: "7-day money-back guarantee", color: "#00C853" },
-  { emoji: "📦", title: "Your Data Belongs to You", description: "Your company and employee data is 100% yours. Upon cancellation, get a full export within 30 days.", badge: "Full export on request", color: "#00C8E0" },
-  { emoji: "🚫", title: "Cancel Anytime", description: "Cancel your subscription anytime from this page with one click. No calls, no complicated process.", badge: "Instant cancellation", color: "#FF9500" },
+  { emoji: "💰", titleKey: "bill.rightRefundTitle", descKey: "bill.rightRefundDesc", badgeKey: "bill.rightRefundBadge", color: "#00C853" },
+  { emoji: "📦", titleKey: "bill.rightDataTitle", descKey: "bill.rightDataDesc", badgeKey: "bill.rightDataBadge", color: "#00C8E0" },
+  { emoji: "🚫", titleKey: "bill.rightCancelTitle", descKey: "bill.rightCancelDesc", badgeKey: "bill.rightCancelBadge", color: "#FF9500" },
   // B-18 (2026-04-25): "Guaranteed" replaced with "First". The contractual
   // commitments live in the Privacy Policy + DPA — a banner describes them
   // but cannot itself constitute the guarantee.
-  { emoji: "🔒", title: "Privacy First", description: "We never sell your data to third parties. Employee data is fully deleted 30 days after cancellation. See our Privacy Policy for the full commitment.", badge: "No third-party sharing", color: "#7B5EFF" },
-  { emoji: "🔔", title: "Renewal Notice", description: "SOSphere sends you an email 7 days before every automatic renewal with full amount details.", badge: "7-day advance notice", color: "#F59E0B" },
-  { emoji: "🆘", title: "SOS Always Works", description: "Even if your trial ends or payment is delayed, the SOS system never stops. Your team safety comes first.", badge: "SOS never blocked", color: "#FF2D55" },
+  { emoji: "🔒", titleKey: "bill.rightPrivacyTitle", descKey: "bill.rightPrivacyDesc", badgeKey: "bill.rightPrivacyBadge", color: "#7B5EFF" },
+  { emoji: "🔔", titleKey: "bill.rightRenewalTitle", descKey: "bill.rightRenewalDesc", badgeKey: "bill.rightRenewalBadge", color: "#F59E0B" },
+  { emoji: "🆘", titleKey: "bill.rightSosTitle", descKey: "bill.rightSosDesc", badgeKey: "bill.rightSosBadge", color: "#FF2D55" },
 ];
 
-function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
+function CustomerRightsSection({ compact = false, t }: { compact?: boolean; t: (k: string) => string }) {
   useEffect(() => {
     console.debug("[SUPABASE_READY] customer_rights_viewed");
   }, []);
@@ -58,10 +60,10 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
           </div>
           <div>
             <p className="text-white" style={{ fontSize: compact ? 14 : 16, fontWeight: 800 }}>
-              🛡️ Your Rights as a Customer
+              🛡️ {t("bill.rightsTitle")}
             </p>
             <p style={{ fontSize: compact ? 10 : 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
-              We commit to these guarantees at all times
+              {t("bill.rightsSubtitle")}
             </p>
           </div>
         </div>
@@ -70,7 +72,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
       <div className={compact ? "grid grid-cols-1 gap-2.5 p-4" : "grid grid-cols-2 gap-4 p-6"}>
         {CUSTOMER_RIGHTS.map((right, i) => (
           <motion.div
-            key={right.title}
+            key={right.titleKey}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.55 + i * 0.06 }}
@@ -87,7 +89,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white" style={{ fontSize: compact ? 12 : 14, fontWeight: 700 }}>
-                  {right.title}
+                  {t(right.titleKey)}
                 </p>
                 <p style={{
                   fontSize: compact ? 10 : 12,
@@ -95,7 +97,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
                   lineHeight: 1.6,
                   marginTop: compact ? 3 : 4,
                 }}>
-                  {right.description}
+                  {t(right.descKey)}
                 </p>
                 <span
                   className="inline-flex items-center px-2 py-0.5 rounded-md mt-2.5"
@@ -108,7 +110,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
                     letterSpacing: "0.3px",
                   }}
                 >
-                  {right.badge}
+                  {t(right.badgeKey)}
                 </span>
               </div>
             </div>
@@ -119,7 +121,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
       <div className={compact ? "px-4 py-3" : "px-6 py-4"} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <div className="flex items-center justify-between">
           <p style={{ fontSize: compact ? 9 : 11, color: "rgba(255,255,255,0.2)" }}>
-            Last updated: March 2026
+            {t("bill.lastUpdated")}
           </p>
           <button
             onClick={() => window.open("/terms", "_blank", "noopener,noreferrer")}
@@ -132,7 +134,7 @@ function CustomerRightsSection({ compact = false }: { compact?: boolean }) {
               cursor: "pointer",
             }}
           >
-            Read full Terms →
+            {t("bill.readFullTerms")} →
           </button>
         </div>
       </div>
@@ -150,6 +152,8 @@ export function BillingPage({ companyState, webMode = false }: {
   companyState: ReturnType<typeof createCompanyState>;
   webMode?: boolean;
 }) {
+  const { lang } = useLang();
+  const t = useT(lang);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(() => {
     const saved = loadJSONSync<{ billingCycle?: "monthly" | "annual" } | null>("billing_prefs", null);
     return saved?.billingCycle || "monthly";
@@ -163,7 +167,7 @@ export function BillingPage({ companyState, webMode = false }: {
   const currentPlanName = currentPlanDef?.name ?? "Starter";
   const currentPlanMonthly = currentPlanDef?.monthlyPrice ?? 149;
   const currentPlanAnnualMonthly = currentPlanDef?.annualMonthly ?? 119;
-  const currentPlanDescription = currentPlanDef?.description ?? "For small teams";
+  const currentPlanDescription = currentPlanDef?.description ?? t("bill.forSmallTeams");
   const currentAnnualSavings = currentPlanDef ? annualSavings(currentPlanDef) : 0;
 
   // ── Addon State with localStorage persistence (PART D) ──
@@ -239,12 +243,12 @@ export function BillingPage({ companyState, webMode = false }: {
         // customers. Now: dev fallback gated on import.meta.env.DEV.
         console.error("[billing] Stripe checkout failed:", err);
         if (!import.meta.env.DEV) {
-          toast.error("Checkout temporarily unavailable. Please try again in a moment.");
+          toast.error(t("bill.checkoutUnavailable"));
           hapticLight();
           return;
         }
         console.warn("[billing] DEV-ONLY local fallback engaged.");
-        toast.error("Stripe unavailable — DEV fallback only.");
+        toast.error(t("bill.stripeDevFallback"));
       }
     }
 
@@ -272,8 +276,8 @@ export function BillingPage({ companyState, webMode = false }: {
 
     hapticSuccess();
     console.debug("[SUPABASE_READY] plan_switched: " + JSON.stringify({ oldPlan, newPlan: planId, newMonthly: newTotal }));
-    toast.success(`Plan updated to ${newPlanDef.name} — $${newTotal}/month`, {
-      description: `Base $${bill.planCost} + ${extraCount > 0 ? `${extraCount} extra employees $${extraCost}` : "no extra employees"} + addons $${addonsTotal}`,
+    toast.success(`${t("bill.planUpdatedTo")} ${newPlanDef.name} — $${newTotal}/${t("bill.month")}`, {
+      description: `${t("bill.base")} $${bill.planCost} + ${extraCount > 0 ? `${extraCount} ${t("bill.extraEmployees")} $${extraCost}` : t("bill.noExtraEmployees")} + ${t("bill.addons")} $${addonsTotal}`,
     });
   }, [currentPlanId, billingCycle, storeEmployees.length, activeAddonIds, addonsTotal, extraInvoices.length, setCompanyState]);
 
@@ -323,19 +327,19 @@ export function BillingPage({ companyState, webMode = false }: {
 
   // Helper: format extra employees display
   const formatExtra = (count: number, cost: number) =>
-    count > 0 ? `+${count} employees ($${cost})` : "—";
+    count > 0 ? `+${count} ${t("bill.employees")} ($${cost})` : "—";
 
   // ─── WEB BILLING PAGE ──────────────────────────────────────────
   if (webMode) {
     const billingStatus = companyState.company.billingStatus;
     const daysLeft = trialDaysRemaining(companyState);
     const statusLabel: Record<string, string> = {
-      trial: `Trial — ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`,
-      active: "Active",
-      trial_expired: "Trial Expired",
-      past_due: "Payment Failed",
-      suspended: "Suspended",
-      cancelled: "Cancelled",
+      trial: `${t("bill.trial")} — ${daysLeft} ${daysLeft !== 1 ? t("bill.days") : t("bill.day")} ${t("bill.left")}`,
+      active: t("bill.active"),
+      trial_expired: t("bill.trialExpired"),
+      past_due: t("bill.paymentFailed"),
+      suspended: t("bill.suspended"),
+      cancelled: t("bill.cancelled"),
     };
     const statusColor =
       billingStatus === "trial" ? (daysLeft <= 3 ? "#FF9500" : "#FFB300")
@@ -361,12 +365,12 @@ export function BillingPage({ companyState, webMode = false }: {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>Billing & Subscription</h1>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>Manage your plan, usage, and payment methods</p>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>{t("bill.title")}</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>{t("bill.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ background: `${statusColor}12`, border: `1px solid ${statusColor}30` }}>
             <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-2 rounded-full" style={{ background: statusColor }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{statusLabel[billingStatus] ?? "Active"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{statusLabel[billingStatus] ?? t("bill.active")}</span>
           </div>
         </div>
 
@@ -393,20 +397,19 @@ export function BillingPage({ companyState, webMode = false }: {
                 <AlertTriangle className="size-6" style={{ color: "#EF4444" }} />
               </motion.div>
               <div className="flex-1">
-                <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Data Deletion Warning</p>
+                <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("bill.dataDeletionWarning")}</p>
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", lineHeight: 1.7, marginTop: 4 }}>
-                  Reactivate your subscription before <span style={{ color: "#EF4444", fontWeight: 700 }}>{deletionDate}</span> to
-                  keep all your data. After this date, all company data will be permanently deleted.
+                  {t("bill.reactivateBefore")} <span style={{ color: "#EF4444", fontWeight: 700 }}>{deletionDate}</span> {t("bill.keepData")}
                 </p>
                 <div className="flex items-center gap-3 mt-4">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)" }}>
                     <Clock className="size-3.5" style={{ color: "#EF4444" }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>{daysUntilDeletion} day{daysUntilDeletion !== 1 ? "s" : ""} remaining</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>{daysUntilDeletion} {daysUntilDeletion !== 1 ? t("bill.days") : t("bill.day")} {t("bill.remaining")}</span>
                   </div>
                   <button onClick={() => switchPlan("starter")}
                     className="px-4 py-1.5 rounded-lg"
                     style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "linear-gradient(135deg, #00C8E0, #00A0B8)", cursor: "pointer", border: "none" }}>
-                    Reactivate Now
+                    {t("bill.reactivateNow")}
                   </button>
                 </div>
               </div>
@@ -433,24 +436,24 @@ export function BillingPage({ companyState, webMode = false }: {
                     <PlanIcon className="size-7" style={{ color: currentPlanColor }} />
                   </div>
                   <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: `${currentPlanColor}AA`, letterSpacing: "1.5px" }}>CURRENT PLAN</p>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: `${currentPlanColor}AA`, letterSpacing: "1.5px" }}>{t("bill.currentPlan")}</p>
                     <p className="text-white mt-0.5" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.5px" }}>{currentPlanName}</p>
                     <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{currentPlanDescription}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p style={{ fontSize: 36, fontWeight: 900, color: currentPlanColor, letterSpacing: "-1px" }}>
-                    {currentPlanMonthly > 0 ? `$${displayTotal}` : "Custom"}
-                    <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/mo</span>
+                    {currentPlanMonthly > 0 ? `$${displayTotal}` : t("bill.custom")}
+                    <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/{t("bill.mo")}</span>
                   </p>
                   <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
-                    Base ${displayPrice > 0 ? displayPrice : 0} + extras ${baseExtraCost} + addons ${addonsTotal}
+                    {t("bill.base")} ${displayPrice > 0 ? displayPrice : 0} + {t("bill.extras")} ${baseExtraCost} + {t("bill.addons")} ${addonsTotal}
                   </p>
                 </div>
               </div>
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Employee Usage</span>
+                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>{t("bill.employeeUsage")}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: usagePercent > 80 ? "#FF2D55" : "#00C853" }}>
                     {empCount} / {maxEmp === -1 ? "∞" : maxEmp}
                   </span>
@@ -462,10 +465,10 @@ export function BillingPage({ companyState, webMode = false }: {
               </div>
               <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Employees",  value: empCount, color: "#00C8E0" },
-                  { label: "Max Limit",     value: maxEmp === -1 ? "∞" : maxEmp,       color: "#7B5EFF" },
-                  { label: "Monthly Total",  value: currentPlanMonthly > 0 ? `$${displayTotal}` : "Custom", color: currentPlanColor },
-                  { label: "Extra /emp",   value: currentPlanDef ? `$${currentPlanDef.extraEmployeePrice}` : "—", color: "#F59E0B" },
+                  { label: t("bill.employees"),  value: empCount, color: "#00C8E0" },
+                  { label: t("bill.maxLimit"),     value: maxEmp === -1 ? "∞" : maxEmp,       color: "#7B5EFF" },
+                  { label: t("bill.monthlyTotal"),  value: currentPlanMonthly > 0 ? `$${displayTotal}` : t("bill.custom"), color: currentPlanColor },
+                  { label: t("bill.extraPerEmp"),   value: currentPlanDef ? `$${currentPlanDef.extraEmployeePrice}` : "—", color: "#F59E0B" },
                 ].map(s => (
                   <div key={s.label} className="text-center p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.05)" }}>
                     <p style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</p>
@@ -482,19 +485,19 @@ export function BillingPage({ companyState, webMode = false }: {
           <div className="space-y-4">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
               className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>Billing Cycle</p>
+              <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 700 }}>{t("bill.billingCycle")}</p>
               <div className="flex p-1 rounded-xl mb-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 {(["monthly", "annual"] as const).map(cycle => (
                   <button key={cycle} onClick={() => setBillingCycle(cycle)}
                     className="flex-1 py-2.5 rounded-lg transition-all"
                     style={{ fontSize: 13, fontWeight: 700, background: billingCycle === cycle ? "rgba(0,200,224,0.12)" : "transparent", color: billingCycle === cycle ? "#00C8E0" : "rgba(255,255,255,0.35)", border: billingCycle === cycle ? "1px solid rgba(0,200,224,0.25)" : "1px solid transparent" }}>
-                    {cycle === "monthly" ? "Monthly" : "Annual"}
+                    {cycle === "monthly" ? t("bill.monthly") : t("bill.annual")}
                   </button>
                 ))}
               </div>
               {billingCycle === "annual" && currentAnnualSavings > 0 && (
                 <div className="p-3 rounded-xl" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}>
-                  <p style={{ fontSize: 12, color: "#00C853", fontWeight: 600 }}>💰 Save ${currentAnnualSavings}/year on {currentPlanName} plan</p>
+                  <p style={{ fontSize: 12, color: "#00C853", fontWeight: 600 }}>💰 {t("bill.save")} ${currentAnnualSavings}/{t("bill.year")} {t("bill.onPlan")} {currentPlanName}</p>
                 </div>
               )}
             </motion.div>
@@ -505,8 +508,8 @@ export function BillingPage({ companyState, webMode = false }: {
         {/* Plan comparison */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Available Plans</p>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>Flat monthly pricing · extra employees billed separately</p>
+            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("bill.availablePlans")}</p>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{t("bill.flatPricing")}</p>
           </div>
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
             {PLANS.map((plan, i) => {
@@ -518,10 +521,10 @@ export function BillingPage({ companyState, webMode = false }: {
                   className="p-6 rounded-2xl relative overflow-hidden"
                   style={{ background: plan.current ? `${plan.color}08` : "rgba(255,255,255,0.02)", border: `1.5px solid ${plan.current ? plan.color + "35" : "rgba(255,255,255,0.07)"}` }}>
                   {plan.current && (
-                    <div className="absolute top-4 right-4 px-2.5 py-1 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}35`, fontSize: 9, fontWeight: 800, color: plan.color }}>CURRENT</div>
+                    <div className="absolute top-4 right-4 px-2.5 py-1 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}35`, fontSize: 9, fontWeight: 800, color: plan.color }}>{t("bill.currentBadge")}</div>
                   )}
                   {plan.popular && !plan.current && (
-                    <div className="absolute top-4 right-4 px-2.5 py-1 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}35`, fontSize: 9, fontWeight: 800, color: plan.color }}>POPULAR</div>
+                    <div className="absolute top-4 right-4 px-2.5 py-1 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}35`, fontSize: 9, fontWeight: 800, color: plan.color }}>{t("bill.popular")}</div>
                   )}
                   <div className="size-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: `${plan.color}15`, border: `1px solid ${plan.color}25` }}>
                     <PlanIcon className="size-6" style={{ color: plan.color }} />
@@ -532,17 +535,17 @@ export function BillingPage({ companyState, webMode = false }: {
                     {price > 0 ? (
                       <span className="contents">
                         <span style={{ fontSize: 34, fontWeight: 900, color: plan.color, letterSpacing: "-1px" }}>${price}</span>
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>/mo</span>
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>/{t("bill.mo")}</span>
                       </span>
                     ) : (
-                      <span style={{ fontSize: 28, fontWeight: 900, color: plan.color }}>Custom</span>
+                      <span style={{ fontSize: 28, fontWeight: 900, color: plan.color }}>{t("bill.custom")}</span>
                     )}
                   </div>
                   {billingCycle === "annual" && savings > 0 && (
-                    <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600, marginBottom: 8 }}>Save ${savings}/year</p>
+                    <p style={{ fontSize: 11, color: "#00C853", fontWeight: 600, marginBottom: 8 }}>{t("bill.save")} ${savings}/{t("bill.year")}</p>
                   )}
                   {plan.extraEmployeePrice > 0 && (
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>+${plan.extraEmployeePrice}/extra employee</p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>+${plan.extraEmployeePrice}/{t("bill.extraEmployee")}</p>
                   )}
                   <div className="space-y-2.5 mb-5">
                     {plan.features.map((f, fi) => (
@@ -554,15 +557,15 @@ export function BillingPage({ companyState, webMode = false }: {
                   </div>
                   {plan.current ? (
                     <div className="w-full py-3 rounded-xl text-center" style={{ background: `${plan.color}10`, border: `1px solid ${plan.color}20`, fontSize: 13, fontWeight: 700, color: plan.color }}>
-                      Current Plan ✓
+                      {t("bill.currentPlanCheck")} ✓
                     </div>
                   ) : price > 0 ? (
                     <button onClick={() => switchPlan(plan.id)} className="w-full py-3 rounded-xl" style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1.5px solid ${plan.color}30`, cursor: "pointer" }}>
-                      Switch to {plan.name}
+                      {t("bill.switchTo")} {plan.name}
                     </button>
                   ) : (
                     <button onClick={() => { hapticLight(); window.location.href = "mailto:info@sosphere.co?subject=SOSphere%20Enterprise%20Inquiry"; }} className="w-full py-3 rounded-xl" style={{ fontSize: 13, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1.5px solid ${plan.color}30`, cursor: "pointer" }}>
-                      Contact Sales
+                      {t("bill.contactSales")}
                     </button>
                   )}
                 </motion.div>
@@ -574,10 +577,10 @@ export function BillingPage({ companyState, webMode = false }: {
         {/* Add-ons with toggle switches (PART D) */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Add-ons & Extensions</p>
+            <p className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("bill.addonsExtensions")}</p>
             {addonsTotal > 0 && (
               <p style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0" }}>
-                {activeAddonIds.length} active · +${addonsTotal}/mo
+                {activeAddonIds.length} {t("bill.activeLower")} · +${addonsTotal}/{t("bill.mo")}
               </p>
             )}
           </div>
@@ -598,8 +601,8 @@ export function BillingPage({ companyState, webMode = false }: {
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2, lineHeight: 1.5 }}>{addon.description}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p style={{ fontSize: 16, fontWeight: 800, color }}>${addon.price}<span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 400 }}>/mo</span></p>
-                    <button onClick={() => { hapticLight(); toast("Coming soon", { description: "Add-ons launch with v1.1 — managed via Stripe Billing Portal." }); }} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", cursor: "not-allowed" }} disabled aria-disabled="true"><ToggleLeft className="size-3.5" />Soon
+                    <p style={{ fontSize: 16, fontWeight: 800, color }}>${addon.price}<span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 400 }}>/{t("bill.mo")}</span></p>
+                    <button onClick={() => { hapticLight(); toast(t("bill.comingSoon"), { description: t("bill.addonsLaunchDesc") }); }} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", cursor: "not-allowed" }} disabled aria-disabled="true"><ToggleLeft className="size-3.5" />{t("bill.soon")}
                     </button>
                   </div>
                 </motion.div>
@@ -616,21 +619,21 @@ export function BillingPage({ companyState, webMode = false }: {
               <div className="size-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(0,200,83,0.12)" }}>
                 <FileText className="size-4" style={{ color: "#00C853" }} />
               </div>
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Invoice History</p>
+              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("bill.invoiceHistory")}</p>
             </div>
-            <button onClick={async () => { hapticSuccess(); try { await openBillingPortal(); } catch { toast("Invoices in billing portal", { description: "Your invoices and PDF downloads open in the Stripe billing portal once you have an active paid subscription." }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>
-              <Download className="size-3.5" /> Download All
+            <button onClick={async () => { hapticSuccess(); try { await openBillingPortal(); } catch { toast(t("bill.invoicesInPortal"), { description: t("bill.invoicesInPortalDesc") }); } }} className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", cursor: "pointer" }}>
+              <Download className="size-3.5" /> {t("bill.downloadAll")}
             </button>
           </div>
           {/* Table header: Date | Plan | Base Price | Extra Employees | Addons | Total */}
           <div className="grid px-6 py-3" style={{ gridTemplateColumns: "120px 100px 100px 160px 80px 90px 60px", background: "rgba(255,255,255,0.015)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-            {["Date", "Plan", "Base Price", "Extra Employees", "Addons", "Total", ""].map(h => (
-              <span key={h || "action"} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>
+            {[t("bill.colDate"), t("bill.colPlan"), t("bill.colBasePrice"), t("bill.colExtraEmployees"), t("bill.colAddons"), t("bill.colTotal"), ""].map((h, hi) => (
+              <span key={h || `action-${hi}`} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>
             ))}
           </div>
           {ALL_INVOICES.length === 0 && (
             <div className="px-6 py-8 text-center" style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-              No invoices yet. Paid invoices appear in the Stripe billing portal — use “Download All”.
+              {t("bill.noInvoicesWeb")}
             </div>
           )}
           {ALL_INVOICES.slice(0, 8).map((inv, i) => (
@@ -648,13 +651,13 @@ export function BillingPage({ companyState, webMode = false }: {
                 {inv.addonsCost > 0 ? `$${inv.addonsCost}` : "—"}
               </p>
               <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>${inv.amount.toFixed(2)}</p>
-              <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoice PDF in billing portal", { description: "Open the Stripe billing portal to view and download this invoice as PDF." }); } }} style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
+              <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast(t("bill.invoicePdfTitle"), { description: t("bill.invoicePdfDesc") }); } }} style={{ fontSize: 12, fontWeight: 700, color: "#00C8E0", cursor: "pointer" }}>{t("bill.pdf")}</button>
             </div>
           ))}
         </motion.div>
 
         {/* Your Rights as a Customer */}
-        <CustomerRightsSection />
+        <CustomerRightsSection t={t} />
       </div>
     );
   }
@@ -663,12 +666,12 @@ export function BillingPage({ companyState, webMode = false }: {
   const mBillingStatus = companyState.company.billingStatus;
   const mDaysLeft = trialDaysRemaining(companyState);
   const mStatusLabel: Record<string, string> = {
-    trial: `Trial — ${mDaysLeft}d left`,
-    active: "Active",
-    trial_expired: "Expired",
-    past_due: "Payment Failed",
-    suspended: "Suspended",
-    cancelled: "Cancelled",
+    trial: `${t("bill.trial")} — ${mDaysLeft}${t("bill.dShort")} ${t("bill.left")}`,
+    active: t("bill.active"),
+    trial_expired: t("bill.expired"),
+    past_due: t("bill.paymentFailed"),
+    suspended: t("bill.suspended"),
+    cancelled: t("bill.cancelled"),
   };
   const mStatusColor =
     mBillingStatus === "trial" ? (mDaysLeft <= 3 ? "#FF9500" : "#FFB300")
@@ -680,10 +683,10 @@ export function BillingPage({ companyState, webMode = false }: {
   return (
     <div className="px-4 pt-4 pb-8 space-y-4">
       <div className="flex items-center justify-between">
-        <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>BILLING & SUBSCRIPTION</p>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>{t("bill.headerMobile")}</p>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: `${mStatusColor}14`, border: `1px solid ${mStatusColor}28` }}>
           <motion.div animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: mStatusColor }} />
-          <span style={{ fontSize: 9, color: mStatusColor, fontWeight: 700 }}>{mStatusLabel[mBillingStatus] ?? "Active"}</span>
+          <span style={{ fontSize: 9, color: mStatusColor, fontWeight: 700 }}>{mStatusLabel[mBillingStatus] ?? t("bill.active")}</span>
         </div>
       </div>
 
@@ -702,17 +705,17 @@ export function BillingPage({ companyState, webMode = false }: {
                 <MobilePlanIcon className="size-5" style={{ color: currentPlanColor }} />
               </div>
               <div>
-                <p style={{ fontSize: 9, color: `${currentPlanColor}99`, fontWeight: 700, letterSpacing: "1px" }}>CURRENT PLAN</p>
+                <p style={{ fontSize: 9, color: `${currentPlanColor}99`, fontWeight: 700, letterSpacing: "1px" }}>{t("bill.currentPlan")}</p>
                 <p style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{currentPlanName}</p>
               </div>
             </div>
             <div className="text-right">
-              <p style={{ fontSize: 22, fontWeight: 900, color: currentPlanColor }}>${mobileTotal}<span style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/mo</span></p>
+              <p style={{ fontSize: 22, fontWeight: 900, color: currentPlanColor }}>${mobileTotal}<span style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.3)" }}>/{t("bill.mo")}</span></p>
             </div>
           </div>
           <div className="mb-2">
             <div className="flex justify-between mb-1.5">
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>Employee Usage</span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{t("bill.employeeUsage")}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: usagePercent > 80 ? "#FF2D55" : "#00C853" }}>
                 {empCount} / {companyState.planConfig.maxEmployees === -1 ? "∞" : companyState.planConfig.maxEmployees}
               </span>
@@ -725,10 +728,10 @@ export function BillingPage({ companyState, webMode = false }: {
           </div>
           <div className="grid grid-cols-4 gap-2 mt-3">
             {[
-              { label: "Employees", value: empCount, color: "#00C8E0" },
-              { label: "Max Limit", value: companyState.planConfig.maxEmployees === -1 ? "∞" : companyState.planConfig.maxEmployees, color: "#7B5EFF" },
-              { label: "Extra /emp", value: currentPlanDef ? `$${currentPlanDef.extraEmployeePrice}` : "—", color: "#F59E0B" },
-              { label: "Addons", value: addonsTotal > 0 ? `+$${addonsTotal}` : "—", color: "#7B5EFF" },
+              { label: t("bill.employees"), value: empCount, color: "#00C8E0" },
+              { label: t("bill.maxLimit"), value: companyState.planConfig.maxEmployees === -1 ? "∞" : companyState.planConfig.maxEmployees, color: "#7B5EFF" },
+              { label: t("bill.extraPerEmp"), value: currentPlanDef ? `$${currentPlanDef.extraEmployeePrice}` : "—", color: "#F59E0B" },
+              { label: t("bill.addons"), value: addonsTotal > 0 ? `+$${addonsTotal}` : "—", color: "#7B5EFF" },
             ].map(s => (
               <div key={s.label} className="text-center px-2 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
                 <p style={{ fontSize: 13, fontWeight: 800, color: s.color }}>{s.value}</p>
@@ -747,7 +750,7 @@ export function BillingPage({ companyState, webMode = false }: {
           <button key={cycle} onClick={() => setBillingCycle(cycle)}
             className="flex-1 py-2 rounded-lg transition-all"
             style={{ fontSize: 11, fontWeight: 600, background: billingCycle === cycle ? "rgba(0,200,224,0.1)" : "transparent", color: billingCycle === cycle ? "#00C8E0" : "rgba(255,255,255,0.3)", border: billingCycle === cycle ? "1px solid rgba(0,200,224,0.2)" : "1px solid transparent" }}>
-            {cycle === "monthly" ? "Monthly" : "Annual"}{cycle === "annual" && currentAnnualSavings > 0 && <span style={{ fontSize: 8, color: "#00C853", marginLeft: 4 }}>Save ${currentAnnualSavings}/yr</span>}
+            {cycle === "monthly" ? t("bill.monthly") : t("bill.annual")}{cycle === "annual" && currentAnnualSavings > 0 && <span style={{ fontSize: 8, color: "#00C853", marginLeft: 4 }}>{t("bill.save")} ${currentAnnualSavings}/{t("bill.yr")}</span>}
           </button>
         ))}
       </div>
@@ -755,8 +758,8 @@ export function BillingPage({ companyState, webMode = false }: {
       {/* Add-ons (Mobile) — PART D */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>ADD-ONS</p>
-          {addonsTotal > 0 && <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0" }}>+${addonsTotal}/mo</p>}
+          <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>{t("bill.addonsUpper")}</p>
+          {addonsTotal > 0 && <p style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0" }}>+${addonsTotal}/{t("bill.mo")}</p>}
         </div>
         <div className="space-y-2">
           {PRICING_ADDONS.map((addon) => {
@@ -774,12 +777,12 @@ export function BillingPage({ companyState, webMode = false }: {
                   <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{addon.description}</p>
                 </div>
                 <span style={{ fontSize: 12, fontWeight: 700, color }}>${addon.price}</span>
-                <button onClick={() => { hapticLight(); toast("Coming soon"); }}
+                <button onClick={() => { hapticLight(); toast(t("bill.comingSoon")); }}
                   className="px-2.5 py-1 rounded-lg flex items-center gap-1"
                   style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", cursor: "not-allowed" }}
                   disabled aria-disabled="true">
                   <ToggleLeft className="size-3" />
-                  Soon
+                  {t("bill.soon")}
                 </button>
               </div>
             );
@@ -789,13 +792,13 @@ export function BillingPage({ companyState, webMode = false }: {
 
       {/* Plans */}
       <div>
-        <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px", marginBottom: 10 }}>AVAILABLE PLANS</p>
+        <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px", marginBottom: 10 }}>{t("bill.availablePlansUpper")}</p>
         <div className="space-y-2.5">
           {PLANS.map((plan, i) => (
             <motion.div key={plan.name} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
               className="p-3.5 rounded-xl relative overflow-hidden"
               style={{ background: plan.current ? `${plan.color}08` : "rgba(255,255,255,0.02)", border: `1px solid ${plan.current ? plan.color + "30" : "rgba(255,255,255,0.06)"}` }}>
-              {plan.current && <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}30`, fontSize: 8, fontWeight: 700, color: plan.color }}>CURRENT</div>}
+              {plan.current && <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full" style={{ background: `${plan.color}20`, border: `1px solid ${plan.color}30`, fontSize: 8, fontWeight: 700, color: plan.color }}>{t("bill.currentBadge")}</div>}
               <div className="flex items-start gap-3 mb-3">
                 <div className="size-9 rounded-xl flex items-center justify-center" style={{ background: `${plan.color}12`, border: `1px solid ${plan.color}20` }}>
                   <plan.icon className="size-4" style={{ color: plan.color }} />
@@ -808,10 +811,10 @@ export function BillingPage({ companyState, webMode = false }: {
                   {plan.price > 0 ? (
                     <span className="contents">
                       <p style={{ fontSize: 17, fontWeight: 800, color: plan.color }}>${billingCycle === "annual" ? plan.annualMonthly : plan.price}</p>
-                      <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>flat/mo</p>
+                      <p style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>{t("bill.flatMo")}</p>
                     </span>
                   ) : (
-                    <p style={{ fontSize: 14, fontWeight: 800, color: plan.color }}>Custom</p>
+                    <p style={{ fontSize: 14, fontWeight: 800, color: plan.color }}>{t("bill.custom")}</p>
                   )}
                 </div>
               </div>
@@ -825,12 +828,12 @@ export function BillingPage({ companyState, webMode = false }: {
               </div>
               {!plan.current && plan.price > 0 && (
                 <button onClick={() => switchPlan(plan.id)} className="w-full py-2 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1px solid ${plan.color}25`, cursor: "pointer" }}>
-                  Switch to {plan.name}
+                  {t("bill.switchTo")} {plan.name}
                 </button>
               )}
               {!plan.current && plan.price <= 0 && (
                 <button onClick={() => { hapticLight(); window.location.href = "mailto:info@sosphere.co?subject=SOSphere%20Enterprise%20Inquiry"; }} className="w-full py-2 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: plan.color, background: `${plan.color}10`, border: `1px solid ${plan.color}25`, cursor: "pointer" }}>
-                  Contact Sales
+                  {t("bill.contactSales")}
                 </button>
               )}
             </motion.div>
@@ -841,13 +844,13 @@ export function BillingPage({ companyState, webMode = false }: {
       {/* Invoice History with extra employees (PART C mobile) */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>INVOICE HISTORY</p>
-          <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoices in billing portal", { description: "Available with an active paid subscription." }); } }} style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600, cursor: "pointer" }}>Download All</button>
+          <p style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>{t("bill.invoiceHistoryUpper")}</p>
+          <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast(t("bill.invoicesInPortal"), { description: t("bill.invoicesInPortalMobileDesc") }); } }} style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600, cursor: "pointer" }}>{t("bill.downloadAll")}</button>
         </div>
         <DSCard padding={0}>
           {ALL_INVOICES.length === 0 && (
             <div style={{ padding: "16px", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-              No invoices yet — open the billing portal via “Download All”.
+              {t("bill.noInvoicesMobile")}
             </div>
           )}
           {ALL_INVOICES.slice(0, 6).map((inv, i) => (
@@ -860,14 +863,14 @@ export function BillingPage({ companyState, webMode = false }: {
                   <p className="text-white" style={{ fontSize: 11, fontWeight: 600, fontFamily: "monospace" }}>{inv.id}</p>
                   <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>
                     {inv.date} · {inv.planName}
-                    {inv.extraCount > 0 && <span style={{ color: "#F59E0B" }}> · +{inv.extraCount} emp (${inv.extraCost})</span>}
-                    {inv.addonsCost > 0 && <span style={{ color: "#7B5EFF" }}> · addons ${inv.addonsCost}</span>}
+                    {inv.extraCount > 0 && <span style={{ color: "#F59E0B" }}> · +{inv.extraCount} {t("bill.empShort")} (${inv.extraCost})</span>}
+                    {inv.addonsCost > 0 && <span style={{ color: "#7B5EFF" }}> · {t("bill.addons")} ${inv.addonsCost}</span>}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>${inv.amount.toFixed(2)}</span>
-                  <Badge variant="success" size="sm">Paid</Badge>
-                  <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast("Invoice PDF in billing portal", { description: "Open the Stripe billing portal to view and download this invoice as PDF." }); } }} style={{ fontSize: 10, color: "#00C8E0", cursor: "pointer" }}>PDF</button>
+                  <Badge variant="success" size="sm">{t("bill.paid")}</Badge>
+                  <button onClick={async () => { hapticLight(); try { await openBillingPortal(); } catch { toast(t("bill.invoicePdfTitle"), { description: t("bill.invoicePdfDesc") }); } }} style={{ fontSize: 10, color: "#00C8E0", cursor: "pointer" }}>{t("bill.pdf")}</button>
                 </div>
               </div>
               {i < Math.min(ALL_INVOICES.length, 6) - 1 && <Divider />}
@@ -878,7 +881,7 @@ export function BillingPage({ companyState, webMode = false }: {
       {/* R-31: legacy hardcoded Payment Method block removed — managed via LiveBillingPanel "Manage payment" button at top of page. */}
 
       {/* Your Rights as a Customer */}
-      <CustomerRightsSection compact />
+      <CustomerRightsSection compact t={t} />
     </div>
   );
 }
