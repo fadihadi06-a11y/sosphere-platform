@@ -1327,6 +1327,17 @@ function TierPipeline({ level, mode, isAr, escalationTimer, thresholdSec }: Tier
   );
 }
 
+function endReasonLabel(reason: string, isAr: boolean): string {
+  if (!isAr) return reason;
+  const map: Record<string, string> = {
+    "admin_resolved": "تم الحل من قبل المشرف",
+    "SOS ended — User is safe": "انتهى الطوارئ — المستخدم بأمان",
+    "SOS ended by user": "أنهى المستخدم الطوارئ",
+    "SOS ended by user (PIN verified)": "أنهى المستخدم الطوارئ (تم التحقق من الرمز)",
+  };
+  return map[reason] || reason;
+}
+
 export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = false, mode = "individual", isPremium = false, onNavigateToSubscription, userName, userId, userPhone, userBloodType, userZone, userAvatar }: SosEmergencyProps) {
   const { isAr, lang } = useLang();
   const t = useT(lang);
@@ -2157,7 +2168,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
       console.warn("[sos-emergency] endServerSOS failed (best-effort):", err instanceof Error ? err.message : err);
     });
     q.current.phase = "ended";
-    addEvent({ type: "sos_end", title: reason, detail: `Duration: ${fmt(q.current.elapsed)}`, color: "#00C8E0" });
+    addEvent({ type: "sos_end", title: endReasonLabel(reason, isAr), detail: isAr ? `المدة: ${fmt(q.current.elapsed)}` : `Duration: ${fmt(q.current.elapsed)}`, color: "#00C8E0" });
     // FIX 2026-04-24: evidence flags for end-to-end chain.
     // Snapshot refs at record-construction time. Note: recorder.onstop
     // is async, so audioPublicUrlRef may still be empty here if the
@@ -2280,8 +2291,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     setDmsCountdown(30);
     addEvent({
       type: "dms_check",
-      title: `Are you safe? — Check #${q.current.dmsCheckNum}`,
-      detail: ["5 minutes elapsed", "10 minutes — critical", "15 minutes — immediate escalation"][q.current.dmsCheckNum - 1],
+      title: isAr ? `هل أنت بأمان؟ — فحص #${q.current.dmsCheckNum}` : `Are you safe? — Check #${q.current.dmsCheckNum}`,
+      detail: (isAr ? ["مضت 5 دقائق", "10 دقائق — حرج", "15 دقيقة — تصعيد فوري"] : ["5 minutes elapsed", "10 minutes — critical", "15 minutes — immediate escalation"])[q.current.dmsCheckNum - 1],
       color: "#FF9500",
     });
     if (dmsTickRef.current) clearInterval(dmsTickRef.current);
@@ -2295,7 +2306,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         q.current.nextDMSAt = q.current.monitorSec + DMS_GAP_SEC * q.current.dmsCheckNum;
         setShowDMS(false);
         setDmsCheckNum(q.current.dmsCheckNum);
-        addEvent({ type: "dms_dismissed", title: `Check #${q.current.dmsCheckNum - 1} — No response`, color: "#FF2D55" });
+        addEvent({ type: "dms_dismissed", title: isAr ? `فحص #${q.current.dmsCheckNum - 1} — لا استجابة` : `Check #${q.current.dmsCheckNum - 1} — No response`, color: "#FF2D55" });
       }
     }, 1000);
   }, [addEvent]);
@@ -2304,7 +2315,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     if (dmsTickRef.current) clearInterval(dmsTickRef.current);
     q.current.dmsActive = false;
     setShowDMS(false);
-    addEvent({ type: "dms_confirmed", title: "User confirmed safe", color: "#00C853" });
+    addEvent({ type: "dms_confirmed", title: isAr ? "أكّد المستخدم أنه بأمان" : "User confirmed safe", color: "#00C853" });
     doEnd("SOS ended — User is safe");
   }, [addEvent, doEnd]);
 
@@ -2315,7 +2326,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     q.current.nextDMSAt = q.current.monitorSec + DMS_GAP_SEC * q.current.dmsCheckNum;
     setShowDMS(false);
     setDmsCheckNum(q.current.dmsCheckNum);
-    addEvent({ type: "dms_dismissed", title: `Still in danger — Check #${q.current.dmsCheckNum - 1}`, color: "#FF2D55" });
+    addEvent({ type: "dms_dismissed", title: isAr ? `لا يزال في خطر — فحص #${q.current.dmsCheckNum - 1}` : `Still in danger — Check #${q.current.dmsCheckNum - 1}`, color: "#FF2D55" });
   }, [addEvent]);
 
   // ── Show CallingAdminView when SOS starts (employee mode, DURING work hours only) ──
@@ -2340,8 +2351,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
 
   // Main tick
   useEffect(() => {
-    addEvent({ type: "sos_start", title: "SOS Activated", detail: "3-second hold trigger", color: "#FF2D55" });
-    addEvent({ type: "location_share", title: "GPS tracking your location", detail: "Will be shared when someone answers", color: "#00C8E0" });
+    addEvent({ type: "sos_start", title: isAr ? "تم تفعيل الطوارئ" : "SOS Activated", detail: isAr ? "تفعيل بالضغط 3 ثوانٍ" : "3-second hold trigger", color: "#FF2D55" });
+    addEvent({ type: "location_share", title: isAr ? "نظام GPS يتتبّع موقعك" : "GPS tracking your location", detail: isAr ? "ستتم مشاركته عند رد أحدهم" : "Will be shared when someone answers", color: "#00C8E0" });
     // ── Haptic feedback: 2 short pulses every 30s to confirm data is being sent ──
     startHapticFeedback();
     // ── Immersive Mode: Lock screen to SOSphere only (hides status bar, nav bar, blocks notifications) ──
@@ -2405,12 +2416,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         const _total = result.results?.length || 0;
         dlog("[SOS] Path B (server) completed:", _reached, "of", _total, "contacts reached");
         if (_reached > 0) {
-          addEvent({ type: "sms_sent", title: "Server alerts sent", detail: `Tier: ${result.tier} · ${_reached}/${_total} contacts reached`, color: "#00C8E0" });
+          addEvent({ type: "sms_sent", title: isAr ? "تم إرسال تنبيهات الخادم" : "Server alerts sent", detail: isAr ? `المستوى: ${result.tier} · تم الوصول إلى ${_reached}/${_total} جهة` : `Tier: ${result.tier} · ${_reached}/${_total} contacts reached`, color: "#00C8E0" });
         } else {
           // LIFE-SAFETY HONESTY: a 200 from sos-alert means "received", NOT
           // "delivered". When zero contacts were actually reached (e.g. SMS/voice
           // provider degraded), never imply help is on the way.
-          addEvent({ type: "sos_start", title: "Alert logged — contacts NOT yet reached", detail: "Admins were notified in-app. If urgent, call your contacts or local emergency services directly.", color: "#FF9500" });
+          addEvent({ type: "sos_start", title: isAr ? "تم تسجيل التنبيه — لم يتم الوصول للجهات بعد" : "Alert logged — contacts NOT yet reached", detail: isAr ? "تم إخطار المشرفين داخل التطبيق. إن كان الأمر عاجلاً، اتصل بجهاتك أو بخدمات الطوارئ المحلية مباشرة." : "Admins were notified in-app. If urgent, call your contacts or local emergency services directly.", color: "#FF9500" });
         }
       } else {
         console.warn("[SOS] Path B (server) failed:", result.error);
@@ -2423,7 +2434,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // ── Start Watchdog: if local dialer doesn't open in 5s → escalate ──
     startWatchdog((reason) => {
       console.warn("[SOS] Watchdog escalation:", reason);
-      addEvent({ type: "sos_start", title: "Watchdog: local dialer failed", detail: reason, color: "#FF9500" });
+      addEvent({ type: "sos_start", title: isAr ? "المراقب: فشل الاتصال المحلي" : "Watchdog: local dialer failed", detail: reason, color: "#FF9500" });
       // Informational, not an error: watchdog only fires when we can't confirm
       // the native dialer launched locally — but Path B (server Twilio calls)
       // is already running in parallel, so the SOS is NOT failing. A red
@@ -2547,8 +2558,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             { batteryLevel: currentBattery, lastGPS: lastPos });
           addEvent({
             type: "system",
-            title: "⚠️ Battery Critical",
-            detail: `Battery at ${Math.round(currentBattery * 100)}% — final location shared with emergency contacts`,
+            title: isAr ? "⚠️ البطارية حرجة" : "⚠️ Battery Critical",
+            detail: isAr ? `البطارية عند ${Math.round(currentBattery * 100)}% — تمت مشاركة آخر موقع مع جهات الطوارئ` : `Battery at ${Math.round(currentBattery * 100)}% — final location shared with emergency contacts`,
             color: "#FF9500",
           });
         } else {
@@ -2601,7 +2612,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = 0;
             setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             updateContact(0, "calling");
-            addEvent({ type: "call_out", title: `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
+            addEvent({ type: "call_out", title: isAr ? `جارٍ الاتصال بـ ${contactsRef.current[0].name}` : `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
             // ── PHASE 1: "during" / "both" mode — start recording at activation ──
             // Safe-guarded: only starts once, only if recordingEnabled, never interferes
             // with the post-call "after" recording path.
@@ -2763,12 +2774,12 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
                 if (gps) {
                   sendSOSTrackingLink(phone, userName, gps.lat, gps.lng).then(sent => {
                     if (sent) {
-                      addEvent({ type: "sms_sent", title: `Tracking link sent to ${contactsRef.current[idx]?.name}`, detail: "Web-viewer link via SMS", color: "#00C8E0" });
+                      addEvent({ type: "sms_sent", title: isAr ? `تم إرسال رابط التتبّع إلى ${contactsRef.current[idx]?.name}` : `Tracking link sent to ${contactsRef.current[idx]?.name}`, detail: isAr ? "رابط عبر رسالة نصية" : "Web-viewer link via SMS", color: "#00C8E0" });
                     }
                   });
                 }
               }
-              addEvent({ type: "call_out", title: `Dialing ${contactsRef.current[idx].name}`, detail: `Direct call: ${phone}`, color: "#00C8E0" });
+              addEvent({ type: "call_out", title: isAr ? `جارٍ طلب ${contactsRef.current[idx].name}` : `Dialing ${contactsRef.current[idx].name}`, detail: isAr ? `اتصال مباشر: ${phone}` : `Direct call: ${phone}`, color: "#00C8E0" });
               trackEventSync(errIdRef.current, "contact_called",
                 `Calling emergency contact: ${contactsRef.current[idx].name} (${phone})`,
                 "System", "System",
@@ -2791,7 +2802,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               setPhase("answered"); setPhaseTimer(0);
               updateContact(idx, "answered");
               setAnsweredContact({ ...c });
-              addEvent({ type: "answered", title: `${c.name} answered`, color: "#00C853" });
+              addEvent({ type: "answered", title: isAr ? `${c.name} ردّ` : `${c.name} answered`, color: "#00C853" });
               trackEventSync(errIdRef.current, "contact_answered",
                 `${c.name} answered the call`,
                 c.name, "Emergency Contact",
@@ -2802,7 +2813,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             r.phase = "no_answer"; r.phaseTimer = 0;
             setPhase("no_answer"); setPhaseTimer(0);
             updateContact(idx, "no_answer");
-            addEvent({ type: "no_answer", title: `${contactsRef.current[idx].name} — No answer (${CALL_SEC}s)`, color: "#FF9500" });
+            addEvent({ type: "no_answer", title: isAr ? `${contactsRef.current[idx].name} — لا رد (${CALL_SEC} ث)` : `${contactsRef.current[idx].name} — No answer (${CALL_SEC}s)`, color: "#FF9500" });
             trackEventSync(errIdRef.current, "contact_no_answer",
               `${contactsRef.current[idx].name} did not answer after ${CALL_SEC}s`,
               "System", "System",
@@ -2820,11 +2831,11 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               r.phase = "calling"; r.phaseTimer = 0; r.currentIdx = next;
               setPhase("calling"); setPhaseTimer(0); setCurrentIdx(next);
               updateContact(next, "calling");
-              addEvent({ type: "call_out", title: `Calling ${contactsRef.current[next].name}`, detail: contactsRef.current[next].phone, color: "#00C8E0" });
+              addEvent({ type: "call_out", title: isAr ? `جارٍ الاتصال بـ ${contactsRef.current[next].name}` : `Calling ${contactsRef.current[next].name}`, detail: contactsRef.current[next].phone, color: "#00C8E0" });
             } else {
               r.phase = "pausing"; r.phaseTimer = 0;
               setPhase("pausing"); setPhaseTimer(0);
-              addEvent({ type: "pause_start", title: "All contacts unreachable", detail: `Retrying in ${PAUSE_SEC}s`, color: "#FF2D55" });
+              addEvent({ type: "pause_start", title: isAr ? "تعذّر الوصول لكل الجهات" : "All contacts unreachable", detail: isAr ? `إعادة المحاولة خلال ${PAUSE_SEC} ث` : `Retrying in ${PAUSE_SEC}s`, color: "#FF2D55" });
             }
           }
           break;
@@ -2857,8 +2868,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             callDialStartTime = 0; // FIX: Reset call timer for new cycle
             setCycle(r.cycle); setPhase("calling"); setPhaseTimer(0); setCurrentIdx(0);
             resetContacts(); updateContact(0, "calling");
-            addEvent({ type: "pause_end", title: `Cycle ${r.cycle} — Retrying`, color: "#00C8E0" });
-            addEvent({ type: "call_out", title: `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
+            addEvent({ type: "pause_end", title: isAr ? `الدورة ${r.cycle} — إعادة المحاولة` : `Cycle ${r.cycle} — Retrying`, color: "#00C8E0" });
+            addEvent({ type: "call_out", title: isAr ? `جارٍ الاتصال بـ ${contactsRef.current[0].name}` : `Calling ${contactsRef.current[0].name}`, detail: contactsRef.current[0].phone, color: "#00C8E0" });
           }
           break;
 
@@ -2866,8 +2877,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
           // Send location to the person who answered (once)
           if (r.phaseTimer === 1 && !r.smsSent) {
             r.smsSent = true; setSmsSent(true); setLocationSent(true);
-            addEvent({ type: "sms_sent", title: "Location shared", detail: `Google Maps · ${contactsRef.current.find(c => c.status === "answered")?.name || "Responder"}`, color: "#00C853" });
-            addEvent({ type: "location_share", title: "Live GPS — updating every 30s", detail: "Responder can see your live location now", color: "#00C8E0" });
+            addEvent({ type: "sms_sent", title: isAr ? "تمت مشاركة الموقع" : "Location shared", detail: isAr ? `خرائط Google · ${contactsRef.current.find(c => c.status === "answered")?.name || "المستجيب"}` : `Google Maps · ${contactsRef.current.find(c => c.status === "answered")?.name || "Responder"}`, color: "#00C853" });
+            addEvent({ type: "location_share", title: isAr ? "GPS مباشر — تحديث كل 30 ث" : "Live GPS — updating every 30s", detail: isAr ? "يمكن للمستجيب رؤية موقعك المباشر الآن" : "Responder can see your live location now", color: "#00C8E0" });
             emitSyncEvent({ type: "SOS_CONTACT_ANSWERED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { contactName: contactsRef.current.find(c => c.status === "answered")?.name, gpsTrailActive: true, phone: userPhone, bloodType: userBloodType } });
           }
           // After 15 seconds in answered state, move to recording (simulates call end)
@@ -2896,7 +2907,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
               r.isRecording = true; setIsRecording(true);
               r.phase = "recording"; r.phaseTimer = 0;
               setPhase("recording"); setPhaseTimer(0);
-              addEvent({ type: "recording_start", title: "Call ended — Voice recording started", detail: "Ambient recording as evidence · Encrypted", color: "#FF2D55" });
+              addEvent({ type: "recording_start", title: isAr ? "انتهت المكالمة — بدأ التسجيل الصوتي" : "Call ended — Voice recording started", detail: isAr ? "تسجيل محيطي كدليل · مشفّر" : "Ambient recording as evidence · Encrypted", color: "#FF2D55" });
               emitSyncEvent({ type: "SOS_RECORDING_STARTED", employeeId: userId, employeeName: userName, zone: userZone, timestamp: Date.now(), data: { maxDuration: REC_MAX, mode } });
               trackEventSync(errIdRef.current, "evidence_audio",
                 `Voice recording started (max ${REC_MAX}s, mode=${mode})`,
@@ -2916,7 +2927,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             r.isRecording = false; setIsRecording(false);
             // ── STOP REAL MICROPHONE RECORDING ──
             stopRealRecording();
-            addEvent({ type: "recording_end", title: "Recording complete", detail: "Uploaded securely · 60 seconds", color: "#00C853" });
+            addEvent({ type: "recording_end", title: isAr ? "اكتمل التسجيل" : "Recording complete", detail: isAr ? "تم الرفع بأمان · 60 ثانية" : "Uploaded securely · 60 seconds", color: "#00C853" });
             r.phase = "documenting"; r.phaseTimer = 0;
             setPhase("documenting"); setPhaseTimer(0);
           }
@@ -3043,7 +3054,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // [FIX] Sync refs so doEnd() can access them
     docPhotosRef.current = docPhotos;
     docCommentRef.current = docComment;
-    addEvent({ type: "recording_end", title: "Incident documented", detail: `${docPhotos.length} photo(s) · ${docComment ? "Comment added" : "No comment"}`, color: "#00C853" });
+    addEvent({ type: "recording_end", title: isAr ? "تم توثيق الحادثة" : "Incident documented", detail: isAr ? `${docPhotos.length} صورة · ${docComment ? "تمت إضافة تعليق" : "لا تعليق"}` : `${docPhotos.length} photo(s) · ${docComment ? "Comment added" : "No comment"}`, color: "#00C853" });
 
     // [FIX] Store evidence in the Evidence Intelligence Pipeline
 
@@ -3169,7 +3180,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
     // [FIX] Sync empty refs so doEnd() records "skipped"
     docPhotosRef.current = [];
     docCommentRef.current = "";
-    addEvent({ type: "recording_end", title: "Documentation skipped", color: "#FF9500" });
+    addEvent({ type: "recording_end", title: isAr ? "تم تخطّي التوثيق" : "Documentation skipped", color: "#FF9500" });
     q.current.phase = "monitoring"; q.current.phaseTimer = 0; q.current.monitorSec = 0;
     setPhase("monitoring"); setPhaseTimer(0); setMonitorSec(0);
   };
@@ -3239,8 +3250,8 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
         { coercion: true });
       addEvent({
         type: "system",
-        title: "⚠ Duress code acknowledged",
-        detail: "Flag relayed to dashboard — UI ends normally",
+        title: isAr ? "⚠ تم الإقرار برمز الإكراه" : "⚠ Duress code acknowledged",
+        detail: isAr ? "تم إبلاغ لوحة التحكم — تنتهي الواجهة بشكل طبيعي" : "Flag relayed to dashboard — UI ends normally",
         color: "#FF2D55",
       });
       // Use the SAME reason text as normal end so the incident record is
@@ -3666,7 +3677,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             border: "1px solid rgba(255,255,255,0.04)",
           }}>
             {/* GPS */}
-            <div className="flex items-center gap-1" title="GPS">
+            <div className="flex items-center gap-1" title={isAr ? "نظام تحديد المواقع" : "GPS"}>
               <motion.div
                 animate={{ opacity: getLastKnownPosition() ? [1, 0.35, 1] : 1 }}
                 transition={{ duration: 2, repeat: Infinity }}
@@ -3677,7 +3688,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             </div>
             <div style={{ width: 1, height: 10, background: "rgba(255,255,255,0.06)" }} />
             {/* REC */}
-            <div className="flex items-center gap-1" title="Recording">
+            <div className="flex items-center gap-1" title={isAr ? "تسجيل" : "Recording"}>
               <motion.div
                 animate={{ opacity: isRecording ? [1, 0.15, 1] : 1 }}
                 transition={{ duration: 0.8, repeat: Infinity }}
@@ -3688,7 +3699,7 @@ export function SosEmergency({ onEnd, onCancel: _onCancel, recordingEnabled = fa
             </div>
             <div style={{ width: 1, height: 10, background: "rgba(255,255,255,0.06)" }} />
             {/* NET — server-trigger confirmation (today's v14 logic) */}
-            <div className="flex items-center gap-1" title="Server alert">
+            <div className="flex items-center gap-1" title={isAr ? "تنبيه الخادم" : "Server alert"}>
               <motion.div
                 animate={{ opacity: smsSent ? 1 : [1, 0.3, 1] }}
                 transition={{ duration: 1.6, repeat: smsSent ? 0 : Infinity }}
