@@ -40,7 +40,7 @@ interface Shift {
 
 interface ShiftTemplate {
   id: string;
-  name: string;
+  nameKey: string;
   type: ShiftType;
   startHour: number;
   endHour: number;
@@ -50,9 +50,9 @@ interface ShiftTemplate {
 
 // ── Constants ─────────────────────────────────────────────────
 const SHIFT_TEMPLATES: ShiftTemplate[] = [
-  { id: "morning",   name: "Morning",   type: "morning",   startHour: 6,  endHour: 14, color: "#FF9500", icon: Sun },
-  { id: "afternoon", name: "Afternoon", type: "afternoon", startHour: 14, endHour: 22, color: "#00C8E0", icon: Sunset },
-  { id: "night",     name: "Night",     type: "night",     startHour: 22, endHour: 6,  color: "#7B5EFF", icon: Moon },
+  { id: "morning",   nameKey: "shift.tplMorning",   type: "morning",   startHour: 6,  endHour: 14, color: "#FF9500", icon: Sun },
+  { id: "afternoon", nameKey: "shift.tplAfternoon", type: "afternoon", startHour: 14, endHour: 22, color: "#00C8E0", icon: Sunset },
+  { id: "night",     nameKey: "shift.tplNight",     type: "night",     startHour: 22, endHour: 6,  color: "#7B5EFF", icon: Moon },
 ];
 
 const SHIFT_COLORS: Record<ShiftType, string> = {
@@ -250,13 +250,13 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
     setCreateTarget(null);
     setEditingShift(null);
     hapticSuccess();
-    toast.success("Shift assigned successfully!");
+    toast.success(t("shift.toastAssigned"));
   }, [createTarget, editingShift, selectedTemplate]);
 
   const handleDeleteShift = useCallback((id: string) => {
     setShifts(prev => prev.filter(s => s.id !== id));
     hapticLight();
-    toast.success("Shift deleted successfully!");
+    toast.success(t("shift.toastDeleted"));
   }, []);
 
   const handleCopyWeek = useCallback(() => {
@@ -267,7 +267,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
     setShifts(prev => [...prev, ...nextWeekShifts]);
     setShowCopyWeek(false);
     hapticSuccess();
-    toast.success("Week copied successfully!");
+    toast.success(t("shift.toastWeekCopied"));
   }, [shifts]);
 
   const handleEditShift = useCallback((shift: Shift) => {
@@ -287,10 +287,10 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
         <div>
           <h1 className="text-white flex items-center gap-2" style={{ fontSize: webMode ? 22 : 18, fontWeight: 700 }}>
             <Calendar className="size-5" style={{ color: "#00C8E0" }} />
-            Shift Scheduling
+            {t("shift.title")}
           </h1>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-            Plan and manage employee shifts across all zones
+            {t("shift.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -299,7 +299,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
             style={{ fontSize: 11, color: "#00C8E0", background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.15)", fontWeight: 600 }}
           >
-            <Copy className="size-3" /> Copy Week
+            <Copy className="size-3" /> {t("shift.copyWeek")}
           </button>
           <button
             onClick={() => {
@@ -313,12 +313,12 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a"); a.href = url; a.download = "sosphere_shift_schedule.csv"; a.click();
               URL.revokeObjectURL(url);
-              toast.success(shifts.length ? `Exported ${shifts.length} shifts to CSV` : "No shifts to export");
+              toast.success(shifts.length ? `${t("shift.exportedPrefix")} ${shifts.length} ${t("shift.exportedSuffix")}` : t("shift.noShiftsExport"));
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
             style={{ fontSize: 11, color: "#7B5EFF", background: "rgba(123,94,255,0.08)", border: "1px solid rgba(123,94,255,0.15)", fontWeight: 600, cursor: "pointer" }}
           >
-            <Download className="size-3" /> Export
+            <Download className="size-3" /> {t("shift.export")}
           </button>
         </div>
       </div>
@@ -326,10 +326,10 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
       {/* KPI Cards */}
       <div className={`grid ${webMode ? "grid-cols-4" : "grid-cols-2"} gap-3 mb-6`}>
         {[
-          { label: "Total Shifts", value: shifts.length.toString(), color: "#00C8E0", icon: Calendar },
-          { label: "Scheduled Hours", value: `${totalHours}h`, color: "#FF9500", icon: Clock },
-          { label: "Employees Assigned", value: new Set(shifts.map(s => s.employeeId)).size.toString(), color: "#00C853", icon: Users },
-          { label: "Conflicts", value: conflicts.size > 0 ? Math.floor(conflicts.size / 2).toString() : "0", color: conflicts.size > 0 ? "#FF2D55" : "#00C853", icon: conflicts.size > 0 ? AlertTriangle : Check },
+          { label: t("shift.kpiTotalShifts"), value: shifts.length.toString(), color: "#00C8E0", icon: Calendar },
+          { label: t("shift.kpiScheduledHours"), value: `${totalHours}h`, color: "#FF9500", icon: Clock },
+          { label: t("shift.kpiEmployeesAssigned"), value: new Set(shifts.map(s => s.employeeId)).size.toString(), color: "#00C853", icon: Users },
+          { label: t("shift.kpiConflicts"), value: conflicts.size > 0 ? Math.floor(conflicts.size / 2).toString() : "0", color: conflicts.size > 0 ? "#FF2D55" : "#00C853", icon: conflicts.size > 0 ? AlertTriangle : Check },
         ].map((kpi, i) => (
           <motion.div
             key={kpi.label}
@@ -373,7 +373,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
             <button onClick={() => setWeekOffset(0)}
               className="px-2 py-1 rounded-md flex items-center gap-1"
               style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.04)" }}>
-              <RotateCcw className="size-3" /> Today
+              <RotateCcw className="size-3" /> {t("shift.today")}
             </button>
           )}
         </div>
@@ -384,7 +384,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search employee..."
+              placeholder={t("shift.searchEmployee")}
               className="pl-7 pr-3 py-1.5 rounded-lg outline-none"
               style={{
                 fontSize: 11, color: "white", background: "rgba(255,255,255,0.04)",
@@ -404,7 +404,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
           >
             {departments.map(d => (
               <option key={d} value={d} style={{ background: "#0A1220", color: "white" }}>
-                {d === "all" ? "All Departments" : d}
+                {d === "all" ? t("shift.allDepartments") : d}
               </option>
             ))}
           </select>
@@ -413,7 +413,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
 
       {/* Shift Templates Picker */}
       <div className="flex items-center gap-2 mb-4">
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>TEMPLATE:</span>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("shift.templateLabel")}</span>
         {SHIFT_TEMPLATES.map(tpl => (
           <button
             key={tpl.id}
@@ -426,7 +426,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
           >
             <tpl.icon className="size-3" style={{ color: tpl.color }} />
             <span style={{ fontSize: 10, color: selectedTemplate.id === tpl.id ? tpl.color : "rgba(255,255,255,0.4)", fontWeight: 600 }}>
-              {tpl.name}
+              {t(tpl.nameKey)}
             </span>
             <span style={{ fontSize: 8, color: "rgba(255,255,255,0.25)" }}>
               {`${tpl.startHour}:00-${tpl.endHour}:00`}
@@ -440,7 +440,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
         {/* Grid header */}
         <div className="grid" style={{ gridTemplateColumns: webMode ? "180px repeat(7, 1fr)" : "120px repeat(7, 1fr)" }}>
           <div className="p-3 flex items-center" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", borderRight: "1px solid rgba(255,255,255,0.04)" }}>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>EMPLOYEE</span>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{t("shift.employeeCol")}</span>
           </div>
           {DAYS.map((day, i) => {
             const d = weekDates[i];
@@ -451,7 +451,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
                 borderRight: i < 6 ? "1px solid rgba(255,255,255,0.04)" : undefined,
                 background: isToday ? "rgba(0,200,224,0.04)" : undefined,
               }}>
-                <p style={{ fontSize: 10, color: isToday ? "#00C8E0" : "rgba(255,255,255,0.4)", fontWeight: 600 }}>{day}</p>
+                <p style={{ fontSize: 10, color: isToday ? "#00C8E0" : "rgba(255,255,255,0.4)", fontWeight: 600 }}>{t("shift.day" + day)}</p>
                 <p style={{ fontSize: 8, color: isToday ? "rgba(0,200,224,0.6)" : "rgba(255,255,255,0.2)" }}>
                   {d.toLocaleDateString("en", { month: "short", day: "numeric" })}
                 </p>
@@ -512,7 +512,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
                       >
                         <div className="flex items-center justify-between">
                           <span style={{ fontSize: 8, color: isConflict ? "#FF2D55" : color, fontWeight: 700 }}>
-                            {shift.type === "morning" ? "AM" : shift.type === "afternoon" ? "PM" : "NT"}
+                            {shift.type === "morning" ? t("shift.abbrAM") : shift.type === "afternoon" ? t("shift.abbrPM") : t("shift.abbrNT")}
                           </span>
                           {isConflict && <AlertTriangle className="size-2.5" style={{ color: "#FF2D55" }} />}
                         </div>
@@ -545,17 +545,17 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
       {/* Coverage Summary Row */}
       <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(10,18,32,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
         <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px", marginBottom: 8 }}>
-          DAILY COVERAGE
+          {t("shift.dailyCoverage")}
         </p>
         <div className="grid" style={{ gridTemplateColumns: webMode ? "repeat(7, 1fr)" : "repeat(7, 1fr)", gap: 8 }}>
           {coverageStats.map((stat, i) => (
             <div key={i} className="text-center">
-              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", fontWeight: 600, marginBottom: 4 }}>{DAYS[i]}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", fontWeight: 600, marginBottom: 4 }}>{t("shift.day" + DAYS[i])}</p>
               <div className="flex flex-col gap-1">
                 {[
-                  { label: "AM", count: stat.morning, color: "#FF9500" },
-                  { label: "PM", count: stat.afternoon, color: "#00C8E0" },
-                  { label: "NT", count: stat.night, color: "#7B5EFF" },
+                  { label: t("shift.abbrAM"), count: stat.morning, color: "#FF9500" },
+                  { label: t("shift.abbrPM"), count: stat.afternoon, color: "#00C8E0" },
+                  { label: t("shift.abbrNT"), count: stat.night, color: "#7B5EFF" },
                 ].map(row => (
                   <div key={row.label} className="flex items-center justify-center gap-1">
                     <div className="size-1.5 rounded-full" style={{ background: row.color, opacity: row.count > 0 ? 1 : 0.2 }} />
@@ -580,6 +580,7 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
       <AnimatePresence>
         {showCreateModal && (
           <ShiftModal
+            t={t}
             editing={editingShift}
             template={selectedTemplate}
             templates={SHIFT_TEMPLATES}
@@ -617,10 +618,10 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
             >
               <div className="flex items-center gap-2 mb-3">
                 <Repeat className="size-4" style={{ color: "#00C8E0" }} />
-                <h3 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Copy This Week</h3>
+                <h3 className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{t("shift.copyThisWeek")}</h3>
               </div>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 16 }}>
-                Duplicate all {shifts.length} shifts to next week? Existing shifts won't be affected.
+                {t("shift.copyWeekConfirmPre")} {shifts.length} {t("shift.copyWeekConfirmPost")}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -628,14 +629,14 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
                   className="flex-1 py-2 rounded-lg"
                   style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontWeight: 600 }}
                 >
-                  Cancel
+                  {t("shift.cancel")}
                 </button>
                 <button
                   onClick={handleCopyWeek}
                   className="flex-1 py-2 rounded-lg"
                   style={{ fontSize: 12, color: "white", background: "rgba(0,200,224,0.2)", border: "1px solid rgba(0,200,224,0.3)", fontWeight: 600 }}
                 >
-                  Copy
+                  {t("shift.copy")}
                 </button>
               </div>
             </motion.div>
@@ -649,7 +650,8 @@ export function ShiftSchedulingPage({ t, webMode = false }: { t: (k: string) => 
 // ═══════════════════════════════════════════════════════════════
 // Shift Create/Edit Modal
 // ═══════════════════════════════════════════════════════════════
-function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm, onClose, employeeName, dayLabel, zoneNames }: {
+function ShiftModal({ t, editing, template, templates, onSelectTemplate, onConfirm, onClose, employeeName, dayLabel, zoneNames }: {
+  t: (k: string) => string;
   editing: Shift | null;
   zoneNames: string[];
   template: ShiftTemplate;
@@ -688,7 +690,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
             </div>
             <div>
               <h3 className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>
-                {editing ? "Edit Shift" : "Assign Shift"}
+                {editing ? t("shift.editShift") : t("shift.assignShift")}
               </h3>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
                 {employeeName} &middot; {dayLabel}
@@ -704,7 +706,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
         <div className="p-4 space-y-4">
           {/* Template Selection */}
           <div>
-            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>SHIFT TYPE</label>
+            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("shift.shiftType")}</label>
             <div className="flex gap-2 mt-2">
               {templates.map(tpl => (
                 <button
@@ -718,7 +720,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
                 >
                   <tpl.icon className="size-4" style={{ color: template.id === tpl.id ? tpl.color : "rgba(255,255,255,0.25)" }} />
                   <span style={{ fontSize: 9, color: template.id === tpl.id ? tpl.color : "rgba(255,255,255,0.3)", fontWeight: 600 }}>
-                    {tpl.name}
+                    {t(tpl.nameKey)}
                   </span>
                   <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>
                     {`${tpl.startHour}:00-${tpl.endHour}:00`}
@@ -730,14 +732,14 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
 
           {/* Zone Selection */}
           <div>
-            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>ZONE</label>
+            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("shift.zone")}</label>
             <select
               value={zone}
               onChange={e => setZone(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
               style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
             >
-              <option value="" style={{ background: "#0A1220" }}>Unassigned</option>
+              <option value="" style={{ background: "#0A1220" }}>{t("shift.unassigned")}</option>
               {zoneNames.map(z => (
                 <option key={z} value={z} style={{ background: "#0A1220" }}>{z}</option>
               ))}
@@ -746,11 +748,11 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
 
           {/* Note */}
           <div>
-            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>NOTE (OPTIONAL)</label>
+            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.5px" }}>{t("shift.noteOptional")}</label>
             <input
               value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder="e.g., Fire watch, standby duty..."
+              placeholder={t("shift.notePlaceholder")}
               className="w-full mt-1.5 px-3 py-2 rounded-lg outline-none"
               style={{ fontSize: 12, color: "white", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
             />
@@ -761,7 +763,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
         <div className="p-4 flex items-center gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg"
             style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontWeight: 600 }}>
-            Cancel
+            {t("shift.cancel")}
           </button>
           <button
             onClick={() => onConfirm(zone, note || undefined)}
@@ -769,7 +771,7 @@ function ShiftModal({ editing, template, templates, onSelectTemplate, onConfirm,
             style={{ fontSize: 12, color: "white", background: `${template.color}25`, border: `1px solid ${template.color}40`, fontWeight: 600 }}
           >
             <Check className="size-3.5" />
-            {editing ? "Update" : "Assign"}
+            {editing ? t("shift.update") : t("shift.assign")}
           </button>
         </div>
       </motion.div>

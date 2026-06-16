@@ -50,20 +50,20 @@ const MONTHLY_INCIDENTS = [
    SELECT incident_type, count(*) as value FROM analytics_data
    WHERE company_id = :id AND time_range = :timeRange GROUP BY incident_type */
 const INCIDENT_BY_TYPE = [
-  { name: "SOS Button", value: 28, color: "#FF2D55" },
-  { name: "Missed Check-in", value: 35, color: "#FF9500" },
-  { name: "Geofence Breach", value: 15, color: "#00C8E0" },
-  { name: "Hazard Report", value: 22, color: "#7B5EFF" },
+  { name: "SOS Button", nameKey: "ana.type_sos_button", value: 28, color: "#FF2D55" },
+  { name: "Missed Check-in", nameKey: "ana.type_missed_checkin", value: 35, color: "#FF9500" },
+  { name: "Geofence Breach", nameKey: "ana.type_geofence_breach", value: 15, color: "#00C8E0" },
+  { name: "Hazard Report", nameKey: "ana.type_hazard_report", value: 22, color: "#7B5EFF" },
 ];
 
 
 
 
 const KPI_SUMMARY = [
-  { label: "Total Incidents", value: "127", delta: "-23%", up: false, color: "#00C853", icon: AlertTriangle, desc: "vs last quarter" },
-  { label: "Avg Response Time", value: "87s", delta: "-52%", up: false, color: "#00C8E0", icon: Clock, desc: "vs 180s target" },
-  { label: "Safety Score", value: "87%", delta: "+9%", up: true, color: "#00C853", icon: Shield, desc: "company average" },
-  { label: "SLA Compliance", value: "96.4%", delta: "+4.2%", up: true, color: "#7B5EFF", icon: Target, desc: "2min threshold" },
+  { labelKey: "ana.kpi_total_incidents", value: "127", delta: "-23%", up: false, color: "#00C853", icon: AlertTriangle, descKey: "ana.kpi_vs_last_quarter" },
+  { labelKey: "ana.kpi_avg_response", value: "87s", delta: "-52%", up: false, color: "#00C8E0", icon: Clock, descKey: "ana.kpi_vs_target" },
+  { labelKey: "ana.kpi_safety_score", value: "87%", delta: "+9%", up: true, color: "#00C853", icon: Shield, descKey: "ana.kpi_company_avg" },
+  { labelKey: "ana.kpi_sla_compliance", value: "96.4%", delta: "+4.2%", up: true, color: "#7B5EFF", icon: Target, descKey: "ana.kpi_2min_threshold" },
 ];
 
 const customTooltipStyle = {
@@ -142,17 +142,18 @@ function buildRealAnalytics() {
     const checkinCt = auditLogs.filter(e => e.action?.includes("checkin")).length;
 
     const incidentByType = sosCt + hazCt + fallCt + checkinCt > 0 ? [
-      { name: "SOS Button",      value: Math.max(sosCt - hazCt - fallCt, sosCt > 0 ? 1 : 0), color: "#FF2D55" },
-      { name: "Hazard Report",   value: hazCt,   color: "#7B5EFF" },
-      { name: "Fall Detected",   value: fallCt,  color: "#FF9500" },
-      { name: "Missed Check-in", value: checkinCt, color: "#00C8E0" },
+      { name: "SOS Button",      nameKey: "ana.type_sos_button",      value: Math.max(sosCt - hazCt - fallCt, sosCt > 0 ? 1 : 0), color: "#FF2D55" },
+      { name: "Hazard Report",   nameKey: "ana.type_hazard_report",   value: hazCt,   color: "#7B5EFF" },
+      { name: "Fall Detected",   nameKey: "ana.type_fall_detected",   value: fallCt,  color: "#FF9500" },
+      { name: "Missed Check-in", nameKey: "ana.type_missed_checkin", value: checkinCt, color: "#00C8E0" },
     ].filter(t => t.value > 0) : null;
 
     return { monthlyIncidents: monthlyIncidents.some(m => m.sos + m.hazard + m.geofence + m.checkin > 0) ? monthlyIncidents : null, totalIncidents, resolvedCount, avgResponseSec, incidentByType };
   } catch { return { monthlyIncidents: null, totalIncidents: 0, resolvedCount: 0, avgResponseSec: null, incidentByType: null }; }
 }
 
-export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
+export function AnalyticsPage({ t: tProp, webMode = false }: AnalyticsPageProps) {
+  const t = tProp || ((k: string) => k);
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "90d" | "1y">("90d");
   const uid = useId().replace(/:/g, "-");
   const realAnalytics = React.useMemo(buildRealAnalytics, []);
@@ -191,16 +192,16 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
     // Use store KPIs (Supabase) when available
     if (storeKpis?.totalEmployees != null) {
       const totalInc = storeKpis.activeEmergencies + storeKpis.resolvedToday;
-      if (totalInc > 0) base[0] = { ...base[0], value: String(totalInc), delta: storeKpis.resolvedToday > 0 ? `${storeKpis.resolvedToday} resolved` : "", desc: "actual incidents (Supabase)" };
-      if (storeKpis.avgResponseTime != null) base[1] = { ...base[1], value: `${storeKpis.avgResponseTime}s`, delta: storeKpis.avgResponseTime < 120 ? "✓ Under 2min" : "⚠ Over 2min", desc: "real avg response time" };
+      if (totalInc > 0) base[0] = { ...base[0], value: String(totalInc), delta: storeKpis.resolvedToday > 0 ? `${storeKpis.resolvedToday} ${t("ana.kpi_resolved")}` : "", descKey: "ana.kpi_actual_incidents_sb" };
+      if (storeKpis.avgResponseTime != null) base[1] = { ...base[1], value: `${storeKpis.avgResponseTime}s`, delta: storeKpis.avgResponseTime < 120 ? `✓ ${t("ana.kpi_under_2min")}` : `⚠ ${t("ana.kpi_over_2min")}`, descKey: "ana.kpi_real_avg_response" };
       const safetyScore = storeKpis.safetyScore ?? (storeEmployees.length > 0 ? Math.round(100 - (storeKpis.activeEmergencies / Math.max(storeEmployees.length, 1)) * 100) : null);
-      if (safetyScore != null) base[2] = { ...base[2], value: `${Math.max(0, Math.min(100, safetyScore))}%`, delta: safetyScore >= 90 ? "+Good" : safetyScore >= 70 ? "Moderate" : "⚠ Low", desc: "live safety score" };
+      if (safetyScore != null) base[2] = { ...base[2], value: `${Math.max(0, Math.min(100, safetyScore))}%`, delta: safetyScore >= 90 ? `+${t("ana.kpi_good")}` : safetyScore >= 70 ? t("ana.kpi_moderate") : `⚠ ${t("ana.kpi_low")}`, descKey: "ana.kpi_live_safety_score" };
       const slaCompliance = storeKpis.slaCompliance ?? (storeKpis.avgResponseTime != null ? (storeKpis.avgResponseTime < 120 ? 96.4 : 82.1) : null);
-      if (slaCompliance != null) base[3] = { ...base[3], value: `${slaCompliance}%`, delta: slaCompliance >= 95 ? "+Good" : "Needs work", desc: "2min SLA threshold" };
+      if (slaCompliance != null) base[3] = { ...base[3], value: `${slaCompliance}%`, delta: slaCompliance >= 95 ? `+${t("ana.kpi_good")}` : t("ana.kpi_needs_work"), descKey: "ana.kpi_2min_sla_threshold" };
     } else {
       // Fallback to audit-log analytics
-      if (realAnalytics.totalIncidents > 0) base[0] = { ...base[0], value: String(realAnalytics.totalIncidents), delta: "", desc: "actual incidents logged" };
-      if (realAnalytics.avgResponseSec) base[1] = { ...base[1], value: `${realAnalytics.avgResponseSec}s`, delta: realAnalytics.avgResponseSec < 120 ? "✓ Under 2min" : "⚠ Over 2min", desc: "real average response" };
+      if (realAnalytics.totalIncidents > 0) base[0] = { ...base[0], value: String(realAnalytics.totalIncidents), delta: "", descKey: "ana.kpi_actual_incidents_logged" };
+      if (realAnalytics.avgResponseSec) base[1] = { ...base[1], value: `${realAnalytics.avgResponseSec}s`, delta: realAnalytics.avgResponseSec < 120 ? `✓ ${t("ana.kpi_under_2min")}` : `⚠ ${t("ana.kpi_over_2min")}`, descKey: "ana.kpi_real_average_response" };
     }
     return base;
   }, [realAnalytics, storeKpis, storeEmergencies, storeEmployees]);
@@ -236,10 +237,10 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           </div>
           <div>
             <h2 className="text-white" style={{ fontSize: webMode ? 22 : 18, fontWeight: 800, letterSpacing: "-0.5px" }}>
-              Analytics & Reports
+              {t("ana.title")}
             </h2>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
-              Safety performance insights & trend analysis
+              {t("ana.subtitle")}
             </p>
           </div>
         </div>
@@ -268,7 +269,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             onClick={async () => {
               hapticSuccess();
               console.debug("[SUPABASE_READY] analytics_pdf_export", { timeRange });
-              toast.loading("Generating analytics PDF...", { id: "analytics-pdf" });
+              toast.loading(t("ana.toast_generating"), { id: "analytics-pdf" });
               try {
                 await import("jspdf-autotable");
                 const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
@@ -294,7 +295,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 realKPI.forEach(kpi => {
                   doc.setFontSize(10);
                   doc.setTextColor(200);
-                  doc.text(safe(kpi.label), 16, y);
+                  doc.text(safe(t(kpi.labelKey)), 16, y);
                   doc.setTextColor(0, 200, 224);
                   doc.text(safe(kpi.value), 120, y);
                   y += 7;
@@ -335,15 +336,15 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 doc.setTextColor(80);
                 doc.text("SOSphere Analytics | Confidential | " + new Date().toISOString().split("T")[0], pw / 2, ph - 6, { align: "center" });
                 doc.save(`SOSphere_Analytics_${timeRange}_${new Date().toISOString().split("T")[0]}.pdf`);
-                toast.success("Analytics PDF Generated", { id: "analytics-pdf", description: `${timeRange} analytics report downloaded` });
+                toast.success(t("ana.toast_generated"), { id: "analytics-pdf", description: `${timeRange} ${t("ana.toast_generated_desc")}` });
                 console.debug("[SUPABASE_READY] analytics_pdf_generated", { timeRange });
               } catch (err) {
                 console.error("Analytics PDF error:", err);
-                toast.error("PDF Generation Failed", { id: "analytics-pdf" });
+                toast.error(t("ana.toast_failed"), { id: "analytics-pdf" });
               }
             }}
             style={{ background: "rgba(0,200,224,0.08)", border: "1px solid rgba(0,200,224,0.2)", fontSize: 12, fontWeight: 600, color: "#00C8E0", cursor: "pointer" }}>
-            <Download className="size-4" /> Export PDF
+            <Download className="size-4" /> {t("ana.export_pdf")}
           </button>
         </div>
       </div>
@@ -353,7 +354,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
         {realKPI.map((kpi, i) => {
           const Icon = kpi.icon;
           return (
-            <motion.div key={kpi.label}
+            <motion.div key={kpi.labelKey}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
               className="p-4 rounded-2xl relative overflow-hidden group"
@@ -372,8 +373,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
                 </div>
               </div>
               <p className="relative z-10" style={{ fontSize: webMode ? 28 : 22, fontWeight: 800, letterSpacing: "-1px", color: kpi.color, lineHeight: 1 }}>{kpi.value}</p>
-              <p className="mt-1 relative z-10" style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{kpi.label}</p>
-              <p className="mt-0.5 relative z-10" style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{kpi.desc}</p>
+              <p className="mt-1 relative z-10" style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{t(kpi.labelKey)}</p>
+              <p className="mt-0.5 relative z-10" style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{t(kpi.descKey)}</p>
             </motion.div>
           );
         })}
@@ -387,15 +388,15 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Incident Trends</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Monthly breakdown by type</p>
+              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.incident_trends")}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.incident_trends_sub")}</p>
             </div>
             <div className="flex items-center gap-3">
               {[
-                { label: "SOS", color: "#FF2D55" },
-                { label: "Hazard", color: "#7B5EFF" },
-                { label: "Geofence", color: "#00C8E0" },
-                { label: "Check-in", color: "#FF9500" },
+                { label: t("ana.legend_sos"), color: "#FF2D55" },
+                { label: t("ana.legend_hazard"), color: "#7B5EFF" },
+                { label: t("ana.legend_geofence"), color: "#00C8E0" },
+                { label: t("ana.legend_checkin"), color: "#FF9500" },
               ].map(l => (
                 <div key={l.label} className="flex items-center gap-1.5">
                   <div className="size-2 rounded-full" style={{ background: l.color }} />
@@ -410,10 +411,10 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
               <XAxis key="xa" dataKey="month" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis key="ya" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip key="tt" content={<CustomTooltip />} />
-              <Area key="a-sos" type="monotone" dataKey="sos" stroke="#FF2D55" fill={`url(#${uid}-gradSos)`} strokeWidth={2} name="SOS" />
-              <Area key="a-hazard" type="monotone" dataKey="hazard" stroke="#7B5EFF" fill={`url(#${uid}-gradHaz)`} strokeWidth={2} name="Hazard" />
-              <Area key="a-geofence" type="monotone" dataKey="geofence" stroke="#00C8E0" fill="transparent" strokeWidth={2} strokeDasharray="4 4" name="Geofence" />
-              <Area key="a-checkin" type="monotone" dataKey="checkin" stroke="#FF9500" fill="transparent" strokeWidth={2} strokeDasharray="4 4" name="Check-in" />
+              <Area key="a-sos" type="monotone" dataKey="sos" stroke="#FF2D55" fill={`url(#${uid}-gradSos)`} strokeWidth={2} name={t("ana.legend_sos")} />
+              <Area key="a-hazard" type="monotone" dataKey="hazard" stroke="#7B5EFF" fill={`url(#${uid}-gradHaz)`} strokeWidth={2} name={t("ana.legend_hazard")} />
+              <Area key="a-geofence" type="monotone" dataKey="geofence" stroke="#00C8E0" fill="transparent" strokeWidth={2} strokeDasharray="4 4" name={t("ana.legend_geofence")} />
+              <Area key="a-checkin" type="monotone" dataKey="checkin" stroke="#FF9500" fill="transparent" strokeWidth={2} strokeDasharray="4 4" name={t("ana.legend_checkin")} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
@@ -424,8 +425,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Response Time</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Average vs 2min SLA target</p>
+              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.response_time")}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.response_time_sub")}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -434,8 +435,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
               <XAxis key="xa" dataKey="month" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis key="ya" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} unit="s" />
               <Tooltip key="tt" content={<CustomTooltip />} />
-              <Line key="l-avg" type="monotone" dataKey="avg" stroke="#00C8E0" strokeWidth={3} dot={{ fill: "#00C8E0", r: 4 }} name="Average" />
-              <Line key="l-target" type="monotone" dataKey="target" stroke="#FF9500" strokeWidth={2} strokeDasharray="6 3" dot={false} name="SLA Target" />
+              <Line key="l-avg" type="monotone" dataKey="avg" stroke="#00C8E0" strokeWidth={3} dot={{ fill: "#00C8E0", r: 4 }} name={t("ana.series_average")} />
+              <Line key="l-target" type="monotone" dataKey="target" stroke="#FF9500" strokeWidth={2} strokeDasharray="6 3" dot={false} name={t("ana.series_sla_target")} />
             </LineChart>
           </ResponsiveContainer>
         </motion.div>
@@ -446,8 +447,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Safety Score Trend</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Monthly company average</p>
+              <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.safety_trend")}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.safety_trend_sub")}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -456,7 +457,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
               <XAxis key="xa" dataKey="week" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis key="ya" domain={[0, 100]} tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip key="tt" content={<CustomTooltip />} />
-              <Area key="a-score" type="monotone" dataKey="score" stroke="#00C853" fill={`url(#${uid}-gradSafety)`} strokeWidth={3} name="Safety Score" />
+              <Area key="a-score" type="monotone" dataKey="score" stroke="#00C853" fill={`url(#${uid}-gradSafety)`} strokeWidth={3} name={t("ana.series_safety_score")} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
@@ -466,8 +467,8 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
           className="rounded-2xl p-5"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="mb-4">
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Incident Distribution</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>By incident type this quarter</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.distribution")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.distribution_sub")}</p>
           </div>
           <div className="flex items-center gap-6">
             <div style={{ width: 160, height: 160 }}>
@@ -485,10 +486,10 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
             </div>
             <div className="flex-1 space-y-3">
               {realIncidentByType.map(item => (
-                <div key={item.name} className="flex items-center gap-3">
+                <div key={item.nameKey} className="flex items-center gap-3">
                   <div className="size-3 rounded" style={{ background: item.color }} />
                   <div className="flex-1">
-                    <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{item.name}</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{t(item.nameKey)}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }}>
                         <div className="h-full rounded-full" style={{ background: item.color, width: `${item.value}%` }} />
@@ -504,7 +505,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
       </div>
 
       {/* ── Broadcast Analytics Section ── */}
-      <BroadcastAnalyticsSection webMode={webMode} />
+      <BroadcastAnalyticsSection webMode={webMode} t={t} />
     </div>
   );
 }
@@ -512,7 +513,7 @@ export function AnalyticsPage({ t, webMode = false }: AnalyticsPageProps) {
 // ═══════════════════════════════════════════════════════════════
 // Broadcast Analytics — Live data from shared-store
 // ══════════════════════════════════════════════════════════════
-function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
+function BroadcastAnalyticsSection({ webMode, t }: { webMode: boolean; t: (key: string) => string }) {
   const broadcasts = getBroadcasts();
 
   // Compute stats
@@ -532,11 +533,11 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
   // getBroadcasts() — not mock. SUPABASE_MIGRATION_POINT retained for when
   // server-side aggregation replaces client-side counting.
   const BROADCAST_BY_SOURCE = [
-    { name: "Manual", value: manual, color: "#00C8E0" },
-    { name: "GPS Alert", value: autoGps, color: "#FF9500" },
-    { name: "SOS Alert", value: autoSos, color: "#FF2D55" },
-    { name: "Hazard Alert", value: autoHazard, color: "#7B5EFF" },
-    { name: "Geofence", value: autoGeofence, color: "#00C853" },
+    { name: t("ana.src_manual"), value: manual, color: "#00C8E0" },
+    { name: t("ana.src_gps_alert"), value: autoGps, color: "#FF9500" },
+    { name: t("ana.src_sos_alert"), value: autoSos, color: "#FF2D55" },
+    { name: t("ana.src_hazard_alert"), value: autoHazard, color: "#7B5EFF" },
+    { name: t("ana.src_geofence"), value: autoGeofence, color: "#00C853" },
   ];
 
   // Analytics audit (2026-05-27): BROADCAST_TREND now built from REAL
@@ -558,10 +559,10 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
   })();
 
   const COST_COMPARISON = [
-    { method: "SMS (Twilio)", cost: 1440, color: "#FF2D55" },
-    { method: "WhatsApp API", cost: 960, color: "#FF9500" },
-    { method: "Email", cost: 0, color: "#00C853" },
-    { method: "SOSphere Broadcast", cost: 0, color: "#00C8E0" },
+    { method: t("ana.cost_sms_twilio"), cost: 1440, color: "#FF2D55" },
+    { method: t("ana.cost_whatsapp_api"), cost: 960, color: "#FF9500" },
+    { method: t("ana.cost_email"), cost: 0, color: "#00C853" },
+    { method: t("ana.cost_sosphere_broadcast"), cost: 0, color: "#00C8E0" },
   ];
 
   if (total === 0 && !webMode) return null;
@@ -574,9 +575,9 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
           <Megaphone className="size-4" style={{ color: "#00C8E0" }} />
         </div>
         <div>
-          <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>Broadcast Analytics</p>
+          <p className="text-white" style={{ fontSize: 16, fontWeight: 700 }}>{t("ana.broadcast_analytics")}</p>
           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-            In-app messaging performance — {total} broadcasts sent (live data)
+            {t("ana.broadcast_perf_prefix")} {total} {t("ana.broadcast_perf_suffix")}
           </p>
         </div>
       </div>
@@ -584,11 +585,11 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
       {/* Broadcast KPIs */}
       <div className={`grid gap-3 ${webMode ? "grid-cols-5" : "grid-cols-3"}`}>
         {[
-          { label: "Total Sent", value: total, icon: Megaphone, color: "#00C8E0" },
-          { label: "Auto Alerts", value: autoGps + autoSos + autoHazard + autoGeofence, icon: Zap, color: "#FF9500" },
-          { label: "Emergency", value: emergency, icon: Siren, color: "#FF2D55" },
-          { label: "Read Rate", value: total > 0 ? `${Math.round((totalRead / Math.max(total, 1)) * 100)}%` : "—", icon: Target, color: "#00C853" },
-          { label: "Cost Saved", value: "$1,440", icon: Shield, color: "#00C853" },
+          { label: t("ana.bk_total_sent"), value: total, icon: Megaphone, color: "#00C8E0" },
+          { label: t("ana.bk_auto_alerts"), value: autoGps + autoSos + autoHazard + autoGeofence, icon: Zap, color: "#FF9500" },
+          { label: t("ana.bk_emergency"), value: emergency, icon: Siren, color: "#FF2D55" },
+          { label: t("ana.bk_read_rate"), value: total > 0 ? `${Math.round((totalRead / Math.max(total, 1)) * 100)}%` : "—", icon: Target, color: "#00C853" },
+          { label: t("ana.bk_cost_saved"), value: "$1,440", icon: Shield, color: "#00C853" },
         ].map(stat => {
           const SIcon = stat.icon;
           return (
@@ -612,8 +613,8 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
           className="rounded-2xl p-5"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="mb-4">
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Broadcasts by Source</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Manual vs automated alerts</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.broadcasts_by_source")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.broadcasts_by_source_sub")}</p>
           </div>
           <div className="flex items-center gap-6">
             <div style={{ width: 140, height: 140 }}>
@@ -646,8 +647,8 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
           className="rounded-2xl p-5"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="mb-4">
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Monthly Cost Comparison</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>SOSphere Broadcast vs traditional methods</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("ana.cost_comparison")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ana.cost_comparison_sub")}</p>
           </div>
           <div className="space-y-3">
             {COST_COMPARISON.map(item => (
@@ -673,7 +674,7 @@ function BroadcastAnalyticsSection({ webMode }: { webMode: boolean }) {
             style={{ background: "rgba(0,200,83,0.05)", border: "1px solid rgba(0,200,83,0.1)" }}>
             <Shield className="size-4 shrink-0" style={{ color: "#00C853" }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: "#00C853" }}>
-              Saving $1,440/month vs SMS — $17,280/year
+              {t("ana.cost_saving_banner")}
             </span>
           </div>
         </motion.div>

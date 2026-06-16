@@ -1,5 +1,5 @@
-﻿// ═══════════════════════════════════════════════════════════════
-// SOSphere — Roles & Permissions Management Page
+// ═══════════════════════════════════════════════════════════════
+// SOSphere — Roles & Permissions Management Page (i18n)
 // Owner → Main Admin → Zone Admins (up to 2/zone) → Field Workers
 // Full custom permissions override per user
 // 2FA/PIN required for Owner & Main Admin sensitive operations
@@ -72,53 +72,53 @@ interface ZoneSlot {
 // ── Permission Groups ──────────────────────────────────────────
 const PERMISSION_GROUPS = [
   {
-    group: "Emergency", icon: Siren, color: "#FF2D55",
+    group: "Emergency", groupKey: "roles.grpEmergency", icon: Siren, color: "#FF2D55",
     perms: [
-      { id: "emergency:create",    label: "Trigger Emergency",  desc: "Can manually create emergencies" },
-      { id: "emergency:view",      label: "View Emergencies",   desc: "Can see all emergency alerts" },
-      { id: "emergency:resolve",   label: "Resolve Emergency",  desc: "Can mark emergencies as resolved" },
-      { id: "emergency:escalate",  label: "Escalate",           desc: "Can escalate to higher level" },
-      { id: "emergency:assign",    label: "Assign Responder",   desc: "Can assign team members" },
-      { id: "emergency:broadcast", label: "Broadcast Alert",    desc: "Can send mass alerts" },
+      { id: "emergency:create",    labelKey: "roles.permEmergencyCreateLabel",    descKey: "roles.permEmergencyCreateDesc" },
+      { id: "emergency:view",      labelKey: "roles.permEmergencyViewLabel",      descKey: "roles.permEmergencyViewDesc" },
+      { id: "emergency:resolve",   labelKey: "roles.permEmergencyResolveLabel",   descKey: "roles.permEmergencyResolveDesc" },
+      { id: "emergency:escalate",  labelKey: "roles.permEmergencyEscalateLabel",  descKey: "roles.permEmergencyEscalateDesc" },
+      { id: "emergency:assign",    labelKey: "roles.permEmergencyAssignLabel",    descKey: "roles.permEmergencyAssignDesc" },
+      { id: "emergency:broadcast", labelKey: "roles.permEmergencyBroadcastLabel", descKey: "roles.permEmergencyBroadcastDesc" },
     ],
   },
   {
-    group: "Team Management", icon: Users, color: "#00C8E0",
+    group: "Team Management", groupKey: "roles.grpTeam", icon: Users, color: "#00C8E0",
     perms: [
-      { id: "users:view",   label: "View Members",    desc: "Can see all team members" },
-      { id: "users:create", label: "Add Members",     desc: "Can invite new members" },
-      { id: "users:edit",   label: "Edit Members",    desc: "Can edit member profiles" },
-      { id: "users:delete", label: "Remove Members",  desc: "Can remove team members" },
-      { id: "users:manage", label: "Manage Roles",    desc: "Can change roles & permissions" },
+      { id: "users:view",   labelKey: "roles.permUsersViewLabel",   descKey: "roles.permUsersViewDesc" },
+      { id: "users:create", labelKey: "roles.permUsersCreateLabel", descKey: "roles.permUsersCreateDesc" },
+      { id: "users:edit",   labelKey: "roles.permUsersEditLabel",   descKey: "roles.permUsersEditDesc" },
+      { id: "users:delete", labelKey: "roles.permUsersDeleteLabel", descKey: "roles.permUsersDeleteDesc" },
+      { id: "users:manage", labelKey: "roles.permUsersManageLabel", descKey: "roles.permUsersManageDesc" },
     ],
   },
   {
-    group: "Zones & Location", icon: MapPin, color: "#34C759",
+    group: "Zones & Location", groupKey: "roles.grpZones", icon: MapPin, color: "#34C759",
     perms: [
-      { id: "zones:view",   label: "View Zones",     desc: "Can see zone details" },
-      { id: "zones:create", label: "Create Zones",   desc: "Can add new zones" },
-      { id: "zones:edit",   label: "Edit Zones",     desc: "Can modify zone boundaries" },
-      { id: "zones:delete", label: "Delete Zones",   desc: "Can remove zones" },
-      { id: "zones:manage", label: "Manage Zones",   desc: "Full zone management" },
+      { id: "zones:view",   labelKey: "roles.permZonesViewLabel",   descKey: "roles.permZonesViewDesc" },
+      { id: "zones:create", labelKey: "roles.permZonesCreateLabel", descKey: "roles.permZonesCreateDesc" },
+      { id: "zones:edit",   labelKey: "roles.permZonesEditLabel",   descKey: "roles.permZonesEditDesc" },
+      { id: "zones:delete", labelKey: "roles.permZonesDeleteLabel", descKey: "roles.permZonesDeleteDesc" },
+      { id: "zones:manage", labelKey: "roles.permZonesManageLabel", descKey: "roles.permZonesManageDesc" },
     ],
   },
   {
-    group: "Reports & Analytics", icon: BarChart3, color: "#9B59B6",
+    group: "Reports & Analytics", groupKey: "roles.grpReports", icon: BarChart3, color: "#9B59B6",
     perms: [
-      { id: "reports:view",       label: "View Reports",     desc: "Can view all reports" },
-      { id: "reports:export",     label: "Export Reports",   desc: "Can download/export data" },
-      { id: "attendance:view",    label: "View Attendance",  desc: "Can see attendance records" },
-      { id: "attendance:export",  label: "Export Attendance",desc: "Can export attendance data" },
-      { id: "audit:view",         label: "View Audit Log",   desc: "Can see activity audit trail" },
+      { id: "reports:view",       labelKey: "roles.permReportsViewLabel",      descKey: "roles.permReportsViewDesc" },
+      { id: "reports:export",     labelKey: "roles.permReportsExportLabel",    descKey: "roles.permReportsExportDesc" },
+      { id: "attendance:view",    labelKey: "roles.permAttendanceViewLabel",   descKey: "roles.permAttendanceViewDesc" },
+      { id: "attendance:export",  labelKey: "roles.permAttendanceExportLabel", descKey: "roles.permAttendanceExportDesc" },
+      { id: "audit:view",         labelKey: "roles.permAuditViewLabel",        descKey: "roles.permAuditViewDesc" },
     ],
   },
   {
-    group: "Settings & Billing", icon: Settings, color: "#FF9500",
+    group: "Settings & Billing", groupKey: "roles.grpSettings", icon: Settings, color: "#FF9500",
     perms: [
-      { id: "settings:view",   label: "View Settings",    desc: "Can view system settings" },
-      { id: "settings:edit",   label: "Edit Settings",    desc: "Can change system settings" },
-      { id: "billing:view",    label: "View Billing",     desc: "Can see billing information" },
-      { id: "billing:manage",  label: "Manage Billing",   desc: "Can change billing & plans" },
+      { id: "settings:view",   labelKey: "roles.permSettingsViewLabel",  descKey: "roles.permSettingsViewDesc" },
+      { id: "settings:edit",   labelKey: "roles.permSettingsEditLabel",  descKey: "roles.permSettingsEditDesc" },
+      { id: "billing:view",    labelKey: "roles.permBillingViewLabel",   descKey: "roles.permBillingViewDesc" },
+      { id: "billing:manage",  labelKey: "roles.permBillingManageLabel", descKey: "roles.permBillingManageDesc" },
     ],
   },
 ];
@@ -166,11 +166,11 @@ const INITIAL_ZONES: ZoneSlot[] = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────
-const LEVEL_CONFIG: Record<Level, { label: string; icon: React.ElementType; color: string; bg: string; desc: string; limit: string }> = {
-  owner:      { label: "Owner",       icon: Crown,       color: "#FF2D55", bg: "rgba(255,45,85,0.12)",  desc: "Full system access, cannot be removed", limit: "1 per company" },
-  main_admin: { label: "Main Admin",  icon: Key,         color: "#FF9500", bg: "rgba(255,150,0,0.1)",   desc: "Company-wide admin, manages zone admins", limit: "1 per company" },
-  zone_admin: { label: "Zone Admin",  icon: ShieldCheck, color: "#00C8E0", bg: "rgba(0,200,224,0.1)",   desc: "Manages assigned zones (Lead + Secondary)", limit: "Up to 2 per zone" },
-  worker:     { label: "Field Worker",icon: UserCheck,   color: "#34C759", bg: "rgba(52,199,89,0.08)",  desc: "Field employees and operational staff", limit: "Unlimited" },
+const LEVEL_CONFIG: Record<Level, { labelKey: string; icon: React.ElementType; color: string; bg: string; descKey: string; limitKey: string }> = {
+  owner:      { labelKey: "roles.lvlOwner",      icon: Crown,       color: "#FF2D55", bg: "rgba(255,45,85,0.12)",  descKey: "roles.lvlOwnerDesc",     limitKey: "roles.lvlOwnerLimit" },
+  main_admin: { labelKey: "roles.lvlMainAdmin",  icon: Key,         color: "#FF9500", bg: "rgba(255,150,0,0.1)",   descKey: "roles.lvlMainAdminDesc", limitKey: "roles.lvlMainAdminLimit" },
+  zone_admin: { labelKey: "roles.lvlZoneAdmin",  icon: ShieldCheck, color: "#00C8E0", bg: "rgba(0,200,224,0.1)",   descKey: "roles.lvlZoneAdminDesc", limitKey: "roles.lvlZoneAdminLimit" },
+  worker:     { labelKey: "roles.lvlWorker",     icon: UserCheck,   color: "#34C759", bg: "rgba(52,199,89,0.08)",  descKey: "roles.lvlWorkerDesc",    limitKey: "roles.lvlWorkerLimit" },
 };
 
 const ROLE_LEVEL: Record<Role, Level> = {
@@ -345,11 +345,11 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         onSuccess();
       } else {
         const targetMsg = targetName ? ` (${targetName})` : "";
-        toast.error(`MFA verification required for ${operationType}${targetMsg}.`);
+        toast.error(`${t("roles.mfaRequiredFor")} ${operationType}${targetMsg}.`);
       }
     } catch (err) {
       console.warn("[requirePIN] mfa-gate threw:", err);
-      toast.error("Could not verify permission. Try again.");
+      toast.error(t("roles.couldNotVerify"));
     }
   }
 
@@ -393,7 +393,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
           : m
       ));
       setSavedPerms(true);
-      showAudit(`✓ Permissions saved for ${selectedMemberForPerms.name} — logged to Audit`);
+      showAudit(`✓ ${t("roles.auditPermsSavedFor")} ${selectedMemberForPerms.name} — ${t("roles.loggedToAudit")}`);
     });
   }
 
@@ -407,7 +407,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         : m
     ));
     setSavedPerms(false);
-    showAudit(`↩ Permissions reset to defaults for ${selectedMemberForPerms.name}`);
+    showAudit(`↩ ${t("roles.auditPermsResetFor")} ${selectedMemberForPerms.name}`);
   }
 
   // These rows are REAL pending invitations (sent, awaiting the invitee to
@@ -416,7 +416,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
   // only once the invitee accepts (accept_invitation, server-side).
   function handleApprovePending(p: PendingUser) {
     setPending(prev => prev.filter(x => x.id !== p.id));
-    showAudit(`${p.name}: invitation stands — they join automatically once they accept their invite link`);
+    showAudit(`${p.name}: ${t("roles.auditInvitationStands")}`);
   }
 
   async function handleRejectPending(id: string) {
@@ -424,9 +424,9 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     setPending(prev => prev.filter(x => x.id !== id)); // optimistic
     try {
       const { error } = await supabase.from("invitations").delete().eq("id", id);
-      if (error) { setPending(prev => p ? [p, ...prev] : prev); showAudit(`Could not revoke invitation: ${error.message}`); return; }
+      if (error) { setPending(prev => p ? [p, ...prev] : prev); showAudit(`${t("roles.auditCouldNotRevokeInvitation")}: ${error.message}`); return; }
     } catch { setPending(prev => p ? [p, ...prev] : prev); return; }
-    if (p) showAudit(`✗ Invitation to ${p.name} revoked`);
+    if (p) showAudit(`✗ ${t("roles.auditInvitationTo")} ${p.name} ${t("roles.auditRevoked")}`);
   }
 
   function handleAssignZoneAdmin(zoneId: string, slot: "lead" | "secondary", memberId: string) {
@@ -446,7 +446,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         return { ...m, assignedZones: zs, level: "zone_admin" };
       }));
       setAssigningSlot(null);
-      showAudit(`✓ ${member?.name} → ${slot} Admin for ${zone?.zoneName}`);
+      showAudit(`✓ ${member?.name} → ${slot === "lead" ? t("roles.slotLead") : t("roles.slotSecondary")} ${t("roles.adminForZone")} ${zone?.zoneName}`);
     });
   }
 
@@ -456,7 +456,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
       if (slot === "lead") return { ...z, leadAdminId: null };
       return { ...z, secondaryAdminId: null };
     }));
-    showAudit(`Zone ${slot} admin removed from ${zoneId} — logged`);
+    showAudit(`${t("roles.auditZone")} ${slot === "lead" ? t("roles.slotLead") : t("roles.slotSecondary")} ${t("roles.auditAdminRemovedFrom")} ${zoneId} — ${t("roles.logged")}`);
   }
 
   // Phase 2 CRIT-8 v2 Phase B (2026-06-01): real backend write via
@@ -479,13 +479,13 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         });
         if (error) {
           setMembers(prev); // revert
-          toast.error(`Could not change role: ${error.message}`);
+          toast.error(`${t("roles.couldNotChangeRole")}: ${error.message}`);
           return;
         }
-        showAudit(`✓ ${member.name} role → ${newRole} — logged to Audit`);
+        showAudit(`✓ ${member.name} ${t("roles.auditRoleArrow")} ${newRole} — ${t("roles.loggedToAudit")}`);
       } catch (e) {
         setMembers(prev);
-        toast.error(`Role change failed: ${(e as Error).message}`);
+        toast.error(`${t("roles.roleChangeFailed")}: ${(e as Error).message}`);
       }
     });
   }
@@ -511,29 +511,29 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
   async function handleTransferOwnership() {
     const ownerMember = members.find(m => m.isOwner);
     if (!ownerMember) {
-      toast.error("No current owner found.");
+      toast.error(t("roles.noCurrentOwner"));
       return;
     }
     const eligible = members.filter(m =>
       !m.isOwner && (m.level === "main_admin" || m.level === "zone_admin"),
     );
     if (eligible.length === 0) {
-      toast.error("No eligible admin to transfer to. Promote a teammate first.");
+      toast.error(t("roles.noEligibleAdmin"));
       return;
     }
     const emailList = eligible.map(m => `${m.email} (${m.name})`).join("\n  - ");
     const target = window.prompt(
-      `Transfer company ownership.\n\nThis is PERMANENT — you will be demoted to super_admin.\n\nEligible recipients:\n  - ${emailList}\n\nType the EMAIL of the new owner:`,
+      `${t("roles.transferPromptTitle")}\n\n${t("roles.transferPromptWarning")}\n\n${t("roles.transferPromptRecipients")}\n  - ${emailList}\n\n${t("roles.transferPromptTypeEmail")}`,
       "",
     );
     if (!target) return;
     const trimmed = target.trim().toLowerCase();
     const newOwner = eligible.find(m => m.email.toLowerCase() === trimmed);
     if (!newOwner) {
-      toast.error(`No eligible admin with email "${target}".`);
+      toast.error(`${t("roles.noEligibleAdminWithEmail")} "${target}".`);
       return;
     }
-    if (!confirm(`Transfer ownership to ${newOwner.name} (${newOwner.email})?\n\nThis cannot be reversed by you.`)) return;
+    if (!confirm(`${t("roles.confirmTransferTo")} ${newOwner.name} (${newOwner.email})?\n\n${t("roles.confirmCannotReverse")}`)) return;
     requirePIN("transfer_ownership", newOwner.name, async () => {
       try {
         const { supabase } = await import("./api/supabase-client");
@@ -545,7 +545,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
           .eq("id", newOwner.id)
           .single();
         if (empErr || !emp?.user_id || !emp?.company_id) {
-          toast.error("Could not resolve new owner's account.");
+          toast.error(t("roles.couldNotResolveOwner"));
           return;
         }
         const { error } = await supabase.rpc("transfer_ownership", {
@@ -553,23 +553,23 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
           p_new_owner:  emp.user_id,
         });
         if (error) {
-          toast.error(`Transfer failed: ${error.message}`);
+          toast.error(`${t("roles.transferFailed")}: ${error.message}`);
           return;
         }
-        showAudit(`✓ Ownership transferred to ${newOwner.name} — refreshing...`);
+        showAudit(`✓ ${t("roles.auditOwnershipTransferredTo")} ${newOwner.name} — ${t("roles.refreshing")}`);
         setTimeout(() => { if (typeof window !== "undefined") window.location.reload(); }, 1500);
       } catch (e) {
-        toast.error(`Transfer failed: ${(e as Error).message}`);
+        toast.error(`${t("roles.transferFailed")}: ${(e as Error).message}`);
       }
     });
   }
 
   function handleRemoveMember(member: TeamMember) {
     if (member.isOwner) {
-      toast.error("Cannot remove the company owner. Transfer ownership first.");
+      toast.error(t("roles.cannotRemoveOwner"));
       return;
     }
-    if (!confirm(`Remove ${member.name} from the team? This cannot be undone.`)) return;
+    if (!confirm(`${t("roles.confirmRemovePrefix")} ${member.name} ${t("roles.confirmRemoveSuffix")}`)) return;
     requirePIN("revoke_access", member.name, async () => {
       const prev = members;
       setMembers(p => p.filter(m => m.id !== member.id)); // optimistic
@@ -580,22 +580,22 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         });
         if (error) {
           setMembers(prev);
-          toast.error(`Could not remove: ${error.message}`);
+          toast.error(`${t("roles.couldNotRemove")}: ${error.message}`);
           return;
         }
-        showAudit(`✓ ${member.name} removed — logged to Audit`);
+        showAudit(`✓ ${member.name} ${t("roles.auditRemoved")} — ${t("roles.loggedToAudit")}`);
       } catch (e) {
         setMembers(prev);
-        toast.error(`Remove failed: ${(e as Error).message}`);
+        toast.error(`${t("roles.removeFailed")}: ${(e as Error).message}`);
       }
     });
   }
 
   const TABS = [
-    { id: "members" as const, label: "Members", count: members.length },
-    { id: "pending" as const, label: "Pending", count: pending.length, alert: pending.length > 0 },
-    { id: "zones" as const, label: "Zone Admins", count: zones.length },
-    { id: "permissions" as const, label: "Permissions", count: null },
+    { id: "members" as const, label: t("roles.tabMembers"), count: members.length },
+    { id: "pending" as const, label: t("roles.tabPending"), count: pending.length, alert: pending.length > 0 },
+    { id: "zones" as const, label: t("roles.tabZoneAdmins"), count: zones.length },
+    { id: "permissions" as const, label: t("roles.tabPermissions"), count: null },
   ];
 
   return (
@@ -630,9 +630,9 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
       <div className="px-6 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <div className="flex items-center justify-between mb-1">
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>Roles & Permissions</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>{t("roles.pageTitle")}</h1>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-              Manage team access, zone assignments, and custom permissions
+              {t("roles.pageSubtitle")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -641,7 +641,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
                 style={{ background: "rgba(52,199,89,0.08)", border: "1px solid rgba(52,199,89,0.2)" }}>
                 <Fingerprint className="size-3.5" style={{ color: "#34C759" }} />
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#34C759" }}>2FA ON</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#34C759" }}>{t("roles.twoFaOn")}</span>
               </div>
             )}
             {/* Audit Log shortcut */}
@@ -651,7 +651,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
                 style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.2)", fontSize: 11, fontWeight: 600, color: "#FF9500" }}
               >
-                <ClipboardList className="size-3.5" /> Audit Log
+                <ClipboardList className="size-3.5" /> {t("roles.auditLog")}
               </button>
             )}
             <button
@@ -659,7 +659,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
               className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all"
               style={{ background: "linear-gradient(135deg, #00C8E0, #00A0B4)", fontSize: 13, fontWeight: 600, color: "#fff" }}
             >
-              <UserPlus className="size-4" /> Invite Member
+              <UserPlus className="size-4" /> {t("roles.inviteMember")}
             </button>
           </div>
         </div>
@@ -692,8 +692,8 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                     </div>
                     <span style={{ fontSize: 20, fontWeight: 800, color: cfg.color }}>{count}</span>
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? cfg.color : "#fff" }}>{cfg.label}</div>
-                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{cfg.limit}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? cfg.color : "#fff" }}>{t(cfg.labelKey)}</div>
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{t(cfg.limitKey)}</div>
                 </motion.button>
                 {i < 3 && (
                   <div className="flex items-center" style={{ color: "rgba(255,255,255,0.15)" }}>
@@ -707,8 +707,8 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
         {filterLevel !== "all" && (
           <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 flex items-center gap-2">
             <div className="size-1.5 rounded-full" style={{ background: LEVEL_CONFIG[filterLevel].color }} />
-            <span style={{ fontSize: 11, color: LEVEL_CONFIG[filterLevel].color }}>{LEVEL_CONFIG[filterLevel].desc}</span>
-            <button onClick={() => setFilterLevel("all")} style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: "auto" }}>Clear filter ×</button>
+            <span style={{ fontSize: 11, color: LEVEL_CONFIG[filterLevel].color }}>{t(LEVEL_CONFIG[filterLevel].descKey)}</span>
+            <button onClick={() => setFilterLevel("all")} style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: "auto" }}>{t("roles.clearFilter")}</button>
           </motion.div>
         )}
       </div>
@@ -752,7 +752,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
                   <Search className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} />
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members…" className="bg-transparent flex-1 outline-none" style={{ fontSize: 13, color: "#fff" }} />
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("roles.searchMembers")} className="bg-transparent flex-1 outline-none" style={{ fontSize: 13, color: "#fff" }} />
                   {search && <button onClick={() => setSearch("")}><X className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
                 </div>
                 <select
@@ -761,11 +761,11 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                   className="px-3 py-2.5 rounded-xl outline-none"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.7)", fontSize: 12 }}
                 >
-                  <option value="all">All Levels</option>
-                  <option value="owner">Owner</option>
-                  <option value="main_admin">Main Admin</option>
-                  <option value="zone_admin">Zone Admin</option>
-                  <option value="worker">Field Worker</option>
+                  <option value="all">{t("roles.allLevels")}</option>
+                  <option value="owner">{t("roles.lvlOwner")}</option>
+                  <option value="main_admin">{t("roles.lvlMainAdmin")}</option>
+                  <option value="zone_admin">{t("roles.lvlZoneAdmin")}</option>
+                  <option value="worker">{t("roles.lvlWorker")}</option>
                 </select>
               </div>
 
@@ -797,7 +797,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{member.name}</span>
                           {member.isOwner && <Crown style={{ width: 12, height: 12, color: "#FF2D55" }} />}
                           {member.hasCustomPermissions && (
-                            <span className="px-1.5 py-0.5 rounded-md" style={{ fontSize: 8, fontWeight: 700, color: "#FF9500", background: "rgba(255,150,0,0.12)", border: "1px solid rgba(255,150,0,0.2)" }}>CUSTOM PERMS</span>
+                            <span className="px-1.5 py-0.5 rounded-md" style={{ fontSize: 8, fontWeight: 700, color: "#FF9500", background: "rgba(255,150,0,0.12)", border: "1px solid rgba(255,150,0,0.2)" }}>{t("roles.customPerms")}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -826,21 +826,21 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                           <button
                             onClick={() => handleOpenPermissions(member)}
                             className="size-7 rounded-lg flex items-center justify-center transition-all hover:bg-white/5"
-                            title="Custom Permissions"
+                            title={t("roles.customPermissionsTooltip")}
                           >
                             <Key style={{ width: 13, height: 13, color: "#FF9500" }} />
                           </button>
                           <button
                             onClick={() => setShowRoleEditor(member)}
                             className="size-7 rounded-lg flex items-center justify-center transition-all hover:bg-white/5"
-                            title="Change Role"
+                            title={t("roles.changeRoleTooltip")}
                           >
                             <Edit2 style={{ width: 13, height: 13, color: "#00C8E0" }} />
                           </button>
                           <button
                             onClick={() => handleRemoveMember(member)}
                             className="size-7 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/10"
-                            title="Remove Member"
+                            title={t("roles.removeMemberTooltip")}
                           >
                             <UserX style={{ width: 13, height: 13, color: "#FF2D55" }} />
                           </button>
@@ -853,7 +853,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                   );
                 })}
                 {filteredMembers.length === 0 && (
-                  <div className="text-center py-12" style={{ color: "rgba(255,255,255,0.25)", fontSize: 13 }}>No members found</div>
+                  <div className="text-center py-12" style={{ color: "rgba(255,255,255,0.25)", fontSize: 13 }}>{t("roles.noMembersFound")}</div>
                 )}
                 {/* Phase 2 CRIT-8 v2 Phase C: Danger Zone — owner-only ownership transfer */}
                 {actorLevel === "owner" && (
@@ -864,9 +864,9 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                       <div className="flex items-center gap-2.5">
                         <AlertTriangle style={{width:18,height:18,color:"#FF2D55"}} />
                         <div>
-                          <p style={{fontSize:13,fontWeight:700,color:"#FF2D55"}}>Danger Zone</p>
+                          <p style={{fontSize:13,fontWeight:700,color:"#FF2D55"}}>{t("roles.dangerZone")}</p>
                           <p style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:2}}>
-                            Transfer company ownership to another admin. This is permanent — you will be demoted to super_admin. Requires MFA verification.
+                            {t("roles.dangerZoneDesc")}
                           </p>
                         </div>
                       </div>
@@ -878,7 +878,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                           border:"1px solid rgba(255,45,85,0.3)",
                           color:"#FF2D55", fontSize:12, fontWeight:700,
                         }}>
-                        Transfer Ownership
+                        {t("roles.transferOwnership")}
                       </button>
                     </div>
                   </motion.div>
@@ -895,13 +895,13 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                   <div className="size-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(52,199,89,0.1)" }}>
                     <CheckCircle2 className="size-7" style={{ color: "#34C759" }} />
                   </div>
-                  <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>All approvals are up to date</p>
+                  <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>{t("roles.allApprovalsUpToDate")}</p>
                 </div>
               ) : (
                 <div>
                   <div className="flex items-center gap-2 mb-4 p-3 rounded-xl" style={{ background: "rgba(255,150,0,0.08)", border: "1px solid rgba(255,150,0,0.15)" }}>
                     <AlertTriangle className="size-4" style={{ color: "#FF9500" }} />
-                    <span style={{ fontSize: 12, color: "#FF9500" }}><b>{pending.length} users</b> are waiting for role assignment before they can access the app.</span>
+                    <span style={{ fontSize: 12, color: "#FF9500" }}><b>{pending.length} {t("roles.usersWord")}</b> {t("roles.waitingForRoleAssignment")}</span>
                   </div>
                   <div className="flex flex-col gap-3">
                     {pending.map((p, i) => (
@@ -919,7 +919,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{p.email} · {p.phone}</div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 700, color: "#00C8E0", background: "rgba(0,200,224,0.1)" }}>
-                                via {p.joinedVia.replace("_", " ").toUpperCase()}
+                                {t("roles.viaWord")} {t(p.joinedVia === "invite_link" ? "roles.joinedViaInviteLink" : p.joinedVia === "invite_code" ? "roles.joinedViaInviteCode" : "roles.joinedViaCsv")}
                               </span>
                               <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{p.requestedAgo}</span>
                             </div>
@@ -929,31 +929,31 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                         {/* Role + Zone assignment */}
                         <div className="flex gap-2 mb-3">
                           <div className="flex-1">
-                            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 4 }}>Assign Role *</label>
+                            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 4 }}>{t("roles.assignRoleLabel")}</label>
                             <select
                               value={pendingRole[p.id] || "employee"}
                               onChange={e => setPendingRole(prev => ({ ...prev, [p.id]: e.target.value as Role }))}
                               className="w-full px-3 py-2 rounded-xl outline-none"
                               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: 12 }}
                             >
-                              <option value="employee">Field Worker</option>
-                              <option value="security_guard">Security Guard</option>
-                              <option value="field_medic">Field Medic</option>
-                              <option value="dispatcher">Dispatcher</option>
-                              <option value="shift_supervisor">Zone Admin</option>
-                              <option value="safety_manager">Safety Manager</option>
-                              <option value="company_admin">Main Admin</option>
+                              <option value="employee">{t("roles.roleFieldWorker")}</option>
+                              <option value="security_guard">{t("roles.roleSecurityGuard")}</option>
+                              <option value="field_medic">{t("roles.roleFieldMedic")}</option>
+                              <option value="dispatcher">{t("roles.roleDispatcher")}</option>
+                              <option value="shift_supervisor">{t("roles.roleZoneAdmin")}</option>
+                              <option value="safety_manager">{t("roles.roleSafetyManager")}</option>
+                              <option value="company_admin">{t("roles.roleMainAdmin")}</option>
                             </select>
                           </div>
                           <div className="flex-1">
-                            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 4 }}>Assign Zone</label>
+                            <label style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 4 }}>{t("roles.assignZoneLabel")}</label>
                             <select
                               value={pendingZone[p.id] || ""}
                               onChange={e => setPendingZone(prev => ({ ...prev, [p.id]: e.target.value }))}
                               className="w-full px-3 py-2 rounded-xl outline-none"
                               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: 12 }}
                             >
-                              <option value="">No Zone</option>
+                              <option value="">{t("roles.noZone")}</option>
                               {zones.map(z => <option key={z.zoneId} value={z.zoneId}>{z.zoneName}</option>)}
                             </select>
                           </div>
@@ -966,14 +966,14 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl"
                             style={{ background: "rgba(52,199,89,0.15)", border: "1px solid rgba(52,199,89,0.25)", fontSize: 12, fontWeight: 700, color: "#34C759" }}
                           >
-                            <Check className="size-3.5" /> Approve & Assign
+                            <Check className="size-3.5" /> {t("roles.approveAssign")}
                           </button>
                           <button
                             onClick={() => handleRejectPending(p.id)}
                             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl"
                             style={{ background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.2)", fontSize: 12, fontWeight: 700, color: "#FF2D55" }}
                           >
-                            <X className="size-3.5" /> Reject
+                            <X className="size-3.5" /> {t("roles.reject")}
                           </button>
                         </div>
                       </motion.div>
@@ -991,20 +991,20 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
               <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>
                 <Info className="size-4 mt-0.5 shrink-0" style={{ color: "#00C8E0" }} />
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
-                  Each zone can have up to <b style={{ color: "#00C8E0" }}>2 admins</b>: a <b style={{ color: "#00C8E0" }}>Zone Lead</b> (primary responder) and a <b style={{ color: "#00C8E0" }}>Secondary Admin</b> (backup). At least 1 admin per zone is strongly recommended.
+                  {t("roles.zoneInfoPart1")} <b style={{ color: "#00C8E0" }}>{t("roles.zoneInfoTwoAdmins")}</b>{t("roles.zoneInfoPart2")} <b style={{ color: "#00C8E0" }}>{t("roles.zoneInfoZoneLead")}</b> {t("roles.zoneInfoPart3")} <b style={{ color: "#00C8E0" }}>{t("roles.zoneInfoSecondaryAdmin")}</b> {t("roles.zoneInfoPart4")}
                 </p>
               </div>
 
               {/* Coverage summary */}
               <div className="flex gap-2 mb-4">
                 {[
-                  { label: "Full Coverage", count: zones.filter(z => z.leadAdminId && z.secondaryAdminId).length, color: "#34C759" },
-                  { label: "Partial", count: zones.filter(z => z.leadAdminId && !z.secondaryAdminId).length, color: "#FF9500" },
-                  { label: "No Admin", count: zones.filter(z => !z.leadAdminId).length, color: "#FF2D55" },
+                  { labelKey: "roles.coverageFull", count: zones.filter(z => z.leadAdminId && z.secondaryAdminId).length, color: "#34C759" },
+                  { labelKey: "roles.coveragePartial", count: zones.filter(z => z.leadAdminId && !z.secondaryAdminId).length, color: "#FF9500" },
+                  { labelKey: "roles.coverageNoAdmin", count: zones.filter(z => !z.leadAdminId).length, color: "#FF2D55" },
                 ].map(s => (
-                  <div key={s.label} className="flex-1 p-2 rounded-xl text-center" style={{ background: `${s.color}0D`, border: `1px solid ${s.color}20` }}>
+                  <div key={s.labelKey} className="flex-1 p-2 rounded-xl text-center" style={{ background: `${s.color}0D`, border: `1px solid ${s.color}20` }}>
                     <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.count}</div>
-                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{s.label}</div>
+                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{t(s.labelKey)}</div>
                   </div>
                 ))}
               </div>
@@ -1036,11 +1036,11 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                         </div>
                         <div className="flex-1 text-left">
                           <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{zone.zoneName}</div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{zone.employeeCount} employees · {zone.risk} risk</div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{zone.employeeCount} {t("roles.employeesWord")} · {t(zone.risk === "high" ? "roles.riskHigh" : zone.risk === "medium" ? "roles.riskMedium" : "roles.riskLow")} {t("roles.riskWord")}</div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 700, color: coverageColor, background: `${coverageColor}15` }}>
-                            {coverage === "full" ? "2/2 Admins" : coverage === "partial" ? "1/2 Admin" : "No Admin"}
+                            {coverage === "full" ? t("roles.coverageBadgeFull") : coverage === "partial" ? t("roles.coverageBadgePartial") : t("roles.coverageBadgeNone")}
                           </span>
                           {isExpanded ? <ChevronUp className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown className="size-4" style={{ color: "rgba(255,255,255,0.3)" }} />}
                         </div>
@@ -1059,12 +1059,12 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             <div className="flex gap-3 mt-3">
                               {/* Lead Slot */}
                               {[
-                                { slot: "lead" as const, label: "Zone Lead", admin: lead },
-                                { slot: "secondary" as const, label: "Secondary Admin", admin: secondary },
-                              ].map(({ slot, label, admin }) => (
+                                { slot: "lead" as const, labelKey: "roles.slotZoneLead", admin: lead },
+                                { slot: "secondary" as const, labelKey: "roles.slotSecondaryAdmin", admin: secondary },
+                              ].map(({ slot, labelKey, admin }) => (
                                 <div key={slot} className="flex-1 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                                   <div className="flex items-center justify-between mb-2">
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px" }}>{label.toUpperCase()}</span>
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px" }}>{t(labelKey).toUpperCase()}</span>
                                     {slot === "lead" && <Crown style={{ width: 10, height: 10, color: "#FF9500" }} />}
                                   </div>
                                   {admin ? (
@@ -1084,7 +1084,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                                       className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg"
                                       style={{ border: "1px dashed rgba(0,200,224,0.3)", fontSize: 11, color: "#00C8E0" }}
                                     >
-                                      <Plus className="size-3.5" /> Assign
+                                      <Plus className="size-3.5" /> {t("roles.assign")}
                                     </button>
                                   )}
                                 </div>
@@ -1095,7 +1095,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             {assigningSlot?.zoneId === zone.zoneId && (
                               <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-3 p-3 rounded-xl" style={{ background: "rgba(0,200,224,0.05)", border: "1px solid rgba(0,200,224,0.15)" }}>
                                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
-                                  Select {assigningSlot.slot === "lead" ? "Zone Lead" : "Secondary Admin"} for {zone.zoneName}:
+                                  {t("roles.selectWord")} {assigningSlot.slot === "lead" ? t("roles.slotZoneLead") : t("roles.slotSecondaryAdmin")} {t("roles.forWord")} {zone.zoneName}:
                                 </div>
                                 <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
                                   {/* Dashboard audit P1: added null guards on zone admin IDs
@@ -1114,7 +1114,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                                     </button>
                                   ))}
                                 </div>
-                                <button onClick={() => setAssigningSlot(null)} style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6 }}>Cancel</button>
+                                <button onClick={() => setAssigningSlot(null)} style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6 }}>{t("roles.cancel")}</button>
                               </motion.div>
                             )}
                           </motion.div>
@@ -1132,7 +1132,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
             <motion.div key="permissions" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
               {/* User Picker */}
               <div className="mb-4">
-                <label style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 6 }}>SELECT TEAM MEMBER</label>
+                <label style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 6 }}>{t("roles.selectTeamMember")}</label>
                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
                   {members.filter(m => !m.isOwner).map(m => (
                     <button
@@ -1150,7 +1150,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                         <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{ROLE_CONFIG[m.role].label}</div>
                       </div>
                       {m.hasCustomPermissions && (
-                        <span style={{ fontSize: 8, fontWeight: 700, color: "#FF9500", background: "rgba(255,150,0,0.1)", padding: "2px 6px", borderRadius: 4 }}>CUSTOM</span>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: "#FF9500", background: "rgba(255,150,0,0.1)", padding: "2px 6px", borderRadius: 4 }}>{t("roles.customBadge")}</span>
                       )}
                       {selectedMemberForPerms?.id === m.id && <Check className="size-4" style={{ color: "#00C8E0" }} />}
                     </button>
@@ -1166,20 +1166,20 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                     <div className="flex-1">
                       <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{selectedMemberForPerms.name}</div>
                       <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-                        Base role: <span style={{ color: ROLE_CONFIG[selectedMemberForPerms.role].color }}>{ROLE_CONFIG[selectedMemberForPerms.role].label}</span>
-                        {selectedMemberForPerms.hasCustomPermissions && <span style={{ color: "#FF9500", marginLeft: 8 }}>· Custom permissions active</span>}
+                        {t("roles.baseRole")} <span style={{ color: ROLE_CONFIG[selectedMemberForPerms.role].color }}>{ROLE_CONFIG[selectedMemberForPerms.role].label}</span>
+                        {selectedMemberForPerms.hasCustomPermissions && <span style={{ color: "#FF9500", marginLeft: 8 }}>· {t("roles.customPermsActive")}</span>}
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <button onClick={handleResetPerms} className="flex items-center gap-1 px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
-                        <RefreshCw className="size-3" /> Reset
+                        <RefreshCw className="size-3" /> {t("roles.reset")}
                       </button>
                       <button
                         onClick={handleSavePerms}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg"
                         style={{ background: savedPerms ? "rgba(52,199,89,0.15)" : "rgba(0,200,224,0.15)", border: `1px solid ${savedPerms ? "rgba(52,199,89,0.3)" : "rgba(0,200,224,0.25)"}`, fontSize: 11, fontWeight: 700, color: savedPerms ? "#34C759" : "#00C8E0" }}
                       >
-                        {savedPerms ? <span className="contents"><Check className="size-3" /> Saved</span> : <span className="contents"><Check className="size-3" /> Save</span>}
+                        {savedPerms ? <span className="contents"><Check className="size-3" /> {t("roles.saved")}</span> : <span className="contents"><Check className="size-3" /> {t("roles.save")}</span>}
                       </button>
                     </div>
                   </div>
@@ -1196,7 +1196,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                             <div className="size-7 rounded-lg flex items-center justify-center" style={{ background: `${group.color}15` }}>
                               <GIcon style={{ width: 14, height: 14, color: group.color }} />
                             </div>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{group.group}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{t(group.groupKey)}</span>
                             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginLeft: "auto" }}>{groupPermsEnabled}/{group.perms.length}</span>
                           </div>
 
@@ -1224,14 +1224,14 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                                   </div>
                                   <div className="flex-1">
                                     <div className="flex items-center gap-1.5">
-                                      <span style={{ fontSize: 12, fontWeight: 600, color: isEnabled ? "#fff" : "rgba(255,255,255,0.4)" }}>{perm.label}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 600, color: isEnabled ? "#fff" : "rgba(255,255,255,0.4)" }}>{t(perm.labelKey)}</span>
                                       {isDiff && (
                                         <span style={{ fontSize: 8, fontWeight: 700, color: isEnabled ? "#34C759" : "#FF9500", background: isEnabled ? "rgba(52,199,89,0.1)" : "rgba(255,150,0,0.1)", padding: "1px 5px", borderRadius: 3 }}>
-                                          {isEnabled ? "+ADDED" : "-REMOVED"}
+                                          {isEnabled ? t("roles.added") : t("roles.removed")}
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{perm.desc}</div>
+                                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{t(perm.descKey)}</div>
                                   </div>
                                 </button>
                               );
@@ -1259,7 +1259,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                         fontSize: 14, fontWeight: 700, color: "#fff",
                       }}
                     >
-                      {savedPerms ? <span className="contents"><CheckCircle2 className="size-5" /> Permissions Saved!</span> : <span className="contents"><Key className="size-5" /> Save Custom Permissions</span>}
+                      {savedPerms ? <span className="contents"><CheckCircle2 className="size-5" /> {t("roles.permissionsSaved")}</span> : <span className="contents"><Key className="size-5" /> {t("roles.saveCustomPermissions")}</span>}
                     </button>
                   </motion.div>
                 </div>
@@ -1269,7 +1269,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                     <Key className="size-7" style={{ color: "#00C8E0" }} />
                   </div>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", textAlign: "center" }}>
-                    Select a team member above to<br />customize their permissions
+                    {t("roles.permEmptyLine1")}<br />{t("roles.permEmptyLine2")}
                   </p>
                 </div>
               )}
@@ -1299,7 +1299,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
             >
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>Change Role</h3>
+                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>{t("roles.changeRoleTitle")}</h3>
                   <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{showRoleEditor.name}</p>
                 </div>
                 <button onClick={() => setShowRoleEditor(null)}><X className="size-5" style={{ color: "rgba(255,255,255,0.4)" }} /></button>
@@ -1322,7 +1322,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                       </div>
                       <div className="flex-1">
                         <div style={{ fontSize: 13, fontWeight: 600, color: isCurrentRole ? cfg.color : "#fff" }}>{cfg.label}</div>
-                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{levelCfg.desc}</div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{t(levelCfg.descKey)}</div>
                       </div>
                       {isCurrentRole && <Check className="size-4" style={{ color: cfg.color }} />}
                     </button>
@@ -1330,7 +1330,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                 })}
               </div>
               <p className="mt-4 text-center" style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                Changing role will reset any custom permissions to the new role defaults.
+                {t("roles.changeRoleNote")}
               </p>
             </motion.div>
           </motion.div>
@@ -1356,7 +1356,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
               style={{ background: "#0A1220", border: "1px solid rgba(255,255,255,0.08)" }}
             >
               <div className="flex items-center justify-between mb-6">
-                <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>Invite Team Member</h3>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>{t("roles.inviteTeamMember")}</h3>
                 <button onClick={() => setShowInviteModal(false)}><X className="size-5" style={{ color: "rgba(255,255,255,0.4)" }} /></button>
               </div>
 
@@ -1365,17 +1365,17 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                   // Dashboard audit P0: was hardcoded mock URL+code. Now uses
                   // placeholder that indicates "generate on backend" to the developer.
                   // Production: these will come from the company invite API (Task: E1).
-                  { label: "Invite Link", icon: Globe, color: "#00C8E0", desc: "Share a link — anyone with it can join (pending approval)", value: "(generated on invite)" },
-                  { label: "Invite Code", icon: Hash, color: "#FF9500", desc: "6-character code for manual entry in the mobile app", value: "(generated on invite)" },
+                  { labelKey: "roles.inviteLink", color: "#00C8E0", icon: Globe, descKey: "roles.inviteLinkDesc", value: t("roles.generatedOnInvite") },
+                  { labelKey: "roles.inviteCode", color: "#FF9500", icon: Hash, descKey: "roles.inviteCodeDesc", value: t("roles.generatedOnInvite") },
                 ].map(opt => {
                   const OIcon = opt.icon;
                   return (
-                    <div key={opt.label} className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <div key={opt.labelKey} className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
                       <div className="flex items-center gap-2 mb-2">
                         <OIcon className="size-4" style={{ color: opt.color }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{opt.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{t(opt.labelKey)}</span>
                       </div>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>{opt.desc}</p>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>{t(opt.descKey)}</p>
                       <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: opt.color, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.value}</span>
                         <button
@@ -1383,7 +1383,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                           className="flex items-center gap-1 px-2 py-1 rounded-lg"
                           style={{ background: `${opt.color}15`, fontSize: 10, fontWeight: 700, color: opt.color }}
                         >
-                          Copy
+                          {t("roles.copy")}
                         </button>
                       </div>
                     </div>
@@ -1391,7 +1391,7 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
                 })}
               </div>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" }}>
-                All new members will appear in Pending tab and require role assignment before accessing the app.
+                {t("roles.inviteFooterNote")}
               </p>
             </motion.div>
           </motion.div>
@@ -1400,7 +1400,3 @@ export function RolesPermissionsPage({ t, webMode = false, onNavigate }: RolesPe
     </div>
   );
 }
-
-
-
-
