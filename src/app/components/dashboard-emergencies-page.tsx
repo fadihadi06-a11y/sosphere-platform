@@ -155,10 +155,11 @@ const RICH_EMERGENCIES: RichEmergency[] = [
 // ═══════════════════════════════════════════════════════════════
 // Zone Cluster Banner — Auto-detects multi-SOS in same zone
 // ═══════════════════════════════════════════════════════════════
-function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
+function ZoneClusterBanner({ clusters, onAction, onLaunchSAR, t }: {
   clusters: ZoneCluster[];
   onAction?: (clusterId: string, actionId: string) => void;
   onLaunchSAR?: () => void;
+  t: (k: string) => string;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   if (clusters.length === 0) return null;
@@ -242,7 +243,7 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                     {/* Workers Involved */}
                     <div className="pt-3">
                       <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>
-                        WORKERS INVOLVED
+                        {t("eg2.workersInvolved")}
                       </span>
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {cluster.employeeNames.map((name, i) => (
@@ -260,7 +261,7 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                     {/* Auto-Executed Actions */}
                     <div>
                       <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>
-                        AUTO-EXECUTED
+                        {t("eg2.autoExecuted")}
                       </span>
                       <div className="space-y-1.5 mt-2">
                         {cluster.autoActions.map(action => (
@@ -280,7 +281,7 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                     {/* Suggested Actions */}
                     <div>
                       <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>
-                        RECOMMENDED ACTIONS
+                        {t("eg2.recommendedActions")}
                       </span>
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {cluster.suggestedActions.slice(0, 4).map(action => {
@@ -311,7 +312,7 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                     {/* Escalation Chain */}
                     <div>
                       <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>
-                        ESCALATION CHAIN
+                        {t("eg2.escalationChain")}
                       </span>
                       <div className="flex items-center gap-1 mt-2 flex-wrap">
                         {cluster.escalationChain.map((step, i) => (
@@ -355,12 +356,12 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p style={{ fontSize: 10, fontWeight: 800, color: "#FF2D55", letterSpacing: "0.5px" }}>
-                              SAR PROTOCOL {cluster.level === "catastrophic" ? "AUTO-ACTIVATED" : "PRE-STAGED"}
+                              {t("eg2.sarProtocol")} {cluster.level === "catastrophic" ? t("eg2.autoActivated") : t("eg2.preStaged")}
                             </p>
                             <p style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 1 }}>
                               {cluster.level === "catastrophic"
-                                ? `Search & Rescue auto-launched — ${cluster.affectedCount} workers, all data pre-filled`
-                                : `Mission data ready — search cone, teams, hazards pre-calculated for ${cluster.affectedCount} workers`
+                                ? `${t("eg2.sarAutoLaunched")} — ${cluster.affectedCount} ${t("eg2.workersDataPrefilled")}`
+                                : `${t("eg2.missionDataReady")} ${cluster.affectedCount} ${t("eg2.workers")}`
                               }
                             </p>
                           </div>
@@ -370,8 +371,8 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                               const result = activateClusterSAR(cluster);
                               toast.success(
                                 cluster.level === "catastrophic"
-                                  ? "SAR Protocol LIVE — Mission Active"
-                                  : "SAR Protocol Activated",
+                                  ? t("eg2.sarProtocolLive")
+                                  : t("eg2.sarProtocolActivated"),
                                 {
                                   description: result.clusterContext.preStageReason,
                                   duration: 6000,
@@ -389,7 +390,7 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                           >
                             <Radar className="size-3" style={{ color: "#fff" }} />
                             <span style={{ fontSize: 10, fontWeight: 800, color: "#fff" }}>
-                              {cluster.level === "catastrophic" ? "View SAR" : "Activate SAR"}
+                              {cluster.level === "catastrophic" ? t("eg2.viewSar") : t("eg2.activateSar")}
                             </span>
                           </button>
                         </div>
@@ -399,10 +400,10 @@ function ZoneClusterBanner({ clusters, onAction, onLaunchSAR }: {
                           style={{ borderTop: "1px solid rgba(255,45,85,0.1)" }}
                         >
                           {[
-                            { label: "Search Cone", value: "Ready", color: "#FF2D55" },
-                            { label: "Teams", value: `${cluster.affectedCount > 3 ? 3 : 2} assigned`, color: "#00C8E0" },
-                            { label: "Hazards", value: "Scanned", color: "#FF9500" },
-                            { label: "Escalation", value: cluster.level === "catastrophic" ? "MAX" : "Level 4", color: "#FF2D55" },
+                            { label: t("eg2.searchCone"), value: t("eg2.ready"), color: "#FF2D55" },
+                            { label: t("eg2.teams"), value: `${cluster.affectedCount > 3 ? 3 : 2} ${t("eg2.assigned")}`, color: "#00C8E0" },
+                            { label: t("eg2.hazards"), value: t("eg2.scanned"), color: "#FF9500" },
+                            { label: t("eg2.escalation"), value: cluster.level === "catastrophic" ? t("eg2.max") : t("eg2.level4"), color: "#FF2D55" },
                           ].map(item => (
                             <div key={item.label} className="flex items-center gap-1">
                               <div className="size-1.5 rounded-full" style={{ background: item.color }} />
@@ -531,7 +532,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
       if (cluster.level === "catastrophic") {
         clusterAutoActionsRef.current.add(cluster.id);
         const result = activateClusterSAR(cluster);
-        toast.error("CATASTROPHIC EVENT — SAR AUTO-ACTIVATED", {
+        toast.error(t("eg2.catastrophicEventSar"), {
           description: result.clusterContext.preStageReason,
           duration: 10000,
         });
@@ -547,8 +548,8 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
           status: "active",
         };
         triggerEvacuation(evac);
-        toast.error("ZONE EVACUATION TRIGGERED", {
-          description: `${cluster.zone} — auto-evacuated due to catastrophic cluster`,
+        toast.error(t("eg2.zoneEvacuationTriggered"), {
+          description: `${cluster.zone} — ${t("eg2.autoEvacuatedCatastrophic")}`,
           duration: 8000,
         });
       }
@@ -568,13 +569,13 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
             status: "active",
           };
           triggerEvacuation(evac);
-          toast.warning("ZONE LOCKDOWN ACTIVATED", {
-            description: `${cluster.zone} — entry restricted, ${cluster.affectedCount} workers affected`,
+          toast.warning(t("eg2.zoneLockdownActivated"), {
+            description: `${cluster.zone} — ${t("eg2.entryRestricted")}, ${cluster.affectedCount} ${t("eg2.workersAffected")}`,
             duration: 6000,
           });
         } else {
-          toast.warning(`${cluster.zone} — Mass Casualty Detected`, {
-            description: `Evacuation already active for ${existingEvac?.zoneName || "another zone"}. Manual action required.`,
+          toast.warning(`${cluster.zone} — ${t("eg2.massCasualtyDetected")}`, {
+            description: `${t("eg2.evacuationAlreadyActive")} ${existingEvac?.zoneName || t("eg2.anotherZone")}. ${t("eg2.manualActionRequired")}`,
             duration: 6000,
           });
         }
@@ -611,7 +612,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
       const owner: EmgOwner = { name: "Current User", takenAt: new Date() };
       return { ...e, owner, status: "responding" as EmgStatus, timeline: [...e.timeline, { time: new Date(), event: "Cluster Ownership Taken", actor: owner.name }] };
     }));
-    toast.success("Cluster Ownership Taken", { description: `All ${cluster.affectedCount} emergencies in ${cluster.zone} assigned to you` });
+    toast.success(t("eg2.clusterOwnershipTaken"), { description: `${t("eg2.allPrefix")} ${cluster.affectedCount} ${t("eg2.emergenciesInZoneAssigned")} ${cluster.zone} ${t("eg2.assignedToYou")}` });
   };
 
   const activeCount = emgList.filter(e => !["resolved", "closed"].includes(e.status)).length;
@@ -652,7 +653,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                 <div className="flex-1 min-w-0">
                   <span style={{ fontSize: 9, fontWeight: 800, color: cfg.color }}>{cfg.label}</span>
                   <p className="truncate" style={{ fontSize: 9, color: "rgba(255,255,255,0.5)" }}>
-                    Linked with {others.join(", ")} — {cl.affectedCount} total SOS in {cl.zone}
+                    {t("eg2.linkedWith")} {others.join(", ")} — {cl.affectedCount} {t("eg2.totalSosIn")} {cl.zone}
                   </p>
                 </div>
               </div>
@@ -686,7 +687,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
               ) : (
                 <div className="px-2 py-2 rounded-lg" style={{ background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>
                   <p className="text-white" style={{ fontSize: 12, fontWeight: 700 }}>{selected.owner.name}</p>
-                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Taken {fmtElapsedDate(selected.owner.takenAt)} ago</p>
+                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{t("emg.taken")} {fmtElapsedDate(selected.owner.takenAt)} {t("emg.ago")}</p>
                 </div>
               )}
             </DSCard>
@@ -718,10 +719,10 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   // through dashboard-actions edge function via emitSyncEvent (audit-logged
                   // server-side). NOTE: pre-fix was JUST the local call — silent on audit log.
                   dispatchTeam(selected.id);
-                  const note = `Dispatched responders to ${selected.zone || "Unknown zone"} for ${selected.title}`;
+                  const note = `${t("eg2.dispatchedRespondersTo")} ${selected.zone || t("eg2.unknownZone")} ${t("eg2.forLabel")} ${selected.title}`;
                   trackEventSync(selected.id, "responder_dispatched", note, "Admin", "Admin",
                     { zone: selected.zone, emergencyType: selected.title });
-                  toast.success("Team dispatched", { description: note });
+                  toast.success(t("eg2.teamDispatched"), { description: note });
                 }},
                 // WIRE: Broadcast Alert — was toast-only stub. Now uses sendBroadcast()
                 // with EMERGENCY priority targeted at the zone (or all zones if unknown).
@@ -742,7 +743,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   trackEventSync(selected.id, "emergency_services_called",
                     `Admin broadcast emergency alert to ${selected.zone || "all zones"}`,
                     "Admin", "Admin", { broadcastTarget: selected.zone || "all" });
-                  toast.success("Broadcast sent", { description: `Workers in ${selected.zone || "all zones"} have been alerted` });
+                  toast.success(t("eg2.broadcastSent"), { description: `${t("eg2.workersIn")} ${selected.zone || t("eg2.allZones")} ${t("eg2.haveBeenAlerted")}` });
                 }},
                 // WIRE: Escalate — was toast-only stub. Now emits SOS_ESCALATED
                 // SyncEvent (added in strict-4) so dashboard widgets + safety-intelligence
@@ -774,7 +775,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   trackEventSync(selected.id, "escalation_triggered",
                     `Admin escalated to management chain (Zone Admin + Safety Director)`,
                     "Admin", "Admin", { severity: selected.severity });
-                  toast.success("Escalated to management", { description: "Zone Admin & Safety Director notified" });
+                  toast.success(t("eg2.escalatedToManagement"), { description: t("eg2.zoneAdminSafetyNotified") });
                 }},
               ].map(a => (
                 <button key={a.label} onClick={a.onClick} className="flex flex-col items-center gap-1 py-2 rounded-lg" style={{ background: `${a.color}0A`, border: `1px solid ${a.color}1F` }}>
@@ -795,7 +796,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   const reportData = buildReportData(emgItem);
                   generateEmergencyLifecyclePDF(reportData);
                 }} className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg" style={{ background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", fontSize: 11, fontWeight: 700, color: "#00C8E0" }}>
-                  <Download className="size-3.5" /> Export Lifecycle Report (PDF)
+                  <Download className="size-3.5" /> {t("eg2.exportLifecyclePdf")}
                 </button>
               )}
             </div>
@@ -829,20 +830,20 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
         <div className="flex flex-col" style={{ width: 420, borderRight: "1px solid rgba(255,255,255,0.05)", flexShrink: 0 }}>
           <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
             <div className="flex items-center gap-3">
-              <h2 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>Emergencies</h2>
+              <h2 className="text-white" style={{ fontSize: 16, fontWeight: 800 }}>{t("eg2.emergencies")}</h2>
               {activeCount > 0 && (
-                <motion.span animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "#FF2D55" }}>{activeCount} LIVE</motion.span>
+                <motion.span animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "#FF2D55" }}>{activeCount} {t("eg2.live")}</motion.span>
               )}
             </div>
             <button onClick={onCreate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "linear-gradient(135deg, #FF2D55, #CC2244)", boxShadow: "0 4px 16px rgba(255,45,85,0.25)" }}>
-              <Plus className="size-3.5" /> New
+              <Plus className="size-3.5" /> {t("eg2.new")}
             </button>
           </div>
           <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
             {/* Zone Cluster Banner */}
             {clusters.length > 0 && (
               <div className="px-4 pt-3">
-                <ZoneClusterBanner clusters={clusters} onAction={(cid, aid) => { if (aid === "deploy_team") takeClusterOwnership(cid); }} onLaunchSAR={onLaunchSAR} />
+                <ZoneClusterBanner clusters={clusters} onAction={(cid, aid) => { if (aid === "deploy_team") takeClusterOwnership(cid); }} onLaunchSAR={onLaunchSAR} t={t} />
                 {/* Admin Overload Warning — triggers when admin owns 2+ clusters */}
                 {ownedClusterCount >= 2 && (
                   <div
@@ -856,9 +857,9 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                       <AlertTriangle className="size-3.5" style={{ color: "#FF9500" }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p style={{ fontSize: 10, fontWeight: 800, color: "#FF9500" }}>COGNITIVE OVERLOAD RISK</p>
+                      <p style={{ fontSize: 10, fontWeight: 800, color: "#FF9500" }}>{t("eg2.cognitiveOverloadRisk")}</p>
                       <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>
-                        You are managing {ownedClusterCount} clusters simultaneously. Consider delegating to another admin for safer response coordination.
+                        {t("eg2.youAreManaging")} {ownedClusterCount} {t("eg2.clustersSimultaneously")}
                       </p>
                     </div>
                   </div>
@@ -881,11 +882,11 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                         {isActive && emg.status !== "contained" && <motion.div animate={{ scale: [1, 1.4, 1], opacity: [1, 0.4, 1] }} transition={{ duration: 1.2, repeat: Infinity }} className="size-2 rounded-full shrink-0" style={{ background: st.color }} />}
                         <p className="text-white truncate" style={{ fontSize: 13, fontWeight: 700 }}>{emg.title}</p>
                       </div>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{emg.zone} · {emg.affectedCount} affected</p>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{emg.zone} · {emg.affectedCount} {t("eg2.affectedLower")}</p>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 700, color: sev.color, background: sev.bg }}>{emg.severity.toUpperCase()}</span>
                         <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 700, color: st.color, background: st.bg }}>{emg.status.toUpperCase()}</span>
-                        {emg.owner && <span style={{ fontSize: 9, fontWeight: 600, color: "#00C853" }}>✓ Owned</span>}
+                        {emg.owner && <span style={{ fontSize: 9, fontWeight: 600, color: "#00C853" }}>✓ {t("emg.owned")}</span>}
                         {clusterInfo && (
                           <span className="px-2 py-0.5 rounded-md" style={{
                             fontSize: 8, fontWeight: 800,
@@ -901,7 +902,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                     </div>
                     <div className="text-right shrink-0">
                       <p style={{ fontSize: 16, fontWeight: 800, color: timerColor(elapsed), fontVariantNumeric: "tabular-nums" }}>{fmtElapsed(elapsed)}</p>
-                      <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>elapsed</p>
+                      <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{t("eg2.elapsedLower")}</p>
                     </div>
                   </div>
                 </button>
@@ -915,7 +916,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
               <div className="size-16 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <AlertTriangle className="size-7" style={{ color: "rgba(255,255,255,0.15)" }} />
               </div>
-              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>Select an emergency to view details</p>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{t("eg2.selectEmergency")}</p>
             </div>
           ) : (() => {
             const sel = emgList.find(e => e.id === selectedId)!;
@@ -936,7 +937,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   </div>
                   <div className="text-right">
                     <p style={{ fontSize: 32, fontWeight: 800, color: timerColor(elapsed), fontVariantNumeric: "tabular-nums" }}>{fmtElapsed(elapsed)}</p>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>response time</p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{t("eg2.responseTime")}</p>
                   </div>
                 </div>
                 {/* Cluster Linkage Banner — web detail */}
@@ -954,7 +955,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                           <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: cfg.color }}>{cl.affectedCount} SOS</span>
                         </div>
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-                          This emergency is part of a zone cluster with {others.join(", ")} in {cl.zone}. Unified response recommended.
+                          {t("eg2.partOfClusterWith")} {others.join(", ")} {t("eg2.inLabel")} {cl.zone}. {t("eg2.unifiedResponseRecommended")}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -962,14 +963,14 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                           <button
                             onClick={() => {
                               activateClusterSAR(cl);
-                              toast.success("SAR Protocol Activated", { description: `Mission pre-staged for ${cl.affectedCount} workers in ${cl.zone}` });
+                              toast.success(t("eg2.sarProtocolActivated"), { description: `${t("eg2.missionPreStagedFor")} ${cl.affectedCount} ${t("eg2.workersIn")} ${cl.zone}` });
                               onLaunchSAR?.();
                             }}
                             className="px-3 py-2 rounded-lg flex items-center gap-1.5"
                             style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "linear-gradient(135deg, #FF2D55, #FF6B35)", boxShadow: "0 0 10px rgba(255,45,85,0.3)" }}
                           >
                             <Radar className="size-3.5" />
-                            SAR
+                            {t("eg2.sar")}
                           </button>
                         )}
                         <button
@@ -977,7 +978,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                           className="px-3 py-2 rounded-lg"
                           style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: cfg.color }}
                         >
-                          Own All ({cl.affectedCount})
+                          {t("eg2.ownAll")} ({cl.affectedCount})
                         </button>
                       </div>
                     </div>
@@ -985,10 +986,10 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                 })()}
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: "Affected",   value: sel.affectedCount,  color: "#FF2D55" },
-                    { label: "Responders", value: sel.respondersCount, color: "#00C8E0" },
-                    { label: "Radius",     value: `${sel.radius}m`,   color: "#FF9500" },
-                    { label: "Owner",      value: sel.owner ? sel.owner.name.split(" ")[0] : "None", color: sel.owner ? "#00C853" : "rgba(255,255,255,0.3)" },
+                    { label: t("emg.affected"),   value: sel.affectedCount,  color: "#FF2D55" },
+                    { label: t("emg.responders"), value: sel.respondersCount, color: "#00C8E0" },
+                    { label: t("eg2.radiusLabel"),     value: `${sel.radius}m`,   color: "#FF9500" },
+                    { label: t("eg2.owner"),      value: sel.owner ? sel.owner.name.split(" ")[0] : t("eg2.none"), color: sel.owner ? "#00C853" : "rgba(255,255,255,0.3)" },
                   ].map(s => (
                     <div key={s.label} className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
                       <p style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
@@ -1000,28 +1001,28 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.65 }}>{sel.description}</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {sel.status === "active" && !sel.owner && <button onClick={() => takeOwnership(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #34C759, #28A745)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(52,199,89,0.3)" }}><UserCheck className="size-4" /> Take Ownership</button>}
-                  {sel.status === "responding" && <button onClick={() => containEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #00C8E0, #0088A8)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(0,200,224,0.3)" }}><Shield className="size-4" /> Mark Contained</button>}
-                  {sel.status === "contained" && <button onClick={() => resolveEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #00C853, #009940)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(0,200,83,0.3)" }}><CheckCircle2 className="size-4" /> Resolve</button>}
-                  {sel.status === "resolved" && <button onClick={() => closeEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "rgba(128,144,165,0.1)", border: "1px solid rgba(128,144,165,0.2)", fontSize: 14, fontWeight: 700, color: "#8090A5" }}><XCircle className="size-4" /> Close Permanently</button>}
+                  {sel.status === "active" && !sel.owner && <button onClick={() => takeOwnership(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #34C759, #28A745)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(52,199,89,0.3)" }}><UserCheck className="size-4" /> {t("emg.takeOwnership")}</button>}
+                  {sel.status === "responding" && <button onClick={() => containEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #00C8E0, #0088A8)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(0,200,224,0.3)" }}><Shield className="size-4" /> {t("eg2.markContained")}</button>}
+                  {sel.status === "contained" && <button onClick={() => resolveEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, #00C853, #009940)", fontSize: 14, fontWeight: 700, color: "#fff", boxShadow: "0 4px 20px rgba(0,200,83,0.3)" }}><CheckCircle2 className="size-4" /> {t("emg.resolve")}</button>}
+                  {sel.status === "resolved" && <button onClick={() => closeEmg(sel.id)} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "rgba(128,144,165,0.1)", border: "1px solid rgba(128,144,165,0.2)", fontSize: 14, fontWeight: 700, color: "#8090A5" }}><XCircle className="size-4" /> {t("emg.closePerm")}</button>}
                   {(sel.status === "resolved" || sel.status === "closed") && (
                     <button onClick={() => {
                       const emgItem: EmergencyItem = { id: sel.id, severity: sel.severity, employeeName: sel.title, zone: sel.zone, type: sel.description?.split(" — ")[0] || "Emergency", timestamp: sel.createdAt, status: "resolved", elapsed: Math.floor((Date.now() - sel.createdAt.getTime()) / 1000), isOwned: !!sel.owner, ownedBy: sel.owner?.name };
                       generateEmergencyLifecyclePDF(buildReportData(emgItem));
                     }} className="flex items-center gap-2 px-5 py-3 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(0,200,224,0.1), rgba(123,94,255,0.06))", border: "1px solid rgba(0,200,224,0.15)", fontSize: 14, fontWeight: 700, color: "#00C8E0", boxShadow: "0 4px 16px rgba(0,200,224,0.08)" }}>
-                      <Download className="size-4" /> Export Lifecycle Report
+                      <Download className="size-4" /> {t("eg2.exportLifecycle")}
                     </button>
                   )}
                   {[
                     // phase-1/finish-dashboard-pages (2026-05-25, life-safety): web-mode buttons
                     // share the SAME wiring as the drawer buttons (lines ~2580). Pre-fix all 3
                     // were toast-only stubs.
-                    { icon: Send, label: "Dispatch Team", color: "#FF9500", onClick: () => {
+                    { icon: Send, label: t("eg2.dispatchTeam"), color: "#FF9500", onClick: () => {
                       dispatchTeam(sel.id);
                       trackEventSync(sel.id, "responder_dispatched", `Dispatched to ${sel.zone}`, "Admin", "Admin");
-                      toast.success("Team dispatched", { description: `Responders en route to ${sel.zone}` });
+                      toast.success(t("eg2.teamDispatched"), { description: `${t("eg2.respondersEnRouteTo")} ${sel.zone}` });
                     }},
-                    { icon: Bell, label: "Broadcast", color: "#7B5EFF", onClick: () => {
+                    { icon: Bell, label: t("emg.broadcast"), color: "#7B5EFF", onClick: () => {
                       const audience = sel.zone ? { type: "zone" as const, zoneIds: [sel.zone] } : { type: "all" as const };
                       sendBroadcast({
                         title: `🚨 EMERGENCY — ${sel.title}`,
@@ -1033,9 +1034,9 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                         timestamp: Date.now(), relatedEmergencyId: sel.id,
                       });
                       trackEventSync(sel.id, "emergency_services_called", `Broadcast to ${sel.zone || "all"}`, "Admin", "Admin");
-                      toast.success("Broadcast sent", { description: `Alerted workers in ${sel.zone || "all zones"}` });
+                      toast.success(t("eg2.broadcastSent"), { description: `${t("eg2.alertedWorkersIn")} ${sel.zone || t("eg2.allZones")}` });
                     }},
-                    { icon: Zap, label: "Escalate", color: "#FF2D55", onClick: () => {
+                    { icon: Zap, label: t("emg.escalate"), color: "#FF2D55", onClick: () => {
                       emitSyncEvent({
                         type: "SOS_ESCALATED",
                         employeeId: (sel as any).employeeId || sel.id,
@@ -1052,7 +1053,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                         timestamp: Date.now(), relatedEmergencyId: sel.id,
                       });
                       trackEventSync(sel.id, "escalation_triggered", `Escalated to management`, "Admin", "Admin");
-                      toast.success("Escalated to management", { description: "Zone Admin & Safety Director notified" });
+                      toast.success(t("eg2.escalatedToManagement"), { description: t("eg2.zoneAdminSafetyNotified") });
                     }},
                   ].map(a => (
                     <button key={a.label} onClick={a.onClick} className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: `${a.color}10`, border: `1px solid ${a.color}20`, fontSize: 13, fontWeight: 600, color: a.color }}>
@@ -1061,7 +1062,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
                   ))}
                 </div>
                 <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                  <div className="px-5 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>Incident Timeline</p></div>
+                  <div className="px-5 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 13, fontWeight: 700 }}>{t("eg2.incidentTimeline")}</p></div>
                   <div className="px-5 py-4">
                     {sel.timeline.map((item, idx) => (
                       <div key={idx} className="flex gap-4 items-start mb-4 last:mb-0">
@@ -1098,7 +1099,7 @@ export function EmergenciesPage({ emergencies: _parentEmg, onResolve: _onResolve
         <DSButton variant="danger" size="sm" icon={Plus} onClick={onCreate}>{t("b.create")}</DSButton>
       </div>
       {/* Zone Cluster Banner — mobile */}
-      <ZoneClusterBanner clusters={clusters} onAction={(cid, aid) => { if (aid === "deploy_team") takeClusterOwnership(cid); }} onLaunchSAR={onLaunchSAR} />
+      <ZoneClusterBanner clusters={clusters} onAction={(cid, aid) => { if (aid === "deploy_team") takeClusterOwnership(cid); }} onLaunchSAR={onLaunchSAR} t={t} />
       <div className="space-y-2">
         {emgList.map(emg => {
           const sev = SEVERITY_CONFIG[emg.severity];

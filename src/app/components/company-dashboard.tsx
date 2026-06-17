@@ -256,37 +256,37 @@ interface CompanyDashboardProps {
 
 function getNavLiveThreat(t: (k: string) => string) {
   return [
-    { id: "emergencyHub" as DashPage,  icon: Siren,   label: "Emergency Hub" },
+    { id: "emergencyHub" as DashPage,  icon: Siren,   label: t("cd2.emergencyHub") },
     { id: "riskMap" as DashPage,       icon: MapIcon,  label: t("nav.risk")   },
   ];
 }
 
 function getNavIntelligence(t: (k: string) => string) {
   return [
-    { id: "safetyIntel" as DashPage,  icon: Radar,           label: "Safety Intelligence" },
+    { id: "safetyIntel" as DashPage,  icon: Radar,           label: t("cd2.safetyIntelligence") },
     { id: "overview" as DashPage,     icon: LayoutDashboard,  label: t("nav.overview")     },
   ];
 }
 
-function getNavOperations(_t: (k: string) => string) {
+function getNavOperations(t: (k: string) => string) {
   return [
-    { id: "location" as DashPage,    icon: MapPin, label: "Location & Zones" },
-    { id: "operations" as DashPage,  icon: Route,  label: "Operations Hub"  },
-    { id: "people" as DashPage,      icon: Users,  label: "People & Teams"  },
-    { id: "drones" as DashPage,      icon: Navigation, label: "Drones"       },
+    { id: "location" as DashPage,    icon: MapPin, label: t("cd2.locationZones") },
+    { id: "operations" as DashPage,  icon: Route,  label: t("cd2.operationsHub")  },
+    { id: "people" as DashPage,      icon: Users,  label: t("cd2.peopleTeams")  },
+    { id: "drones" as DashPage,      icon: Navigation, label: t("cd2.drones")       },
   ];
 }
 
-function getNavCompliance() {
+function getNavCompliance(t: (k: string) => string) {
   return [
-    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: "Incident & Risk"     },
-    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: "Reports & Analytics" },
+    { id: "incidentRisk" as DashPage,      icon: FileWarning, label: t("cd2.incidentRisk")     },
+    { id: "reportsAnalytics" as DashPage,  icon: TrendingUp,  label: t("cd2.reportsAnalytics") },
   ];
 }
 
-function getNavSystem() {
+function getNavSystem(t: (k: string) => string) {
   return [
-    { id: "governance" as DashPage,  icon: ScrollText, label: "Governance" },
+    { id: "governance" as DashPage,  icon: ScrollText, label: t("cd2.governance") },
   ];
 }
 
@@ -408,12 +408,13 @@ function HubTabBar({ hubId, activeTab, onTabChange, badges, lockedTabs }: {
 // Trial Banner Component (PART C + E)
 // ═══════════════════════════════════════════════════════════════
 
-function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss }: {
+function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss, t }: {
   daysLeft: number;
   isActive: boolean;
   trialEndsAt: string | null;
   onUpgrade: () => void;
   onDismiss: () => void;
+  t: (k: string) => string;
 }) {
   const isExpired = !isActive && daysLeft <= 0;
   const isUrgent = !isExpired && daysLeft <= 2;
@@ -435,14 +436,14 @@ function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss }: 
     : { bg: "rgba(0,200,83,0.08)", border: "rgba(0,200,83,0.2)", text: "#00C853", accent: "#00C853" };
 
   const message = isExpired
-    ? `Trial ended. Your data will be permanently deleted in ${daysUntilDeletion} day${daysUntilDeletion !== 1 ? "s" : ""}`
+    ? `${t("cd2.trialEndedDataDeleted")} ${daysUntilDeletion} ${daysUntilDeletion !== 1 ? t("cd2.days") : t("cd2.day")}`
     : daysLeft <= 1
-    ? "Trial ends tomorrow! Upgrade now"
+    ? t("cd2.trialEndsTomorrow")
     : daysLeft <= 2
-    ? `Trial ends in ${daysLeft} days! Upgrade now`
+    ? `${t("cd2.trialEndsIn")} ${daysLeft} ${t("cd2.daysUpgradeNow")}`
     : daysLeft <= 4
-    ? `Only ${daysLeft} days left! Upgrade before trial ends`
-    : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your free trial`;
+    ? `${t("cd2.only")} ${daysLeft} ${t("cd2.daysLeftUpgrade")}`
+    : `${daysLeft} ${daysLeft !== 1 ? t("cd2.days") : t("cd2.day")} ${t("cd2.leftInFreeTrial")}`;
 
   return (
     <motion.div
@@ -469,7 +470,7 @@ function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss }: 
         </span>
         {isExpired && daysUntilDeletion <= 7 && (
           <p style={{ fontSize: 10, color: "rgba(239,68,68,0.7)", marginTop: 2 }}>
-            {"\u26A0\uFE0F"} All company data will be permanently deleted after this period
+            {"\u26A0\uFE0F"} {t("cd2.allDataDeletedAfter")}
           </p>
         )}
       </div>
@@ -485,7 +486,7 @@ function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss }: 
           cursor: "pointer",
         }}
       >
-        {isExpired ? "Upgrade to Restore" : "Upgrade Now"}
+        {isExpired ? t("cd2.upgradeToRestore") : t("cd2.upgradeNow")}
       </button>
       {/* Cannot dismiss when expired (daysLeft 0) */}
       {!isExpired && (
@@ -505,11 +506,12 @@ function TrialBanner({ daysLeft, isActive, trialEndsAt, onUpgrade, onDismiss }: 
 // Trial Blocked Modal (PART D)
 // ═══════════════════════════════════════════════════════════════
 
-function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
+function TrialBlockedModal({ type, message, onUpgrade, onClose, t }: {
   type: "employee" | "zone" | "generic";
   message: string;
   onUpgrade: () => void;
   onClose: () => void;
+  t: (k: string) => string;
 }) {
   const icons: Record<string, any> = { employee: Users, zone: MapPin, generic: AlertTriangle };
   const Icon = icons[type] || AlertTriangle;
@@ -542,7 +544,7 @@ function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
             style={{ background: "rgba(255,45,85,0.1)", border: "1px solid rgba(255,45,85,0.2)" }}>
             <Icon className="size-7" style={{ color: "#FF2D55" }} />
           </div>
-          <h3 className="text-white" style={{ fontSize: 18, fontWeight: 800 }}>Trial Ended</h3>
+          <h3 className="text-white" style={{ fontSize: 18, fontWeight: 800 }}>{t("cd2.trialEnded")}</h3>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6 }}>
             {message}
           </p>
@@ -558,12 +560,12 @@ function TrialBlockedModal({ type, message, onUpgrade, onClose }: {
           }}
         >
           <Crown className="size-4" />
-          Upgrade Now
+          {t("cd2.upgradeNow")}
         </button>
         <button onClick={onClose}
           className="w-full py-2 rounded-lg"
           style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", background: "transparent", border: "none", cursor: "pointer" }}>
-          Maybe Later
+          {t("cd2.maybeLater")}
         </button>
       </motion.div>
     </motion.div>
@@ -862,8 +864,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
     const unsubChange = onMissedCallChange(() => refreshMissedCalls());
     const unsubNotify = onMissedCallNotify((call) => {
       refreshMissedCalls();
-      toast.warning(`Missed Call: ${call.employeeName}`, {
-        description: `${call.zone || "Unknown zone"} — ${call.missedOn === "desktop" ? "No answer on desktop" : "No answer on phone"}`,
+      toast.warning(`${t("cd2.missedCall")}: ${call.employeeName}`, {
+        description: `${call.zone || t("cd2.unknownZone")} — ${call.missedOn === "desktop" ? t("cd2.noAnswerDesktop") : t("cd2.noAnswerPhone")}`,
         duration: 6000,
       });
     });
@@ -888,8 +890,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       void autoActivatePlaybook({ eventType: event.type, emergencyId: event.data?.emergencyId as string | undefined })
         .then((r) => {
           if (r.activated && r.playbookName) {
-            toast.info(`Protocol auto-activated: ${r.playbookName}`, {
-              description: "Open Emergency Hub \u2192 Playbook to follow and complete the steps.",
+            toast.info(`${t("cd2.protocolAutoActivated")}: ${r.playbookName}`, {
+              description: t("cd2.protocolAutoActivatedDesc"),
               duration: 6000,
             });
           }
@@ -1034,8 +1036,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       }
       if (event.type === "SHAKE_SOS") {
         incrementNotifCount();
-        toast.warning(`${event.employeeName} — Shake SOS detected`, {
-          description: "SOS sequence starting — emergency will appear momentarily",
+        toast.warning(`${event.employeeName} — ${t("cd2.shakeSosDetected")}`, {
+          description: t("cd2.shakeSosDesc"),
           duration: 4000,
         });
       }
@@ -1055,14 +1057,14 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       }
       if (event.type === "SOS_CONTACT_ANSWERED") {
         incrementNotifCount();
-        toast.success(`${event.data?.contactName || "Contact"} answered — location shared`, { duration: 4000 });
+        toast.success(`${event.data?.contactName || t("cd2.contact")} ${t("cd2.answeredLocationShared")}`, { duration: 4000 });
       }
       if (event.type === "SOS_RECORDING_STARTED") {
         incrementNotifCount();
-        toast.info("Ambient recording started — evidence capturing", { duration: 3000 });
+        toast.info(t("cd2.ambientRecordingStarted"), { duration: 3000 });
       }
       if (event.type === "STATUS_UPDATE") {
-        toast.success(`${event.employeeName} — status: ${event.data?.status || "safe"}`, { duration: 3000 });
+        toast.success(`${event.employeeName} — ${t("cd2.status")}: ${event.data?.status || "safe"}`, { duration: 3000 });
       }
       if (event.type === "INCIDENT_REPORT_RECEIVED") {
         receivedReportCountRef.current += 1;
@@ -1111,8 +1113,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         // FIX AUDIT-2.2: Cancel by emergencyId first, name as fallback
         const cancelId = (event.data?.emergencyId as string) || "";
         cancelEmergencyById(cancelId, event.employeeName);
-        toast.info(`${event.employeeName} cancelled SOS`, {
-          description: "Emergency resolved — cluster re-evaluating",
+        toast.info(`${event.employeeName} ${t("cd2.cancelledSos")}`, {
+          description: t("cd2.cancelledSosDesc"),
           duration: 4000,
         });
       }
@@ -1143,11 +1145,11 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           elapsed: 0,
           employeeId: event.employeeId,
         });
-        toast.error(`Connection lost: ${event.employeeName}`, {
-          description: `${event.zone || "Unknown zone"} — auto-navigating to SAR Protocol`,
+        toast.error(`${t("cd2.connectionLost")}: ${event.employeeName}`, {
+          description: `${event.zone || t("cd2.unknownZone")} — ${t("cd2.autoNavigatingSar")}`,
           duration: 8000,
           action: {
-            label: "Open SAR",
+            label: t("cd2.openSar"),
             onClick: () => setCurrentPage("emergencyHub"),
           },
         });
@@ -1173,10 +1175,10 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         incrementNotifCount();
         const battLvl = event.data?.batteryLevel ?? "?";
         const lastPos = event.data?.lastPosition as { lat?: number; lng?: number; address?: string } | undefined;
-        toast.error(`🔋 Battery Critical: ${event.employeeName} (${battLvl}%)`, {
+        toast.error(`🔋 ${t("cd2.batteryCritical")}: ${event.employeeName} (${battLvl}%)`, {
           description: lastPos
-            ? `Last GPS: ${lastPos.lat?.toFixed(5)}, ${lastPos.lng?.toFixed(5)} — ${event.zone || "Unknown zone"}. Worker may go offline soon.`
-            : `Location unavailable — ${event.zone || "Unknown zone"}. Worker may go offline soon.`,
+            ? `${t("cd2.lastGps")}: ${lastPos.lat?.toFixed(5)}, ${lastPos.lng?.toFixed(5)} — ${event.zone || t("cd2.unknownZone")}. ${t("cd2.workerMayGoOffline")}`
+            : `${t("cd2.locationUnavailable")} — ${event.zone || t("cd2.unknownZone")}. ${t("cd2.workerMayGoOffline")}`,
           duration: Infinity, // persists until admin dismisses
           closeButton: true,
         });
@@ -1214,8 +1216,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           if (exists) return prev.map(w => w.employeeId === event.employeeId ? warning : w);
           return [...prev, warning];
         });
-        toast.warning(`⏰ Check-in Overdue: ${event.employeeName}`, {
-          description: `${event.zone || "Unknown zone"} — warning cycle ${event.data?.warningCycle || 1}/2. No response = auto-SOS.`,
+        toast.warning(`⏰ ${t("cd2.checkinOverdue")}: ${event.employeeName}`, {
+          description: `${event.zone || t("cd2.unknownZone")} — ${t("cd2.warningCycle")} ${event.data?.warningCycle || 1}/2. ${t("cd2.noResponseAutoSos")}`,
           duration: 10000,
         });
       }
@@ -1231,8 +1233,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
             emergencyId: event.data?.emergencyId,
           });
           incrementNotifCount();
-          toast.warning(`Buddy Alert: ${buddyName || "Buddy"} notified`, {
-            description: `${event.employeeName} triggered SOS in ${event.zone || "unknown zone"} — buddy partner alerted`,
+          toast.warning(`${t("cd2.buddyAlert")}: ${buddyName || t("cd2.buddy")} ${t("cd2.notified")}`, {
+            description: `${event.employeeName} ${t("cd2.triggeredSosIn")} ${event.zone || t("cd2.unknownZoneLower")} — ${t("cd2.buddyPartnerAlerted")}`,
             duration: 6000,
           });
         }
@@ -1251,8 +1253,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           }
         ]);
         incrementNotifCount();
-        toast.info(`🚶 ${event.employeeName} started Safe Walk`, {
-          description: `Zone: ${event.zone} — ${(event.data?.guardians as string[])?.length || 0} guardian(s) monitoring`,
+        toast.info(`🚶 ${event.employeeName} ${t("cd2.startedSafeWalk")}`, {
+          description: `${t("cd2.zone")}: ${event.zone} — ${(event.data?.guardians as string[])?.length || 0} ${t("cd2.guardiansMonitoring")}`,
           duration: 4000,
         });
         console.log("[SUPABASE_READY] safe_walk_started_received: " + event.employeeName);
@@ -1264,7 +1266,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         );
         const arrivedSafely = event.data?.arrivedSafely;
         toast.success(
-          `${event.employeeName} — Safe Walk ${arrivedSafely ? "completed safely ✓" : "ended"}`,
+          `${event.employeeName} — ${t("cd2.safeWalk")} ${arrivedSafely ? t("cd2.completedSafely") + " ✓" : t("cd2.ended")}`,
           { duration: 4000 }
         );
         console.log("[SUPABASE_READY] safe_walk_ended_received: " + event.employeeName);
@@ -1273,8 +1275,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       // ── Buddy Locate Request ──────────────────────────────────────────────────
       if (event.type === "BUDDY_LOCATE_REQUEST") {
         incrementNotifCount();
-        toast.info(`📍 Buddy locate: ${event.data?.buddyName || "Unknown"}`, {
-          description: `Requested by ${event.employeeName} — Zone: ${event.zone}`,
+        toast.info(`📍 ${t("cd2.buddyLocate")}: ${event.data?.buddyName || t("cd2.unknown")}`, {
+          description: `${t("cd2.requestedBy")} ${event.employeeName} — ${t("cd2.zone")}: ${event.zone}`,
           duration: 5000,
         });
         console.log("[SUPABASE_READY] buddy_locate_received: " + JSON.stringify(event.data));
@@ -1319,8 +1321,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           });
         }
         incrementNotifCount();
-        toast.error(`⚠ DURESS CODE — ${event.employeeName}`, {
-          description: `${event.zone || "Unknown zone"} — worker entered coercion PIN. Treat as critical, do NOT contact directly.`,
+        toast.error(`⚠ ${t("cd2.duressCode")} — ${event.employeeName}`, {
+          description: `${event.zone || t("cd2.unknownZone")} — ${t("cd2.duressCodeDesc")}`,
           duration: 15000,
         });
         console.log("[SUPABASE_READY] duress_received: " + event.employeeName);
@@ -1337,12 +1339,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         const phase = (data.phase as string) || "acknowledged";
         const evacId = (data.evacuationId as string) || "—";
         const phaseLabel =
-          phase === "arrived" ? "arrived at assembly point" :
-          phase === "evacuating" ? "started evacuating" :
-          "acknowledged evacuation";
+          phase === "arrived" ? t("cd2.arrivedAtAssembly") :
+          phase === "evacuating" ? t("cd2.startedEvacuating") :
+          t("cd2.acknowledgedEvacuation");
         incrementNotifCount();
         toast.info(`🏃 ${event.employeeName} ${phaseLabel}`, {
-          description: `Evacuation ${evacId.slice(0, 8)} — zone ${event.zone || "?"}`,
+          description: `${t("cd2.evacuation")} ${evacId.slice(0, 8)} — ${t("cd2.zoneLower")} ${event.zone || "?"}`,
           duration: 4000,
         });
         console.log("[SUPABASE_READY] evacuation_ack_received: " + event.employeeName + " phase=" + phase);
@@ -1366,8 +1368,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           if (matching) {
             updateEmergency(matching.id, { location: { lat: pos.lat, lng: pos.lng } });
             incrementNotifCount();
-            toast.warning(`📍 Last-known GPS — ${event.employeeName}`, {
-              description: `Battery critical (${(data.level as number | undefined)?.toFixed(0) ?? "?"}%) — location pinned on emergency ${matching.id.slice(0, 8)}`,
+            toast.warning(`📍 ${t("cd2.lastKnownGps")} — ${event.employeeName}`, {
+              description: `${t("cd2.batteryCritical")} (${(data.level as number | undefined)?.toFixed(0) ?? "?"}%) — ${t("cd2.locationPinnedOnEmergency")} ${matching.id.slice(0, 8)}`,
               duration: 8000,
             });
           }
@@ -1396,8 +1398,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           phone: data.phone as string | undefined,
         });
         incrementNotifCount();
-        toast.error(`🆘 Personal SOS — ${event.employeeName || "civilian"}`, {
-          description: `${event.zone || "Off-site"} — non-employee user, treat as critical`,
+        toast.error(`🆘 ${t("cd2.personalSos")} — ${event.employeeName || t("cd2.civilian")}`, {
+          description: `${event.zone || t("cd2.offSite")} — ${t("cd2.personalSosDesc")}`,
           duration: 10000,
         });
         console.log("[SUPABASE_READY] personal_sos_received: " + event.employeeName);
@@ -1411,8 +1413,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       // monitoring activity in a list, never the explicit ack.
       if (event.type === "MONITORING_CHECKIN") {
         incrementNotifCount();
-        toast.success(`✓ ${event.employeeName} confirmed monitoring check-in`, {
-          description: `Zone: ${event.zone || "—"}`,
+        toast.success(`✓ ${event.employeeName} ${t("cd2.confirmedMonitoringCheckin")}`, {
+          description: `${t("cd2.zone")}: ${event.zone || "—"}`,
           duration: 4000,
         });
         console.log("[SUPABASE_READY] monitoring_checkin_received: " + event.employeeName);
@@ -1445,8 +1447,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           updateEmergency(matching.id, { severity: "critical" });
         }
         incrementNotifCount();
-        toast.error(`⬆ Escalated: ${event.employeeName}`, {
-          description: `${event.zone || "Unknown zone"} → ${escalatedTo} (reason: ${reason})`,
+        toast.error(`⬆ ${t("cd2.escalated")}: ${event.employeeName}`, {
+          description: `${event.zone || t("cd2.unknownZone")} → ${escalatedTo} (${t("cd2.reason")}: ${reason})`,
           duration: 12000,
         });
         console.log("[SUPABASE_READY] sos_escalated_received: " + event.employeeName + " reason=" + reason);
@@ -1502,7 +1504,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         osc.stop(ctx.currentTime + 1.2);
       } catch { /* silent: audio is best-effort */ }
       toast.error(`${cfg.label}: ${worst.zone}`, {
-        description: `${worst.affectedCount} simultaneous SOS — ${cfg.description}`,
+        description: `${worst.affectedCount} ${t("cd2.simultaneousSos")} — ${cfg.description}`,
         duration: 8000,
       });
     }
@@ -1564,8 +1566,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         data: monitoringData,
       });
       
-      toast.success(`Monitoring activated for ${emg.employeeName}`, {
-        description: `30-minute check-ins for next 2 hours`,
+      toast.success(`${t("cd2.monitoringActivatedFor")} ${emg.employeeName}`, {
+        description: t("cd2.monitoringActivatedDesc"),
         duration: 5000,
       });
     }
@@ -1592,14 +1594,14 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
       }
     } catch { /* silent: handover note save is best-effort */ }
 
-    toast.success(`Emergency resolved: ${label}`, {
-      description: "Click undo within 5s to reverse.",
+    toast.success(`${t("cd2.emergencyResolved")}: ${label}`, {
+      description: t("cd2.clickUndoToReverse"),
       duration: 5000,
       action: {
-        label: "Undo",
+        label: t("cd2.undo"),
         onClick: () => {
           useDashboardStore.getState().updateEmergency(id, { status: "active" as const });
-          toast.info("Emergency reactivated");
+          toast.info(t("cd2.emergencyReactivated"));
           // Also clear monitoring if it was activated
           if (emg && (resolutionType === "minor" || resolutionType === "monitoring")) {
             // P0-doctrine-completion (2026-05-25): same fallback as activation site.
@@ -1669,8 +1671,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
             },
           });
           
-          toast.error(`⚠️ ${data.employeeName} missed check-in`, {
-            description: `Monitoring mode — last check-in ${Math.floor((Date.now() - data.nextCheckIn) / 60000)} min ago`,
+          toast.error(`⚠️ ${data.employeeName} ${t("cd2.missedCheckin")}`, {
+            description: `${t("cd2.monitoringMode")} — ${t("cd2.lastCheckin")} ${Math.floor((Date.now() - data.nextCheckIn) / 60000)} ${t("cd2.minAgo")}`,
             duration: 10000,
           });
           
@@ -1716,8 +1718,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
           if (!localStorage.getItem(alertKey)) {
             localStorage.setItem(alertKey, "1");
             
-            toast.error(`🚨 Critical Risk: ${emp.name}`, {
-              description: `Risk Score: ${riskScore.totalScore}/100 - ${getRiskLabel(riskScore.level)}`,
+            toast.error(`🚨 ${t("cd2.criticalRisk")}: ${emp.name}`, {
+              description: `${t("cd2.riskScore")}: ${riskScore.totalScore}/100 - ${getRiskLabel(riskScore.level)}`,
               duration: 15000,
             });
             
@@ -1883,11 +1885,11 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               link.click();
               document.body.removeChild(link);
               URL.revokeObjectURL(url);
-              toast.success("Data exported successfully", {
-                description: `${rows.length - 1} records saved to CSV`,
+              toast.success(t("cd2.dataExportedSuccess"), {
+                description: `${rows.length - 1} ${t("cd2.recordsSavedToCsv")}`,
               });
             } catch {
-              toast.error("Export failed", { description: "Could not generate CSV file" });
+              toast.error(t("cd2.exportFailed"), { description: t("cd2.couldNotGenerateCsv") });
             }
           }}
         />
@@ -1900,6 +1902,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
             message={trialBlockedModal.message}
             onUpgrade={() => navigateTo("billing")}
             onClose={hideTrialBlockedModal}
+            t={t}
           />
         )}
       </AnimatePresence>
@@ -1988,14 +1991,14 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
               className="size-2 rounded-full" style={{ background: "#FF2D55", boxShadow: "0 0 8px rgba(255,45,85,0.5)" }}
             />
             <span style={{ fontSize: 11, color: "#FF2D55", fontWeight: 700, letterSpacing: "-0.005em" }}>
-              {sosPopupEmployees.length} Active Emergency{sosPopupEmployees.length > 1 ? "ies" : ""}
+              {sosPopupEmployees.length} {sosPopupEmployees.length > 1 ? t("cd2.activeEmergencies") : t("cd2.activeEmergency")}
             </span>
             <button
               onClick={() => setCurrentPage("emergencyHub")}
               className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg"
               style={{ fontSize: 10, color: "#FF2D55", background: "rgba(255,45,85,0.08)", fontWeight: 700, border: "1px solid rgba(255,45,85,0.12)" }}
             >
-              Emergency Hub <ArrowUpRight className="size-3" />
+              {t("cd2.emergencyHub")} <ArrowUpRight className="size-3" />
             </button>
           </motion.div>
         )}
@@ -2020,6 +2023,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                   trialEndsAt={trialEndsAt}
                   onUpgrade={() => navigateTo("billing")}
                   onDismiss={dismissTrialBanner}
+                  t={t}
                 />
               )}
             </AnimatePresence>
@@ -2061,7 +2065,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                     fallback shows briefly while the chunk fetch resolves
                     on first navigation. Subsequent navigations are instant
                     (browser cache). */}
-                <Suspense fallback={<div style={{ padding: 24, color: "rgba(255,255,255,0.35)", fontSize: 13 }}>Loading…</div>}>
+                <Suspense fallback={<div style={{ padding: 24, color: "rgba(255,255,255,0.35)", fontSize: 13 }}>{t("cd2.loading")}</div>}>
                 {/* P0-2: render-side access-denied panel for privileged pages */}
                 {pageDenied && (
                   <div style={{ padding: 48, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 14, minHeight: 320 }}>
@@ -2113,8 +2117,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                       <motion.div key={getHubTab("emergencyHub")} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
                         {getHubTab("emergencyHub") === "active" && <EmergenciesPage emergencies={emergencies} onResolve={safeHandleResolve} onCreate={handleOpenCreateEmergency} t={t} webMode={webMode} onLaunchSAR={() => { setHubTab("emergencyHub", "sar"); }} />}
                         {getHubTab("emergencyHub") === "reports" && <IncidentReportsTab webMode={webMode} onEscalateToInvestigation={handleEscalateToInvestigation} />}
-                        {getHubTab("emergencyHub") === "history" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ Emergency override — full access active</span></div><IncidentHistoryPage t={t} webMode={webMode} /></div> : <PlanGate feature="incident_history" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><IncidentHistoryPage t={t} webMode={webMode} /></PlanGate>)}
-                        {getHubTab("emergencyHub") === "command" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ Emergency override — full access active</span></div><CommandCenterPage t={t} /></div> : <PlanGate feature="command_center" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><CommandCenterPage t={t} /></PlanGate>)}
+                        {getHubTab("emergencyHub") === "history" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ {t("cd2.emergencyOverride")}</span></div><IncidentHistoryPage t={t} webMode={webMode} /></div> : <PlanGate feature="incident_history" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><IncidentHistoryPage t={t} webMode={webMode} /></PlanGate>)}
+                        {getHubTab("emergencyHub") === "command" && (hasActiveEmergency ? <div><div className="flex items-center gap-2 px-4 py-2 mb-3 rounded-xl" style={{ background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.15)" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#FF2D55" }}>⚡ {t("cd2.emergencyOverride")}</span></div><CommandCenterPage t={t} /></div> : <PlanGate feature="command_center" companyState={companyState} onUpgrade={() => navigateTo("billing")} compact><CommandCenterPage t={t} /></PlanGate>)}
                         {getHubTab("emergencyHub") === "sar" && <SARProtocolPage />}
                         {getHubTab("emergencyHub") === "playbook" && <EmergencyPlaybookPage t={t} webMode={webMode} />}
                       </motion.div>
@@ -2142,7 +2146,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                             style={{ background: "#00C8E0" }}
                           />
                           <span style={{ fontSize: 13, fontWeight: 600, color: "#00C8E0" }}>
-                            Active Safe Walks ({activeSafeWalks.length})
+                            {t("cd2.activeSafeWalks")} ({activeSafeWalks.length})
                           </span>
                         </div>
                         {activeSafeWalks.map((walk, i) => (
@@ -2160,14 +2164,14 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                                 {walk.employeeName}
                               </p>
                               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-                                {walk.zone} · {walk.guardians.length} guardian(s)
+                                {walk.zone} · {walk.guardians.length} {t("cd2.guardians")}
                               </p>
                             </div>
                             <div style={{ textAlign: "right" }}>
                               <p style={{ fontSize: 11, color: "#00C8E0" }}>
-                                {Math.floor((Date.now() - walk.startedAt) / 60000)}m ago
+                                {Math.floor((Date.now() - walk.startedAt) / 60000)}{t("cd2.mAgo")}
                               </p>
-                              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>In progress</p>
+                              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{t("cd2.inProgress")}</p>
                             </div>
                           </div>
                         ))}
@@ -2183,7 +2187,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                         <div className="flex items-center gap-2 min-w-0">
                           <span style={{ fontSize: 14 }}>⚠️</span>
                           <span style={{ fontSize: 11, fontWeight: 600, color: "#FF2D55", lineHeight: 1.35 }}>
-                            GPS tracking is inactive — employee locations may be inaccurate
+                            {t("cd2.gpsInactive")}
                           </span>
                         </div>
                         <button
@@ -2191,7 +2195,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                           className="shrink-0 px-3 py-1.5 rounded-lg"
                           style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "rgba(255,45,85,0.85)", border: "1px solid rgba(255,45,85,0.4)" }}
                         >
-                          Start GPS Tracking
+                          {t("cd2.startGpsTracking")}
                         </button>
                       </motion.div>
                     )}
@@ -2360,8 +2364,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                 // the admin must ALWAYS get step-by-step guidance — so fall back to the
                 // free response Playbook and surface the upgrade as a gentle, non-blocking
                 // toast (NOT a forced navigation away from the live incident).
-                toast.info("Opening your response Playbook for step-by-step guidance", {
-                  description: `Tip: AI Co-Admin (auto-pilot) is on the ${aiGateCheck.requiredPlanLabel} plan ($${aiGateCheck.requiredPlanPrice}/mo).`,
+                toast.info(t("cd2.openingResponsePlaybook"), {
+                  description: `${t("cd2.tip")}: ${t("cd2.aiCoAdminTipPre")} ${aiGateCheck.requiredPlanLabel} ${t("cd2.aiCoAdminTipPost")} ($${aiGateCheck.requiredPlanPrice}/mo).`,
                 });
                 setCurrentPage("emergencyHub");
                 setHubTab("emergencyHub", "playbook");
@@ -2463,8 +2467,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                       });
                     }
                   } catch { /* silent: evidence action is best-effort */ }
-                  toast.success("Safety Warning Broadcast", {
-                    description: `Alert sent to ${payload.broadcastTo === "all" ? "all employees" : payload.broadcastTo === "zone" ? pendingIncidentReport.zone : "department"} — ${payload.priority} priority`,
+                  toast.success(t("cd2.safetyWarningBroadcast"), {
+                    description: `${t("cd2.alertSentTo")} ${payload.broadcastTo === "all" ? t("cd2.allEmployees") : payload.broadcastTo === "zone" ? pendingIncidentReport.zone : t("cd2.department")} — ${payload.priority} ${t("cd2.priority")}`,
                   });
                   setShowIncidentReportPanel(false);
                   setPendingIncidentReport(null);
@@ -2481,8 +2485,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
                       });
                     }
                   } catch { /* silent: evidence action is best-effort */ }
-                  toast.success("Report Forwarded to Owner", {
-                    description: `Incident report from ${report.employeeName} forwarded to company owner for review`,
+                  toast.success(t("cd2.reportForwardedToOwner"), {
+                    description: `${t("cd2.incidentReportFrom")} ${report.employeeName} ${t("cd2.forwardedToOwnerForReview")}`,
                   });
                 }}
                 onClose={() => {
@@ -2537,6 +2541,7 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         {showMissedCallPanel && (
           <MissedCallsPanel
             calls={missedCalls}
+            t={t}
             onClose={() => setShowMissedCallPanel(false)}
             onMarkSeen={(id) => {
               markMissedCallSeen(id);
@@ -2780,8 +2785,8 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
         reportSize="3.1 MB"
         isEncrypted={false}
         onSent={(emails) => {
-          toast.success("Lifecycle Report Emailed", {
-            description: `Sent to ${emails.length} recipient${emails.length > 1 ? "s" : ""} via secure channel`,
+          toast.success(t("cd2.lifecycleReportEmailed"), {
+            description: `${t("cd2.sentTo")} ${emails.length} ${emails.length > 1 ? t("cd2.recipients") : t("cd2.recipient")} ${t("cd2.viaSecureChannel")}`,
             duration: 5000,
           });
         }}
@@ -2807,12 +2812,12 @@ export function CompanyDashboard({ companyName, ownerName, onSOSTrigger: _onSOST
             onComplete={(notes) => {
               setHandoverNote(notes);
               setShowHandoverModal(false);
-              toast.success("Handover complete — logging out");
+              toast.success(t("cd2.handoverComplete"));
               onLogout();
             }}
             onEmergencyLogout={() => {
               setShowHandoverModal(false);
-              toast.warning("Emergency logout — no handover recorded");
+              toast.warning(t("cd2.emergencyLogoutNoHandover"));
               onLogout();
             }}
             onCancel={() => setShowHandoverModal(false)}
@@ -3711,8 +3716,8 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
   });
   const NAV_INTELLIGENCE = getNavIntelligence(t);
   const NAV_OPERATIONS = getNavOperations(t);
-  const NAV_COMPLIANCE = getNavCompliance();
-  const NAV_SYSTEM = getNavSystem().filter(item => {
+  const NAV_COMPLIANCE = getNavCompliance(t);
+  const NAV_SYSTEM = getNavSystem(t).filter(item => {
     if (!authState) return true;
     if (item.id === "governance") return hasPermission(authState, "settings:view");
     return true;
@@ -3777,7 +3782,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
             fontSize: 11, fontWeight: 700,
             color: activeEmergencyCount > 0 ? "#FF2D55" : "#00C8E0",
           }}>
-            {activeEmergencyCount > 0 ? "GUIDE ME NOW" : "Guide Me"}
+            {activeEmergencyCount > 0 ? t("cd2.guideMeNow") : t("cd2.guideMe")}
           </p>
           <ChevronRight className="size-3 ml-auto flex-shrink-0" style={{ color: activeEmergencyCount > 0 ? "rgba(255,45,85,0.25)" : "rgba(0,200,224,0.2)" }} />
         </motion.button>
@@ -3850,7 +3855,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
             a "Locked" page to non-super-admins who'd be confused by it. */}
         {authState?.user?.role === "super_admin" && (
           <SidebarNavItem
-            item={{ id: "pricingAdmin" as DashPage, icon: DollarSign, label: "Pricing Admin" }}
+            item={{ id: "pricingAdmin" as DashPage, icon: DollarSign, label: t("cd2.pricingAdmin") }}
             active={currentPage === "pricingAdmin"}
             onClick={() => { onNavigate("pricingAdmin" as DashPage); if (!webMode) onToggle(); }}
           />
@@ -3858,7 +3863,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
         {/* Weather Admin — same super_admin gate (29th pattern phase 3) */}
         {authState?.user?.role === "super_admin" && (
           <SidebarNavItem
-            item={{ id: "weatherAdmin" as DashPage, icon: CloudLightning, label: "Weather Admin" }}
+            item={{ id: "weatherAdmin" as DashPage, icon: CloudLightning, label: t("cd2.weatherAdmin") }}
             active={currentPage === "weatherAdmin"}
             onClick={() => { onNavigate("weatherAdmin" as DashPage); if (!webMode) onToggle(); }}
           />
@@ -3893,7 +3898,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
                 />
                 <Clock className="size-3 flex-shrink-0" style={{ color: isUrgent ? "#FF2D55" : "#FFB300" }} />
                 <span style={{ fontSize: 10, fontWeight: 700, color: isUrgent ? "#FF2D55" : "#FFB300" }}>
-                  {daysLeft} day{daysLeft !== 1 ? "s" : ""} left in trial
+                  {daysLeft} {daysLeft !== 1 ? t("cd2.daysLeftInTrial") : t("cd2.dayLeftInTrial")}
                 </span>
               </div>
               <button
@@ -3910,7 +3915,7 @@ function DashSidebar({ currentPage, onNavigate, collapsed, onToggle, companyName
                 }}
               >
                 <ArrowUpRight className="size-3" />
-                Upgrade Now
+                {t("cd2.upgradeNow")}
               </button>
             </motion.div>
           </div>
@@ -4101,22 +4106,22 @@ function DashTopbar({ currentPage, notifCount, notifUnread = 0, onOpenNotifs, on
   // Only pages that can actually be currentPage (after PAGE_ALIASES + PAGE_TO_HUB redirects)
   const pageInfo: Partial<Record<DashPage, { title: string; desc: string; group: string }>> = {
     // ── Core Hub Pages (Sidebar) ──
-    overview: { title: t("pg.overview"), desc: "Real-time operations center", group: "OPERATIONS" },
-    emergencyHub: { title: "Emergency Hub", desc: "Unified incident management center", group: "OPERATIONS" },
-    riskMap: { title: t("pg.risk"), desc: "Live situational awareness", group: "OPERATIONS" },
-    safetyIntel: { title: "Safety Intelligence", desc: "AI-powered predictive risk engine", group: "OPERATIONS" },
-    operations: { title: "Operations Hub", desc: "Journeys, workforce, comms & connectivity", group: "OPERATIONS" },
-    people: { title: "People & Teams", desc: "Directory, buddy system, readiness & scores", group: "OPERATIONS" },
-    incidentRisk: { title: "Incident & Risk", desc: "Investigation, CAPA & risk assessment", group: "COMPLIANCE" },
-    reportsAnalytics: { title: "Reports & Analytics", desc: "Compliance reports, metrics & scheduling", group: "COMPLIANCE" },
-    governance: { title: "Governance", desc: "Audit trail & access control", group: "SYSTEM" },
-    settings: { title: t("pg.settings"), desc: "Company config & integrations", group: "MANAGEMENT" },
+    overview: { title: t("pg.overview"), desc: t("cd2.descOverview"), group: "OPERATIONS" },
+    emergencyHub: { title: t("cd2.emergencyHub"), desc: t("cd2.descEmergencyHub"), group: "OPERATIONS" },
+    riskMap: { title: t("pg.risk"), desc: t("cd2.descRiskMap"), group: "OPERATIONS" },
+    safetyIntel: { title: t("cd2.safetyIntelligence"), desc: t("cd2.descSafetyIntel"), group: "OPERATIONS" },
+    operations: { title: t("cd2.operationsHub"), desc: t("cd2.descOperations"), group: "OPERATIONS" },
+    people: { title: t("cd2.peopleTeams"), desc: t("cd2.descPeople"), group: "OPERATIONS" },
+    incidentRisk: { title: t("cd2.incidentRisk"), desc: t("cd2.descIncidentRisk"), group: "COMPLIANCE" },
+    reportsAnalytics: { title: t("cd2.reportsAnalytics"), desc: t("cd2.descReportsAnalytics"), group: "COMPLIANCE" },
+    governance: { title: t("cd2.governance"), desc: t("cd2.descGovernance"), group: "SYSTEM" },
+    settings: { title: t("pg.settings"), desc: t("cd2.descSettings"), group: "MANAGEMENT" },
     // ── Standalone Pages (not inside hubs) ──
-    location: { title: "Location & Zones", desc: "Sites, zones & geofencing", group: "MANAGEMENT" },
-    billing: { title: "Plans & Billing", desc: "Subscription & usage management", group: "MANAGEMENT" },
-    csvGuide: { title: "CSV Field Guide", desc: "Bulk import documentation", group: "MANAGEMENT" },
-    weatherAlerts: { title: "Weather Alerts", desc: "Environmental hazard monitoring", group: "SAFETY TOOLS" },
-    rrpAnalytics: { title: "Response Analytics", desc: "Response performance, heatmaps & comparisons", group: "OPERATIONS" },
+    location: { title: t("cd2.locationZones"), desc: t("cd2.descLocation"), group: "MANAGEMENT" },
+    billing: { title: t("cd2.plansBilling"), desc: t("cd2.descBilling"), group: "MANAGEMENT" },
+    csvGuide: { title: t("cd2.csvFieldGuide"), desc: t("cd2.descCsvGuide"), group: "MANAGEMENT" },
+    weatherAlerts: { title: t("cd2.weatherAlerts"), desc: t("cd2.descWeatherAlerts"), group: "SAFETY TOOLS" },
+    rrpAnalytics: { title: t("cd2.responseAnalytics"), desc: t("cd2.descRrpAnalytics"), group: "OPERATIONS" },
   };
 
   const info = pageInfo[currentPage] || { title: currentPage, desc: "", group: "SOSphere" };
@@ -4167,7 +4172,7 @@ function DashTopbar({ currentPage, notifCount, notifUnread = 0, onOpenNotifs, on
           <button
             onClick={() => onManualRefresh?.()}
             disabled={isRefreshing}
-            title={lastRefreshedAt ? `Last updated: ${lastRefreshedAt.toLocaleTimeString()}` : "Refresh data"}
+            title={lastRefreshedAt ? `${t("cd2.lastUpdated")}: ${lastRefreshedAt.toLocaleTimeString()}` : t("cd2.refreshData")}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all"
             style={{
               background: isRefreshing ? "rgba(0,200,224,0.08)" : "rgba(255,255,255,0.04)",
@@ -4188,7 +4193,7 @@ function DashTopbar({ currentPage, notifCount, notifUnread = 0, onOpenNotifs, on
               </span>
             )}
             {isRefreshing && (
-              <span style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600 }}>Syncing…</span>
+              <span style={{ fontSize: 10, color: "#00C8E0", fontWeight: 600 }}>{t("cd2.syncing")}</span>
             )}
           </button>
         )}
@@ -4233,19 +4238,20 @@ function DashTopbar({ currentPage, notifCount, notifUnread = 0, onOpenNotifs, on
 // ═══════════════════════════════════════════════════════════════
 // Missed Calls Panel — Slide-over with call back support
 // ═══════════════════════════════════════════════════════════════
-function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
+function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack, t }: {
   calls: MissedCall[];
   onClose: () => void;
   onMarkSeen: (id: string) => void;
   onCallBack: (call: MissedCall) => void;
+  t: (k: string) => string;
 }) {
   const formatTime = (ts: number) => {
     const d = new Date(ts);
     const now = new Date();
     const diff = now.getTime() - ts;
-    if (diff < 60000) return "Just now";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    if (diff < 60000) return t("cd2.justNow");
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}${t("cd2.mAgo")}`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}${t("cd2.hAgo")}`;
     return d.toLocaleDateString();
   };
 
@@ -4280,9 +4286,9 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
             <PhoneMissed className="size-4" style={{ color: "#FF9500" }} />
           </div>
           <div className="flex-1">
-            <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Missed Calls</p>
+            <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{t("cd2.missedCalls")}</p>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-              {unseenCount > 0 ? `${unseenCount} unseen` : "All caught up"}
+              {unseenCount > 0 ? `${unseenCount} ${t("cd2.unseen")}` : t("cd2.allCaughtUp")}
             </p>
           </div>
           <button onClick={onClose} className="size-8 rounded-lg flex items-center justify-center"
@@ -4299,7 +4305,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
                 <Phone className="size-6" style={{ color: "rgba(255,255,255,0.15)" }} />
               </div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 500 }}>No missed calls</p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontWeight: 500 }}>{t("cd2.noMissedCalls")}</p>
             </div>
           ) : calls.map((call) => (
             <motion.div
@@ -4341,7 +4347,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                     )}
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>•</span>
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
-                      {call.missedOn === "desktop" ? "Desktop" : call.missedOn === "phone" ? "Phone" : "Both"}
+                      {call.missedOn === "desktop" ? t("cd2.desktop") : call.missedOn === "phone" ? t("cd2.phone") : t("cd2.both")}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 mt-1">
@@ -4364,7 +4370,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                     }}
                   >
                     <Phone className="size-3" style={{ color: "#00C853" }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>Call Back</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>{t("cd2.callBack")}</span>
                   </motion.button>
                   {!call.seen && (
                     <div className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full"
@@ -4385,7 +4391,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                     )}
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>•</span>
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>
-                      {call.missedOn === "desktop" ? "Desktop" : call.missedOn === "phone" ? "Phone" : "Both"}
+                      {call.missedOn === "desktop" ? t("cd2.desktop") : call.missedOn === "phone" ? t("cd2.phone") : t("cd2.both")}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 mt-1">
@@ -4408,7 +4414,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                     }}
                   >
                     <Phone className="size-3" style={{ color: "#00C853" }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>Call Back</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853" }}>{t("cd2.callBack")}</span>
                   </motion.button>
                   {!call.seen && (
                     <button
@@ -4420,7 +4426,7 @@ function MissedCallsPanel({ calls, onClose, onMarkSeen, onCallBack }: {
                         fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.3)",
                       }}
                     >
-                      Mark Seen
+                      {t("cd2.markSeen")}
                     </button>
                   )}
                 </div>

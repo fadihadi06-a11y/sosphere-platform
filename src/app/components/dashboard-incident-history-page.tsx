@@ -86,17 +86,17 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>Incident History</h1>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>All recorded safety incidents and events</p>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>{t("ih2.incidentHistory")}</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{t("ih2.allRecorded")}</p>
           </div>
           <div className="flex items-center gap-2">
-            {[{ id: "all", l: "All" }, { id: "critical", l: "Critical" }, { id: "high", l: "High" }, { id: "medium", l: "Medium" }].map(f => (
+            {[{ id: "all", l: t("ih2.all") }, { id: "critical", l: t("ih2.critical") }, { id: "high", l: t("ih2.high") }, { id: "medium", l: t("ih2.medium") }].map(f => (
               <button key={f.id} onClick={() => setSevFilter(f.id)} className="px-3 py-2 rounded-xl" style={{ fontSize: 12, fontWeight: sevFilter === f.id ? 700 : 500, background: sevFilter === f.id ? "rgba(0,200,224,0.1)" : "rgba(255,255,255,0.03)", color: sevFilter === f.id ? "#00C8E0" : "rgba(255,255,255,0.4)", border: sevFilter === f.id ? "1px solid rgba(0,200,224,0.25)" : "1px solid rgba(255,255,255,0.06)" }}>{f.l}</button>
             ))}
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
-          {[{ label: "This Week", value: String(stats.thisWeek), color: "#00C8E0", sub: "Total incidents" }, { label: "Resolved", value: String(stats.resolved), color: "#00C853", sub: stats.rate + "% resolution rate" }, { label: "Avg Response", value: stats.avgResp, color: "#FF9500", sub: "Time to acknowledge" }, { label: "Critical", value: String(stats.critical), color: "#FF2D55", sub: "Critical incidents" }].map((k, i) => (
+          {[{ label: t("ih2.thisWeek"), value: String(stats.thisWeek), color: "#00C8E0", sub: t("ih2.totalIncidents") }, { label: t("ih2.resolved"), value: String(stats.resolved), color: "#00C853", sub: stats.rate + "% " + t("ih2.resolutionRate") }, { label: t("ih2.avgResponse"), value: stats.avgResp, color: "#FF9500", sub: t("ih2.timeToAcknowledge") }, { label: t("ih2.critical"), value: String(stats.critical), color: "#FF2D55", sub: t("ih2.criticalIncidents") }].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <p style={{ fontSize: 30, fontWeight: 800, color: k.color }}>{k.value}</p>
               <p className="text-white mt-1" style={{ fontSize: 13, fontWeight: 600 }}>{k.label}</p>
@@ -106,7 +106,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
         </div>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="grid px-5 py-3" style={{ gridTemplateColumns: "120px 1fr 140px 120px 100px 90px 80px", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-            {["ID", "Type", "Employee", "Zone", "Date", "Response", "Status"].map(h => <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>)}
+            {[t("ih2.id"), t("ih2.type"), t("ih2.employee"), t("ih2.zone"), t("ih2.date"), t("ih2.response"), t("ih2.status")].map(h => <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>)}
           </div>
           {filtered.map((inc) => {
             const cfg = SEVERITY_CONFIG[inc.severity];
@@ -123,28 +123,28 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{inc.zone}</span>
                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{inc.date.split(",")[0]}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#00C8E0" }}>{inc.responseTime}</span>
-                  <span className="px-2.5 py-1 rounded-lg text-center" style={{ fontSize: 10, fontWeight: 700, color: inc.resolved ? "#00C853" : "#FF9500", background: inc.resolved ? "rgba(0,200,83,0.1)" : "rgba(255,149,0,0.1)" }}>{inc.resolved ? "Resolved" : "Active"}</span>
+                  <span className="px-2.5 py-1 rounded-lg text-center" style={{ fontSize: 10, fontWeight: 700, color: inc.resolved ? "#00C853" : "#FF9500", background: inc.resolved ? "rgba(0,200,83,0.1)" : "rgba(255,149,0,0.1)" }}>{inc.resolved ? t("ih2.resolved") : t("ih2.active")}</span>
                 </motion.div>
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: `${cfg.color}03` }}>
                       <div className="px-5 py-4 flex gap-6">
                         <div>
-                          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "1px", marginBottom: 8 }}>TIMELINE</p>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "1px", marginBottom: 8 }}>{t("ih2.timeline")}</p>
                           <div className="space-y-2">
                             {inc.timeline.map((ev, j) => (
                               <div key={j} className="flex items-center gap-3">
                                 <span style={{ fontSize: 11, color: "#00C8E0", fontVariantNumeric: "tabular-nums", minWidth: 40 }}>{ev.time}</span>
                                 <div className="size-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
                                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>{ev.event}</span>
-                                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>by {ev.actor}</span>
+                                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ih2.by")} {ev.actor}</span>
                               </div>
                             ))}
                           </div>
                         </div>
                         <div className="ml-auto flex items-start gap-2">
                           <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg }}>{inc.severity.toUpperCase()}</span>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Response: {inc.responseTime}</span>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("ih2.responseColon")} {inc.responseTime}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -194,7 +194,7 @@ export function IncidentHistoryPage({ t, webMode = false }: { t: (k: string) => 
                     <Badge color={config.color}>{inc.severity.toUpperCase()}</Badge>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {inc.resolved ? <Badge variant="success" size="sm">Resolved</Badge> : <Badge variant="danger" size="sm" pulse>Active</Badge>}
+                    {inc.resolved ? <Badge variant="success" size="sm">{t("ih2.resolved")}</Badge> : <Badge variant="danger" size="sm" pulse>{t("ih2.active")}</Badge>}
                     <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}><ChevronDown className="size-3" style={{ color: "rgba(255,255,255,0.2)" }} /></motion.div>
                   </div>
                 </div>

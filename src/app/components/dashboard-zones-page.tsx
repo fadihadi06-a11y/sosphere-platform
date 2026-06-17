@@ -159,16 +159,16 @@ export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: Zon
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>Zone Management</h1>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{zones.length} monitored zones · {totalEmps} total personnel</p>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>{t("zn2.zoneManagement")}</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{zones.length} {t("zn2.monitoredZones")} · {totalEmps} {t("zn2.totalPersonnelLabel")}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Total Zones",      value: zones.length,                                     color: "#00C8E0", sub: "Monitored" },
-            { label: "High Risk",         value: zones.filter(z => z.risk === "high").length,      color: "#FF2D55", sub: "Immediate attention" },
-            { label: "Total Personnel",   value: totalEmps,                                        color: "#00C853", sub: "Across all zones" },
-            { label: "Active Alerts",     value: totalAlerts, color: totalAlerts > 0 ? "#FF9500" : "#00C853", sub: totalAlerts > 0 ? "Unresolved" : "All clear" },
+            { label: t("zn2.totalZones"),      value: zones.length,                                     color: "#00C8E0", sub: t("zn2.monitored") },
+            { label: t("zn2.highRiskLabel"),         value: zones.filter(z => z.risk === "high").length,      color: "#FF2D55", sub: t("zn2.immediateAttention") },
+            { label: t("zn2.totalPersonnel"),   value: totalEmps,                                        color: "#00C853", sub: t("zn2.acrossAllZones") },
+            { label: t("zn2.activeAlerts"),     value: totalAlerts, color: totalAlerts > 0 ? "#FF9500" : "#00C853", sub: totalAlerts > 0 ? t("zn2.unresolved") : t("zn2.allClear") },
           ].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
               className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -188,7 +188,7 @@ export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: Zon
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <MapPin className="size-4" style={{ color: TOKENS.accent.primary }} />
-                <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Live Zone Activity</p>
+                <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("zn2.liveZoneActivity")}</p>
               </div>
               <Badge color={TOKENS.accent.primary}>{recentTransitions.length}</Badge>
             </div>
@@ -198,7 +198,7 @@ export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: Zon
                 const c = isEntry ? "#00C853" : "#FF9500";
                 const Icon = isEntry ? LogIn : LogOut;
                 const ago = Math.round((Date.now() - tr.ts) / 1000);
-                const agoLabel = ago < 60 ? `${ago}s ago` : ago < 3600 ? `${Math.round(ago / 60)}m ago` : `${Math.round(ago / 3600)}h ago`;
+                const agoLabel = ago < 60 ? `${ago}${t("zn2.secAgo")}` : ago < 3600 ? `${Math.round(ago / 60)}${t("zn2.minAgo")}` : `${Math.round(ago / 3600)}${t("zn2.hourAgo")}`;
                 return (
                   <div key={`${tr.ts}-${tr.employeeId}-${idx}`} className="flex items-center gap-3 px-3 py-2 rounded-lg"
                     style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${c}18` }}>
@@ -211,7 +211,7 @@ export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: Zon
                         {tr.employeeName || tr.employeeId}
                       </p>
                       <p style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>
-                        {isEntry ? "entered" : "exited"} {tr.zoneName || tr.zoneId || "unknown zone"}
+                        {isEntry ? t("zn2.entered") : t("zn2.exited")} {tr.zoneName || tr.zoneId || t("zn2.unknownZone")}
                       </p>
                     </div>
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", whiteSpace: "nowrap" }}>{agoLabel}</span>
@@ -248,18 +248,18 @@ export function ZonesPage({ zones: zonesProp, t, webMode = false }: { zones: Zon
                       <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{zone.name.split(" - ")[1] || ""}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="px-2 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 700, color: rc, background: `${rc}12` }}>{zone.risk.toUpperCase()} RISK</span>
+                      <span className="px-2 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 700, color: rc, background: `${rc}12` }}>{zone.risk.toUpperCase()} {t("zn2.risk")}</span>
                       <span className="px-2 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 700, color: sc, background: `${sc}12` }}>{zone.status.toUpperCase()}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-4" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 12 }}>
                     <div className="flex items-center gap-2">
                       <Users className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{zone.employees} workers</span>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{zone.employees} {t("zn2.workers")}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="size-3.5" style={{ color: zone.activeAlerts > 0 ? "#FF2D55" : "rgba(255,255,255,0.2)" }} />
-                      <span style={{ fontSize: 12, color: zone.activeAlerts > 0 ? "#FF2D55" : "rgba(255,255,255,0.35)" }}>{zone.activeAlerts} alerts</span>
+                      <span style={{ fontSize: 12, color: zone.activeAlerts > 0 ? "#FF2D55" : "rgba(255,255,255,0.35)" }}>{zone.activeAlerts} {t("zn2.alerts")}</span>
                     </div>
                     {zoneEmps.length > 0 && (
                       <div className="ml-auto flex -space-x-2">

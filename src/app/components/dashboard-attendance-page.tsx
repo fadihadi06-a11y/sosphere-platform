@@ -42,20 +42,20 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>Attendance</h1>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Real-time check-in status · Today, {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</p>
+            <h1 className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>{t("at2.attendance")}</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{t("at2.realTimeStatus")} {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</p>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.15)" }}>
             <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#00C853" }}>Live Tracking Active</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#00C853" }}>{t("at2.liveTrackingActive")}</span>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Present",      value: present.length + sos.length, color: "#00C853", sub: `${attendanceRate}% attendance rate`, icon: UserCheck },
-            { label: "Late Check-in",value: late.length,                  color: "#FF9500", sub: "Overdue by 30+ min",                icon: Clock },
-            { label: "Off Shift",    value: offShift.length,              color: "rgba(255,255,255,0.35)", sub: "Not scheduled today", icon: Users },
-            { label: "SOS Active",   value: sos.length, color: sos.length > 0 ? "#FF2D55" : "#00C853", sub: sos.length > 0 ? "Needs immediate response" : "None active", icon: AlertTriangle },
+            { label: t("at2.present"),      value: present.length + sos.length, color: "#00C853", sub: `${attendanceRate}% ${t("at2.attendanceRate")}`, icon: UserCheck },
+            { label: t("at2.lateCheckin"),value: late.length,                  color: "#FF9500", sub: t("at2.overdue30"),                icon: Clock },
+            { label: t("at2.offShift"),    value: offShift.length,              color: "rgba(255,255,255,0.35)", sub: t("at2.notScheduledToday"), icon: Users },
+            { label: t("at2.sosActive"),   value: sos.length, color: sos.length > 0 ? "#FF2D55" : "#00C853", sub: sos.length > 0 ? t("at2.needsImmediateResponse") : t("at2.noneActive"), icon: AlertTriangle },
           ].map((k, i) => {
             const Icon = k.icon;
             return (
@@ -70,13 +70,13 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
         </div>
         <div className="grid gap-5" style={{ gridTemplateColumns: "1fr 320px" }}>
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Check-in Status</p></div>
+            <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("at2.checkinStatus")}</p></div>
             <div className="grid px-5 py-3" style={{ gridTemplateColumns: "48px 1fr 140px 160px 80px", background: "rgba(255,255,255,0.015)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-              {["", "Employee", "Department", "Location", "Status"].map(h => <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>)}
+              {["", t("at2.employee"), t("at2.department"), t("at2.location"), t("at2.status")].map(h => <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{h}</span>)}
             </div>
             {employees.map((emp, i) => {
               const statusColor = emp.status === "sos" ? "#FF2D55" : emp.status === "late-checkin" ? "#FF9500" : emp.status === "on-shift" || emp.status === "checked-in" ? "#00C853" : "rgba(255,255,255,0.2)";
-              const statusLabel = emp.status === "sos" ? "SOS" : emp.status === "late-checkin" ? "Late" : emp.status === "on-shift" ? "On Shift" : emp.status === "checked-in" ? "Checked In" : "Off Shift";
+              const statusLabel = emp.status === "sos" ? t("at2.sos") : emp.status === "late-checkin" ? t("at2.lateShort") : emp.status === "on-shift" ? t("at2.onShift") : emp.status === "checked-in" ? t("at2.checkedIn") : t("at2.offShiftLabel");
               return (
                 <div key={emp.id} className="grid items-center px-5 py-3.5" style={{ gridTemplateColumns: "48px 1fr 140px 160px 80px", borderBottom: i < employees.length - 1 ? "1px solid rgba(255,255,255,0.025)" : "none" }}>
                   <div className="size-8 rounded-full flex items-center justify-center" style={{ background: `${statusColor}18`, border: `1.5px solid ${statusColor}30` }}>
@@ -92,7 +92,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
           </motion.div>
           <div className="space-y-4">
             <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35 }} className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>Attendance Rate</p>
+              <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 700 }}>{t("at2.attendanceRateTitle")}</p>
               <div className="flex items-center gap-5">
                 <div className="relative size-[80px] shrink-0">
                   <svg viewBox="0 0 80 80" className="size-full -rotate-90">
@@ -106,7 +106,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
                   <div className="absolute inset-0 flex items-center justify-center"><span className="text-white" style={{ fontSize: 18, fontWeight: 800 }}>{attendanceRate}%</span></div>
                 </div>
                 <div className="space-y-2">
-                  {[{ label: "Present", count: present.length + sos.length, color: "#00C853" }, { label: "Late", count: late.length, color: "#FF9500" }, { label: "Off Shift", count: offShift.length, color: "rgba(255,255,255,0.25)" }].map(s => (
+                  {[{ label: t("at2.present"), count: present.length + sos.length, color: "#00C853" }, { label: t("at2.lateShort"), count: late.length, color: "#FF9500" }, { label: t("at2.offShift"), count: offShift.length, color: "rgba(255,255,255,0.25)" }].map(s => (
                     <div key={s.label} className="flex items-center gap-2">
                       <div className="size-2.5 rounded-full" style={{ background: s.color }} />
                       <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{s.label}</span>
@@ -117,7 +117,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
               </div>
             </motion.div>
             <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.42 }} className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="px-5 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>By Zone</p></div>
+              <div className="px-5 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}><p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("at2.byZone")}</p></div>
               {Array.from(zoneMap.entries()).filter(([z]) => z !== t("att.offSite")).map(([zone, data], i) => {
                 const pct = data.total > 0 ? Math.round(data.present / data.total * 100) : 0;
                 const color = pct >= 80 ? "#00C853" : pct >= 60 ? "#FF9500" : "#FF2D55";
@@ -129,7 +129,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
                         <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, delay: 0.5 + i * 0.1, ease: "easeOut" }} className="h-full rounded-full" style={{ background: color }} />
                       </div>
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{data.present}/{data.total}</span>
-                      {data.late > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#FF9500", background: "rgba(255,149,0,0.1)", padding: "1px 6px", borderRadius: 4 }}>{data.late} late</span>}
+                      {data.late > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#FF9500", background: "rgba(255,149,0,0.1)", padding: "1px 6px", borderRadius: 4 }}>{data.late} {t("at2.lateSuffix")}</span>}
                     </div>
                   </div>
                 );
@@ -139,7 +139,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
         </div>
 
         {/* Live Zone Arrivals from Mobile App */}
-        <LiveZoneArrivals />
+        <LiveZoneArrivals t={t} />
       </div>
     );
   }
@@ -213,7 +213,7 @@ export function AttendancePage({ employees, t, webMode = false }: { employees: E
 // ═══════════════════════════════════════════════════════════════
 // Live Zone Arrivals — reads from shared-store attendance records
 // ═══════════════════════════════════════════════════════════════
-function LiveZoneArrivals() {
+function LiveZoneArrivals({ t }: { t: (k: string) => string }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
 
   useEffect(() => {
@@ -238,13 +238,13 @@ function LiveZoneArrivals() {
             <Navigation className="size-4" style={{ color: "#00C853" }} />
           </div>
           <div>
-            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Live Zone Arrivals</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>GPS proximity-based attendance from mobile app</p>
+            <p className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{t("at2.liveZoneArrivals")}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{t("at2.gpsProximity")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(0,200,83,0.06)", border: "1px solid rgba(0,200,83,0.12)" }}>
           <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#00C853" }} />
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#00C853" }}>{records.length} arrival{records.length !== 1 ? "s" : ""}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#00C853" }}>{records.length} {records.length !== 1 ? t("at2.arrivals") : t("at2.arrival")}</span>
         </div>
       </div>
       <div style={{ maxHeight: 200, overflowY: "auto", scrollbarWidth: "none" }}>
@@ -260,7 +260,7 @@ function LiveZoneArrivals() {
               <div className="flex-1">
                 <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{rec.employeeName}</p>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                  {rec.type === "enter" ? "Entered" : "Exited"} <span style={{ color: "#00C8E0" }}>{rec.zoneName}</span>
+                  {rec.type === "enter" ? t("at2.entered") : t("at2.exited")} <span style={{ color: "#00C8E0" }}>{rec.zoneName}</span>
                 </p>
               </div>
               <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>

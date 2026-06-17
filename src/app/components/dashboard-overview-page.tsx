@@ -179,7 +179,7 @@ type KpiFilter = "active" | "onDuty" | "slaBreach" | "health" | null;
 // ═══════════════════════════════════════════════════════════════
 // Evidence Intelligence Banner — Overview Page
 // ═══════════════════════════════════════════════════════════════
-function EvidenceIntelBanner({ onNavigate }: { onNavigate: (page: DashPage) => void }) {
+function EvidenceIntelBanner({ onNavigate, t }: { onNavigate: (page: DashPage) => void; t: (k: string) => string }) {
   const pipeline = getEvidencePipelineStatus();
   if (pipeline.totalEvidence === 0) return null;
 
@@ -206,7 +206,7 @@ function EvidenceIntelBanner({ onNavigate }: { onNavigate: (page: DashPage) => v
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span style={{ fontSize: 13, fontWeight: 800, color: "#7B5EFF", letterSpacing: "-0.02em" }}>
-                Evidence Intelligence
+                {t("ov2.evidenceIntelligence")}
               </span>
               {hasPending && (
                 <motion.span
@@ -214,7 +214,7 @@ function EvidenceIntelBanner({ onNavigate }: { onNavigate: (page: DashPage) => v
                   transition={{ duration: 1.2, repeat: Infinity }}
                   className="px-2 py-0.5 rounded-full"
                   style={{ fontSize: 9, fontWeight: 800, background: "#FF2D55", color: "#fff" }}>
-                  {pipeline.pendingReview} PENDING
+                  {pipeline.pendingReview} {t("ov2.pending")}
                 </motion.span>
               )}
             </div>
@@ -286,10 +286,10 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
   const systemHealth = getSystemHealth(employeeStatuses);
 
   const KPI_CARDS = [
-    { label: "Active Emergencies", value: activeCount.toString(), sub: activeCount > 0 ? "Requires attention" : "All clear", color: activeCount > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: activeCount > 0, page: "emergencyHub" as DashPage },
-    { label: "Employees On Duty",  value: onShift.toString(),     sub: `${lateCheckins} late check-in`,                    color: "#00C8E0",  icon: Users,         pulse: false,          page: "employees"  as DashPage },
-    { label: "Safety Score",       value: `${safetyScore}%`,      sub: "Live safety index",                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
-    { label: "SLA Compliance",     value: slaBreachCount > 0 ? `${slaBreachCount}` : "100%", sub: slaBreachCount > 0 ? `${slaBreachCount} SLA breach${slaBreachCount > 1 ? "es" : ""}` : `${SLA_THRESHOLD / 60}m response threshold`, color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false, page: "emergencyHub" as DashPage },
+    { label: t("ov2.activeEmergencies"), value: activeCount.toString(), sub: activeCount > 0 ? t("ov2.requiresAttention") : t("ov2.allClear"), color: activeCount > 0 ? "#FF2D55" : "#00C853", icon: AlertTriangle, pulse: activeCount > 0, page: "emergencyHub" as DashPage },
+    { label: t("ov2.employeesOnDuty"),  value: onShift.toString(),     sub: `${lateCheckins} ${t("ov2.lateCheckin")}`,                    color: "#00C8E0",  icon: Users,         pulse: false,          page: "employees"  as DashPage },
+    { label: t("ov2.safetyScore"),       value: `${safetyScore}%`,      sub: t("ov2.liveSafetyIndex"),                             color: "#00C853",  icon: ShieldCheck,   pulse: false,          page: "workforce"  as DashPage },
+    { label: t("ov2.slaCompliance"),     value: slaBreachCount > 0 ? `${slaBreachCount}` : "100%", sub: slaBreachCount > 0 ? `${slaBreachCount} ${slaBreachCount > 1 ? t("ov2.slaBreaches") : t("ov2.slaBreachSingle")}` : `${SLA_THRESHOLD / 60}${t("ov2.responseThreshold")}`, color: slaBreachCount > 0 ? "#FF9500" : "#00C853", icon: Clock, pulse: false, page: "emergencyHub" as DashPage },
   ];
 
   return (
@@ -344,7 +344,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
       </div>
 
       {/* EVIDENCE INTELLIGENCE BANNER */}
-      <EvidenceIntelBanner onNavigate={onNavigate} />
+      <EvidenceIntelBanner onNavigate={onNavigate} t={t} />
 
       {/* MAIN CONTENT: 2-column */}
       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 380px" }}>
@@ -360,19 +360,19 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   <Siren className="size-4" style={{ color: "#FF2D55", strokeWidth: 1.8 }} />
                 </div>
                 <div>
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>Active Emergencies</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "-0.005em" }}>Priority engine · Auto-sorted</p>
+                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("ov2.activeEmergencies")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "-0.005em" }}>{t("ov2.priorityEngineAutoSorted")}</p>
                 </div>
                 {activeCount > 0 && (
                   <motion.span animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 2, repeat: Infinity }}
                     className="px-2.5 py-1 rounded-lg" style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: "linear-gradient(135deg, #FF2D55, #FF1744)", boxShadow: "0 2px 10px rgba(255,45,85,0.35)", letterSpacing: "0.04em" }}>
-                    {activeCount} LIVE
+                    {activeCount} {t("ov2.live")}
                   </motion.span>
                 )}
               </div>
               <button onClick={() => onNavigate("emergencyHub")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all"
                 style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)", letterSpacing: "-0.005em" }}>
-                View All <ChevronRight className="size-3.5" />
+                {t("ov2.viewAll")} <ChevronRight className="size-3.5" />
               </button>
             </div>
 
@@ -381,8 +381,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                 <div className="size-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)" }}>
                   <ShieldCheck className="size-7" style={{ color: "#00C853" }} />
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>All Clear</p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>No active emergencies at this time</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>{t("ov2.allClear")}</p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>{t("ov2.noActiveEmergencies")}</p>
               </div>
             ) : (
               <div>
@@ -410,20 +410,20 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>{emg.type}</span>
                             <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: cfg.color, background: cfg.bg }}>{emg.severity.toUpperCase()}</span>
-                            {emg.isOwned && <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 9, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,0.12)" }}>OWNED</span>}
+                            {emg.isOwned && <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 9, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,0.12)" }}>{t("ov2.owned")}</span>}
                           </div>
                           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{emg.employeeName} · {emg.zone}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p style={{ fontSize: 20, fontWeight: 800, color: timerColor(emg.elapsed), fontVariantNumeric: "tabular-nums" }}>{fmtElapsed(emg.elapsed)}</p>
                           {emg.status === "active" && emg.elapsed > SLA_THRESHOLD && (
-                            <span style={{ fontSize: 9, fontWeight: 800, color: "#FF9500", background: "rgba(255,149,0,0.12)", padding: "1px 6px", borderRadius: 4 }}>SLA BREACH</span>
+                            <span style={{ fontSize: 9, fontWeight: 800, color: "#FF9500", background: "rgba(255,149,0,0.12)", padding: "1px 6px", borderRadius: 4 }}>{t("ov2.slaBreachLabel")}</span>
                           )}
                         </div>
                         <div className="shrink-0 ml-2">
                           {emg.status === "responding" ? (
                             <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: 11, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,0.1)" }}>
-                              Responding
+                              {t("ov2.responding")}
                             </span>
                           ) : (
                             <span
@@ -435,7 +435,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,149,0,0.18)"; }}
                               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,149,0,0.1)"; }}
                             >
-                              Unassigned
+                              {t("ov2.unassigned")}
                             </span>
                           )}
                         </div>
@@ -448,17 +448,17 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                               {emg.status !== "responding" ? (
                                 <button onClick={() => onTakeOwnership(emg.id)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
                                   style={{ background: "linear-gradient(135deg, #00C853, #009940)", fontSize: 13, fontWeight: 700, color: "#fff", boxShadow: "0 4px 16px rgba(0,200,83,0.25)" }}>
-                                  <UserCheck className="size-4" /> Take Ownership
+                                  <UserCheck className="size-4" /> {t("ov2.takeOwnership")}
                                 </button>
                               ) : (
                                 <button onClick={() => onResolve(emg.id)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
                                   style={{ background: "linear-gradient(135deg, #00C8E0, #0088A8)", fontSize: 13, fontWeight: 700, color: "#fff", boxShadow: "0 4px 16px rgba(0,200,224,0.25)" }}>
-                                  <CheckCircle2 className="size-4" /> Mark Resolved
+                                  <CheckCircle2 className="size-4" /> {t("ov2.markResolved")}
                                 </button>
                               )}
                               {[
-                                { icon: Megaphone, label: "Broadcast", color: "#FF9500" },
-                                { icon: Send,      label: "Dispatch",  color: "#00C8E0" },
+                                { icon: Megaphone, label: t("ov2.broadcast"), color: "#FF9500" },
+                                { icon: Send,      label: t("ov2.dispatch"),  color: "#00C8E0" },
                               ].map(a => (
                                 <button key={a.label} onClick={(e) => { e.stopPropagation(); hapticLight(); onNavigate("emergencyHub" as DashPage); }} className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl"
                                   style={{ background: `${a.color}10`, border: `1px solid ${a.color}20`, minWidth: 64, cursor: "pointer" }}>
@@ -469,7 +469,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                                 </button>
                               ))}
                               <div onClick={e => e.stopPropagation()}>
-                                <CallTrigger employeeName={emg.employeeName} employeeRole="Field Worker" phone={employees.find(e => e.name === emg.employeeName)?.phone || "+966 55 XXX"} reason="emergency" size="sm" />
+                                <CallTrigger employeeName={emg.employeeName} employeeRole={t("ov2.fieldWorker")} phone={employees.find(e => e.name === emg.employeeName)?.phone || "+966 55 XXX"} reason="emergency" size="sm" />
                               </div>
                               <div className="ml-auto text-right">
                                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>ID: {emg.id}</p>
@@ -508,7 +508,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   >
                     <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                       <div>
-                        <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>Assign Responder</p>
+                        <p className="text-white" style={{ fontSize: 15, fontWeight: 700 }}>{t("ov2.assignResponder")}</p>
                         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                           {targetEmg?.type} · {targetEmg?.employeeName}
                         </p>
@@ -521,7 +521,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                       {availableResponders.length === 0 ? (
                         <div className="text-center py-8">
                           <Users className="size-8 mx-auto mb-2" style={{ color: "rgba(255,255,255,0.15)" }} />
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No on-shift responders available</p>
+                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{t("ov2.noRespondersAvailable")}</p>
                         </div>
                       ) : availableResponders.slice(0, 10).map(emp => (
                         <button
@@ -529,7 +529,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                           onClick={() => {
                             onTakeOwnership(assignModalEmgId!);
                             hapticLight();
-                            toast.success("Responder Assigned", { description: `${emp.name} assigned to ${targetEmg?.type}` });
+                            toast.success(t("ov2.responderAssigned"), { description: `${emp.name} ${t("ov2.assignedTo")} ${targetEmg?.type}` });
                             setAssignModalEmgId(null);
                           }}
                           className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all"
@@ -548,7 +548,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                           </div>
                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg shrink-0" style={{ background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.12)" }}>
                             <div className="size-1.5 rounded-full" style={{ background: "#00C853" }} />
-                            <span style={{ fontSize: 9, fontWeight: 700, color: "#00C853" }}>ON SHIFT</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: "#00C853" }}>{t("ov2.onShiftBadge")}</span>
                           </div>
                         </button>
                       ))}
@@ -569,23 +569,23 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   <Users className="size-4" style={{ color: "#00C8E0", strokeWidth: 1.8 }} />
                 </div>
                 <div>
-                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>Field Workers</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>Connected from mobile app</p>
+                  <p className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("ov2.fieldWorkers")}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{t("ov2.connectedFromMobile")}</p>
                 </div>
               </div>
               <button onClick={() => onNavigate("people")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl"
                 style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>
-                View All <ChevronRight className="size-3.5" />
+                {t("ov2.viewAll")} <ChevronRight className="size-3.5" />
               </button>
             </div>
             <div className="grid px-5 py-3" style={{ gridTemplateColumns: "1fr 130px 110px 80px", borderBottom: "1px solid rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.008)" }}>
-              {["Employee", "Location", "Last Check-in", "Status"].map(h => (
+              {[t("ov2.colEmployee"), t("ov2.colLocation"), t("ov2.colLastCheckin"), t("ov2.colStatus")].map(h => (
                 <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{h}</span>
               ))}
             </div>
             {employees.slice(0, 6).map((emp, i) => {
               const statusColor = emp.status === "sos" ? "#FF2D55" : emp.status === "late-checkin" ? "#FF9500" : emp.status === "on-shift" || emp.status === "checked-in" ? "#00C853" : "rgba(255,255,255,0.2)";
-              const statusLabel = emp.status === "sos" ? "SOS ACTIVE" : emp.status === "late-checkin" ? "Late" : emp.status === "on-shift" ? "On Shift" : emp.status === "checked-in" ? "Checked In" : "Off Shift";
+              const statusLabel = emp.status === "sos" ? t("ov2.statusSosActive") : emp.status === "late-checkin" ? t("ov2.statusLate") : emp.status === "on-shift" ? t("ov2.statusOnShift") : emp.status === "checked-in" ? t("ov2.statusCheckedIn") : t("ov2.statusOffShift");
               return (
                 <div key={emp.id} className="grid items-center px-5 py-3.5 transition-colors group"
                   style={{ gridTemplateColumns: "1fr 130px 110px 80px", borderBottom: i < 5 ? "1px solid rgba(255,255,255,0.03)" : "none", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.008)" }}>
@@ -616,14 +616,14 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl p-5"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>System Health</p>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("ov2.systemHealth")}</p>
               {(() => {
                 const degraded = systemHealth.filter(sh => sh.status === "degraded").length;
                 const ok = degraded === 0;
                 return (
                   <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl" style={{ background: ok ? "rgba(0,200,83,0.06)" : "rgba(255,149,0,0.06)", border: `1px solid ${ok ? "rgba(0,200,83,0.12)" : "rgba(255,149,0,0.12)"}` }}>
                     <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="size-1.5 rounded-full" style={{ background: ok ? "#00C853" : "#FF9500" }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: ok ? "#00C853" : "#FF9500" }}>{ok ? "All operational" : `${degraded} degraded`}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: ok ? "#00C853" : "#FF9500" }}>{ok ? t("ov2.allOperational") : `${degraded} ${t("ov2.degraded")}`}</span>
                   </div>
                 );
               })()}
@@ -650,8 +650,8 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl p-5"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Zone Overview</p>
-              <button onClick={() => onNavigate("location")} className="flex items-center gap-1 px-3 py-1.5 rounded-xl" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>View all <ChevronRight className="size-3" /></button>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("ov2.zoneOverview")}</p>
+              <button onClick={() => onNavigate("location")} className="flex items-center gap-1 px-3 py-1.5 rounded-xl" style={{ fontSize: 12, color: "#00C8E0", fontWeight: 600, background: "rgba(0,200,224,0.06)", border: "1px solid rgba(0,200,224,0.12)" }}>{t("ov2.viewAllShort")} <ChevronRight className="size-3" /></button>
             </div>
             <div className="space-y-2">
               {zones.map((z, i) => {
@@ -660,7 +660,7 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
                   <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: `${rc}04`, border: `1px solid ${rc}0A` }}>
                     <div className="size-2.5 rounded-full" style={{ background: rc, boxShadow: `0 0 6px ${rc}40` }} />
                     <p className="flex-1 text-white truncate" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "-0.01em" }}>{z.name}</p>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", fontVariantNumeric: "tabular-nums" }}>{z.employees} workers</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", fontVariantNumeric: "tabular-nums" }}>{z.employees} {t("ov2.workers")}</span>
                     {z.activeAlerts > 0 && (
                       <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "linear-gradient(135deg, #FF2D55, #FF1744)", boxShadow: "0 2px 6px rgba(255,45,85,0.3)" }}>{z.activeAlerts}</span>
                     )}
@@ -675,16 +675,16 @@ export function WebOverviewLayout({ employees, zones, onNavigate, onResolve, onT
             className="rounded-2xl overflow-hidden"
             style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Live Activity</p>
+              <p className="text-white" style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>{t("ov2.liveActivity")}</p>
               <div className="flex items-center gap-2">
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>Real-time</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>{t("ov2.realTime")}</span>
                 <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="size-2 rounded-full" style={{ background: "#FF2D55", boxShadow: "0 0 6px rgba(255,45,85,0.4)" }} />
               </div>
             </div>
             <div>
               {liveActivity.length === 0 ? (
                 <div className="px-5 py-8 text-center">
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No recent activity</p>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{t("ov2.noRecentActivity")}</p>
                 </div>
               ) : (
                 liveActivity.map((a, i) => {
@@ -1212,8 +1212,8 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
             `Admin opened AI Co-Admin via Watchdog Take Action button`,
             "Admin", "Admin",
             { trigger: "watchdog_take_action" });
-          toast.success(`Opening AI Co-Admin for ${emergency.employeeName}`, {
-            description: "Triage panel activated",
+          toast.success(`${t("ov2.openingAICoAdmin")} ${emergency.employeeName}`, {
+            description: t("ov2.triagePanelActivated"),
           });
         }}
         onCall997={(id) => {
@@ -1264,8 +1264,8 @@ export function OverviewPage({ emergencies, employees, zones, onNavigate, onReso
             { emergencyNumber: svc.number, country: svc.country, label: svc.label });
           // Dial via OS — safeTelCall auto-allows tel: fallback for emergency short codes.
           safeTelCall(svc.number, `${svc.label} for ${emergency.employeeName}`);
-          toast.success(`📞 Dialing ${svc.label} — ${svc.number}`, {
-            description: `Tell dispatch: ${emergency.employeeName} in ${emergency.zone}. Stay on the line.`,
+          toast.success(`📞 ${t("ov2.dialing")} ${svc.label} — ${svc.number}`, {
+            description: `${t("ov2.tellDispatch")}: ${emergency.employeeName} ${t("ov2.inZone")} ${emergency.zone}. ${t("ov2.stayOnLine")}`,
             duration: 10000,
           });
         }}
