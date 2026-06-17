@@ -99,10 +99,23 @@ id = "generic-api-key"
     '''AIzaSyCYZOp0r7H-0hch3F4NlIgBHRAvGwzrGGc''',
     # Firebase Web/SW key — same reasoning as Android key above.
     '''AIzaSyC5bZLpRf_uXZmbn-eIzxKVsncKZM4KzWI''',
+    # i18n (Arabic/English) translation-key references — values shaped like
+    # dotted identifiers (e.g. "pp.lifecycle_trial_start_phase",
+    # "ana.cost_comparison", "empdt.shift.mar10"). The generic-api-key rule
+    # flags them because they sit next to a *Key: label and clear its
+    # entropy floor. They are UI string KEYS, never credentials. A real API
+    # key is random base64/hex — never a human-readable dotted identifier —
+    # so excluding this exact shape does NOT weaken real secret detection.
+    '''^[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$''',
   ]
   paths = [
     '''^src/app/components/__tests__/sos-server-trigger-userid\.test\.ts$''',
     '''^src/app/components/__tests__/rate-limiter\.test\.ts$''',
+    # Central i18n translation dictionary — thousands of en/ar UI strings
+    # and dotted keys packed on two lines. Pure presentation data; the
+    # generic-api-key rule false-positives on high-entropy value fragments.
+    # No credentials live here by contract.
+    '''^src/app/components/dashboard-i18n\.tsx$''',
   ]
 
 # ─── gcp-api-key: Firebase client keys are PUBLIC-BY-DESIGN ─────────────
