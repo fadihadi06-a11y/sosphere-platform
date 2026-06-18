@@ -225,6 +225,23 @@ export async function completeLogout(): Promise<void> {
     console.warn("[complete-logout] supabase signOut failed:", err);
   }
 
+  // SECURITY (2026-06-18): guarantee the Supabase auth token is gone even if
+  // the network signOut above failed/was offline. The localStorage sweep only
+  // removes sosphere_-prefixed keys, so otherwise a failed signOut would leave
+  // a reusable sb-<ref>-auth-token — and the next "Sign in with Google" click
+  // would silently log back in as the PREVIOUS user (no account picker, no
+  // re-auth). This closes that stale-session reuse hole.
+  try {
+    const sbKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && /^sb-.*-auth-token(-code-verifier)?$/.test(k)) sbKeys.push(k);
+    }
+    for (const k of sbKeys) {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+    }
+  } catch { /* localStorage unavailable */ }
+
   try {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("sosphere:logged-out"));

@@ -142,7 +142,11 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
       try { localStorage.setItem("sosphere_pending_google_login", "1"); } catch { /* private mode */ }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${origin}/app` },
+        // SECURITY (2026-06-18): prompt=select_account forces Google to ALWAYS
+        // show the account chooser — never silently auto-reuse the browser's
+        // existing Google session. Closes the "logged in without choosing /
+        // without knowing who I am" report.
+        options: { redirectTo: `${origin}/app`, queryParams: { prompt: "select_account" } },
       });
       if (error) return { session: null, error: error.message };
       return { session: null, error: null };

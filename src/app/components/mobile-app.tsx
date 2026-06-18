@@ -1788,13 +1788,6 @@ export function MobileApp() {
     navigate("login-welcome");
   };
 
-  const handleDemoAccess = (role?: string, name?: string) => {
-    setLoginMode("demo");
-    setLoginName(name || "Demo User");
-    setLoginRole(role || "worker");
-    navigate("login-welcome");
-  };
-
   const handleBack = () => navigate("login", -1);
   const handleWelcomeComplete = () => navigate("role-select");
   // FIX AUDIT-7.1 + 7.3: Route through consent screens if not yet accepted
@@ -2274,7 +2267,6 @@ export function MobileApp() {
                 onSendOTP={handleSendOTP}
                 onLoginComplete={(phone)=>{ setLoginPhone(phone || ""); if(!hasCompletedConsent()){navigate("terms-consent");}else if(!hasCompletedGpsConsent()){navigate("gps-consent");}else{ navigate(selectedPath === "employee" ? "company-join" : "individual-register"); }}}
                 onGmailLogin={handleGmailLogin}
-                onDemoAccess={handleDemoAccess}
                 onEmailLogin={handleEmailLogin}
               />
             )}
