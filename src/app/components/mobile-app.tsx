@@ -238,6 +238,24 @@ type Screen =
 export function MobileApp() {
   const [screen, setScreen] = useState<Screen>("welcome");
   const screenRef = useRef<Screen>("welcome"); // Ref for back button handler (avoids stale closure)
+  // WEB OAuth flash-fix (2026-06-18): when we return from the Google redirect
+  // to /app?code=..., React mounts with the default "welcome" screen and only
+  // routes to the home screen AFTER the async session+identity round-trip
+  // completes (~1s). That made the welcome/onboarding screen flash for a
+  // moment before the app appeared. We now detect the OAuth return
+  // SYNCHRONOUSLY on the very first render (URL has ?code= OR the pending flag
+  // set by signInWithGoogle) and raise a full-screen spinner overlay so the
+  // welcome screen never paints. Native (GoogleAuth plugin) sets neither
+  // signal, so it is unaffected.
+  const [oauthRouting, setOauthRouting] = useState<boolean>(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      const hasCode = new URLSearchParams(window.location.search).has("code");
+      const pending = typeof localStorage !== "undefined"
+        && localStorage.getItem("sosphere_pending_google_login") === "1";
+      return hasCode || pending;
+    } catch { return false; }
+  });
   const [companyName, setCompanyName] = useState("");
   const [direction, setDirection] = useState<1 | -1>(1);
   const [incidentRecord, setIncidentRecord] = useState<IncidentRecord | null>(null);
@@ -1738,13 +1756,30 @@ export function MobileApp() {
   // routes WITHOUT re-triggering a redirect (no loop). Native is unaffected
   // (the flag is only set on the web redirect path).
   useEffect(() => {
-    try {
-      if (typeof localStorage !== "undefined"
-        && localStorage.getItem("sosphere_pending_google_login") === "1") {
-        localStorage.removeItem("sosphere_pending_google_login");
-        void handleGmailLogin();
+    let cancelled = false;
+    let pending = false;
+    let hasCode = false;
+    try { pending = localStorage.getItem("sosphere_pending_google_login") === "1"; } catch { /* private mode */ }
+    try { hasCode = new URLSearchParams(window.location.search).has("code"); } catch { /* no window */ }
+    if (!pending && !hasCode) return;
+
+    // Consume the one-shot flag so a later remount can't re-trigger a redirect.
+    try { localStorage.removeItem("sosphere_pending_google_login"); } catch { /* ignore */ }
+
+    // Safety net: if sign-in fails or the ?code is stale, never strand the
+    // user on the spinner — fall back to the normal welcome screen.
+    const safety = setTimeout(() => { if (!cancelled) setOauthRouting(false); }, 8000);
+
+    (async () => {
+      try {
+        await handleGmailLogin(); // detects the existing session, routes home (no redirect loop)
+      } finally {
+        if (!cancelled) setOauthRouting(false); // reveal the routed screen
+        clearTimeout(safety);
       }
-    } catch { /* ignore */ }
+    })();
+
+    return () => { cancelled = true; clearTimeout(safety); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2200,6 +2235,23 @@ export function MobileApp() {
                 />
                 <p className="mt-3" style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontFamily: "'Outfit', system-ui, sans-serif" }}>
                   {loginMode === "individual" ? "جاري استعادة ملفك الشخصي..." : "Restoring profile..."}
+                </p>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            )}
+
+            {/* WEB OAuth flash-fix (2026-06-18): same overlay shown while we
+                finish routing after returning from the Google redirect. Keeps
+                the welcome/onboarding screen from flashing before the home
+                screen appears. Dropped by the OAuth-return effect below. */}
+            {oauthRouting && (
+              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: "#05070E" }}>
+                <div
+                  className="size-8 rounded-full"
+                  style={{ border: "2px solid rgba(0,200,224,0.15)", borderTopColor: "#00C8E0", animation: "spin 1s linear infinite" }}
+                />
+                <p className="mt-3" style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontFamily: "'Outfit', system-ui, sans-serif" }}>
+                  جاري تسجيل الدخول...
                 </p>
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               </div>
