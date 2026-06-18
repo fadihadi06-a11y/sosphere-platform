@@ -279,38 +279,16 @@ serve(async (req) => {
         }
       }
 
-      // ── L2-E Phase 2 (2026-05-10): retry-or-escalate decision ─────────
-      // The original-fanout call leg from sos-alert carries
-      // contactIndex, attemptN, tier in the statusCallback URL. On final
-      // status:
-      //   • no-answer / busy + attemptN < MAX_CALL_ATTEMPTS  → retry call.
-      //                                                        SKIP SMS so
-      //                                                        the contact
-      //                                                        doesn't get
-      //                                                        spammed during
-      //                                                        the in-flight
-      //                                                        retry ring.
-      //   • no-answer / busy + attemptN ≥ MAX_CALL_ATTEMPTS  → fire SMS
-      //                                                        (cascade
-      //                                                        exhausted).
-      //   • failed                                          → fire SMS
-      //                                                        (Twilio-side
-      //                                                        fault, retry
-      //                                                        unlikely to
-      //                                                        help and may
-      //                                                        amplify load).
-      //   • completed + machine_start (voicemail)           → fire SMS
-      //                                                        (contact has
-      //                                                        a chance to
-      //                                                        see voicemail
-      //                                                        AND text).
-      //   • completed + human                               → no SMS
-      //                                                        (already
-      //                                                        reached).
+      // ── Decision inputs (2026-06-17 sequential cascade) ───────────────
+      // The call leg from sos-alert carries contactIndex, attemptN, tier in
+      // the statusCallback URL. We classify the final status below; the
+      // SEQUENTIAL CASCADE block then decides advance-vs-SMS. Disposition:
+      //   • no-answer / busy / failed / voicemail -> "move-on": advance to
+      //     the next contact (SMS backstop only when the roster is exhausted).
+      //   • completed + human answer -> no move-on (cascade stops; reached).
       // Twilio fires StatusCallback for many statuses; we only act on
       // FINAL statuses (no-answer, busy, failed, completed) to avoid
       // duplicate decisions on `initiated`/`ringing`/`answered`.
-      const MAX_CALL_ATTEMPTS = 2;
       const contactIndex = parseInt(url.searchParams.get("contactIndex") || "-1", 10);
       const attemptN     = parseInt(url.searchParams.get("attemptN") || "1", 10);
       const tierParam    = url.searchParams.get("tier") || "";
@@ -319,37 +297,37 @@ serve(async (req) => {
       const isVoicemail = callStatus === "completed" && answeredBy === "machine_start";
       const isFailed = callStatus === "failed";
 
-      let didFireRetry = false;
-      if (
-        isFinalStatus &&
-        isRecoverableNoAnswer &&
-        attemptN < MAX_CALL_ATTEMPTS &&
-        callId &&
-        contactIndex >= 0
-      ) {
+      // ── SEQUENTIAL CASCADE (2026-06-17) ───────────────────────────────
+      // One call at a time. On any "move-on" final status (no-answer / busy
+      // / failed / voicemail) we advance to the NEXT contact in the ordered
+      // contact_snapshot instead of retrying the same one. A human answer
+      // produces no move-on status, so the cascade simply stops here (only
+      // one call is ever in flight → "stop the rest" is automatic).
+      // fireRetryCall dials contact_snapshot[index]; passing contactIndex+1
+      // advances. It returns false when the roster is exhausted
+      // (snapshot[next] missing) or the SOS is already resolved — then we
+      // fall through to the SMS backstop below (every contact already got an
+      // SMS at trigger; this is a final best-effort nudge).
+      const isMoveOn = isRecoverableNoAnswer || isFailed || isVoicemail;
+      let didAdvance = false;
+      if (isFinalStatus && isMoveOn && callId && contactIndex >= 0) {
         try {
-          didFireRetry = await fireRetryCall(
+          didAdvance = await fireRetryCall(
             supabase,
             callId,
-            contactIndex,
+            contactIndex + 1,   // ← dial the NEXT contact in the ordered roster
             tierParam,
-            attemptN + 1,
+            1,                  // fresh attempt for the next contact
             url.searchParams.get("trace_id"),
           );
         } catch (e) {
-          console.error("[twilio-status] retry call failed (will fall through to SMS):", e);
+          console.error("[twilio-status] sequential advance failed (will fall through to SMS):", e);
         }
       }
 
-      const shouldEscalateToSMS =
-        !didFireRetry &&
-        (
-          (isRecoverableNoAnswer && attemptN >= MAX_CALL_ATTEMPTS) ||
-          isFailed ||
-          isVoicemail
-        );
+      const shouldEscalateToSMS = !didAdvance && isMoveOn;
       if (shouldEscalateToSMS && callId) {
-        console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus}, attemptN=${attemptN}, didFireRetry=${didFireRetry})`);
+        console.log(`[twilio-status] Escalating to SMS for callId=${callId} (status=${callStatus}, attemptN=${attemptN}, didAdvance=${didAdvance})`);
         const baseUrl = Deno.env.get("SOSPHERE_BASE_URL") || "";
         const adminPhoneRaw = data.Called || data.To;
         if (adminPhoneRaw && baseUrl) {
@@ -536,9 +514,24 @@ async function fireRetryCall(
     return false;
   }
   const snapshot = Array.isArray(session.contact_snapshot) ? session.contact_snapshot : [];
-  const contact = snapshot[contactIndex];
-  if (!contact?.phone || !contact?.name) {
-    console.warn(`[twilio-status] retry: contact_snapshot[${contactIndex}] missing for callId=${callId}`);
+  // SAFETY (2026-06-18): forward-scan from contactIndex to the next
+  // DIALABLE contact. A blank or malformed number mid-roster must NOT
+  // halt the cascade for every later contact — we skip past it (mirrors
+  // sos-alert's firstCallIdx skip-leading logic). Only when NO dialable
+  // contact remains do we return false (true roster exhaustion) so the
+  // caller falls through to the SMS backstop. Bounded by snapshot.length.
+  const isDialable = (p: unknown): boolean =>
+    /^\+\d{8,15}$/.test(String(p ?? "").replace(/[^+\d]/g, ""));
+  let dialIndex = contactIndex;
+  while (
+    dialIndex < snapshot.length &&
+    !(snapshot[dialIndex]?.name && isDialable(snapshot[dialIndex]?.phone))
+  ) {
+    dialIndex++;
+  }
+  const contact = snapshot[dialIndex];
+  if (!contact) {
+    console.warn(`[twilio-status] advance: no dialable contact at/after index ${contactIndex} for callId=${callId} — roster exhausted, SMS backstop fires`);
     return false;
   }
   const cleanPhone = String(contact.phone).replace(/[^+\d]/g, "");
@@ -572,7 +565,7 @@ async function fireRetryCall(
   // so the L1-A timeline links every retry to the original SOS.
   const statusCbParams = new URLSearchParams({
     callId,
-    contactIndex: String(contactIndex),
+    contactIndex: String(dialIndex),
     attemptN: String(nextAttemptN),
     tier,
   });
@@ -615,7 +608,7 @@ async function fireRetryCall(
     if (res.ok && body?.sid) {
       retrySid = body.sid;
       retryOutcome = "sent";
-      console.log(`[twilio-status] retry call dispatched: callId=${callId} idx=${contactIndex} attempt=${nextAttemptN} sid=${retrySid}`);
+      console.log(`[twilio-status] retry call dispatched: callId=${callId} idx=${dialIndex} attempt=${nextAttemptN} sid=${retrySid}`);
     } else {
       console.error(`[twilio-status] retry call API error:`, body);
     }
@@ -631,7 +624,7 @@ async function fireRetryCall(
     const channel = tier === "elite" ? "bridge_call" : "tts_call";
     await supabase.rpc("record_sos_dispatch_attempt", {
       p_emergency_id:  callId,
-      p_contact_index: contactIndex,
+      p_contact_index: dialIndex,
       p_channel:       channel,
       p_outcome:       retryOutcome,
       p_trace_id:      effectiveTrace ?? null,

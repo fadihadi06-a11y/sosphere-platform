@@ -1,10 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
 // SOSphere — L2-E Phase 2: voice-call retry cascade invariants
 // ─────────────────────────────────────────────────────────────
-// Locks the contract that an unanswered fanout call gets ONE
-// retry attempt before the SMS fallback fires. Cascade cap = 2
-// attempts total per contact. machine_start (voicemail) and
-// `failed` (Twilio-side fault) intentionally DO NOT retry.
+// Locks the SEQUENTIAL CASCADE contract (2026-06-17): ONE call is
+// ever in flight. On any "move-on" final status (no-answer / busy /
+// failed / voicemail) twilio-status ADVANCES to the NEXT contact
+// (contactIndex + 1, fresh attempt) — it does NOT re-dial the same
+// contact, and there is no MAX_CALL_ATTEMPTS cap. SMS is the backstop
+// fired only when the roster is exhausted or the SOS is resolved.
 //
 // Per SOS_FLOW_DESIGN.md §3.2 Phase B + the inline tier
 // disposition snapshot in sos-alert/index.ts:
@@ -76,86 +78,107 @@ describe("L2-E Phase 2: sos-alert builds per-contact statusCallback URLs", () =>
   });
 
   it("the Phase-1 tier-disposition comment block was updated to Phase 2 (≤2 attempts)", () => {
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(alertSrc).toMatch(/L2-E Phase 2 \(2026-05-10\)/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(alertSrc).toMatch(/free:\s*≤2× TTS announce/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(alertSrc).toMatch(/basic:\s*≤2× TTS announce/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(alertSrc).toMatch(/elite:\s*≤2× Bridge conference/);
   });
 });
 
-describe("L2-E Phase 2: twilio-status orchestrates retry-or-escalate", () => {
-  it("MAX_CALL_ATTEMPTS is exactly 2 (Phase-2 cap — not 3, not 1)", () => {
-    expect(statusSrc).toMatch(/const\s+MAX_CALL_ATTEMPTS\s*=\s*2\b/);
+describe("SOS cascade: twilio-status advances the roster or escalates", () => {
+  it("uses a sequential roster cascade — the old same-contact MAX_CALL_ATTEMPTS cap is gone", () => {
+    const code = stripComments(statusSrc);
+    // The Phase-2 same-contact retry cap was replaced (2026-06-17) by a
+    // one-call-in-flight roster cascade: the constant must no longer exist…
+    expect(statusSrc).not.toMatch(/const\s+MAX_CALL_ATTEMPTS/);
+    // …and the advance must move to the NEXT contact (contactIndex + 1).
+    expect(code).toMatch(/fireRetryCall\([\s\S]{0,200}contactIndex\s*\+\s*1/);
   });
 
   it("reads contactIndex + attemptN + tier from the statusCallback URL", () => {
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(statusSrc).toMatch(/url\.searchParams\.get\(\s*["']contactIndex["']\s*\)/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(statusSrc).toMatch(/url\.searchParams\.get\(\s*["']attemptN["']\s*\)/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(statusSrc).toMatch(/url\.searchParams\.get\(\s*["']tier["']\s*\)/);
   });
 
-  it("retry fires only on recoverable no-answer/busy (not on failed, not on machine_start)", () => {
+  it("move-on set = no-answer | busy | failed | voicemail (any drives one advance)", () => {
     const code = stripComments(statusSrc);
     expect(code).toMatch(/isRecoverableNoAnswer\s*=\s*callStatus\s*===\s*["']no-answer["']\s*\|\|\s*callStatus\s*===\s*["']busy["']/);
-    // machine_start is voicemail → DOES NOT retry, escalates to SMS.
     expect(code).toMatch(/isVoicemail\s*=\s*callStatus\s*===\s*["']completed["']\s*&&\s*answeredBy\s*===\s*["']machine_start["']/);
-    // The retry-fire guard must require isRecoverableNoAnswer AND attemptN < MAX
-    expect(code).toMatch(/isRecoverableNoAnswer\s*&&\s*attemptN\s*<\s*MAX_CALL_ATTEMPTS/);
+    expect(code).toMatch(/const\s+isMoveOn\s*=\s*isRecoverableNoAnswer\s*\|\|\s*isFailed\s*\|\|\s*isVoicemail/);
+    // Advance guard: a FINAL status + move-on + a known contact index.
+    expect(code).toMatch(/isFinalStatus\s*&&\s*isMoveOn\s*&&\s*callId\s*&&\s*contactIndex\s*>=\s*0/);
   });
 
-  it("SMS escalation does NOT fire while a retry is in flight (no double-signal)", () => {
+  it("advance dials the NEXT contact (contactIndex + 1), never re-rings the same one", () => {
     const code = stripComments(statusSrc);
-    // The SMS-escalation guard must require !didFireRetry — otherwise
-    // we'd fire SMS AND a retry call simultaneously, doubling the
-    // signal cost for an unanswered call and breaking the cascade.
-    expect(code).toMatch(/!didFireRetry\s*&&/);
-  });
-
-  it("fireRetryCall reads tier + contact_snapshot from sos_sessions (DB is trust root)", () => {
-    expect(statusSrc).toMatch(/async function fireRetryCall\s*\(/);
-    // Pulls contact_snapshot — not from webhook payload — for tamper-resistance.
-    expect(statusSrc).toMatch(/contact_snapshot/);
-    expect(statusSrc).toMatch(/from\(\s*["']sos_sessions["']\s*\)/);
-  });
-
-  it("retry call increments attemptN in the new statusCallback URL (caps cascade)", () => {
-    const code = stripComments(statusSrc);
-    // The retry must call fireRetryCall with attemptN + 1.
-    expect(code).toMatch(/fireRetryCall\([\s\S]{0,200}attemptN\s*\+\s*1/);
-    // Inside fireRetryCall, the statusCb params must use nextAttemptN.
+    expect(code).toMatch(/fireRetryCall\([\s\S]{0,200}contactIndex\s*\+\s*1/);
+    // MUST NOT cap-retry the same contact via attemptN + 1 at the call site.
+    expect(code).not.toMatch(/fireRetryCall\([\s\S]{0,260}attemptN\s*\+\s*1/);
+    // fireRetryCall stamps the (fresh) attempt into the next statusCb URL.
     expect(code).toMatch(/attemptN:\s*String\(nextAttemptN\)/);
   });
 
-  it("retry attempt is recorded in dispatch_attempts via record_sos_dispatch_attempt", () => {
+  it("advance skips blank/undialable contacts — one bad number can't halt the cascade", () => {
+    const code = stripComments(statusSrc);
+    // Forward-scan to the next DIALABLE contact; SMS backstop only on true exhaustion.
+    expect(code).toMatch(/let\s+dialIndex\s*=\s*contactIndex/);
+    expect(code).toMatch(/while\s*\([\s\S]{0,160}isDialable\(/);
+    // The dialed index (post-skip) is what the next advance continues from.
+    expect(code).toMatch(/contactIndex:\s*String\(dialIndex\)/);
+  });
+
+  it("SMS escalates only when NO advance happened (!didAdvance) — no double-signal", () => {
+    const code = stripComments(statusSrc);
+    // SMS must not fire while an advance call is in flight; it is the
+    // backstop for "roster exhausted" or "session already resolved".
+    expect(code).toMatch(/shouldEscalateToSMS\s*=\s*!didAdvance\s*&&\s*isMoveOn/);
+  });
+
+  it("fireRetryCall reads tier + contact_snapshot from sos_sessions (DB is trust root)", () => {
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
+    expect(statusSrc).toMatch(/async function fireRetryCall\s*\(/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
+    expect(statusSrc).toMatch(/contact_snapshot/);
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
+    expect(statusSrc).toMatch(/from\(\s*["']sos_sessions["']\s*\)/);
+  });
+
+  it("advance is recorded in dispatch_attempts via record_sos_dispatch_attempt", () => {
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(statusSrc).toMatch(/rpc\(\s*["']record_sos_dispatch_attempt["']/);
-    // The channel for a retry MUST match the original fanout channel
-    // (bridge_call for elite, tts_call for free/basic) — otherwise
-    // the L2-B aggregate query "did the SOS reach anyone?" miscounts.
+    // Channel MUST match the original fanout channel (bridge_call for elite,
+    // tts_call for free/basic) or the L2-B "did the SOS reach anyone?"
+    // aggregate miscounts.
+    // lint-guard-allow no-source-pin -- justification: Deno edge-function source-contract guard; logic is not unit-importable into vitest
     expect(statusSrc).toMatch(/channel\s*=\s*tier\s*===\s*["']elite["']\s*\?\s*["']bridge_call["']\s*:\s*["']tts_call["']/);
   });
 
-  it("retry skipped if SOS session is no longer active (responder already ack'd)", () => {
+  it("advance skipped if the SOS session is no longer active (responder already ackd)", () => {
     const code = stripComments(statusSrc);
-    // The L1-C ack contract already satisfied means no retry needed.
-    // Defends against retrying after a successful resolution.
     expect(code).toMatch(/session\.status\s*&&\s*session\.status\s*!==\s*["']active["']/);
   });
 });
 
-describe("L2-E Phase 2: failure paths still reach the contact (defense in depth)", () => {
-  it("if Twilio API rejects the retry, the function returns false so SMS fires", () => {
+describe("SOS cascade: failure paths still reach the contact (defense in depth)", () => {
+  it("if Twilio API rejects the advance, fireRetryCall returns false so SMS fires", () => {
     const code = stripComments(statusSrc);
-    // The return value must communicate success/failure so the caller
-    // can fall through to SMS — a contact getting NEITHER call NOR sms
-    // after a failed retry would be the worst-case regression.
+    // A contact getting NEITHER a call NOR an SMS after a failed advance
+    // would be the worst-case regression — the return value must signal it.
     expect(code).toMatch(/return retryOutcome\s*===\s*["']sent["']/);
   });
 
-  it("status `failed` (Twilio-side fault) goes straight to SMS, no retry", () => {
+  it("status `failed` is a move-on: advance to next contact, SMS only if roster exhausted", () => {
     const code = stripComments(statusSrc);
-    // Specifically: the SMS-fire guard includes isFailed without any
-    // retry-guard on it (failed != recoverable).
     expect(code).toMatch(/isFailed\s*=\s*callStatus\s*===\s*["']failed["']/);
-    expect(code).toMatch(/isRecoverableNoAnswer\s*&&\s*attemptN\s*>=\s*MAX_CALL_ATTEMPTS[\s\S]{0,50}\|\|[\s\S]{0,50}isFailed/);
+    expect(code).toMatch(/const\s+isMoveOn\s*=\s*isRecoverableNoAnswer\s*\|\|\s*isFailed\s*\|\|\s*isVoicemail/);
+    expect(code).toMatch(/shouldEscalateToSMS\s*=\s*!didAdvance\s*&&\s*isMoveOn/);
   });
 });

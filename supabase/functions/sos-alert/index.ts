@@ -1787,6 +1787,12 @@ serve(async (req: Request) => {
       console.warn("[sos-alert] pre-fanout audit checkpoint failed (non-fatal):", e);
     }
 
+    // SEQUENTIAL CASCADE (2026-06-17): the call cascade starts at the FIRST
+    // contact whose number is E.164-dialable, so an invalid/undialable
+    // primary contact can NOT stall the whole chain. Every contact still
+    // receives the SMS+location below regardless. If no number is dialable,
+    // firstCallIdx = -1 → no call is placed (SMS-only), which is safe.
+    const firstCallIdx = contacts.findIndex((c: { phone?: string }) => !!normalizeE164(c.phone || ""));
     const fanoutResults = await Promise.all(contacts.map(async (c, idx) => {
       // E.164 normalization is STRICT: Twilio rejects anything else with
       // 21211 ("Invalid 'To' phone number"). A national-format string
@@ -1806,7 +1812,8 @@ serve(async (req: Request) => {
           message: `Contact phone '${c.phone}' is not a valid E.164 number. Save it in international form (e.g. +964…) or set SOSPHERE_DEFAULT_COUNTRY.`,
         };
       }
-      const isPrimaryContact = idx === 0; // First contact = Path A target
+      const isPrimaryContact = idx === 0; // First contact = Path A target (local dialer)
+      const isFirstCall = idx === firstCallIdx; // First DIALABLE contact = cascade start
 
       // ── SMS (fires first, in parallel) ──
       // FIX 2026-04-24 (Point 5): every line below is gated by the
@@ -1852,7 +1859,14 @@ serve(async (req: Request) => {
       // in twilio-status bumps to attemptN=2 with a cap there.
       const perContactStatusCb = buildStatusCb({ contactIndex: idx, attemptN: 1, tierStr: tier });
 
-      if (tier === "basic") {
+      // SEQUENTIAL CASCADE (2026-06-17): only the FIRST contact (idx 0) is
+      // CALLED at trigger. SMS+location already went to ALL contacts above
+      // (the immediate safety net). The rest are dialed one-by-one by the
+      // twilio-status webhook, which advances on no-answer/busy and stops
+      // the instant a human answers. Gating each tier branch on
+      // isPrimaryContact keeps the brace structure intact — non-primary
+      // contacts simply place no call here.
+      if (isFirstCall && tier === "basic") {
         // FIX 2026-04-23: previously pointed to `twilio-twiml` which does
         // NOT exist in this codebase — Basic tier calls always failed
         // silently. The real TwiML endpoint is `sos-bridge-twiml`, which
@@ -1866,7 +1880,7 @@ serve(async (req: Request) => {
           timeout: 30,
           timeLimitSec: tierLimits.callDurationSec, // 60s for basic
         });
-      } else if (tier === "elite") {
+      } else if (isFirstCall && tier === "elite") {
         // Primary contact (idx=0) gets a grace delay to avoid double-ringing with Path A
         // Non-primary contacts: fire immediately
         const bridgeTwimlUrl = fnUrl(SUPA_URL, "sos-bridge-twiml", { emergencyId, caller: userName, contactName: c.name, userPhone, trackUrl });
@@ -1902,7 +1916,7 @@ serve(async (req: Request) => {
             timeLimitSec: tierLimits.callDurationSec, // 120s for elite
           });
         }
-      } else {
+      } else if (isFirstCall) {
         // ── L2-E Phase 1 (2026-05-09): Free tier now gets ONE TTS call
         // in parallel with SMS, breaking the prior SMS-only silence.
         // ── L2-E Phase 2 (2026-05-10): added 1 retry call on
