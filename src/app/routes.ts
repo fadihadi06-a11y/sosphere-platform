@@ -64,6 +64,8 @@ export const router = createBrowserRouter([
         lazy: () => import("./components/dashboard-web-page").then(m => ({ Component: m.DashboardWebPage })),
         HydrateFallback: RouteLoading,
       },
+      // ── Platform Super-Admin console (standalone; server-gated via is_platform_admin RPC) ──
+      { path: "/super-admin", lazy: () => import("./components/super-admin-console").then(m => ({ Component: m.SuperAdminConsole })), HydrateFallback: RouteLoading },
       { path: "/welcome", lazy: () => import("./components/welcome-activation").then(m => ({ Component: m.WelcomeActivation })), HydrateFallback: RouteLoading },
       { path: "/demo", lazy: () => import("./components/wow-demo").then(m => ({ Component: m.WowDemo })), HydrateFallback: RouteLoading },
       { path: "/training", lazy: () => import("./components/training-center").then(m => ({ Component: m.TrainingCenter })), HydrateFallback: RouteLoading },
