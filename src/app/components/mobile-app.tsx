@@ -1616,16 +1616,22 @@ export function MobileApp() {
 
   const handleGmailLogin = async () => {
     try {
-      const { signInWithGoogle, getGoogleUserInfo } = await import("./api/supabase-client");
+      const { signInWithGoogle, getGoogleUserInfo, getSession } = await import("./api/supabase-client");
 
-      // Step 1: Show native account picker + authenticate with Supabase
-      const { session, error } = await signInWithGoogle();
-
-      if (error) {
-        console.error("[MobileApp] Google sign-in error:", error);
-        return;
+      // If a session already exists — e.g. we just returned from the WEB OAuth
+      // redirect (where signInWithGoogle redirects away instead of returning a
+      // session) — skip the sign-in trigger and route straight below. This
+      // makes the redirect flow reuse the exact same post-login routing.
+      let session = await getSession();
+      if (!session) {
+        const r = await signInWithGoogle();
+        if (r.error) {
+          console.error("[MobileApp] Google sign-in error:", r.error);
+          return;
+        }
+        session = r.session; // web → null (page redirected); native → session
       }
-      if (!session) return; // User cancelled the picker
+      if (!session) return; // web: redirected away; native: user cancelled
 
       // Step 2: Token validated — extract user info
       const info = await getGoogleUserInfo();
@@ -1724,6 +1730,23 @@ export function MobileApp() {
       console.error("[MobileApp] Google login error:", err?.message || err);
     }
   };
+
+  // WEB OAuth-return routing (2026-06-18): signInWithGoogle (web) sets a
+  // pending flag then redirects to Google. On return the Supabase session is
+  // established but the click-driven handleGmailLogin never fires — so
+  // re-invoke it once here. handleGmailLogin detects the existing session and
+  // routes WITHOUT re-triggering a redirect (no loop). Native is unaffected
+  // (the flag is only set on the web redirect path).
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== "undefined"
+        && localStorage.getItem("sosphere_pending_google_login") === "1") {
+        localStorage.removeItem("sosphere_pending_google_login");
+        void handleGmailLogin();
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEmailLogin = (_email: string, name: string) => {
     setLoginMode("individual");

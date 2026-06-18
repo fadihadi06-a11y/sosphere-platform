@@ -137,6 +137,9 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
   if (!_isNative) {
     try {
       const origin = (typeof window !== "undefined" && window.location?.origin) || "https://sosphere.co";
+      // Flag so mobile-app re-runs the post-login routing once we return from
+      // the redirect (the click-driven handleGmailLogin won't fire on return).
+      try { localStorage.setItem("sosphere_pending_google_login", "1"); } catch { /* private mode */ }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: `${origin}/app` },
