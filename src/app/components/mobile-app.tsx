@@ -1780,7 +1780,6 @@ export function MobileApp() {
     })();
 
     return () => { cancelled = true; clearTimeout(safety); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleEmailLogin = (_email: string, name: string) => {

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-15T20:38:32.806Z",
-  "total_migrations": 205,
-  "manifest_sha256": "1087cc1479c96d2a0cae8afbb6b04a987548e9cb451431da2b25fcad57ba5864",
+  "generated_at": "2026-06-18T17:25:30.267Z",
+  "total_migrations": 206,
+  "manifest_sha256": "6bc152bd82521d85ef8848e590ea4846b2f736f22e77134e80ca03537519f921",
   "migrations": [
     {
       "version": "20260415",
@@ -1437,6 +1437,13 @@
       "file": "20260615_remove_employee_revoke_sessions.sql",
       "sha256": "0e8015e8ab2353aa721a2f7e137eb6d0a543751057c584b2b47582f30579d40a",
       "bytes": 4263
+    },
+    {
+      "version": "20260617",
+      "name": "platform_super_admin_console",
+      "file": "20260617_platform_super_admin_console.sql",
+      "sha256": "3b57254fa0073fe5003d1f9b6cceeea847d0a89251c4641a7c68a55691f55fde",
+      "bytes": 17916
     }
   ]
 }
