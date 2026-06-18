@@ -126,6 +126,28 @@ export async function signInWithGoogle(): Promise<{ session: any | null; error: 
     return { session: null, error: "Supabase not configured." };
   }
 
+  // WEB (2026-06-18): the native gapi.auth2 / platform.js iframe flow broke
+  // when browsers deprecated third-party cookies (fedcm_migration + COOP
+  // errors → "[GoogleAuth] Error"). On web we now use Supabase's modern OAuth
+  // redirect instead — no iframe, no third-party cookies, no Android SHA-1.
+  // The page redirects to Google; the session is established on return via
+  // detectSessionInUrl. Native keeps the plugin path below.
+  const _cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  const _isNative = typeof _cap?.isNativePlatform === "function" && _cap.isNativePlatform();
+  if (!_isNative) {
+    try {
+      const origin = (typeof window !== "undefined" && window.location?.origin) || "https://sosphere.co";
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${origin}/app` },
+      });
+      if (error) return { session: null, error: error.message };
+      return { session: null, error: null };
+    } catch (err) {
+      return { session: null, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   try {
     const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
