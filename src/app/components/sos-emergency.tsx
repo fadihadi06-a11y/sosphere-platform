@@ -43,7 +43,7 @@ export async function initSosEmergency(): Promise<void> {
 }
 
 /** Refresh contacts cache from encrypted storage (call after add/edit/delete). */
-async function refreshContactsCache(): Promise<void> {
+export async function refreshContactsCache(): Promise<void> {
   try { _cachedContacts = await secureGetItem("sosphere_emergency_contacts"); }
   catch { /* keep stale cache */ }
 }

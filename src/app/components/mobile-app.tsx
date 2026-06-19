@@ -2318,6 +2318,12 @@ export function MobileApp() {
                       // Mobile audit fix (2026-05-27): SENSITIVE_KEY — must encrypt
                       const { secureSetItem } = await import("./utils/secure-storage");
                       await secureSetItem("sosphere_emergency_contacts", JSON.stringify(data.contacts));
+                      // FIX 2026-06-19: prime the SOS contacts cache NOW. The cache
+                      // (_cachedContacts) is otherwise filled only at app startup —
+                      // BEFORE registration — so an SOS in this same session would
+                      // read an empty/encrypted value and wrongly show "no contacts".
+                      const { refreshContactsCache } = await import("./sos-emergency");
+                      await refreshContactsCache();
                     }
                   } catch (_) { /* storage full — non-critical */ }
                   // Mark profile as completed in Supabase metadata
