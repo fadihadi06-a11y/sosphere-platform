@@ -34,7 +34,7 @@ import {
 } from "./discreet-session-service";
 import { onSyncEvent } from "./shared-store";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 interface Props {
   /** Company id — required; panel renders nothing when null. */
@@ -55,7 +55,7 @@ const HEALTH_COLOR: Record<HeartbeatHealth, string> = {
 };
 
 export function DashboardDiscreetSessionsPanel({ companyId }: Props) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [rows, setRows] = useState<ActiveDiscreetRow[]>([]);
   const [loading, setLoading] = useState(false);

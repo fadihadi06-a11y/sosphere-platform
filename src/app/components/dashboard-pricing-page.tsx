@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, annualSavings } from "../constants/pricing";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 // ═══════════════════════════════════════════════════════════
 //  SOSphere — Hybrid Pricing & Subscription Engine
@@ -148,7 +148,7 @@ interface PricingPageProps {
 //  Main Component
 // ═══════════════════════════════════════════════════════════
 export function PricingPage({ webMode = false, currentStatus = "trial_active", trialDays: trialDaysProp }: PricingPageProps) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [selectedPlan, setSelectedPlan] = useState<PlanTier["id"] | null>(null);

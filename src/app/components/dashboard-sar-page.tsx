@@ -64,7 +64,7 @@ import {
   Card as DSCard, TOKENS, TYPOGRAPHY, PageHeader,
 } from "./design-system";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 // ── Scenario Presets for Demo ──────────────────────────────────
 
@@ -502,7 +502,7 @@ async function exportSARReportPDF(mission: SARMission, totalElapsed: number, t: 
 // ═══════════════════════════════════════════════════════════════
 
 export function SARProtocolPage() {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [activeMission, setActiveMission] = useState<SARMission | null>(null);
   const [showScenarioPicker, setShowScenarioPicker] = useState(true);

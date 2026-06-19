@@ -18,9 +18,8 @@ import { mfaListFactors, mfaListFactorsLockFree } from "./api/mfa-client";
 import { loadCanonicalIdentity } from "./api/canonical-identity";
 import { Country, COUNTRIES } from "./country-picker";
 import { initRealtimeChannels } from "./shared-store";
-import { useDashboardStore, useDashboardAutoRefresh } from "./stores/dashboard-store";
+import { useDashboardStore, useLang, useDashboardAutoRefresh } from "./stores/dashboard-store";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
 
 const MAX_OTP_ATTEMPTS = 3;
 const LOCKOUT_SECONDS = 60;
@@ -273,7 +272,7 @@ function OTPInput({ value, onChange, disabled = false, t }: { value: string; onC
 // ═══════════════════════════════════════════════════════════════
 export function DashboardWebPage() {
   const navigate = useNavigate();
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   // Auto-refresh dashboard data every 30 seconds when logged in
   useDashboardAutoRefresh(30_000);

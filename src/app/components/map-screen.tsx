@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useLang } from "./useLang";
 
 // Inject Leaflet CSS
 // Leaflet CSS bundled via "leaflet/dist/leaflet.css" import below.
@@ -57,6 +58,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
   const mapRef = useRef<L.Map | null>(null);
   const userMarkerRef = useRef<L.CircleMarker | null>(null);
   const placeMarkersRef = useRef<L.Marker[]>([]);
+  const { isAr } = useLang();
 
   // ── GPS ──
   const retryGPS = useCallback(() => {
@@ -147,7 +149,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
         weight: 3,
       }).addTo(mapRef.current);
 
-      userMarkerRef.current.bindTooltip("You", {
+      userMarkerRef.current.bindTooltip(isAr ? "أنت" : "You", {
         permanent: true,
         direction: "bottom",
         offset: [0, 10],
@@ -220,10 +222,10 @@ export function MapScreen({ onBack }: MapScreenProps) {
   const filteredPlaces = category === "all" ? nearbyPlaces : nearbyPlaces.filter(p => p.type === category);
 
   const categories: { id: PlaceCategory; label: string; icon: typeof MapPin; color: string }[] = [
-    { id: "all", label: "All", icon: Layers, color: "#00C8E0" },
-    { id: "hospital", label: "Hospitals", icon: Hospital, color: "#FF2D55" },
-    { id: "police", label: "Police", icon: Shield, color: "#007AFF" },
-    { id: "fire", label: "Fire Dept", icon: Flame, color: "#FF9500" },
+    { id: "all", label: isAr ? "الكل" : "All", icon: Layers, color: "#00C8E0" },
+    { id: "hospital", label: isAr ? "المستشفيات" : "Hospitals", icon: Hospital, color: "#FF2D55" },
+    { id: "police", label: isAr ? "الشرطة" : "Police", icon: Shield, color: "#007AFF" },
+    { id: "fire", label: isAr ? "الإطفاء" : "Fire Dept", icon: Flame, color: "#FF9500" },
   ];
 
   return (
@@ -240,10 +242,10 @@ export function MapScreen({ onBack }: MapScreenProps) {
               <Compass style={{ width: 40, height: 40, color: "#00C8E0" }} />
             </motion.div>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#00C8E0", marginTop: 14 }}>
-              {gpsError ? "GPS Unavailable" : "Acquiring GPS..."}
+              {gpsError ? (isAr ? "نظام تحديد المواقع غير متاح" : "GPS Unavailable") : (isAr ? "جارٍ تحديد الموقع..." : "Acquiring GPS...")}
             </p>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 6 }}>
-              {gpsError ? "Enable location services in Settings" : "Finding your location"}
+              {gpsError ? (isAr ? "فعّل خدمات الموقع من الإعدادات" : "Enable location services in Settings") : (isAr ? "جارٍ العثور على موقعك" : "Finding your location")}
             </p>
             {gpsError && (
               <motion.button
@@ -252,7 +254,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
                 className="mt-4 px-5 py-2.5"
                 style={{ borderRadius: 12, background: "rgba(0,200,224,0.1)", border: "1px solid rgba(0,200,224,0.2)", color: "#00C8E0", fontSize: 13, fontWeight: 600 }}
               >
-                Retry
+                {isAr ? "إعادة المحاولة" : "Retry"}
               </motion.button>
             )}
           </div>
@@ -271,9 +273,9 @@ export function MapScreen({ onBack }: MapScreenProps) {
               </motion.button>
             )}
             <div className="flex-1">
-              <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>Nearby Safety</p>
+              <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{isAr ? "الأمان القريب" : "Nearby Safety"}</p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
-                {gpsCoords ? `${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E` : gpsError ? "Tap locate to retry" : "Acquiring GPS..."}
+                {gpsCoords ? `${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E` : gpsError ? (isAr ? "اضغط على تحديد الموقع لإعادة المحاولة" : "Tap locate to retry") : (isAr ? "جارٍ تحديد الموقع..." : "Acquiring GPS...")}
               </p>
             </div>
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => {
@@ -315,7 +317,7 @@ export function MapScreen({ onBack }: MapScreenProps) {
           </div>
           ) : (
           <div className="px-3 py-2" style={{ borderRadius: 12, background: "rgba(10,14,28,0.7)", border: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(12px)" }}>
-            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.35)" }}>Your live location is shown above. For verified emergency numbers, open Emergency Services.</span>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.35)" }}>{isAr ? "موقعك المباشر معروض أعلاه. للحصول على أرقام الطوارئ الموثّقة، افتح خدمات الطوارئ." : "Your live location is shown above. For verified emergency numbers, open Emergency Services."}</span>
           </div>
           )}
         </div>
@@ -368,14 +370,14 @@ export function MapScreen({ onBack }: MapScreenProps) {
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
                       style={{ borderRadius: 12, background: `${typeConfig[selectedPlace.type].color}12`, border: `1px solid ${typeConfig[selectedPlace.type].color}25`, fontSize: 12, fontWeight: 600, color: typeConfig[selectedPlace.type].color }}>
                       <Navigation style={{ width: 13, height: 13 }} />
-                      Directions
+                      {isAr ? "الاتجاهات" : "Directions"}
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.97 }}
                       onClick={() => { const telURI = buildTelURI(selectedPlace.phone); if (telURI) window.location.href = telURI; }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5"
                       style={{ borderRadius: 12, background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.15)", fontSize: 12, fontWeight: 600, color: "#00C853" }}>
                       <Phone style={{ width: 13, height: 13 }} />
-                      Call {selectedPlace.phone}
+                      {isAr ? "اتصال" : "Call"} {selectedPlace.phone}
                     </motion.button>
                   </div>
                 </div>

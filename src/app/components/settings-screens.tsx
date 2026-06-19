@@ -24,6 +24,7 @@ import {
   setBiometricLockEnabled,
 } from "./biometric-lock-settings";
 import { BiometricGateModal } from "./biometric-gate-modal-v2";
+import { useLang } from "./useLang";
 
 // ── Language Screen ────────────────────────────────────────────
 const LANGUAGES = [
@@ -44,13 +45,14 @@ const LANGUAGES = [
 // app. Pre-fix the component had only local state — picking a language did
 // nothing app-wide. Now the parent's setter is wired through.
 export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => void; lang?: string; onChangeLang?: (code: string) => void }) {
+  const { isAr } = useLang();
   const [selected, setSelected] = useState(lang || "en");
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Language" subtitle="Choose your preferred language" onBack={onBack} />
+          <ScreenHeader title={isAr ? "اللغة" : "Language"} subtitle={isAr ? "اختر لغتك المفضلة" : "Choose your preferred language"} onBack={onBack} />
 
           <div className="px-5">
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
@@ -83,6 +85,7 @@ export function LanguageScreen({ onBack, lang, onChangeLang }: { onBack: () => v
 
 // ── Privacy Screen ─────────────────────────────────────────────
 export function PrivacyScreen({ onBack }: { onBack: () => void }) {
+  const { isAr } = useLang();
   const [locationHistory, setLocationHistory] = useState(true);
   const [analytics, setAnalytics] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
@@ -116,7 +119,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
       const status = await checkBiometricAvailability();
       if (status === "not_available") {
         hapticWarning();
-        toast.error("Biometrics unavailable", { description: "This device doesn't support biometric authentication." });
+        toast.error(isAr ? "القياسات الحيوية غير متاحة" : "Biometrics unavailable", { description: isAr ? "هذا الجهاز لا يدعم المصادقة بالقياسات الحيوية." : "This device doesn't support biometric authentication." });
         return;
       }
       setBiometricEnrollOpen(true);
@@ -125,7 +128,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
       setBiometricLockEnabled(false);
       setBiometric(false);
       hapticLight();
-      toast("Biometric lock disabled");
+      toast(isAr ? "تم تعطيل القفل بالقياسات الحيوية" : "Biometric lock disabled");
     }
   };
 
@@ -134,7 +137,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
     setBiometric(true);
     setBiometricEnrollOpen(false);
     hapticSuccess();
-    toast.success("Biometric lock enabled");
+    toast.success(isAr ? "تم تفعيل القفل بالقياسات الحيوية" : "Biometric lock enabled");
   };
 
   // Neighbor Alert — hydrated from localStorage via the service
@@ -153,7 +156,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const toggleNeighborBroadcast = () => {
     if (!eliteUnlocked) {
       hapticWarning();
-      toast("Elite feature", { description: "Broadcasting SOS to nearby neighbors requires the Elite plan." });
+      toast(isAr ? "ميزة Elite" : "Elite feature", { description: isAr ? "بث نداء الاستغاثة إلى الجيران القريبين يتطلب خطة Elite." : "Broadcasting SOS to nearby neighbors requires the Elite plan." });
       return;
     }
     const next = !neighborBroadcast;
@@ -168,44 +171,44 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   const biometricReady = biometricAvailable === true;
   const biometricChecking = biometricAvailable === null;
   const toggles = [
-    { id: "location", icon: MapPin, label: "Location History", sub: "Store location data for safety analysis", color: "#00C853", value: locationHistory, onChange: () => setLocationHistory(v => !v) },
-    { id: "analytics", icon: Eye, label: "Usage Analytics", sub: "Help us improve with anonymous data", color: "#007AFF", value: analytics, onChange: () => setAnalytics(v => !v) },
-    { id: "profile", icon: Shield, label: "Show Profile to Family", sub: "Allow circle members to see your status", color: "#00C8E0", value: showProfile, onChange: () => setShowProfile(v => !v) },
+    { id: "location", icon: MapPin, label: isAr ? "سجل المواقع" : "Location History", sub: isAr ? "تخزين بيانات الموقع لتحليل السلامة" : "Store location data for safety analysis", color: "#00C853", value: locationHistory, onChange: () => setLocationHistory(v => !v) },
+    { id: "analytics", icon: Eye, label: isAr ? "تحليلات الاستخدام" : "Usage Analytics", sub: isAr ? "ساعدنا على التحسين ببيانات مجهولة المصدر" : "Help us improve with anonymous data", color: "#007AFF", value: analytics, onChange: () => setAnalytics(v => !v) },
+    { id: "profile", icon: Shield, label: isAr ? "إظهار الملف الشخصي للعائلة" : "Show Profile to Family", sub: isAr ? "السماح لأعضاء الدائرة برؤية حالتك" : "Allow circle members to see your status", color: "#00C8E0", value: showProfile, onChange: () => setShowProfile(v => !v) },
     {
       id: "biometric",
       icon: Fingerprint,
-      label: "Biometric Lock",
+      label: isAr ? "القفل بالقياسات الحيوية" : "Biometric Lock",
       sub: biometricChecking
-        ? "Checking device support..."
+        ? (isAr ? "جارٍ التحقق من دعم الجهاز..." : "Checking device support...")
         : biometricReady
-          ? "Require face/fingerprint to open app"
-          : "Coming soon — this device does not yet support biometric unlock",
+          ? (isAr ? "طلب بصمة الوجه/الإصبع لفتح التطبيق" : "Require face/fingerprint to open app")
+          : (isAr ? "قريبًا — هذا الجهاز لا يدعم بعد الفتح بالقياسات الحيوية" : "Coming soon — this device does not yet support biometric unlock"),
       color: biometricReady ? "#AF52DE" : "rgba(175,82,222,0.35)",
       value: biometricReady ? biometric : false,
       onChange: biometricReady
         ? handleBiometricToggle
         : () => {
             hapticWarning();
-            toast("Biometric Lock unavailable", {
-              description: "Your device or app version doesn't support biometric authentication yet. We're working on a native plugin for Android/iOS.",
+            toast(isAr ? "القفل بالقياسات الحيوية غير متاح" : "Biometric Lock unavailable", {
+              description: isAr ? "جهازك أو إصدار التطبيق لا يدعم بعد المصادقة بالقياسات الحيوية. نحن نعمل على إضافة أصلية لأنظمة Android/iOS." : "Your device or app version doesn't support biometric authentication yet. We're working on a native plugin for Android/iOS.",
             });
           },
-      badge: biometricReady ? undefined : (biometricChecking ? undefined : "Coming Soon"),
+      badge: biometricReady ? undefined : (biometricChecking ? undefined : (isAr ? "قريبًا" : "Coming Soon")),
     },
-    { id: "neighbor_receive", icon: Users, label: "Receive Nearby SOS Alerts", sub: "Get notified when a neighbor triggers SOS close to you", color: "#00C8E0", value: neighborReceive, onChange: toggleNeighborReceive },
-    { id: "neighbor_broadcast", icon: Radio, label: `Broadcast SOS to Neighbors${eliteUnlocked ? "" : " (Elite)"}`, sub: "Send a coarse-location alert to opted-in neighbors when you trigger SOS", color: "#FF9500", value: neighborBroadcast, onChange: toggleNeighborBroadcast },
+    { id: "neighbor_receive", icon: Users, label: isAr ? "استقبال تنبيهات الاستغاثة القريبة" : "Receive Nearby SOS Alerts", sub: isAr ? "تلقَّ إشعارًا عندما يطلق جار نداء استغاثة بالقرب منك" : "Get notified when a neighbor triggers SOS close to you", color: "#00C8E0", value: neighborReceive, onChange: toggleNeighborReceive },
+    { id: "neighbor_broadcast", icon: Radio, label: `${isAr ? "بث الاستغاثة إلى الجيران" : "Broadcast SOS to Neighbors"}${eliteUnlocked ? "" : (isAr ? " (Elite)" : " (Elite)")}`, sub: isAr ? "إرسال تنبيه بموقع تقريبي إلى الجيران المشتركين عند إطلاقك نداء الاستغاثة" : "Send a coarse-location alert to opted-in neighbors when you trigger SOS", color: "#FF9500", value: neighborBroadcast, onChange: toggleNeighborBroadcast },
   ];
 
   const actions = [
-    { icon: Download, label: "Download My Data", sub: "Export all your data as JSON", color: "#00C8E0" },
-    { icon: Trash2, label: "Delete Account", sub: "Permanently remove all data", color: "#FF2D55", danger: true },
+    { icon: Download, label: isAr ? "تنزيل بياناتي" : "Download My Data", sub: isAr ? "تصدير جميع بياناتك بصيغة JSON" : "Export all your data as JSON", color: "#00C8E0" },
+    { icon: Trash2, label: isAr ? "حذف الحساب" : "Delete Account", sub: isAr ? "إزالة جميع البيانات نهائيًا" : "Permanently remove all data", color: "#FF2D55", danger: true },
   ];
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Privacy & Security" subtitle="Control your data and access" onBack={onBack} />
+          <ScreenHeader title={isAr ? "الخصوصية والأمان" : "Privacy & Security"} subtitle={isAr ? "تحكَّم في بياناتك ووصولك" : "Control your data and access"} onBack={onBack} />
 
           {/* Toggles */}
           <div className="px-5 mb-5">
@@ -242,7 +245,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
           {/* Data Actions */}
           <div className="px-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px", marginBottom: 8, paddingLeft: 2, textTransform: "uppercase" }}>
-              Data Management
+              {isAr ? "إدارة البيانات" : "Data Management"}
             </p>
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {actions.map((a, i) => (
@@ -258,7 +261,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                       // FIX 2026-04-23: real deletion via delete-account edge
                       // function. Requires confirm prompt + valid JWT.
                       const confirmed = typeof window !== "undefined"
-                        ? window.confirm("Permanently delete your account?\n\nThis cannot be undone. All incidents, evidence, contacts, and subscription will be wiped.")
+                        ? window.confirm(isAr ? "حذف حسابك نهائيًا؟\n\nلا يمكن التراجع عن هذا الإجراء. سيتم محو جميع الحوادث والأدلة وجهات الاتصال والاشتراك." : "Permanently delete your account?\n\nThis cannot be undone. All incidents, evidence, contacts, and subscription will be wiped.")
                         : false;
                       if (!confirmed) return;
                       hapticWarning();
@@ -267,19 +270,19 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                         const { gateWithMfa } = await import("./mfa-gate");
                         const allowed = await gateWithMfa("users:delete_account");
                         if (!allowed) {
-                          toast.error("MFA verification required", { description: "Account deletion is a sensitive action and requires multi-factor verification." });
+                          toast.error(isAr ? "التحقق متعدد العوامل مطلوب" : "MFA verification required", { description: isAr ? "حذف الحساب إجراء حساس ويتطلب التحقق متعدد العوامل." : "Account deletion is a sensitive action and requires multi-factor verification." });
                           return;
                         }
                       } catch (gateErr) {
                         console.warn("[delete-account] mfa-gate threw:", gateErr);
-                        toast.error("Could not verify MFA", { description: "Try again." });
+                        toast.error(isAr ? "تعذَّر التحقق متعدد العوامل" : "Could not verify MFA", { description: isAr ? "حاول مرة أخرى." : "Try again." });
                         return;
                       }
                       try {
                         const { getStoredBearerToken } = await import("./api/safe-rpc");
                         const token = getStoredBearerToken();
                         if (!token) {
-                          toast.error("Not signed in", { description: "Please sign in first." });
+                          toast.error(isAr ? "لم تسجِّل الدخول" : "Not signed in", { description: isAr ? "يرجى تسجيل الدخول أولًا." : "Please sign in first." });
                           return;
                         }
                         const { SUPABASE_CONFIG } = await import("./api/supabase-client");
@@ -293,7 +296,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                         });
                         if (!res.ok) {
                           const txt = await res.text();
-                          toast.error("Deletion failed", { description: txt.slice(0, 200) });
+                          toast.error(isAr ? "فشل الحذف" : "Deletion failed", { description: txt.slice(0, 200) });
                           return;
                         }
                         // Clear all local storage
@@ -303,11 +306,11 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                             if (key?.startsWith("sosphere_")) localStorage.removeItem(key);
                           }
                         } catch { /* ignore */ }
-                        toast.success("Account deleted", { description: "All your data has been removed." });
+                        toast.success(isAr ? "تم حذف الحساب" : "Account deleted", { description: isAr ? "تمت إزالة جميع بياناتك." : "All your data has been removed." });
                         setTimeout(() => { if (typeof window !== "undefined") window.location.reload(); }, 1500);
                       } catch (err) {
                         console.error("[privacy] delete-account error:", err);
-                        toast.error("Deletion failed", { description: "Network error. Try again or contact support." });
+                        toast.error(isAr ? "فشل الحذف" : "Deletion failed", { description: isAr ? "خطأ في الشبكة. حاول مرة أخرى أو تواصل مع الدعم." : "Network error. Try again or contact support." });
                       }
                       return;
                     }
@@ -335,10 +338,10 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
                       document.body.removeChild(link);
                       URL.revokeObjectURL(url);
                       hapticSuccess();
-                      toast.success(a.label, { description: `Exported ${Object.keys(dataBucket).length} keys to JSON file.` });
+                      toast.success(a.label, { description: isAr ? `تم تصدير ${Object.keys(dataBucket).length} مفتاحًا إلى ملف JSON.` : `Exported ${Object.keys(dataBucket).length} keys to JSON file.` });
                     } catch (err) {
                       console.error("[privacy] export failed:", err);
-                      toast.error(a.label, { description: "Export failed — browser blocked download." });
+                      toast.error(a.label, { description: isAr ? "فشل التصدير — منع المتصفح التنزيل." : "Export failed — browser blocked download." });
                     }
                   }}
                   style={{ borderBottom: i < actions.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none", cursor: "pointer" }}>
@@ -363,8 +366,8 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
         isOpen={biometricEnrollOpen}
         onVerified={handleBiometricEnrolled}
         onCancel={() => setBiometricEnrollOpen(false)}
-        title="Enable Biometric Lock"
-        description="Register your face or fingerprint to unlock the app"
+        title={isAr ? "تفعيل القفل بالقياسات الحيوية" : "Enable Biometric Lock"}
+        description={isAr ? "سجِّل بصمة وجهك أو إصبعك لفتح التطبيق" : "Register your face or fingerprint to unlock the app"}
         userId="sosphere-local"
         userName="SOSphere User"
         allowPinFallback={false}
@@ -380,11 +383,12 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
 // yet, so we don't pretend it does. When the real multi-device sync
 // pipeline lands, this screen will read from Supabase.
 export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
+  const { isAr } = useLang();
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Connected Devices" subtitle="Manage your linked devices" onBack={onBack} />
+          <ScreenHeader title={isAr ? "الأجهزة المتصلة" : "Connected Devices"} subtitle={isAr ? "إدارة أجهزتك المرتبطة" : "Manage your linked devices"} onBack={onBack} />
 
           <div className="px-5 mt-8 flex flex-col items-center text-center">
             <div className="size-20 rounded-[24px] flex items-center justify-center mb-5"
@@ -392,18 +396,16 @@ export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
               <Smartphone className="size-10" style={{ color: "#00C8E0" }} />
             </div>
             <p className="text-white" style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-              Coming Soon
+              {isAr ? "قريبًا" : "Coming Soon"}
             </p>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.6, maxWidth: 300 }}>
-              Multi-device sync, smartwatch pairing, and session management will
-              be available in an upcoming release. You'll be able to see every
-              device signed in to your account and sign them out remotely.
+              {isAr ? "ستتوفر مزامنة الأجهزة المتعددة، وإقران الساعات الذكية، وإدارة الجلسات في إصدار قادم. ستتمكن من رؤية كل جهاز مسجَّل الدخول إلى حسابك وتسجيل خروجه عن بُعد." : "Multi-device sync, smartwatch pairing, and session management will be available in an upcoming release. You'll be able to see every device signed in to your account and sign them out remotely."}
             </p>
 
             <div className="mt-8 px-4 py-3 w-full max-w-sm"
               style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
-                Currently signed in on this device only.
+                {isAr ? "مسجَّل الدخول حاليًا على هذا الجهاز فقط." : "Currently signed in on this device only."}
               </p>
             </div>
           </div>
@@ -415,21 +417,22 @@ export function ConnectedDevicesScreen({ onBack }: { onBack: () => void }) {
 
 // ── Help & Support Screen ──────────────────────────────────────
 export function HelpScreen({ onBack }: { onBack: () => void }) {
+  const { isAr } = useLang();
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   const faqs = [
-    { q: "How does the SOS button work?", a: "Hold the SOS button for 3 seconds or shake your phone 3 times. Your emergency contacts will be called sequentially every 20 seconds, and an SMS with your location is sent to whoever answers." },
-    { q: "What is the Check-in Timer?", a: "It's a Dead Man's Switch. Set a duration, and if you don't respond before the timer ends, SOS is automatically triggered. You can extend it by 30 minutes at any time." },
-    { q: "How many emergency contacts can I add?", a: "Free plan: 1 contact. Pro plan: up to 4 contacts. Company plan: up to 4 contacts (managed by your organization)." },
-    { q: "Is my location data private?", a: "Yes. Your location is only shared with your Family Circle members and emergency contacts during an SOS event. We never sell or share your data." },
-    { q: "Can I use SOSphere without internet?", a: "SOS calls and SMS work without internet. However, live location sharing and map features require a data connection." },
+    { q: isAr ? "كيف يعمل زر الاستغاثة؟" : "How does the SOS button work?", a: isAr ? "اضغط مطولًا على زر الاستغاثة لمدة 3 ثوانٍ أو هزَّ هاتفك 3 مرات. سيتم الاتصال بجهات الاتصال في حالات الطوارئ بالتتابع كل 20 ثانية، وتُرسَل رسالة نصية تتضمن موقعك إلى من يردُّ على الاتصال." : "Hold the SOS button for 3 seconds or shake your phone 3 times. Your emergency contacts will be called sequentially every 20 seconds, and an SMS with your location is sent to whoever answers." },
+    { q: isAr ? "ما هو مؤقت تسجيل الوصول؟" : "What is the Check-in Timer?", a: isAr ? "إنه مفتاح أمان تلقائي. حدِّد مدة، وإذا لم تستجب قبل انتهاء المؤقت، يتم إطلاق نداء الاستغاثة تلقائيًا. يمكنك تمديده 30 دقيقة في أي وقت." : "It's a Dead Man's Switch. Set a duration, and if you don't respond before the timer ends, SOS is automatically triggered. You can extend it by 30 minutes at any time." },
+    { q: isAr ? "كم عدد جهات اتصال الطوارئ التي يمكنني إضافتها؟" : "How many emergency contacts can I add?", a: isAr ? "الخطة المجانية: جهة اتصال واحدة. خطة Pro: حتى 4 جهات اتصال. خطة الشركات: حتى 4 جهات اتصال (تُدار من قِبل مؤسستك)." : "Free plan: 1 contact. Pro plan: up to 4 contacts. Company plan: up to 4 contacts (managed by your organization)." },
+    { q: isAr ? "هل بيانات موقعي خاصة؟" : "Is my location data private?", a: isAr ? "نعم. تتم مشاركة موقعك فقط مع أعضاء دائرة عائلتك وجهات اتصال الطوارئ أثناء حدث الاستغاثة. نحن لا نبيع بياناتك أو نشاركها أبدًا." : "Yes. Your location is only shared with your Family Circle members and emergency contacts during an SOS event. We never sell or share your data." },
+    { q: isAr ? "هل يمكنني استخدام SOSphere بدون إنترنت؟" : "Can I use SOSphere without internet?", a: isAr ? "تعمل مكالمات الاستغاثة والرسائل النصية بدون إنترنت. غير أن مشاركة الموقع المباشر وميزات الخريطة تتطلب اتصالًا بالبيانات." : "SOS calls and SMS work without internet. However, live location sharing and map features require a data connection." },
   ];
 
   return (
     <div className="relative flex flex-col h-full">
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
-          <ScreenHeader title="Help & Support" subtitle="Get help with SOSphere" onBack={onBack} />
+          <ScreenHeader title={isAr ? "المساعدة والدعم" : "Help & Support"} subtitle={isAr ? "احصل على المساعدة بشأن SOSphere" : "Get help with SOSphere"} onBack={onBack} />
 
           {/* Contact options */}
           <div className="px-5 mb-5">
@@ -442,11 +445,11 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
                   business WhatsApp when available. */}
               {[
                 {
-                  icon: Mail, label: "Email Support", sub: "support@sosphere.co", color: "#00C8E0",
+                  icon: Mail, label: isAr ? "الدعم عبر البريد الإلكتروني" : "Email Support", sub: "support@sosphere.co", color: "#00C8E0",
                   href: "mailto:support@sosphere.co?subject=SOSphere%20Support%20Request",
                 },
                 {
-                  icon: MessageCircle, label: "WhatsApp Support", sub: "+964 772 747 6519", color: "#00C853",
+                  icon: MessageCircle, label: isAr ? "الدعم عبر واتساب" : "WhatsApp Support", sub: "+964 772 747 6519", color: "#00C853",
                   href: "https://wa.me/9647727476519?text=Hi%2C%20I%20need%20help%20with%20SOSphere",
                 },
               ].map(c => (
@@ -464,7 +467,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
           {/* FAQs */}
           <div className="px-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.12)", letterSpacing: "0.5px", marginBottom: 8, paddingLeft: 2, textTransform: "uppercase" }}>
-              Frequently Asked Questions
+              {isAr ? "الأسئلة الشائعة" : "Frequently Asked Questions"}
             </p>
             <div style={{ borderRadius: 18, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", overflow: "hidden" }}>
               {faqs.map((faq, i) => (
@@ -502,7 +505,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               onClick={() => { hapticLight(); }}
               style={{ borderRadius: 16, background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", textDecoration: "none" }}>
               <FileText className="size-4" style={{ color: "rgba(255,255,255,0.2)" }} />
-              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>Terms & Privacy Policy</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.4)" }}>{isAr ? "الشروط وسياسة الخصوصية" : "Terms & Privacy Policy"}</span>
               <ChevronRight className="size-4 ml-auto" style={{ color: "rgba(255,255,255,0.1)" }} />
             </a>
           </div>
@@ -513,7 +516,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
               <Shield style={{ width: 11, height: 11, color: "rgba(0,200,224,0.2)" }} />
               <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.08)" }}>SOSphere</span>
             </div>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>Version 1.0.0 • Build 2026.03</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.06)" }}>{isAr ? "الإصدار 1.0.0 • البناء 2026.03" : "Version 1.0.0 • Build 2026.03"}</p>
           </div>
         </div>
       </div>
@@ -543,6 +546,7 @@ const VOICE_OPTIONS: { value: AiVoiceName; label: string; lang: AiVoiceLang }[] 
 ];
 
 export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
+  const { isAr } = useLang();
   const eliteUnlocked = hasFeature("aiVoiceCalls");
   const initial = getAiVoiceScript();
   const [scriptEn, setScriptEn] = useState(initial.en);
@@ -562,7 +566,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
     setLang(defaults.lang);
     setVoice(defaults.voice);
     hapticSuccess();
-    toast.success("Restored default script");
+    toast.success(isAr ? "تمت استعادة النص الافتراضي" : "Restored default script");
   };
 
   return (
@@ -570,8 +574,8 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
         <div className="pt-14 pb-8">
           <ScreenHeader
-            title="Elite Features"
-            subtitle="Personalise your SOS experience"
+            title={isAr ? "ميزات Elite" : "Elite Features"}
+            subtitle={isAr ? "خصِّص تجربة الاستغاثة الخاصة بك" : "Personalise your SOS experience"}
             onBack={onBack}
           />
 
@@ -581,9 +585,9 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
               <div className="p-4 flex items-start gap-3" style={{ borderRadius: 18, background: "rgba(255,215,0,0.04)", border: "1px solid rgba(255,215,0,0.12)" }}>
                 <Crown className="size-5 shrink-0 mt-0.5" style={{ color: "#FFD700" }} />
                 <div>
-                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>Elite required</p>
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{isAr ? "يتطلب Elite" : "Elite required"}</p>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, lineHeight: 1.5 }}>
-                    Personalised AI voice scripts are an Elite feature. You can preview below — changes won't be applied to live SOS calls until you upgrade.
+                    {isAr ? "نصوص المكالمات الصوتية بالذكاء الاصطناعي المخصصة هي ميزة Elite. يمكنك المعاينة أدناه — لن تُطبَّق التغييرات على مكالمات الاستغاثة الفعلية حتى تقوم بالترقية." : "Personalised AI voice scripts are an Elite feature. You can preview below — changes won't be applied to live SOS calls until you upgrade."}
                   </p>
                 </div>
               </div>
@@ -595,15 +599,15 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
             <div className="flex items-center gap-2">
               <Sparkles style={{ width: 14, height: 14, color: "#AF52DE" }} />
               <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                AI Voice Call Script
+                {isAr ? "نص المكالمة الصوتية بالذكاء الاصطناعي" : "AI Voice Call Script"}
               </p>
             </div>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 4, lineHeight: 1.5 }}>
-              Spoken to your emergency contacts when the server places a call on your behalf. Tokens
+              {isAr ? "يُتلى على جهات اتصال الطوارئ عندما يُجري الخادم مكالمة نيابة عنك. الرموز" : "Spoken to your emergency contacts when the server places a call on your behalf. Tokens"}
               <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{name}"}</code>
               <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{location}"}</code>
               <code style={{ margin: "0 4px", padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.05)", fontSize: 10 }}>{"{time}"}</code>
-              are filled in at call time.
+              {isAr ? "تُملأ تلقائيًا وقت إجراء المكالمة." : "are filled in at call time."}
             </p>
           </div>
 
@@ -614,7 +618,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
               <div className="px-4 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                 <div className="flex items-center gap-3 mb-3">
                   <Globe style={{ width: 14, height: 14, color: "#007AFF" }} />
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>Default Language</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>{isAr ? "اللغة الافتراضية" : "Default Language"}</p>
                 </div>
                 <div className="flex gap-2">
                   {(["en", "ar"] as const).map(code => (
@@ -640,7 +644,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
               <div className="px-4 py-3.5">
                 <div className="flex items-center gap-3 mb-3">
                   <Volume2 style={{ width: 14, height: 14, color: "#AF52DE" }} />
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>Voice</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>{isAr ? "الصوت" : "Voice"}</p>
                 </div>
                 <div className="space-y-1.5">
                   {VOICE_OPTIONS.map(v => (
@@ -667,7 +671,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
           {/* English template */}
           <div className="px-5 mb-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
-              English Template
+              {isAr ? "القالب الإنجليزي" : "English Template"}
             </p>
             <textarea
               value={scriptEn}
@@ -684,7 +688,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
           {/* Arabic template */}
           <div className="px-5 mb-5">
             <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
-              Arabic Template
+              {isAr ? "القالب العربي" : "Arabic Template"}
             </p>
             <textarea
               value={scriptAr}
@@ -706,7 +710,7 @@ export function EliteFeaturesScreen({ onBack }: { onBack: () => void }) {
               style={{ borderRadius: 14, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 500 }}
             >
               <RotateCcw style={{ width: 14, height: 14 }} />
-              Reset to defaults
+              {isAr ? "إعادة التعيين إلى الإعدادات الافتراضية" : "Reset to defaults"}
             </button>
           </div>
         </div>

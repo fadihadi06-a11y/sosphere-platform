@@ -25,7 +25,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { CloudLightning, Plus, Edit3, Trash2, Save, X, AlertTriangle, CheckCircle2, Lock, RefreshCw, Zap } from "lucide-react";
 import { TOKENS, TYPOGRAPHY, PageHeader } from "./design-system";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 import {
   loadSchedules,
   upsertSchedule,
@@ -84,7 +84,7 @@ function rowToInput(r: WeatherScheduleRow): WeatherScheduleInput {
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 export function WeatherAdminPage({ userRole, companyId }: WeatherAdminPageProps) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [schedules, setSchedules] = useState<WeatherScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);

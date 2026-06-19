@@ -378,29 +378,43 @@ const _initialTrialFields = computeTrialFields(_initialCompanyState);
 // their language on every session. We read the saved choice at
 // store boot and persist on every setLang() call.
 //
-// Key naming: we use `sosphere_dashboard_lang` (dashboard-scoped)
-// to keep it independent from the mobile app's own picker, so the
-// two surfaces can drift intentionally (e.g. admin browsing en on
-// desktop while keeping ar on their phone).
-const DASHBOARD_LANG_KEY = "sosphere_dashboard_lang";
+// Single source of truth (2026-06-19): the dashboard now shares the
+// SAME storage key as the mobile app — `sosphere_lang` — instead of a
+// separate `sosphere_dashboard_lang`. Previously the dashboard shell
+// read this store (default "en") while ~15 dashboard sub-pages read
+// the mobile `useLang` hook (key `sosphere_lang`, default "ar"), so a
+// single admin session rendered its chrome in English and its
+// Billing/Drones/Jobs/Pricing/SAR pages in Arabic. Unifying on one key
+// (and defaulting to "ar" to match the mobile hook) makes the language
+// choice apply consistently across the whole product. The dashboard
+// still supports all VALID_LANGS; the mobile hook only honours ar/en
+// and ignores any other value it finds in the shared key.
+const LANG_KEY = "sosphere_lang";
+// Legacy key migrated away from on 2026-06-19; still honoured once at
+// boot so an admin who picked a language before the unification keeps
+// it instead of silently snapping back to the default.
+const LEGACY_DASHBOARD_LANG_KEY = "sosphere_dashboard_lang";
 const VALID_LANGS: ReadonlyArray<string> = [
   "en", "ar", "fr", "es", "de", "it", "tr", "ru", "zh", "ja", "ko", "hi", "pt", "nl", "pl", "sv",
 ];
 
 function loadInitialLang(): Lang {
   try {
-    const raw = typeof window !== "undefined"
-      ? window.localStorage.getItem(DASHBOARD_LANG_KEY)
-      : null;
-    if (raw && VALID_LANGS.includes(raw)) return raw as Lang;
+    if (typeof window !== "undefined") {
+      const raw = window.localStorage.getItem(LANG_KEY);
+      if (raw && VALID_LANGS.includes(raw)) return raw as Lang;
+      // Migration: honour a previously saved dashboard-scoped choice.
+      const legacy = window.localStorage.getItem(LEGACY_DASHBOARD_LANG_KEY);
+      if (legacy && VALID_LANGS.includes(legacy)) return legacy as Lang;
+    }
   } catch {}
-  return "en";
+  return "ar";
 }
 
 function persistLang(lang: Lang): void {
   try {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(DASHBOARD_LANG_KEY, lang);
+      window.localStorage.setItem(LANG_KEY, lang);
     }
   } catch {
     // localStorage full / disabled / Safari private mode — silent: a

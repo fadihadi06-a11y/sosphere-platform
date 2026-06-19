@@ -14,7 +14,7 @@ import {
   type ComplianceCheckResult, type EmployeeGPSSnapshot,
 } from "./shared-store";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 // ═══════════════════════════════════════════════════════════════
 // GPS Zone Compliance Monitor
@@ -196,7 +196,7 @@ function EmployeeRow({ snapshot, t }: { snapshot: EmployeeGPSSnapshot; t: (k: st
 // Main GPS Compliance Page
 // ═══════════════════════════════════════════════════════════════
 export function GPSCompliancePage({ t: tProp, webMode = false }: { t?: (k: string) => string; webMode?: boolean }) {
-  const { lang } = useLang();
+  const lang = useLang();
   const tFallback = useT(lang);
   const t = tProp ?? tFallback;
   const [result, setResult] = useState<ComplianceCheckResult | null>(null);

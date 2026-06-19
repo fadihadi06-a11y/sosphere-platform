@@ -48,6 +48,7 @@ import {
 // 2026-06-03 haversine consolidation: imports from geofence-service
 // (single source of truth for great-circle distance; replaces local copy).
 import { haversineMeters as calcDistance } from "./geofence-service";
+import { useLang } from "./useLang";
 
 function fmtTime(s: number) {
   const m = Math.floor(s / 60);
@@ -86,6 +87,8 @@ export function EvacuationScreen({
   // loadActiveEvacuations hydrates from the server. Mobile keeps local string IDs
   // (EVAC-{ts}) for its own UI, but ack RPC needs the real server UUID.
   const serverEvacuationIdRef = useRef<string | null>(null);
+  const { isAr } = useLang();
+  const STEPS = getSteps(isAr);
 
   useEffect(() => {
     loadEvacuation();
@@ -127,10 +130,10 @@ export function EvacuationScreen({
             active = {
               id:           serverRow.id,
               zoneId:       serverRow.zone_id ?? currentZoneId,
-              zoneName:     serverRow.zone_name ?? "Active Zone",
+              zoneName:     serverRow.zone_name ?? (isAr ? "منطقة نشطة" : "Active Zone"),
               triggeredAt:  new Date(serverRow.triggered_at).getTime(),
-              triggeredBy:  "Admin",
-              reason:       serverRow.reason ?? "Evacuation in progress",
+              triggeredBy:  isAr ? "المسؤول" : "Admin",
+              reason:       serverRow.reason ?? (isAr ? "إخلاء قيد التنفيذ" : "Evacuation in progress"),
               status:       "active",
             };
           }
@@ -276,7 +279,7 @@ export function EvacuationScreen({
             style={{ background: "rgba(255,255,255,0.06)" }}>
             <ArrowLeft className="size-5" style={{ color: "rgba(255,255,255,0.6)" }} />
           </button>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: "#FFFFFF" }}>Emergency Evacuation</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: "#FFFFFF" }}>{isAr ? "إخلاء طارئ" : "Emergency Evacuation"}</h1>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-4">
           <div className="size-20 rounded-2xl flex items-center justify-center"
@@ -284,23 +287,23 @@ export function EvacuationScreen({
             <Shield className="size-10" style={{ color: "rgba(0,200,224,0.4)" }} />
           </div>
           <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.5)", textAlign: "center" }}>
-            No Active Evacuation
+            {isAr ? "لا يوجد إخلاء نشط" : "No Active Evacuation"}
           </p>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", textAlign: "center", maxWidth: 240 }}>
-            You will receive an automatic full-screen alert if an evacuation is declared for your zone.
+            {isAr ? "ستصلك رسالة تنبيه تملأ الشاشة تلقائيًا عند إعلان إخلاء لمنطقتك." : "You will receive an automatic full-screen alert if an evacuation is declared for your zone."}
           </p>
 
           {/* Info about the system */}
           <div className="mt-4 p-4 rounded-2xl w-full"
             style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>
-              WHAT HAPPENS DURING EVACUATION
+              {isAr ? "ماذا يحدث أثناء الإخلاء" : "WHAT HAPPENS DURING EVACUATION"}
             </p>
             {[
-              { icon: "🚨", text: "You receive an instant full-screen alert" },
-              { icon: "📍", text: "Nearest assembly point is shown automatically" },
-              { icon: "🗺️", text: "Google Maps link guides you there" },
-              { icon: "✅", text: "Confirm arrival to mark yourself safe" },
+              { icon: "🚨", text: isAr ? "يصلك تنبيه فوري يملأ الشاشة" : "You receive an instant full-screen alert" },
+              { icon: "📍", text: isAr ? "يظهر أقرب نقطة تجمّع تلقائيًا" : "Nearest assembly point is shown automatically" },
+              { icon: "🗺️", text: isAr ? "رابط خرائط جوجل يرشدك إلى المكان" : "Google Maps link guides you there" },
+              { icon: "✅", text: isAr ? "أكّد وصولك لتسجيل نفسك في أمان" : "Confirm arrival to mark yourself safe" },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-3 mb-2">
                 <span style={{ fontSize: 16 }}>{item.icon}</span>
@@ -345,7 +348,7 @@ export function EvacuationScreen({
             style={{ background: "#FF2D55", boxShadow: "0 0 8px rgba(255,45,85,0.8)" }}
           />
           <p style={{ fontSize: 16, fontWeight: 800, color: "#FF2D55", letterSpacing: "-0.3px" }}>
-            EVACUATION ALERT
+            {isAr ? "تنبيه إخلاء" : "EVACUATION ALERT"}
           </p>
           <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full"
             style={{ background: "rgba(255,45,85,0.12)", border: "1px solid rgba(255,45,85,0.25)" }}>
@@ -378,11 +381,13 @@ export function EvacuationScreen({
               <AlertTriangle className="size-8" style={{ color: "#FF2D55" }} />
             </motion.div>
             <div className="flex-1">
-              <p style={{ fontSize: 15, fontWeight: 800, color: "#FF2D55" }}>EVACUATE NOW</p>
+              <p style={{ fontSize: 15, fontWeight: 800, color: "#FF2D55" }}>{isAr ? "أخلِ المكان الآن" : "EVACUATE NOW"}</p>
               <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 3 }}>{evacuation.zoneName}</p>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 3 }}>{evacuation.reason}</p>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>
-                Ordered by {evacuation.triggeredBy} at {new Date(evacuation.triggeredAt).toLocaleTimeString()}
+                {isAr
+                  ? `صدر الأمر من ${evacuation.triggeredBy} الساعة ${new Date(evacuation.triggeredAt).toLocaleTimeString()}`
+                  : `Ordered by ${evacuation.triggeredBy} at ${new Date(evacuation.triggeredAt).toLocaleTimeString()}`}
               </p>
             </div>
           </div>
@@ -403,7 +408,7 @@ export function EvacuationScreen({
             <div className="flex items-center gap-2 mb-3">
               <MapPin className="size-4" style={{ color: "#00C8E0" }} />
               <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.5px" }}>
-                NEAREST ASSEMBLY POINT
+                {isAr ? "أقرب نقطة تجمّع" : "NEAREST ASSEMBLY POINT"}
               </p>
             </div>
             <p style={{ fontSize: 17, fontWeight: 800, color: "#00C8E0", marginBottom: 4 }}>{nearestPoint.name}</p>
@@ -416,13 +421,15 @@ export function EvacuationScreen({
               <div className="flex items-center gap-2">
                 <Navigation className="size-4" style={{ color: "#00C8E0" }} />
                 <span style={{ fontSize: 14, fontWeight: 800, color: "#00C8E0" }}>
-                  {distance > 0 ? `~${distance}m away` : "Assembly Point"}
+                  {distance > 0
+                    ? (isAr ? `يبعد ~${distance} م` : `~${distance}m away`)
+                    : (isAr ? "نقطة تجمّع" : "Assembly Point")}
                 </span>
               </div>
               {nearestPoint.capacity && (
                 <span className="px-2.5 py-1 rounded-lg"
                   style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)" }}>
-                  Cap: {nearestPoint.capacity}
+                  {isAr ? `السعة: ${nearestPoint.capacity}` : `Cap: ${nearestPoint.capacity}`}
                 </span>
               )}
             </div>
@@ -449,7 +456,7 @@ export function EvacuationScreen({
                 }}
               >
                 <ExternalLink className="size-4" />
-                Open in Google Maps
+                {isAr ? "افتح في خرائط جوجل" : "Open in Google Maps"}
               </a>
             )}
           </motion.div>
@@ -459,9 +466,9 @@ export function EvacuationScreen({
             <div className="flex items-start gap-3">
               <Info className="size-5 flex-shrink-0" style={{ color: "#FF9500" }} />
               <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: "#FF9500" }}>No Assembly Point Configured</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#FF9500" }}>{isAr ? "لم يتم تكوين نقطة تجمّع" : "No Assembly Point Configured"}</p>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-                  Contact your supervisor for evacuation directions. Follow emergency signage.
+                  {isAr ? "تواصل مع مشرفك للحصول على توجيهات الإخلاء، واتبع لافتات الطوارئ." : "Contact your supervisor for evacuation directions. Follow emergency signage."}
                 </p>
               </div>
             </div>
@@ -479,7 +486,7 @@ export function EvacuationScreen({
           <div className="flex items-center gap-2 mb-3">
             <Footprints className="size-4" style={{ color: "rgba(255,255,255,0.4)" }} />
             <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px" }}>
-              STEP-BY-STEP INSTRUCTIONS
+              {isAr ? "تعليمات خطوة بخطوة" : "STEP-BY-STEP INSTRUCTIONS"}
             </p>
           </div>
           {STEPS.map((step, i) => (
@@ -514,7 +521,7 @@ export function EvacuationScreen({
               }}
             >
               <Navigation className="size-5" />
-              Start Evacuation
+              {isAr ? "ابدأ الإخلاء" : "Start Evacuation"}
               <ChevronRight className="size-5" />
             </motion.button>
           )}
@@ -537,7 +544,9 @@ export function EvacuationScreen({
                   <Navigation className="size-5" style={{ color: "#FF9500" }} />
                 </motion.div>
                 <p style={{ fontSize: 14, fontWeight: 700, color: "#FF9500" }}>
-                  Evacuating → {nearestPoint?.name || "Assembly Point"}
+                  {isAr
+                    ? `جارٍ الإخلاء ← ${nearestPoint?.name || "نقطة تجمّع"}`
+                    : `Evacuating → ${nearestPoint?.name || "Assembly Point"}`}
                 </p>
               </div>
               <motion.button
@@ -551,7 +560,7 @@ export function EvacuationScreen({
                 }}
               >
                 <CheckCircle2 className="size-5" />
-                I've Arrived — I'm Safe
+                {isAr ? "لقد وصلت — أنا بأمان" : "I've Arrived — I'm Safe"}
               </motion.button>
             </motion.div>
           )}
@@ -571,14 +580,14 @@ export function EvacuationScreen({
               >
                 <CheckCircle2 className="size-12 mx-auto mb-2" style={{ color: "#00C853" }} />
               </motion.div>
-              <p style={{ fontSize: 18, fontWeight: 800, color: "#00C853" }}>You're Safe</p>
+              <p style={{ fontSize: 18, fontWeight: 800, color: "#00C853" }}>{isAr ? "أنت بأمان" : "You're Safe"}</p>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
-                Your status has been reported to the admin. Remain at the assembly point until the all-clear signal.
+                {isAr ? "تم إبلاغ المسؤول بحالتك. ابقَ في نقطة التجمّع حتى صدور إشارة انتهاء الخطر." : "Your status has been reported to the admin. Remain at the assembly point until the all-clear signal."}
               </p>
               <div className="flex items-center justify-center gap-2 mt-3">
                 <Radio className="size-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
                 <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                  Stay tuned for admin updates
+                  {isAr ? "ترقّب تحديثات المسؤول" : "Stay tuned for admin updates"}
                 </span>
               </div>
             </motion.div>
@@ -591,10 +600,11 @@ export function EvacuationScreen({
 
 // ── 3-Step Progress Bar ─────────────────────────────────────────
 function StepProgress({ status }: { status: EvacStatus }) {
+  const { isAr } = useLang();
   const steps = [
-    { id: "acknowledged", label: "Alert Received", icon: Eye },
-    { id: "evacuating",   label: "Evacuating",     icon: Navigation },
-    { id: "arrived",      label: "Safe",            icon: CheckCircle2 },
+    { id: "acknowledged", label: isAr ? "تم استلام التنبيه" : "Alert Received", icon: Eye },
+    { id: "evacuating",   label: isAr ? "جارٍ الإخلاء" : "Evacuating",     icon: Navigation },
+    { id: "arrived",      label: isAr ? "بأمان" : "Safe",            icon: CheckCircle2 },
   ];
   const currentIndex = status === "notified" || status === "acknowledged" ? 0
     : status === "evacuating" ? 1 : 2;
@@ -714,15 +724,27 @@ function MiniMapVisual({ status }: { status: EvacStatus }) {
   );
 }
 
-const STEPS = [
-  "Stay calm. Do not run or panic.",
-  "Leave all non-essential belongings behind.",
-  "Do NOT use elevators — use stairs or emergency exits only.",
-  "Proceed to the nearest assembly point shown above.",
-  "Help colleagues who need assistance.",
-  "Report to your supervisor once you reach the assembly point.",
-  "Do not re-enter the building until the all-clear signal is given.",
-];
+function getSteps(isAr: boolean): string[] {
+  return isAr
+    ? [
+        "حافظ على هدوئك. لا تركض ولا تُصب بالذعر.",
+        "اترك كل المتعلقات غير الضرورية خلفك.",
+        "لا تستخدم المصاعد — استخدم السلالم أو مخارج الطوارئ فقط.",
+        "توجّه إلى أقرب نقطة تجمّع الموضّحة أعلاه.",
+        "ساعد الزملاء الذين يحتاجون إلى المساعدة.",
+        "أبلغ مشرفك فور وصولك إلى نقطة التجمّع.",
+        "لا تعد إلى المبنى حتى صدور إشارة انتهاء الخطر.",
+      ]
+    : [
+        "Stay calm. Do not run or panic.",
+        "Leave all non-essential belongings behind.",
+        "Do NOT use elevators — use stairs or emergency exits only.",
+        "Proceed to the nearest assembly point shown above.",
+        "Help colleagues who need assistance.",
+        "Report to your supervisor once you reach the assembly point.",
+        "Do not re-enter the building until the all-clear signal is given.",
+      ];
+}
 
 // ── Auto Evacuation Overlay (rendered ON TOP of mobile app) ─────
 // This component sits at the top of MobileApp and auto-shows
@@ -896,6 +918,7 @@ export function EvacuationAlertOverlay({
 // Self-contained Leaflet map; CircleMarkers avoid the default-icon
 // bundler issue. Replaces the old decorative MiniMapVisual.
 function EvacuationMap({ workerLat, workerLng, point }: { workerLat: number; workerLng: number; point: { lat: number; lng: number; name: string } }) {
+  const { isAr } = useLang();
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -917,13 +940,13 @@ function EvacuationMap({ workerLat, workerLng, point }: { workerLat: number; wor
     const hasWorker = Number.isFinite(workerLat) && Number.isFinite(workerLng) && (workerLat !== 0 || workerLng !== 0);
     L.circleMarker([point.lat, point.lng], { radius: 9, color: "#00C8E0", fillColor: "#00C8E0", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip(point.name);
     if (hasWorker) {
-      L.circleMarker([workerLat, workerLng], { radius: 8, color: "#FF2D55", fillColor: "#FF2D55", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip("You");
+      L.circleMarker([workerLat, workerLng], { radius: 8, color: "#FF2D55", fillColor: "#FF2D55", fillOpacity: 0.9, weight: 2 }).addTo(lg).bindTooltip(isAr ? "أنت" : "You");
       L.polyline([[workerLat, workerLng], [point.lat, point.lng]], { color: "#00C8E0", weight: 3, dashArray: "6 6", opacity: 0.7 }).addTo(lg);
       try { map.fitBounds([[workerLat, workerLng], [point.lat, point.lng]], { padding: [40, 40], maxZoom: 16 }); } catch (_) { map.setView([point.lat, point.lng], 15); }
     } else {
       map.setView([point.lat, point.lng], 15);
     }
-  }, [workerLat, workerLng, point.lat, point.lng]);
+  }, [workerLat, workerLng, point.lat, point.lng, isAr]);
 
   return <div ref={ref} style={{ width: "100%", height: 200, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }} />;
 }

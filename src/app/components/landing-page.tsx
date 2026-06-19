@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
+import { getLang, setLang as setGlobalLang } from "./useLang";
 
 // ── SOSphere Landing Page ──────────────────────────────────────
 // Dark enterprise. Precision safety. Multi-language.
@@ -134,7 +135,11 @@ const FEATURE_ICONS = [
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const [lang, setLang] = useState<LangKey>("en");
+  const [lang, setLang] = useState<LangKey>(() => {
+    // Single source of truth: seed from the global language (sosphere_lang)
+    // so a returning Arabic user lands on the Arabic marketing page.
+    try { return getLang(); } catch { return "en"; }
+  });
   const [langOpen, setLangOpen] = useState(false);
   const handleSignIn = () => navigate("/dashboard");
   const handleStartTrial = () => navigate("/dashboard?new=true");
@@ -242,7 +247,7 @@ export function LandingPage() {
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                     style={{ position: "absolute", top: "calc(100% + 6px)", [isRtl ? "left" : "right"]: 0, background: "#0c0e1a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 6, minWidth: 140, zIndex: 200, boxShadow: "0 16px 40px rgba(0,0,0,0.6)" }}>
                     {(Object.keys(LANGS) as LangKey[]).map(l => (
-                      <button key={l} onClick={() => { setLang(l); setLangOpen(false); }}
+                      <button key={l} onClick={() => { setLang(l); setGlobalLang(l); setLangOpen(false); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: lang === l ? "rgba(0,200,224,0.08)" : "transparent", border: "none", color: lang === l ? "#00C8E0" : "rgba(255,255,255,0.6)", fontSize: 13, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
                         <span style={{ fontSize: 15 }}>{l === "en" ? "🇺🇸" : l === "ar" ? "🇸🇦" : l === "fr" ? "🇫🇷" : l === "es" ? "🇪🇸" : l === "de" ? "🇩🇪" : "🌐"}</span>
                         {l === "en" ? "English" : l === "ar" ? "العربية" : l === "fr" ? "Français" : l === "es" ? "Español" : l === "de" ? "Deutsch" : (l as string).toUpperCase()}

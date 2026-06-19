@@ -32,9 +32,8 @@ import {
 } from "./service-worker-register";
 import { getTrackerState, type GPSTrackerState } from "./offline-gps-tracker";
 import { getSyncProgress, getQuickSyncStats, startSync, type SyncProgress, type QuickSyncStats } from "./offline-sync-engine";
-import { useDashboardStore } from "./stores/dashboard-store";
+import { useDashboardStore, useLang } from "./stores/dashboard-store";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
 
 // ── Mock Fleet Data ────────────────────────────────────────────
 // In production, this comes from Supabase real-time subscriptions
@@ -270,7 +269,7 @@ export function OfflineMonitoringPage() {
   const [filter, setFilter] = useState<"all" | "online" | "offline" | "critical">("all");
   const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState<"fleet" | "sync" | "system">("fleet");
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
 
   // Load stats

@@ -66,7 +66,8 @@ import { useShakeDetection } from "./shake-to-sos";
 // hardcoded English, no keyword persistence). Would mislead users into
 // relying on a "feature" that doesn't work at the critical moment. Reliable
 // SOS triggers (Hold 3s, Shake×3, 911/999/112 buttons) are preserved.
-import { useT, type Lang } from "./dashboard-i18n";
+import { useT } from "./dashboard-i18n";
+import { useLang, setLang } from "./useLang";
 const MobileEmergencyChat = lazy(() => import("./emergency-chat").then(m => pickDefault(m, "MobileEmergencyChat")));
 import { MissionTrackerScreen } from "./mission-tracker-mobile";
 import { SafeWalkMode } from "./safe-walk-mode";
@@ -374,14 +375,16 @@ export function MobileApp() {
   const [companyMatchData, setCompanyMatchData] = useState<CompanyMatchData | null>(null);
 
   // -- Language state for i18n --------------------------------
-  const [lang, setLang] = useState<Lang>(() => {
-    try { const stored = localStorage.getItem("sosphere_app_lang"); if (stored) return stored as Lang; } catch {}
-    return "en";
-  });
+  // Single source of truth (2026-06-19): the canonical mobile language
+  // hook (localStorage key `sosphere_lang`). This previously used a
+  // separate app-scoped language key defaulting to "en", which made the
+  // app root render in English while child screens reading `useLang()`
+  // rendered in Arabic — a direct cause of mixed-language pages. Now the
+  // whole mobile surface follows one key and one default ("ar").
+  const { lang } = useLang();
   const t = useT(lang);
   const handleLangChange = useCallback((code: string) => {
-    setLang(code as Lang);
-    try { localStorage.setItem("sosphere_app_lang", code); } catch {}
+    setLang(code as "ar" | "en");
   }, []);
 
   // Track source screen for back navigation (employee vs individual)

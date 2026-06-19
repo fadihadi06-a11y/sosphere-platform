@@ -24,6 +24,7 @@ import {
   deactivateDiscreetSos,
   subscribeToDiscreetMode,
 } from "./discreet-sos-mode-v2";
+import { useLang } from "./useLang";
 
 interface DiscreetSosScreenProps {
   isOpen: boolean;
@@ -151,6 +152,7 @@ function BlackoutScreen() {
 
 function LowBatteryScreen() {
   const [phase, setPhase] = useState<"startup" | "dimming" | "dead">("startup");
+  const { isAr } = useLang();
 
   useEffect(() => {
     // Phase 1: Show battery icon for 3 seconds
@@ -184,8 +186,8 @@ function LowBatteryScreen() {
             transition={{ delay: 2.5, duration: 0.5 }}
             className="mt-6 text-center"
           >
-            <h1 className="text-2xl font-bold text-gray-800">Battery Critically Low</h1>
-            <p className="text-gray-600 mt-2">Connect to a charger</p>
+            <h1 className="text-2xl font-bold text-gray-800">{isAr ? "طاقة البطارية منخفضة جدًا" : "Battery Critically Low"}</h1>
+            <p className="text-gray-600 mt-2">{isAr ? "وصِّل الجهاز بالشاحن" : "Connect to a charger"}</p>
           </motion.div>
         </motion.div>
       ) : (

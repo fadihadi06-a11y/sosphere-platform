@@ -16,7 +16,7 @@ import { hapticLight } from "./haptic-feedback";
 import { getRealAuditLog } from "./audit-log-store";
 import { fetchTrainingRecords, type TrainingRecord } from "./risk-register-service";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 interface EmployeeDetailProps {
   employee: Employee | null;
@@ -57,7 +57,7 @@ const MOCK_SHIFTS = [
 ];
 
 export function EmployeeDetailDrawer({ employee, onClose, webMode = false }: EmployeeDetailProps) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [activeTab, setActiveTab] = useState<"overview" | "activity" | "incidents" | "schedule">("overview");
   // Certifications pulled from the shared training_records table (P3-#11i).

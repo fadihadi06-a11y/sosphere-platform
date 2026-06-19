@@ -50,7 +50,7 @@ import { safeRpc } from "./api/safe-rpc";
 // PR (E) 2026-05-26 — global Math.random sweep.
 import { secureRandomString } from "./utils/secure-random";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 // ── Types ─────────────────────────────────────────────────────
 type JobStatus =
@@ -121,7 +121,7 @@ function pct(progress: AsyncJob["progress"]): number {
 // Component
 // ═════════════════════════════════════════════════════════════
 export function DashboardJobsPage() {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading,   setLoading]   = useState(true);

@@ -47,7 +47,7 @@ import {
 import { safeRpc } from "./api/safe-rpc";
 import { captureException } from "./sentry-client";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 // ── Types — match the jsonb payload from get_pipeline_health_summary ──
 // IMPORTANT: keep this in sync with the synthetic_probe_health VIEW columns
@@ -169,7 +169,7 @@ function fmtRelative(iso: string | null | undefined, t: (k: string) => string): 
 
 // ── Component ─────────────────────────────────────────────────────────────
 export function PipelineHealthPage() {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [payload, setPayload] = useState<HealthPayload | null>(null);
   const [loading, setLoading] = useState(true);

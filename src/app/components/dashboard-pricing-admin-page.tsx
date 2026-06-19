@@ -27,7 +27,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { DollarSign, Plus, Edit3, Trash2, Save, X, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { TOKENS, TYPOGRAPHY, PageHeader } from "./design-system";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 import {
   loadPlans,
   upsertPlan,
@@ -103,7 +103,7 @@ function rowToInput(r: PlanRow): PlanInput {
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 export function PricingAdminPage({ userRole }: PricingAdminPageProps) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);

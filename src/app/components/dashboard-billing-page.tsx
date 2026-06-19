@@ -11,11 +11,10 @@ import { LiveBillingPanel } from "./live-billing-panel";  // AUTH-5 P4b (#175)
 import { toast } from "sonner";
 import { hapticSuccess, hapticLight } from "./haptic-feedback";
 import { UNIFIED_PLANS, ADDONS as PRICING_ADDONS, getPlanById, annualSavings, calculateMonthlyBill } from "../constants/pricing";
-import { useDashboardStore } from "./stores/dashboard-store";
+import { useDashboardStore, useLang } from "./stores/dashboard-store";
 import { storeJSONSync, loadJSONSync } from "./api/storage-adapter";
 import { startCheckout, openBillingPortal, isPaidPlan } from "./stripe-service";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
 
 // ═══════════════════════════════════════════════════════════════
 // Billing Page — New Flat-Rate Pricing Model
@@ -152,7 +151,7 @@ export function BillingPage({ companyState, webMode = false }: {
   companyState: ReturnType<typeof createCompanyState>;
   webMode?: boolean;
 }) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(() => {
     const saved = loadJSONSync<{ billingCycle?: "monthly" | "annual" } | null>("billing_prefs", null);

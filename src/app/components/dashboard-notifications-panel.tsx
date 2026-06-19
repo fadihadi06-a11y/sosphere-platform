@@ -17,9 +17,8 @@ import { onSyncEvent, type SyncEvent } from "./shared-store";
 // were Math.random-based; replaced with secureRandomId so a malicious
 // extension cannot enumerate N-* IDs to guess upcoming notifications.
 import { secureRandomId } from "./utils/secure-random";
-import { useDashboardStore } from "./stores/dashboard-store";
+import { useDashboardStore, useLang } from "./stores/dashboard-store";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
 
 // ── Types ─────────────────────────────────────────────────────
 type NotifCategory =
@@ -284,7 +283,7 @@ interface NotificationsPanelProps {
 export function NotificationsPanel({
   isOpen, onClose, onNavigate, unreadCount, onUnreadChange,
 }: NotificationsPanelProps) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   // Seed with real emergencies from store first, then fall back to mock for empty state
   const storeEmergencies = useDashboardStore(s => s.emergencies);

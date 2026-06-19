@@ -18,7 +18,7 @@ import { MapPin, Plus, Trash2, Crosshair, Save, X, Layers, ShieldAlert, Clipboar
 import { supabase } from "./api/supabase-client";
 import { toast } from "sonner";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 type RiskLevel = "low" | "medium" | "high";
 interface ZoneRow { id: string; name: string; type: string | null; risk_level: RiskLevel | null; lat: number; lng: number; radius_meters: number; }
@@ -46,7 +46,7 @@ function parseLatLng(text: string): { lat: number; lng: number } | null {
 }
 
 export function GeofenceMapEditor({ webMode = false }: { webMode?: boolean }) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapObj = useRef<any>(null);

@@ -20,6 +20,7 @@ import {
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
 import { getRRPAnalytics, reconcileRRPSessions, seedMockRRPData, type RRPAnalytics } from "./rrp-analytics-store";
+import { useLang } from "./useLang";
 import { MOCK_ADMINS as LEADERBOARD_ADMINS } from "./training-center";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -39,11 +40,33 @@ const SOS_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   h2s_gas:        { label: "H2S Gas", color: "#FF2D55" },
 };
 
+// Arabic labels for SOS / emergency types (keyed by the same logic keys as
+// SOS_TYPE_LABELS). Used for UI display only — the keys themselves stay English.
+const SOS_TYPE_LABELS_AR: Record<string, string> = {
+  sos_button:     "زر الاستغاثة",
+  fall_detected:  "اكتشاف السقوط",
+  shake_sos:      "استغاثة بالهز",
+  missed_checkin: "تسجيل وصول فائت",
+  journey_sos:    "استغاثة أثناء الرحلة",
+  medical:        "طبية",
+  evacuation:     "إخلاء",
+  h2s_gas:        "غاز كبريتيد الهيدروجين",
+};
+
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#FF2D55",
   high: "#FF9500",
   medium: "#00C8E0",
   low: "#00C853",
+};
+
+// Arabic labels for severity names (keyed by the capitalized English label
+// produced for display in the "By Severity" chart). Used for UI display only.
+const SEVERITY_LABELS_AR: Record<string, string> = {
+  Critical: "حرجة",
+  High: "عالية",
+  Medium: "متوسطة",
+  Low: "منخفضة",
 };
 
 // ── Map Leaderboard data → Comparison format ──────────────────
@@ -169,7 +192,7 @@ function ChartTooltip({ active, payload, label }: any) {
       <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ fontSize: 12, fontWeight: 700, color: p.color || "#00C8E0" }}>
-          {p.name}: {p.value}{typeof p.value === "number" && p.name?.includes("Time") ? "s" : ""}
+          {p.name}: {p.value}{typeof p.value === "number" && (p.name?.includes("Time") || p.name?.includes("الزمن")) ? "s" : ""}
         </p>
       ))}
     </div>
@@ -181,7 +204,9 @@ function ChartTooltip({ active, payload, label }: any) {
 // ═══════════════════════════════════════════════════════════════
 
 function SessionRow({ session }: { session: any }) {
+  const { isAr } = useLang();
   const typeInfo = SOS_TYPE_LABELS[session.sosType] || { label: session.sosType, color: "#00C8E0" };
+  const typeLabel = isAr ? (SOS_TYPE_LABELS_AR[session.sosType] || typeInfo.label) : typeInfo.label;
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   const complete = session.actionsCompleted === session.actionsTotal;
 
@@ -194,13 +219,13 @@ function SessionRow({ session }: { session: any }) {
         <div className="flex items-center gap-2">
           <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{session.employeeName}</span>
           <span className="px-1.5 py-0.5 rounded" style={{ fontSize: 7, fontWeight: 800, color: typeInfo.color, background: `${typeInfo.color}10` }}>
-            {typeInfo.label}
+            {typeLabel}
           </span>
         </div>
         <div className="flex items-center gap-3 mt-1">
           <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>{session.zone}</span>
           <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>
-            {new Date(session.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            {new Date(session.timestamp).toLocaleDateString(isAr ? "ar" : "en-US", { month: "short", day: "numeric" })}
           </span>
         </div>
       </div>
@@ -219,7 +244,7 @@ function SessionRow({ session }: { session: any }) {
           </span>
           {session.autoEscalated && (
             <span className="px-1 py-0.5 rounded" style={{ fontSize: 6, fontWeight: 800, color: "#FF2D55", background: "rgba(255,45,85,0.1)", marginLeft: 2 }}>
-              ESC
+              {isAr ? "تصعيد" : "ESC"}
             </span>
           )}
         </div>
@@ -233,6 +258,10 @@ function SessionRow({ session }: { session: any }) {
 // ═══════════════════════════════════════════════════════════════
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS_AR: Record<string, string> = {
+  Mon: "الاثنين", Tue: "الثلاثاء", Wed: "الأربعاء", Thu: "الخميس",
+  Fri: "الجمعة", Sat: "السبت", Sun: "الأحد",
+};
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 function generateHeatmapData(): { day: string; hour: number; value: number; count: number }[] {
@@ -265,6 +294,7 @@ function getHeatColor(value: number): string {
 }
 
 function ResponseHeatmap() {
+  const { isAr } = useLang();
   const [data] = useState(generateHeatmapData);
   const [exporting, setExporting] = useState(false);
 
@@ -272,21 +302,21 @@ function ResponseHeatmap() {
     setExporting(true);
     try {
       const doc = new jsPDF();
-      addPDFHeader(doc, "Response Time Heatmap Report", "Hour-by-day response time analysis for vulnerability identification");
+      addPDFHeader(doc, isAr ? "تقرير خريطة زمن الاستجابة" : "Response Time Heatmap Report", isAr ? "تحليل زمن الاستجابة حسب الساعة واليوم لتحديد نقاط الضعف" : "Hour-by-day response time analysis for vulnerability identification");
 
       let y = 52;
       doc.setFontSize(10);
       doc.setTextColor(60, 60, 80);
-      doc.text(safe("This heatmap identifies peak slow-response periods to help schedule staffing and training."), 14, y);
+      doc.text(safe(isAr ? "تحدد هذه الخريطة فترات الذروة بطيئة الاستجابة للمساعدة في جدولة الموظفين والتدريب." : "This heatmap identifies peak slow-response periods to help schedule staffing and training."), 14, y);
       y += 12;
 
       // Legend
       const legend = [
-        { label: "Elite (<30s)", rgb: [0, 200, 83] },
-        { label: "Fast (30-45s)", rgb: [0, 200, 224] },
-        { label: "Good (45-60s)", rgb: [255, 215, 0] },
-        { label: "Average (60-80s)", rgb: [255, 149, 0] },
-        { label: "Slow (>80s)", rgb: [255, 45, 85] },
+        { label: isAr ? "نخبة (<30 ث)" : "Elite (<30s)", rgb: [0, 200, 83] },
+        { label: isAr ? "سريع (30-45 ث)" : "Fast (30-45s)", rgb: [0, 200, 224] },
+        { label: isAr ? "جيد (45-60 ث)" : "Good (45-60s)", rgb: [255, 215, 0] },
+        { label: isAr ? "متوسط (60-80 ث)" : "Average (60-80s)", rgb: [255, 149, 0] },
+        { label: isAr ? "بطيء (>80 ث)" : "Slow (>80s)", rgb: [255, 45, 85] },
       ];
       legend.forEach((l, i) => {
         doc.setFillColor(l.rgb[0], l.rgb[1], l.rgb[2]);
@@ -305,9 +335,9 @@ function ResponseHeatmap() {
         { label: "18-20", hours: [18, 19, 20] }, { label: "21-23", hours: [21, 22, 23] },
       ];
 
-      const tableHead = ["Day", ...hourBlocks.map(b => b.label)];
+      const tableHead = [isAr ? "اليوم" : "Day", ...hourBlocks.map(b => b.label)];
       const tableBody = DAYS.map(day => {
-        const row = [day];
+        const row = [isAr ? DAY_LABELS_AR[day] : day];
         hourBlocks.forEach(block => {
           const cells = block.hours.map(h => data.find(d => d.day === day && d.hour === h));
           const vals = cells.filter(c => c && c.count > 0).map(c => c!.value);
@@ -343,12 +373,14 @@ function ResponseHeatmap() {
       let sy = finalY + 12;
       doc.setFontSize(10);
       doc.setTextColor(255, 45, 85);
-      doc.text(safe("Top 5 Slowest Response Periods"), 14, sy);
+      doc.text(safe(isAr ? "أبطأ 5 فترات استجابة" : "Top 5 Slowest Response Periods"), 14, sy);
       sy += 8;
       worstCells.forEach((c, i) => {
         doc.setFontSize(8);
         doc.setTextColor(60, 60, 80);
-        doc.text(safe(`${i + 1}. ${c.day} ${c.hour.toString().padStart(2, "0")}:00 — avg ${c.value}s (${c.count} sessions)`), 18, sy);
+        doc.text(safe(isAr
+          ? `${i + 1}. ${DAY_LABELS_AR[c.day]} ${c.hour.toString().padStart(2, "0")}:00 — متوسط ${c.value} ث (${c.count} جلسة)`
+          : `${i + 1}. ${c.day} ${c.hour.toString().padStart(2, "0")}:00 — avg ${c.value}s (${c.count} sessions)`), 18, sy);
         sy += 6;
       });
 
@@ -366,10 +398,10 @@ function ResponseHeatmap() {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <Activity className="size-4" style={{ color: "#FF9500" }} />
-          <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Response Time Heatmap</h4>
+          <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "خريطة زمن الاستجابة" : "Response Time Heatmap"}</h4>
         </div>
         <div className="flex items-center gap-3">
-          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Average seconds by hour × day</p>
+          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{isAr ? "متوسط الثواني حسب الساعة × اليوم" : "Average seconds by hour × day"}</p>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -383,7 +415,7 @@ function ResponseHeatmap() {
             }}
           >
             <Download className="size-3" style={{ color: "#FF9500" }} />
-            <span style={{ fontSize: 9, fontWeight: 700, color: "#FF9500" }}>{exporting ? "Exporting..." : "Export PDF"}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#FF9500" }}>{exporting ? (isAr ? "جارٍ التصدير..." : "Exporting...") : (isAr ? "تصدير PDF" : "Export PDF")}</span>
           </motion.button>
         </div>
       </div>
@@ -403,7 +435,7 @@ function ResponseHeatmap() {
           {/* Rows */}
           {DAYS.map(day => (
             <div key={day} className="flex items-center gap-1 mb-0.5">
-              <span style={{ width: 30, fontSize: 9, color: "rgba(255,255,255,0.25)", textAlign: "right", paddingRight: 4 }}>{day}</span>
+              <span style={{ width: 30, fontSize: 9, color: "rgba(255,255,255,0.25)", textAlign: "right", paddingRight: 4 }}>{isAr ? DAY_LABELS_AR[day] : day}</span>
               <div className="flex flex-1 gap-px">
                 {HOURS.map(hour => {
                   const cell = data.find(d => d.day === day && d.hour === hour);
@@ -420,7 +452,13 @@ function ResponseHeatmap() {
                         transition: "transform 0.15s",
                         cursor: cnt > 0 ? "pointer" : "default",
                       }}
-                      title={cnt > 0 ? `${day} ${hour}:00 — avg ${val}s (${cnt} sessions)` : `${day} ${hour}:00 — no data`}
+                      title={cnt > 0
+                        ? (isAr
+                          ? `${DAY_LABELS_AR[day]} ${hour}:00 — متوسط ${val} ث (${cnt} جلسة)`
+                          : `${day} ${hour}:00 — avg ${val}s (${cnt} sessions)`)
+                        : (isAr
+                          ? `${DAY_LABELS_AR[day]} ${hour}:00 — لا توجد بيانات`
+                          : `${day} ${hour}:00 — no data`)}
                     />
                   );
                 })}
@@ -433,12 +471,12 @@ function ResponseHeatmap() {
       {/* Legend */}
       <div className="flex items-center gap-4 mt-4 justify-center">
         {[
-          { label: "Elite <30s", color: "rgba(0,200,83,0.6)" },
-          { label: "Fast 30-45s", color: "rgba(0,200,224,0.5)" },
-          { label: "Good 45-60s", color: "rgba(255,215,0,0.4)" },
-          { label: "Avg 60-80s", color: "rgba(255,149,0,0.5)" },
-          { label: "Slow >80s", color: "rgba(255,45,85,0.5)" },
-          { label: "No data", color: "rgba(255,255,255,0.015)" },
+          { label: isAr ? "نخبة <30 ث" : "Elite <30s", color: "rgba(0,200,83,0.6)" },
+          { label: isAr ? "سريع 30-45 ث" : "Fast 30-45s", color: "rgba(0,200,224,0.5)" },
+          { label: isAr ? "جيد 45-60 ث" : "Good 45-60s", color: "rgba(255,215,0,0.4)" },
+          { label: isAr ? "متوسط 60-80 ث" : "Avg 60-80s", color: "rgba(255,149,0,0.5)" },
+          { label: isAr ? "بطيء >80 ث" : "Slow >80s", color: "rgba(255,45,85,0.5)" },
+          { label: isAr ? "لا توجد بيانات" : "No data", color: "rgba(255,255,255,0.015)" },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1.5">
             <div className="size-2.5 rounded-sm" style={{ background: l.color, border: "1px solid rgba(255,255,255,0.06)" }} />
@@ -459,6 +497,7 @@ const TIER_ICONS: Record<string, string> = {
 };
 
 function AdminComparisonPanel() {
+  const { isAr } = useLang();
   const [selectedAdmins, setSelectedAdmins] = useState<number[]>([0, 1]);
   const [exporting, setExporting] = useState(false);
 
@@ -479,35 +518,37 @@ function AdminComparisonPanel() {
     setExporting(true);
     try {
       const doc = new jsPDF();
-      addPDFHeader(doc, "Admin Performance Comparison Report", `Comparing ${selected.length} admins — side-by-side analysis`);
+      addPDFHeader(doc, isAr ? "تقرير مقارنة أداء المسؤولين" : "Admin Performance Comparison Report", isAr ? `مقارنة ${selected.length} مسؤولين — تحليل جنبًا إلى جنب` : `Comparing ${selected.length} admins — side-by-side analysis`);
 
       let y = 52;
 
       // Summary cards
       doc.setFontSize(11);
       doc.setTextColor(40, 40, 60);
-      doc.text(safe("Selected Admins"), 14, y);
+      doc.text(safe(isAr ? "المسؤولون المختارون" : "Selected Admins"), 14, y);
       y += 8;
 
       selected.forEach((admin, i) => {
         doc.setFontSize(9);
         doc.setTextColor(60, 60, 80);
-        doc.text(safe(`${i + 1}. ${admin.name} — ${admin.role} — Tier: ${admin.tier} — Rating: ${admin.rating}`), 18, y);
+        doc.text(safe(isAr
+          ? `${i + 1}. ${admin.name} — ${admin.role} — الفئة: ${admin.tier} — التقييم: ${admin.rating}`
+          : `${i + 1}. ${admin.name} — ${admin.role} — Tier: ${admin.tier} — Rating: ${admin.rating}`), 18, y);
         y += 6;
       });
       y += 6;
 
       // Comparison table
       const metrics = [
-        { label: "Avg Response Time", key: "avgTime" as const, fmt: (v: number) => `${v}s`, lower: true },
-        { label: "Total Sessions", key: "sessions" as const, fmt: (v: number) => `${v}`, lower: false },
-        { label: "Completion Rate", key: "completion" as const, fmt: (v: number) => `${v}%`, lower: false },
-        { label: "Best Streak", key: "streak" as const, fmt: (v: number) => `${v}`, lower: false },
-        { label: "Avg Score", key: "avgScore" as const, fmt: (v: number) => `${v}`, lower: false },
-        { label: "Trend", key: "trend" as const, fmt: (v: any) => String(v), lower: false },
+        { label: isAr ? "متوسط زمن الاستجابة" : "Avg Response Time", key: "avgTime" as const, fmt: (v: number) => `${v}s`, lower: true },
+        { label: isAr ? "إجمالي الجلسات" : "Total Sessions", key: "sessions" as const, fmt: (v: number) => `${v}`, lower: false },
+        { label: isAr ? "معدل الإكمال" : "Completion Rate", key: "completion" as const, fmt: (v: number) => `${v}%`, lower: false },
+        { label: isAr ? "أفضل سلسلة" : "Best Streak", key: "streak" as const, fmt: (v: number) => `${v}`, lower: false },
+        { label: isAr ? "متوسط النتيجة" : "Avg Score", key: "avgScore" as const, fmt: (v: number) => `${v}`, lower: false },
+        { label: isAr ? "الاتجاه" : "Trend", key: "trend" as const, fmt: (v: any) => String(v), lower: false },
       ];
 
-      const tableHead = ["Metric", ...selected.map(a => a.name.split(" ")[0])];
+      const tableHead = [isAr ? "المقياس" : "Metric", ...selected.map(a => a.name.split(" ")[0])];
       const tableBody = metrics.map(m => {
         const vals = selected.map(a => (a as any)[m.key]);
         const numVals = vals.filter(v => typeof v === "number") as number[];
@@ -536,14 +577,18 @@ function AdminComparisonPanel() {
       let sy = finalY + 12;
       doc.setFontSize(11);
       doc.setTextColor(0, 200, 224);
-      doc.text(safe("Performance Verdict"), 14, sy);
+      doc.text(safe(isAr ? "حكم الأداء" : "Performance Verdict"), 14, sy);
       sy += 8;
 
       const fastest = [...selected].sort((a, b) => a.avgTime - b.avgTime)[0];
       const mostExp = [...selected].sort((a, b) => b.sessions - a.sessions)[0];
       const highestScore = [...selected].sort((a, b) => b.avgScore - a.avgScore)[0];
 
-      const verdicts = [
+      const verdicts = isAr ? [
+        `الأسرع استجابة: ${fastest.name} (متوسط ${fastest.avgTime} ث)`,
+        `الأكثر خبرة: ${mostExp.name} (${mostExp.sessions} جلسة)`,
+        `أعلى نتيجة: ${highestScore.name} (متوسط نتيجة ${highestScore.avgScore})`,
+      ] : [
         `Fastest Responder: ${fastest.name} (${fastest.avgTime}s avg)`,
         `Most Experienced: ${mostExp.name} (${mostExp.sessions} sessions)`,
         `Highest Score: ${highestScore.name} (${highestScore.avgScore} avg score)`,
@@ -569,13 +614,13 @@ function AdminComparisonPanel() {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <Users className="size-4" style={{ color: "#8B5CF6" }} />
-          <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Admin Comparison</h4>
+          <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "مقارنة المسؤولين" : "Admin Comparison"}</h4>
           <span className="px-2 py-0.5 rounded-md" style={{ fontSize: 7, fontWeight: 800, color: "#8B5CF6", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.15)" }}>
-            LIVE from Leaderboard
+            {isAr ? "مباشر من لوحة المتصدرين" : "LIVE from Leaderboard"}
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Select up to 4 admins</span>
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{isAr ? "اختر حتى 4 مسؤولين" : "Select up to 4 admins"}</span>
           {selected.length >= 2 && (
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -590,7 +635,7 @@ function AdminComparisonPanel() {
               }}
             >
               <FileText className="size-3" style={{ color: "#8B5CF6" }} />
-              <span style={{ fontSize: 9, fontWeight: 700, color: "#8B5CF6" }}>{exporting ? "Exporting..." : "Export PDF"}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#8B5CF6" }}>{exporting ? (isAr ? "جارٍ التصدير..." : "Exporting...") : (isAr ? "تصدير PDF" : "Export PDF")}</span>
             </motion.button>
           )}
         </div>
@@ -648,7 +693,7 @@ function AdminComparisonPanel() {
                   <span className="px-2 py-0.5 rounded" style={{ fontSize: 7, fontWeight: 800, color: admin.color, background: `${admin.color}10` }}>
                     {admin.rating}
                   </span>
-                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>Score: {admin.avgScore}</span>
+                  <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)" }}>{isAr ? "النتيجة" : "Score"}: {admin.avgScore}</span>
                 </div>
               </div>
             ))}
@@ -656,10 +701,10 @@ function AdminComparisonPanel() {
 
           {/* Metric rows */}
           {[
-            { label: "AVG RESPONSE TIME", key: "avgTime" as const, fmt: (v: number) => `${v}s`, lower: true },
-            { label: "TOTAL SESSIONS", key: "sessions" as const, fmt: (v: number) => `${v}`, lower: false },
-            { label: "COMPLETION RATE", key: "completion" as const, fmt: (v: number) => `${v}%`, lower: false },
-            { label: "BEST STREAK", key: "streak" as const, fmt: (v: number) => `${v}`, lower: false },
+            { label: isAr ? "متوسط زمن الاستجابة" : "AVG RESPONSE TIME", key: "avgTime" as const, fmt: (v: number) => `${v}s`, lower: true },
+            { label: isAr ? "إجمالي الجلسات" : "TOTAL SESSIONS", key: "sessions" as const, fmt: (v: number) => `${v}`, lower: false },
+            { label: isAr ? "معدل الإكمال" : "COMPLETION RATE", key: "completion" as const, fmt: (v: number) => `${v}%`, lower: false },
+            { label: isAr ? "أفضل سلسلة" : "BEST STREAK", key: "streak" as const, fmt: (v: number) => `${v}`, lower: false },
           ].map(metric => {
             const vals = selected.map(a => a[metric.key]);
             const bestVal = metric.lower ? Math.min(...vals) : Math.max(...vals);
@@ -709,7 +754,7 @@ function AdminComparisonPanel() {
       ) : (
         <div className="text-center py-8">
           <Users className="size-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.06)" }} />
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>Select at least 2 admins to compare</p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>{isAr ? "اختر مسؤولين اثنين على الأقل للمقارنة" : "Select at least 2 admins to compare"}</p>
         </div>
       )}
     </div>
@@ -721,6 +766,7 @@ function AdminComparisonPanel() {
 // ═══════════════════════════════════════════════════════════════
 
 export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; webMode?: boolean }) {
+  const { isAr } = useLang();
   const [analytics, setAnalytics] = useState<RRPAnalytics | null>(null);
 
   useEffect(() => {
@@ -745,7 +791,7 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
 
   // Chart data
   const typeData = Object.entries(analytics.sessionsByType).map(([key, value]) => ({
-    name: SOS_TYPE_LABELS[key]?.label || key,
+    name: (isAr ? SOS_TYPE_LABELS_AR[key] : SOS_TYPE_LABELS[key]?.label) || SOS_TYPE_LABELS[key]?.label || key,
     value,
     color: SOS_TYPE_LABELS[key]?.color || "#00C8E0",
   }));
@@ -777,9 +823,9 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
                   <Zap className="size-6" style={{ color: analytics.speedRatingColor }} fill={analytics.speedRatingColor} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Response Analytics</h3>
+                  <h3 style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>{isAr ? "تحليلات الاستجابة" : "Response Analytics"}</h3>
                   <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                    Emergency response performance tracking
+                    {isAr ? "تتبع أداء الاستجابة للطوارئ" : "Emergency response performance tracking"}
                   </p>
                 </div>
               </div>
@@ -794,16 +840,16 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
               <p style={{ fontSize: 24, fontWeight: 900, color: analytics.speedRatingColor }}>
                 {analytics.speedRating}
               </p>
-              <p style={{ fontSize: 8, color: `${analytics.speedRatingColor}60`, letterSpacing: "0.5px" }}>SPEED RATING</p>
+              <p style={{ fontSize: 8, color: `${analytics.speedRatingColor}60`, letterSpacing: "0.5px" }}>{isAr ? "تصنيف السرعة" : "SPEED RATING"}</p>
             </div>
           </div>
 
           {/* Key Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="AVG RESPONSE" value={fmtTime(analytics.avgResponseTime)} sub={`Fastest: ${fmtTime(analytics.fastestResponse)}`} color="#00C8E0" icon={Timer} />
-            <StatCard label="TOTAL SESSIONS" value={analytics.totalSessions.toString()} sub={`${analytics.completionRate}% completion rate`} color="#FF2D55" icon={Zap} />
-            <StatCard label="CURRENT STREAK" value={analytics.currentStreak.toString()} sub={`Best: ${analytics.bestStreak}`} color="#FFD700" icon={Flame} />
-            <StatCard label="AVG PER ACTION" value={`${analytics.avgPerAction}s`} sub={`${analytics.avgActionsCompleted} actions avg`} color="#00C853" icon={Target} />
+            <StatCard label={isAr ? "متوسط الاستجابة" : "AVG RESPONSE"} value={fmtTime(analytics.avgResponseTime)} sub={isAr ? `الأسرع: ${fmtTime(analytics.fastestResponse)}` : `Fastest: ${fmtTime(analytics.fastestResponse)}`} color="#00C8E0" icon={Timer} />
+            <StatCard label={isAr ? "إجمالي الجلسات" : "TOTAL SESSIONS"} value={analytics.totalSessions.toString()} sub={isAr ? `معدل إكمال ${analytics.completionRate}%` : `${analytics.completionRate}% completion rate`} color="#FF2D55" icon={Zap} />
+            <StatCard label={isAr ? "السلسلة الحالية" : "CURRENT STREAK"} value={analytics.currentStreak.toString()} sub={isAr ? `الأفضل: ${analytics.bestStreak}` : `Best: ${analytics.bestStreak}`} color="#FFD700" icon={Flame} />
+            <StatCard label={isAr ? "متوسط لكل إجراء" : "AVG PER ACTION"} value={`${analytics.avgPerAction}s`} sub={isAr ? `متوسط ${analytics.avgActionsCompleted} إجراء` : `${analytics.avgActionsCompleted} actions avg`} color="#00C853" icon={Target} />
           </div>
         </div>
       </div>
@@ -815,11 +861,11 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Activity className="size-4" style={{ color: "#00C8E0" }} />
-              <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Response Time Trend</h4>
+              <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "اتجاه زمن الاستجابة" : "Response Time Trend"}</h4>
             </div>
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: `${trendColor}08` }}>
               <TrendIcon className="size-3" style={{ color: trendColor }} />
-              <span style={{ fontSize: 9, fontWeight: 700, color: trendColor }}>{analytics.speedTrend.toUpperCase()}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: trendColor }}>{isAr ? (analytics.speedTrend === "improving" ? "تحسن" : analytics.speedTrend === "declining" ? "تراجع" : "مستقر") : analytics.speedTrend.toUpperCase()}</span>
             </div>
           </div>
           {analytics.timelineData.length > 0 ? (
@@ -836,12 +882,12 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
                 <YAxis tick={{ fill: "rgba(255,255,255,0.12)", fontSize: 8 }} axisLine={false} tickLine={false} width={30}
                   tickFormatter={v => `${v}s`} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="avgTime" name="Avg Time" stroke="#00C8E0" strokeWidth={2} fill="url(#rrpAreaGrad)" dot={false} />
+                <Area type="monotone" dataKey="avgTime" name={isAr ? "متوسط الزمن" : "Avg Time"} stroke="#00C8E0" strokeWidth={2} fill="url(#rrpAreaGrad)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-[180px]">
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>No timeline data yet</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>{isAr ? "لا توجد بيانات زمنية بعد" : "No timeline data yet"}</p>
             </div>
           )}
         </div>
@@ -850,7 +896,7 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
         <div className="p-5 rounded-2xl" style={{ background: "rgba(10,18,32,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="flex items-center gap-2 mb-4">
             <ChartBar className="size-4" style={{ color: "#FF2D55" }} />
-            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>By Emergency Type</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "حسب نوع الطوارئ" : "By Emergency Type"}</h4>
           </div>
           {typeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
@@ -858,14 +904,14 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
                 <XAxis type="number" tick={{ fill: "rgba(255,255,255,0.12)", fontSize: 8 }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }} axisLine={false} tickLine={false} width={90} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="value" name="Sessions" radius={[0, 6, 6, 0]}>
+                <Bar dataKey="value" name={isAr ? "الجلسات" : "Sessions"} radius={[0, 6, 6, 0]}>
                   {typeData.map((entry, i) => <Cell key={i} fill={entry.color} fillOpacity={0.7} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-[180px]">
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>No data yet</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>{isAr ? "لا توجد بيانات بعد" : "No data yet"}</p>
             </div>
           )}
         </div>
@@ -874,30 +920,30 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
       {/* Secondary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl" style={{ background: "rgba(10,18,32,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>AUTO-ESCALATION RATE</p>
+          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{isAr ? "معدل التصعيد التلقائي" : "AUTO-ESCALATION RATE"}</p>
           <p style={{ fontSize: 20, fontWeight: 900, color: analytics.autoEscalationRate < 10 ? "#00C853" : "#FF9500" }}>
             {analytics.autoEscalationRate}%
           </p>
           <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>
-            {analytics.autoEscalationRate < 10 ? "Excellent — admin always acts first" : "Consider faster initial response"}
+            {analytics.autoEscalationRate < 10 ? (isAr ? "ممتاز — المسؤول يتصرف أولاً دائمًا" : "Excellent — admin always acts first") : (isAr ? "فكّر في استجابة أولية أسرع" : "Consider faster initial response")}
           </p>
         </div>
         <div className="p-4 rounded-2xl" style={{ background: "rgba(10,18,32,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>IRE UPGRADE RATE</p>
+          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{isAr ? "معدل الترقية إلى IRE" : "IRE UPGRADE RATE"}</p>
           <p style={{ fontSize: 20, fontWeight: 900, color: "#8B5CF6" }}>{analytics.ireUpgradeRate}%</p>
-          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Sessions upgraded to full IRE guide</p>
+          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{isAr ? "الجلسات المُرقّاة إلى دليل IRE الكامل" : "Sessions upgraded to full IRE guide"}</p>
         </div>
         <div className="p-4 rounded-2xl" style={{ background: "rgba(10,18,32,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>SLOWEST RESPONSE</p>
+          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{isAr ? "أبطأ استجابة" : "SLOWEST RESPONSE"}</p>
           <p style={{ fontSize: 20, fontWeight: 900, color: "#FF2D55" }}>{fmtTime(analytics.slowestResponse)}</p>
-          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Worst session time recorded</p>
+          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{isAr ? "أسوأ زمن جلسة مُسجّل" : "Worst session time recorded"}</p>
         </div>
         <div className="p-4 rounded-2xl" style={{ background: "rgba(10,18,32,0.4)", border: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>COMPLETION RATE</p>
+          <p style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.5px" }}>{isAr ? "معدل الإكمال" : "COMPLETION RATE"}</p>
           <p style={{ fontSize: 20, fontWeight: 900, color: analytics.completionRate >= 90 ? "#00C853" : "#FF9500" }}>
             {analytics.completionRate}%
           </p>
-          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>Actions completed per session</p>
+          <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>{isAr ? "الإجراءات المكتملة لكل جلسة" : "Actions completed per session"}</p>
         </div>
       </div>
 
@@ -906,7 +952,7 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
         <div className="p-5 rounded-2xl md:col-span-1" style={{ background: "rgba(10,18,32,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="flex items-center gap-2 mb-4">
             <Shield className="size-4" style={{ color: "#FF9500" }} />
-            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>By Severity</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "حسب الخطورة" : "By Severity"}</h4>
           </div>
           <div className="space-y-3">
             {sevData.map(s => {
@@ -916,7 +962,7 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <div className="size-2 rounded-full" style={{ background: s.color }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{s.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>{isAr ? (SEVERITY_LABELS_AR[s.name] || s.name) : s.name}</span>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</span>
                   </div>
@@ -934,28 +980,28 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
         <div className="p-5 rounded-2xl md:col-span-2" style={{ background: "rgba(10,18,32,0.6)", border: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="flex items-center gap-2 mb-4">
             <Brain className="size-4" style={{ color: "#8B5CF6" }} />
-            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>AI Insights</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "رؤى الذكاء الاصطناعي" : "AI Insights"}</h4>
           </div>
           <div className="space-y-3">
             {[
               analytics.avgResponseTime <= 30
-                ? { text: "Your average response time is in the ELITE range. You consistently act within 30 seconds of protocol activation.", color: "#00C853", icon: Star }
+                ? { text: isAr ? "متوسط زمن استجابتك ضمن فئة النخبة. أنت تتصرف باستمرار خلال 30 ثانية من تفعيل البروتوكول." : "Your average response time is in the ELITE range. You consistently act within 30 seconds of protocol activation.", color: "#00C853", icon: Star }
                 : analytics.avgResponseTime <= 60
-                ? { text: `Average response time is ${analytics.avgResponseTime}s. Push for under 30s to reach ELITE rating.`, color: "#00C8E0", icon: Target }
-                : { text: `Response time averaging ${analytics.avgResponseTime}s. Critical emergencies need sub-60s response. Practice with Training Center drills.`, color: "#FF9500", icon: AlertTriangle },
+                ? { text: isAr ? `متوسط زمن الاستجابة ${analytics.avgResponseTime} ث. اجتهد للنزول تحت 30 ث للوصول إلى تصنيف النخبة.` : `Average response time is ${analytics.avgResponseTime}s. Push for under 30s to reach ELITE rating.`, color: "#00C8E0", icon: Target }
+                : { text: isAr ? `متوسط زمن الاستجابة ${analytics.avgResponseTime} ث. تتطلب الطوارئ الحرجة استجابة دون 60 ث. تدرّب من خلال تمارين مركز التدريب.` : `Response time averaging ${analytics.avgResponseTime}s. Critical emergencies need sub-60s response. Practice with Training Center drills.`, color: "#FF9500", icon: AlertTriangle },
               analytics.autoEscalationRate > 15
-                ? { text: `Auto-escalation triggered in ${analytics.autoEscalationRate}% of sessions. Consider faster first-action engagement.`, color: "#FF9500", icon: AlertTriangle }
-                : { text: `Only ${analytics.autoEscalationRate}% auto-escalation rate — you consistently act before the system needs to escalate.`, color: "#00C853", icon: CheckCircle2 },
+                ? { text: isAr ? `جرى التصعيد التلقائي في ${analytics.autoEscalationRate}% من الجلسات. فكّر في التفاعل الأسرع مع الإجراء الأول.` : `Auto-escalation triggered in ${analytics.autoEscalationRate}% of sessions. Consider faster first-action engagement.`, color: "#FF9500", icon: AlertTriangle }
+                : { text: isAr ? `معدل التصعيد التلقائي ${analytics.autoEscalationRate}% فقط — أنت تتصرف باستمرار قبل حاجة النظام إلى التصعيد.` : `Only ${analytics.autoEscalationRate}% auto-escalation rate — you consistently act before the system needs to escalate.`, color: "#00C853", icon: CheckCircle2 },
               analytics.currentStreak >= 5
-                ? { text: `Active streak of ${analytics.currentStreak} fast responses! Your best is ${analytics.bestStreak}. Keep the momentum.`, color: "#FFD700", icon: Flame }
+                ? { text: isAr ? `سلسلة نشطة من ${analytics.currentStreak} استجابات سريعة! أفضل رقم لك هو ${analytics.bestStreak}. حافظ على الزخم.` : `Active streak of ${analytics.currentStreak} fast responses! Your best is ${analytics.bestStreak}. Keep the momentum.`, color: "#FFD700", icon: Flame }
                 : analytics.bestStreak > 0
-                ? { text: `Best streak was ${analytics.bestStreak} consecutive fast responses. Current: ${analytics.currentStreak}. Build it back up!`, color: "#00C8E0", icon: TrendingUp }
-                : { text: "Complete more RRP sessions under 60s to start building a streak.", color: "#FF9500", icon: Target },
+                ? { text: isAr ? `كانت أفضل سلسلة ${analytics.bestStreak} استجابة سريعة متتالية. الحالية: ${analytics.currentStreak}. أعد بناءها!` : `Best streak was ${analytics.bestStreak} consecutive fast responses. Current: ${analytics.currentStreak}. Build it back up!`, color: "#00C8E0", icon: TrendingUp }
+                : { text: isAr ? "أكمل المزيد من جلسات RRP تحت 60 ث لبدء بناء سلسلة." : "Complete more RRP sessions under 60s to start building a streak.", color: "#FF9500", icon: Target },
               analytics.speedTrend === "improving"
-                ? { text: "Your response speed is improving over recent sessions. The training is paying off.", color: "#00C853", icon: TrendingUp }
+                ? { text: isAr ? "سرعة استجابتك تتحسن خلال الجلسات الأخيرة. التدريب يؤتي ثماره." : "Your response speed is improving over recent sessions. The training is paying off.", color: "#00C853", icon: TrendingUp }
                 : analytics.speedTrend === "declining"
-                ? { text: "Response times are trending slower recently. Consider a refresher drill session.", color: "#FF2D55", icon: TrendingDown }
-                : { text: "Response times are stable. Try Multiplayer Drill mode to push your limits.", color: "#00C8E0", icon: Activity },
+                ? { text: isAr ? "أزمنة الاستجابة تتجه نحو البطء مؤخرًا. فكّر في جلسة تمرين تنشيطية." : "Response times are trending slower recently. Consider a refresher drill session.", color: "#FF2D55", icon: TrendingDown }
+                : { text: isAr ? "أزمنة الاستجابة مستقرة. جرّب وضع التمرين الجماعي لتختبر حدودك." : "Response times are stable. Try Multiplayer Drill mode to push your limits.", color: "#00C8E0", icon: Activity },
             ].map((insight, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
                 style={{ background: `${insight.color}04`, border: `1px solid ${insight.color}08` }}>
@@ -978,10 +1024,10 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Clock className="size-4" style={{ color: "#00C8E0" }} />
-            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Recent Sessions</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{isAr ? "الجلسات الأخيرة" : "Recent Sessions"}</h4>
           </div>
           <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>
-            Last {analytics.recentSessions.length} sessions
+            {isAr ? `آخر ${analytics.recentSessions.length} جلسة` : `Last ${analytics.recentSessions.length} sessions`}
           </span>
         </div>
         <div className="space-y-2">
@@ -992,9 +1038,9 @@ export function RRPAnalyticsPage({ t, webMode }: { t: (k: string) => string; web
           ) : (
             <div className="text-center py-12">
               <Zap className="size-12 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.06)" }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.2)" }}>No RRP sessions yet</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.2)" }}>{isAr ? "لا توجد جلسات RRP بعد" : "No RRP sessions yet"}</p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.1)", marginTop: 4 }}>
-                Activate Rapid Response during an emergency to start tracking
+                {isAr ? "فعّل الاستجابة السريعة أثناء حالة طوارئ لبدء التتبع" : "Activate Rapid Response during an emergency to start tracking"}
               </p>
             </div>
           )}

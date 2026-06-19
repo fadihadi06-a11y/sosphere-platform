@@ -21,7 +21,7 @@ import {
 } from "./drone-service";
 import { generateMissionReport } from "./drone-report";
 import { useT } from "./dashboard-i18n";
-import { useLang } from "./useLang";
+import { useLang } from "./stores/dashboard-store";
 
 const STATUS_META: Record<Drone["status"], { labelKey: string; color: string }> = {
   online:      { labelKey: "drn.status.online",      color: "#00C853" },
@@ -41,7 +41,7 @@ interface Props {
 }
 
 export function DronesPage({ companyState }: Props) {
-  const { lang } = useLang();
+  const lang = useLang();
   const t = useT(lang);
   const companyId = companyState?.company?.id;
   const [tab, setTab] = useState<"fleet" | "ops" | "sov">("fleet");
