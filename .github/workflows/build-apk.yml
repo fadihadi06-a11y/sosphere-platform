@@ -115,31 +115,50 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
+      # Decode the release keystore from a base64 secret so assembleRelease
+      # produces a SIGNED APK (required for native Google Sign-In: Google
+      # validates the app by package + the registered SHA-1 of this key).
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set — add it (base64 of android/app/sosphere-release.jks) to build a signed APK."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/sosphere-release.jks"
+          echo "SOSPHERE_KEYSTORE_PATH=$RUNNER_TEMP/sosphere-release.jks" >> "$GITHUB_ENV"
+          echo "[keystore] decoded $(wc -c < "$RUNNER_TEMP/sosphere-release.jks") bytes"
+        shell: bash
+
       # R-16: pass GITHUB_RUN_NUMBER → APK_VERSION_CODE so every CI build
       # has a monotonic versionCode. Android refuses to install a new APK
       # with a versionCode <= the installed APK without explicit uninstall.
-      - name: Build debug APK
+      - name: Build signed release APK
         working-directory: android
         env:
           APK_VERSION_CODE: ${{ github.run_number }}
           APK_VERSION_NAME: "1.0.${{ github.run_number }}"
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+          SOSPHERE_KEYSTORE_PASSWORD: ${{ secrets.SOSPHERE_KEYSTORE_PASSWORD }}
+          SOSPHERE_KEYSTORE_KEY_PASSWORD: ${{ secrets.SOSPHERE_KEYSTORE_KEY_PASSWORD }}
+          SOSPHERE_KEYSTORE_ALIAS: sosphere
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK with commit SHA
         run: |
           mkdir -p apk-output
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             apk-output/sosphere-debug-${{ github.sha }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             apk-output/sosphere-release-${{ github.sha }}.apk
           # Also create a stable "latest" filename
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             apk-output/sosphere-debug-latest.apk
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             apk-output/sosphere-release-latest.apk
           ls -lh apk-output/
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sosphere-debug-apk-${{ github.sha }}
-          path: apk-output/sosphere-debug-*.apk
+          name: sosphere-release-apk-${{ github.sha }}
+          path: apk-output/sosphere-release-*.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -149,9 +168,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ github.run_number }}
-          name: Debug APK — build ${{ github.run_number }}
+          name: Signed Release APK — build ${{ github.run_number }}
           body: |
-            Automated debug APK build.
+            Automated signed release APK build.
 
             **Commit:** ${{ github.sha }}
             **Branch:** ${{ github.ref_name }}
@@ -159,9 +178,9 @@ jobs:
             **versionCode:** ${{ github.run_number }}
             **versionName:** 1.0.${{ github.run_number }}
 
-            Download `sosphere-debug-latest.apk` below and install on your phone.
+            Download `sosphere-release-latest.apk` below and install on your phone.
             On Android: enable "Install unknown apps" for your file manager, then tap the APK.
-          files: apk-output/sosphere-debug-*.apk
+          files: apk-output/sosphere-release-*.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
